@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="400" height="250">
+  <rect width="400" height="250" fill="#f0f8e8" stroke="#6a9a4a" stroke-width="2"/>
+  <text x="200" y="40" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#3f6f2c">SYNTHETIC DOCUMENT</text>
+  <text x="200" y="80" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#2a471a">Power Co. Electricity Bill</text>
+  <text x="20" y="120" font-family="Arial, sans-serif" font-size="14" fill="#333">Account Holder: Jordan Lee</text>
+  <text x="20" y="145" font-family="Arial, sans-serif" font-size="14" fill="#333">Service Address: 14 Elm Row, Springfield</text>
+  <text x="20" y="170" font-family="Arial, sans-serif" font-size="14" fill="#333">Statement Date: 2026-06-05</text>
+  <text x="20" y="195" font-family="Arial, sans-serif" font-size="14" fill="#333">Provider: Power Co.</text>
+</svg>

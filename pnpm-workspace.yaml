@@ -1,0 +1,3 @@
+# pnpm workspace root (P6-2 bootstraps this; P6-3/P6-4 add members under frontend/).
+packages:
+  - "frontend/*"

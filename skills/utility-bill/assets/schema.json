@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": ["doctype", "issuer", "key_fields"],
+  "properties": {
+    "doctype": { "type": "string", "enum": ["utility-bill"] },
+    "issuer":  { "type": "string", "description": "canonicalized issuer key" },
+    "key_fields": {
+      "type": "object",
+      "required": ["name", "service_address", "statement_date"],
+      "properties": {
+        "name": { "type": "string" },
+        "service_address": { "type": "string" },
+        "statement_date": { "type": "string", "description": "ISO date (YYYY-MM-DD)" }
+      }
+    }
+  }
+}

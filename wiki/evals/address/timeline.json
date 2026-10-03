@@ -1,0 +1,117 @@
+{
+  "exchanges": [
+    {
+      "id": "exchange-1-path-a-instant",
+      "path": "A",
+      "party": "jordan-lee",
+      "sla": {
+        "overdue_ticks": 1,
+        "reminder_ticks": 2,
+        "escalate_ticks": 3,
+        "resubmit_cap": 3
+      },
+      "open_arrival": true,
+      "beats": [
+        {
+          "tick": 0,
+          "event": "open_exchange"
+        },
+        {
+          "tick": 0,
+          "event": "arrival",
+          "document": "gov-id-clean",
+          "trigger": "immediate",
+          "expected_disposition": "accepted"
+        },
+        {
+          "tick": 0,
+          "event": "satisfied",
+          "reason": "gov-id branch"
+        }
+      ]
+    },
+    {
+      "id": "exchange-2-path-b-two-bills",
+      "path": "B",
+      "party": "jordan-lee",
+      "sla": {
+        "overdue_ticks": 1,
+        "reminder_ticks": 2,
+        "escalate_ticks": 3,
+        "resubmit_cap": 3
+      },
+      "beats": [
+        {
+          "tick": 0,
+          "event": "open_exchange"
+        },
+        {
+          "tick": 0,
+          "event": "arrival",
+          "document": "bill-powerco-clean",
+          "trigger": "immediate",
+          "expected_disposition": "accepted"
+        },
+        {
+          "tick": 0,
+          "event": "agent_requirement",
+          "note": "1 distinct issuer < 2 -> chase a different company"
+        },
+        {
+          "tick": 1,
+          "event": "followup",
+          "kind": "overdue"
+        },
+        {
+          "tick": 2,
+          "event": "followup",
+          "kind": "reminder"
+        },
+        {
+          "tick": 3,
+          "event": "followup",
+          "kind": "escalated"
+        },
+        {
+          "tick": 4,
+          "event": "arrival",
+          "document": "bill-powerco-clean-2",
+          "trigger": "on_chase",
+          "expected_disposition": "accepted"
+        },
+        {
+          "tick": 4,
+          "event": "agent_requirement",
+          "note": "still 1 distinct issuer -> re-chase different company"
+        },
+        {
+          "tick": 5,
+          "event": "arrival",
+          "document": "bill-aquautil-blurry",
+          "trigger": "on_chase",
+          "expected_disposition": "rejected",
+          "expected_gate": "resubmit"
+        },
+        {
+          "tick": 6,
+          "event": "arrival",
+          "document": "bill-aquautil-clear",
+          "trigger": "resubmit",
+          "expected_disposition": "pending",
+          "expected_gate": "hitl"
+        },
+        {
+          "tick": 7,
+          "event": "hitl_resolved",
+          "document": "bill-aquautil-clear",
+          "resolution": "accepted"
+        },
+        {
+          "tick": 7,
+          "event": "satisfied",
+          "reason": "2 distinct issuers"
+        }
+      ]
+    }
+  ]
+}

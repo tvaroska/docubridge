@@ -1,0 +1,229 @@
+{
+  "party": "jordan-lee",
+  "documents": [
+    {
+      "id": "gov-id-clean",
+      "doctype": "gov-id",
+      "issuer_raw": null,
+      "issuer": null,
+      "expected_disposition": "accepted",
+      "expected_gate": "auto_approve",
+      "extraction": {
+        "fields": {
+          "doctype": "gov-id",
+          "key_fields": {
+            "name": "Jordan Lee",
+            "address": "14 Elm Row, Springfield",
+            "doc_number": "DL-8392047",
+            "issuing_authority": "State DMV",
+            "expiry": "2030-01-01"
+          }
+        },
+        "overall_confidence": 0.96,
+        "field_confidence": {
+          "name": 0.97,
+          "expiry": 0.95
+        },
+        "legible": true,
+        "flagged_fields": []
+      },
+      "artifact": "images/gov-id-clean.svg",
+      "synthetic": true,
+      "note": "Clean driver's license -> confidence gate -> AUTO_APPROVE"
+    },
+    {
+      "id": "gov-id-expired",
+      "doctype": "gov-id",
+      "issuer_raw": null,
+      "issuer": null,
+      "expected_disposition": "pending",
+      "expected_gate": "hitl_review",
+      "extraction": {
+        "fields": {
+          "doctype": "gov-id",
+          "key_fields": {
+            "name": "Jordan Lee",
+            "address": "14 Elm Row, Springfield",
+            "doc_number": "DL-6281035",
+            "issuing_authority": "State DMV",
+            "expiry": "2019-01-01"
+          }
+        },
+        "overall_confidence": 0.93,
+        "field_confidence": {
+          "name": 0.95,
+          "expiry": 0.94
+        },
+        "legible": true,
+        "flagged_fields": ["expiry"]
+      },
+      "artifact": "images/gov-id-expired.svg",
+      "synthetic": true,
+      "note": "Expired driver's license (flagged expiry) -> confidence gate -> HITL_REVIEW"
+    },
+    {
+      "id": "bill-powerco-clean",
+      "doctype": "utility-bill",
+      "issuer_raw": "PowerCo",
+      "issuer": "power-co",
+      "expected_disposition": "accepted",
+      "expected_gate": "auto_approve",
+      "extraction": {
+        "fields": {
+          "doctype": "utility-bill",
+          "issuer": "power-co",
+          "key_fields": {
+            "name": "Jordan Lee",
+            "service_address": "14 Elm Row, Springfield",
+            "statement_date": "2026-07-03"
+          }
+        },
+        "overall_confidence": 0.97,
+        "field_confidence": {
+          "issuer": 0.98,
+          "name": 0.96
+        },
+        "legible": true,
+        "flagged_fields": []
+      },
+      "artifact": "images/bill-powerco-clean.svg",
+      "synthetic": true,
+      "note": "Clean PowerCo electricity bill -> confidence gate -> AUTO_APPROVE"
+    },
+    {
+      "id": "bill-powerco-clean-2",
+      "doctype": "utility-bill",
+      "issuer_raw": "Power Co.",
+      "issuer": "power-co",
+      "expected_disposition": "accepted",
+      "expected_gate": "auto_approve",
+      "extraction": {
+        "fields": {
+          "doctype": "utility-bill",
+          "issuer": "power-co",
+          "key_fields": {
+            "name": "Jordan Lee",
+            "service_address": "14 Elm Row, Springfield",
+            "statement_date": "2026-06-05"
+          }
+        },
+        "overall_confidence": 0.95,
+        "field_confidence": {
+          "issuer": 0.96,
+          "name": 0.94
+        },
+        "legible": true,
+        "flagged_fields": []
+      },
+      "artifact": "images/bill-powerco-clean-2.svg",
+      "synthetic": true,
+      "note": "Second PowerCo electricity bill (different statement date, issuer_raw variant 'Power Co.') -> AUTO_APPROVE"
+    },
+    {
+      "id": "bill-aquautil-clean",
+      "doctype": "utility-bill",
+      "issuer_raw": "AquaUtil",
+      "issuer": "aqua-util",
+      "expected_disposition": "accepted",
+      "expected_gate": "auto_approve",
+      "extraction": {
+        "fields": {
+          "doctype": "utility-bill",
+          "issuer": "aqua-util",
+          "key_fields": {
+            "name": "Jordan Lee",
+            "service_address": "14 Elm Row, Springfield",
+            "statement_date": "2026-07-10"
+          }
+        },
+        "overall_confidence": 0.96,
+        "field_confidence": {
+          "issuer": 0.97,
+          "name": 0.95
+        },
+        "legible": true,
+        "flagged_fields": []
+      },
+      "artifact": "images/bill-aquautil-clean.svg",
+      "synthetic": true,
+      "note": "Clean AquaUtil water bill (distinct issuer) -> AUTO_APPROVE"
+    },
+    {
+      "id": "bill-aquautil-clear",
+      "doctype": "utility-bill",
+      "issuer_raw": "AquaUtil",
+      "issuer": "aqua-util",
+      "expected_disposition": "pending",
+      "expected_gate": "hitl_review",
+      "extraction": {
+        "fields": {
+          "doctype": "utility-bill",
+          "issuer": "aqua-util",
+          "key_fields": {
+            "name": "Jordan Lee",
+            "service_address": "14 Elm Row, Springfield",
+            "statement_date": "2026-07-08"
+          }
+        },
+        "overall_confidence": 0.72,
+        "field_confidence": {
+          "issuer": 0.74,
+          "name": 0.7
+        },
+        "legible": true,
+        "flagged_fields": []
+      },
+      "artifact": "images/bill-aquautil-clear.svg",
+      "synthetic": true,
+      "note": "Clear-but-mid-confidence AquaUtil bill (resubmitted after blurry) -> HITL_REVIEW"
+    },
+    {
+      "id": "bill-aquautil-blurry",
+      "doctype": "utility-bill",
+      "issuer_raw": "AquaUtil",
+      "issuer": "aqua-util",
+      "expected_disposition": "rejected",
+      "expected_gate": "resubmit",
+      "extraction": {
+        "fields": {
+          "doctype": "utility-bill",
+          "issuer": "aqua-util"
+        },
+        "overall_confidence": 0.3,
+        "field_confidence": {
+          "issuer": 0.31
+        },
+        "legible": false,
+        "flagged_fields": []
+      },
+      "artifact": "images/bill-aquautil-blurry.svg",
+      "synthetic": true,
+      "note": "Blurry AquaUtil bill -> quality gate -> RESUBMIT (illegible)"
+    },
+    {
+      "id": "passport-unsupported",
+      "doctype": "passport",
+      "issuer_raw": "Gov",
+      "issuer": "gov",
+      "expected_disposition": "rejected",
+      "expected_gate": "unsupported",
+      "extraction": {
+        "fields": {
+          "doctype": "passport",
+          "issuer": "gov",
+          "key_fields": {
+            "name": "Jordan Lee",
+            "passport_number": "P8472915",
+            "expiry": "2028-05-20"
+          }
+        },
+        "overall_confidence": 0.94,
+        "legible": true,
+        "flagged_fields": []
+      },
+      "artifact": "images/passport-unsupported.svg",
+      "synthetic": true,
+      "note": "Passport (outside the label space) -> rejected as unsupported doctype"
+    }
+  ]
+}

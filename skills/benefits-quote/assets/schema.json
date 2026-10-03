@@ -1,0 +1,72 @@
+{
+  "version": "2.0",
+  "type": "object",
+  "required": ["doctype", "key_fields"],
+  "properties": {
+    "doctype":  { "type": "string", "enum": ["benefits-quote"] },
+    "key_fields": {
+      "type": "object",
+      "required": [
+        "currency",
+        "language",
+        "premium",
+        "deductible",
+        "coverage_limits",
+        "exclusions",
+        "effective_date",
+        "expiry_date"
+      ],
+      "properties": {
+        "currency":        { "type": "string", "description": "ISO 4217 currency code (e.g. USD, EUR, GBP)" },
+        "language":        { "type": "string", "description": "BCP-47 language tag (e.g. en, fr, de)" },
+        "premium":         { "type": "string", "description": "premium amount in the quote's native currency" },
+        "deductible":      { "type": "string", "description": "deductible amount in the quote's native currency" },
+        "coverage_limits": { "type": "string", "description": "coverage limits / covered lines" },
+        "exclusions":      { "type": "string", "description": "excluded coverages / carve-outs" },
+        "effective_date":  { "type": "string", "description": "ISO date (YYYY-MM-DD) the quote takes effect" },
+        "expiry_date":     { "type": "string", "description": "ISO date (YYYY-MM-DD) the quote expires" },
+        "product_line":    { "type": "string", "enum": ["AD_AND_D", "CRITICAL_ILLNESS", "HOSPITAL_INDEMNITY", "LIFE"], "description": "voluntary-benefit product line the quote covers" },
+        "carrier_product_name": { "type": "string", "description": "the carrier's own product name, verbatim" },
+        "plan_year":       { "type": "string", "description": "plan year the quote is for (e.g. 2027)" },
+        "commission_basis":    { "type": "string", "description": "broker commission basis, verbatim (e.g. heaped, level)" },
+        "commission_rate_pct": { "type": "string", "description": "broker commission rate as a percentage, text as printed (e.g. 20)" },
+        "commission_notes":    { "type": "string", "description": "any other commission terms, verbatim" }
+      }
+    },
+    "tables": {
+      "type": "object",
+      "properties": {
+        "rates": {
+          "type": "array",
+          "description": "one row per premium rate printed in the quote",
+          "items": {
+            "type": "object",
+            "required": ["coverage_tier", "amount", "frequency"],
+            "properties": {
+              "coverage_tier":  { "type": "string", "enum": ["EE", "EE_SPOUSE", "EE_CHILDREN", "FAMILY"], "description": "who the rate covers: employee, employee + spouse, employee + children, family" },
+              "tobacco":        { "type": "string", "enum": ["UNI", "NON_TOBACCO", "TOBACCO"], "description": "tobacco rating class (UNI = unismoker / not distinguished)" },
+              "age_band":       { "type": "string", "description": "age band as printed (e.g. 30-34)" },
+              "amount":         { "type": "string", "description": "the rate exactly as printed, in the quote's native currency; never computed" },
+              "frequency":      { "type": "string", "enum": ["MONTHLY", "BI_WEEKLY", "WEEKLY", "SEMI_MONTHLY", "ANNUAL"], "description": "billing frequency the rate amount is expressed in, per row (carriers mix them)" },
+              "rate_basis":     { "type": "string", "enum": ["FLAT", "PER_1000", "PER_UNIT"], "description": "FLAT premium, per $1,000 of benefit, or per unit of benefit" },
+              "benefit_amount": { "type": "string", "description": "benefit amount the rate is priced at, as printed" }
+            }
+          }
+        },
+        "design": {
+          "type": "array",
+          "description": "one row per benefit-design provision printed in the quote",
+          "items": {
+            "type": "object",
+            "required": ["category", "value"],
+            "properties": {
+              "category":          { "type": "string", "description": "the benefit provision, in standard terms where obvious (e.g. Heart Attack)" },
+              "category_original": { "type": "string", "description": "the carrier's own term for the provision, verbatim" },
+              "value":             { "type": "string", "description": "the provision's value as printed (e.g. $10,000, 6 months, Yes)" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Address Agent ↔ Document Bridge — Architecture Map</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#0f141a; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e;
+    --agent:#2ea043; --agent-fill:#0f2a1c;
+    --wire:#d29922; --wire-fill:#2b2410;
+    --bridge:#388bfd; --bridge-fill:#0f2036;
+    --seam:#a371f7; --seam-fill:#211433;
+    --substrate:#f778ba; --substrate-fill:#33101f;
+    --config:#39c5cf; --config-fill:#08272b;
+    --c-data:#58a6ff; --c-tool:#3fb950; --c-event:#f85149; --c-pause:#db6d28; --c-dep:#8b949e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  header{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:12px;flex:0 0 auto}
+  header h1{font-size:15px;margin:0;font-weight:600}
+  header .sub{color:var(--muted);font-size:12px}
+  .main{display:flex;flex:1 1 auto;min-height:0}
+  .sidebar{width:288px;flex:0 0 auto;border-right:1px solid var(--border);overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px}
+  .stage{flex:1 1 auto;display:flex;flex-direction:column;min-width:0}
+  .canvas-wrap{flex:1 1 auto;position:relative;overflow:hidden;background:
+     radial-gradient(circle at 25% 20%,#11202f 0,transparent 45%),
+     radial-gradient(circle at 78% 75%,#1a1226 0,transparent 45%),var(--bg)}
+  svg{width:100%;height:100%;display:block}
+  .out{flex:0 0 auto;border-top:1px solid var(--border);background:var(--panel2);padding:12px 14px;max-height:34%;overflow:auto}
+  .out-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .out-head h2{font-size:12px;margin:0;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  pre.prompt{margin:0;white-space:pre-wrap;font-size:12.5px;line-height:1.5;color:#c9d1d9}
+  .group h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:7px 9px;cursor:pointer;transition:.12s}
+  button:hover{border-color:#4d5766;background:#1c232c}
+  button.active{border-color:var(--bridge);background:#132844;color:#cfe3ff}
+  .preset{font-size:12px;text-align:left;line-height:1.2}
+  .toggles{display:flex;flex-direction:column;gap:5px}
+  label.tog{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px}
+  label.tog:hover{background:#1c232c}
+  label.tog input{accent-color:var(--bridge);width:15px;height:15px}
+  .swatch{width:22px;height:0;border-top-width:3px;border-top-style:solid;display:inline-block;border-radius:2px}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block;border:1px solid rgba(255,255,255,.25)}
+  .zoombar{position:absolute;top:10px;right:10px;display:flex;gap:6px}
+  .zoombar button{width:34px;height:34px;padding:0;font-size:17px;line-height:1;border-radius:8px;background:rgba(22,27,34,.85);backdrop-filter:blur(4px)}
+  .legend{position:absolute;left:10px;bottom:10px;background:rgba(15,20,26,.86);backdrop-filter:blur(4px);border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:5px;max-width:230px}
+  .legend .row{display:flex;align-items:center;gap:8px}
+  .hint{position:absolute;top:10px;left:10px;background:rgba(15,20,26,.86);backdrop-filter:blur(4px);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;color:var(--muted)}
+  .comments{display:flex;flex-direction:column;gap:7px}
+  .comment{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--wire);border-radius:6px;padding:7px 8px;font-size:12px}
+  .comment .ct{font-weight:600;font-size:11.5px}
+  .comment .cf{color:var(--muted);font-size:10px;font-family:ui-monospace,monospace;margin-bottom:3px}
+  .comment .cx{color:#c9d1d9;line-height:1.35}
+  .comment .del{float:right;color:var(--muted);border:none;background:none;padding:0 2px;font-size:14px;cursor:pointer}
+  .comment .del:hover{color:var(--c-event)}
+  .empty{color:var(--muted);font-size:12px;font-style:italic}
+  .node{cursor:pointer}
+  .node rect{transition:filter .12s}
+  .node:hover rect{filter:brightness(1.35)}
+  .node text{pointer-events:none;user-select:none}
+  .conn-label{font-size:9.5px;fill:#7d8896;font-family:ui-monospace,monospace}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+  .overlay.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;width:440px;max-width:92vw;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+  .modal h3{margin:0 0 2px;font-size:15px}
+  .modal .mf{color:var(--muted);font-size:11px;font-family:ui-monospace,monospace;margin-bottom:12px}
+  .modal textarea{width:100%;min-height:96px;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px;font:inherit;font-size:13px;resize:vertical}
+  .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+  .modal .actions .save{border-color:var(--agent);background:#0f2a1c;color:#b7f0c9}
+  .copybtn{border-color:var(--agent);background:#0f2a1c;color:#b7f0c9}
+  .copybtn.copied{border-color:var(--bridge);background:#132844;color:#cfe3ff}
+  .desc{font-size:11.5px;color:var(--muted);line-height:1.4}
+</style>
+</head>
+<body>
+<header>
+  <h1>Address Agent ↔ Document Bridge</h1>
+  <span class="sub">the service-agent <code>Workflow</code> graph and every wire it uses to talk to the Bridge · click a box to leave feedback</span>
+</header>
+<div class="main">
+  <aside class="sidebar">
+    <div class="group">
+      <h3>View presets</h3>
+      <div class="presets" id="presets"></div>
+    </div>
+    <div class="group">
+      <h3>Layers</h3>
+      <div class="toggles" id="layerToggles"></div>
+    </div>
+    <div class="group">
+      <h3>Connections</h3>
+      <div class="toggles" id="connToggles"></div>
+    </div>
+    <div class="group">
+      <h3>Comments (<span id="ccount">0</span>)</h3>
+      <div class="comments" id="commentList"><div class="empty">Click any component to attach feedback. It flows into the prompt below.</div></div>
+    </div>
+  </aside>
+  <div class="stage">
+    <div class="canvas-wrap">
+      <svg id="svg" viewBox="0 0 1180 820" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="hint">Internal zone ▸ (Agent Gateway / Agent Identity) ▸ DMZ — the trust boundary the A2A traffic crosses</div>
+      <div class="zoombar">
+        <button onclick="zoom(0.15)">+</button>
+        <button onclick="zoom(-0.15)">−</button>
+        <button onclick="zoomReset()" style="font-size:12px">⟲</button>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="out">
+      <div class="out-head">
+        <h2>Prompt output</h2>
+        <button class="copybtn" id="copyBtn" onclick="copyPrompt()">Copy Prompt</button>
+      </div>
+      <pre class="prompt" id="prompt"></pre>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="mTitle">Component</h3>
+    <div class="mf" id="mFile"></div>
+    <div class="desc" id="mDesc" style="margin-bottom:10px"></div>
+    <textarea id="mText" placeholder="What should change here? What's unclear? What would you add?"></textarea>
+    <div class="actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="save" onclick="saveComment()">Save comment</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- layers & connection types ---------- */
+const LAYERS = [
+  {id:'agent',     name:'Address agent (internal)', color:'var(--agent)',     fill:'#0f2a1c', stroke:'#2ea043'},
+  {id:'wire',      name:'A2A wire (Ring 1)',        color:'var(--wire)',      fill:'#2b2410', stroke:'#d29922'},
+  {id:'bridge',    name:'Document Bridge core (DMZ)',color:'var(--bridge)',   fill:'#0f2036', stroke:'#388bfd'},
+  {id:'seam',      name:'Managed-service seams',    color:'var(--seam)',      fill:'#211433', stroke:'#a371f7'},
+  {id:'substrate', name:'GCP substrate / external', color:'var(--substrate)', fill:'#33101f', stroke:'#f778ba'},
+  {id:'config',    name:'Skills (config)',          color:'var(--config)',    fill:'#08272b', stroke:'#39c5cf'},
+];
+const CONNS = [
+  {id:'dataflow',  name:'Data flow — A2A msg / ExchangeTurn', color:'#58a6ff', dash:''},
+  {id:'toolcall',  name:'Tool / node call (ADK)',            color:'#3fb950', dash:'7,4'},
+  {id:'event',     name:'Event — status / push / wake',      color:'#f85149', dash:'3,4'},
+  {id:'pause',     name:'Park / resume (input-required)',    color:'#db6d28', dash:'9,5'},
+  {id:'dependency',name:'Binding / dependency',              color:'#8b949e', dash:'2,4'},
+];
+const STROKE = Object.fromEntries(LAYERS.map(l=>[l.id,l]));
+const CCOLOR = Object.fromEntries(CONNS.map(c=>[c.id,c]));
+
+/* ---------- nodes ---------- */
+const NH = 52;
+const nodes = [
+  // Address agent column (internal) — the two initiation surfaces (the "driver" realized)
+  {id:'cli',      layer:'agent', label:'CLI driver',             sub:'python -m agents.address', x:40,  y:64,  w:96,  desc:'Command-line initiation. Builds the ADK App + Runner directly and fires the opening CollectRequest, then feeds the wake FunctionResponse on resume. Scriptable — this is what drives the golden / eval runs. Not an ADK agent: a Runner host.'},
+  {id:'console',  layer:'agent', label:'Agent Console (Vite+React)', sub:'frontend/agent-console/', x:142, y:64, w:118, desc:'The servicer-facing control surface. A "new session from a prepared request" button initiates a run (via a small console_server that builds the App + Runner), and a session list shows each run\'s live status — click one to open it. It also renders the agent\'s handed ledger, reasoning, satisfaction check and requirements per turn, so Sense B is watchable. This is plain observability/control over SSE — pure showcase; the service agent does NOT speak A2UI (A2UI is strictly the Bridge → document-provider edge).'},
+  {id:'workflow', layer:'agent', label:'Address Workflow graph', sub:'agents/address/graph.py',  x:40,  y:136, w:220, desc:'google.adk.workflow.Workflow — a conditional cycle collect → gate → present on ONE shared durable session. Fixed across every service agent; only nodes/gate vary.'},
+  {id:'collect',  layer:'agent', label:'Collect node · RemoteA2aAgent', sub:'bridge_client/remote_consumer.py', x:40, y:208, w:220, desc:'The platform-native Bridge consumer, run directly as a graph node. Sends CollectRequest over canonical A2A, relays the ExchangeTurn, and turns an input-required park into a LongRunningFunctionTool pause.'},
+  {id:'gate',     layer:'agent', label:'Gate node · is_satisfied (Sense B)', sub:'agents/address/gate.py', x:40, y:280, w:220, desc:'Deterministic FunctionNode (no model). Reads the latest ExchangeTurn off the shared session, runs the "done" function (gov-ID OR 2 distinct-issuer bills), sets ctx.route = again | done. A model may never mint "done".'},
+  {id:'present',  layer:'agent', label:'Present node',            sub:'agents/address/present.py',x:40,  y:352, w:220, desc:'Exposes the terminal ExchangeTurn as graph output. Pluggable: a code pass-through, or an LlmAgent for a natural-language summary. Never routes.'},
+  {id:'interceptor',layer:'agent',label:'RequestInterceptor',    sub:'remote_consumer.py · _pending_resume_target', x:40, y:424, w:220, desc:'Ring-3 workaround: re-detects a pending resume (latest user FunctionResponse with no consumer event after it) and stamps the parked task_id/context_id — because the Workflow appends an event after the FunctionResponse and defeats RemoteA2aAgent\'s built-in detection. (upstream-adk-issues #1)'},
+  {id:'wire',     layer:'agent', label:'wire.py · extract_exchange_turn', sub:'bridge_client/wire.py', x:40, y:496, w:220, desc:'Ring-3 workaround: decodes an A2A DataPart back out of the ADK event stream (string-matches the <a2a_datapart_json> wrapper) since ADK ships no supported decoder from inside a graph node. (upstream-adk-issues #2)'},
+  {id:'session',  layer:'agent', label:'Durable session + Resumability', sub:'DatabaseSessionService · ResumabilityConfig', x:40, y:568, w:220, desc:'One shared durable session for the whole graph. DatabaseSessionService (async driver!) + ResumabilityConfig(is_resumable=True) on the App is what lets a parked leg survive a process restart.'},
+
+  // A2A wire column (Ring 1)
+  {id:'card',     layer:'wire', label:'Agent Card',              sub:'/.well-known/agent-card', x:312, y:96,  w:186, desc:'Dynamic discovery surface generated from installed skills\' name/description. RemoteA2aAgent resolves it; a live skill-add regenerates it with no redeploy.'},
+  {id:'contract', layer:'wire', label:'Contract types',          sub:'contract/ · CollectRequest·ExchangeTurn', x:312, y:206, w:186, desc:'The shared Pydantic domain types that travel as JSON DataParts INSIDE the standard A2A envelope: CollectRequest, ExchangeTurn{CollectionStatus}, RequirementsList, LedgerEntry. The only package both bridge/ and agents/ import.'},
+  {id:'status',   layer:'wire', label:'TaskStatusUpdateEvent',   sub:'status.message (non-empty!)', x:312, y:290, w:186, desc:'In-connection progress. RemoteA2aAgent renders it as a thought event. An EMPTY status.message is silently dropped by a2a-sdk 1.x — mock and real must attach real parts.'},
+  {id:'park',     layer:'wire', label:'input-required → LRFT pause', sub:'zero-compute park', x:312, y:424, w:186, desc:'The park signal. _status_for maps a PENDING collection → INPUT_REQUIRED; the consumer treats it as a resumable LongRunningFunctionTool pause — the invocation ends, zero compute, resumes on a later FunctionResponse.'},
+
+  // Document Bridge core column (DMZ)
+  {id:'a2aedge',  layer:'bridge', label:'A2A edge (server)',     sub:'bridge/edge/a2a.py · a2a-sdk', x:600, y:64,  w:236, desc:'The agent-facing front door — canonical A2A on a2a-sdk (JSON-RPC 2.0, message/send·stream, tasks/get·resubscribe·cancel). Ring 1. Emits ExchangeTurn + artifact references; maps disposition → task status.'},
+  {id:'a2uiedge', layer:'bridge', label:'A2UI edge (portal)',    sub:'bridge/edge/a2ui.py', x:600, y:136, w:236, desc:'The human-facing front door for Path-B parties: emits declarative A2UI (content, not pixels) and ingests a structured response. This is Address Exchange 2 (Jordan uploads bills).'},
+  {id:'bridgeagent',layer:'bridge',label:'document_bridge LlmAgent', sub:'bridge/agent.py', x:600, y:208, w:236, desc:'Routes intent, handles off-script edges, orchestrates a turn: receive → interpret skill → extract → decide (gate) → work out what\'s needed → return the ledger. The LLM sits in FRONT of the deterministic gate, never in place of it.'},
+  {id:'disposition',layer:'bridge',label:'run_disposition_gate (Sense A)', sub:'bridge/disposition.py', x:600, y:280, w:236, desc:'The KYC accept/reject as a deterministic pure-function tool. The LLM must call it and relay the verdict; it can never mint a compliance acceptance. Also classifies against the candidate label space + canonicalizes issuer.'},
+  {id:'extraction',layer:'bridge',label:'extraction_agent (AgentTool)', sub:'bridge/extraction/agent.py', x:600, y:352, w:236, desc:'The one interpretive step — bytes → {classification, key_fields, signals} — peeled into a subagent attached as an AgentTool so control returns to the main agent to run the gate.'},
+  {id:'hitl',     layer:'bridge', label:'request_human_review (HITL)', sub:'LongRunningFunctionTool', x:600, y:424, w:236, desc:'The platform\'s own pause for a human — low confidence, flagged field, escalation. Resumed by an id-matched FunctionResponse; durability rides the SessionService. Not reimplemented.'},
+  {id:'ledger',   layer:'bridge', label:'Classified ledger',     sub:'bridge/ledger.py', x:600, y:496, w:236, desc:'The Bridge-owned "what we have": append-only LedgerEntry (doctype · disposition · canonical issuer · key fields) + best-effort "still outstanding". Cumulative per context_id. Delivered as CollectionStatus.'},
+
+  // seams + substrate + config
+  {id:'seamextract',layer:'seam',label:'Extraction seam',        sub:'fixture | gemini | docai', x:600, y:568, w:236, desc:'Extraction behind a swappable seam. Fixture adapter (deterministic tests) + Gemini (schema-driven constrained JSON) + Document AI (per-doctype processor). Disposition reads the four signals engine-agnostically.'},
+  {id:'scheduler',layer:'seam',  label:'Scheduler seam',         sub:'virtual clock | Cloud Tasks', x:312, y:568, w:186, desc:'The clock that drives proactive follow-up (overdue → reminder → escalated) — the only pillar with no inbound trigger. Local virtual clock for the demo\'s time-warp; Cloud Tasks on deploy.'},
+  {id:'gemini',   layer:'substrate',label:'Gemini / Vertex',     sub:'~$0.10 / 1k pages', x:888, y:352, w:170, desc:'The deployed extraction engine behind the seam. Multimodal, no OCR pipeline; constrained JSON per the doctype skill\'s schema.'},
+  {id:'party',    layer:'substrate',label:'Party / portal',      sub:'Path B — human upload', x:888, y:136, w:170, desc:'The human counterparty (Jordan Lee, synthetic). Uploads bill/ID PDFs through the A2UI portal in the external zone. A party turn is what WAKES a parked leg.'},
+  {id:'webhook',  layer:'substrate',label:'Webhook receiver (wake)', sub:'PushNotificationConfig doorbell', x:40, y:664, w:220, desc:'The only custom deploy surface for wake: a receiver + task_id→session index. The doorbell delivers only "task X changed" — it does not carry state; restore is done by the persistent stores. Then it calls run_async.'},
+  {id:'skills',   layer:'config', label:'Skills (address-proof, gov-id, utility-bill)', sub:'skills/ · Agent Skills format', x:888, y:64, w:170, desc:'Demos as configuration. Process skill (pattern=collect, candidate doctypes, policy) + doctype skills (schema + prompt + validation). Uploading a folder regenerates the Agent Card — no redeploy.'},
+];
+const NODE = Object.fromEntries(nodes.map(n=>[n.id,n]));
+
+/* ---------- connections ---------- */
+const connections = [
+  // agent internal
+  {from:'cli',      to:'workflow', type:'dataflow', label:'run_async'},
+  {from:'console',  to:'workflow', type:'dataflow', label:'new session'},
+  {from:'workflow', to:'collect',  type:'toolcall', label:'node'},
+  {from:'workflow', to:'gate',     type:'toolcall', label:''},
+  {from:'workflow', to:'present',  type:'toolcall', label:''},
+  {from:'gate',     to:'collect',  type:'dataflow', label:'route=again ↺'},
+  {from:'gate',     to:'present',  type:'dataflow', label:'route=done'},
+  {from:'collect',  to:'interceptor',type:'dependency', label:'send-path'},
+  {from:'collect',  to:'wire',     type:'dependency', label:'decode'},
+  {from:'collect',  to:'session',  type:'dependency', label:'shared'},
+  {from:'gate',     to:'session',  type:'dependency', label:'reads turn'},
+  // cross-boundary A2A
+  {from:'collect',  to:'card',     type:'dependency', label:'resolve'},
+  {from:'collect',  to:'a2aedge',  type:'dataflow',   label:'message/send · CollectRequest'},
+  {from:'a2aedge',  to:'collect',  type:'dataflow',   label:'ExchangeTurn'},
+  {from:'a2aedge',  to:'status',   type:'event',      label:'progress'},
+  {from:'status',   to:'collect',  type:'event',      label:'thought'},
+  {from:'a2aedge',  to:'park',     type:'pause',      label:'input-required'},
+  {from:'park',     to:'collect',  type:'pause',      label:'LRFT pause'},
+  {from:'collect',  to:'contract', type:'dependency', label:''},
+  {from:'a2aedge',  to:'contract', type:'dependency', label:'domain-in-parts'},
+  {from:'card',     to:'a2aedge',  type:'dependency', label:'from skills'},
+  // bridge internal
+  {from:'a2aedge',  to:'bridgeagent', type:'dataflow', label:'invoke'},
+  {from:'a2uiedge', to:'bridgeagent', type:'dataflow', label:'Path B'},
+  {from:'bridgeagent', to:'disposition', type:'toolcall', label:'gate (Sense A)'},
+  {from:'bridgeagent', to:'extraction',  type:'toolcall', label:'AgentTool'},
+  {from:'bridgeagent', to:'hitl',        type:'pause',    label:'HITL'},
+  {from:'bridgeagent', to:'ledger',      type:'dataflow', label:'update'},
+  {from:'disposition', to:'ledger',      type:'dataflow', label:'verdict'},
+  {from:'ledger',      to:'a2aedge',     type:'dataflow', label:'CollectionStatus'},
+  // seams / substrate / config
+  {from:'extraction',  to:'seamextract', type:'dependency', label:'seam'},
+  {from:'seamextract', to:'gemini',      type:'dependency', label:'adapter'},
+  {from:'party',       to:'a2uiedge',    type:'dataflow',   label:'PDF upload'},
+  {from:'a2aedge',     to:'webhook',     type:'event',      label:'PushNotificationConfig'},
+  {from:'webhook',     to:'collect',     type:'event',      label:'wake → FunctionResponse'},
+  {from:'scheduler',   to:'a2aedge',     type:'event',      label:'SLA clock'},
+  {from:'skills',      to:'card',        type:'dependency', label:'name/desc'},
+  {from:'skills',      to:'bridgeagent', type:'dependency', label:'doctype/process'},
+];
+
+/* ---------- presets ---------- */
+const PRESETS = {
+  'Full System':      {layers:['agent','wire','bridge','seam','substrate','config'], conns:['dataflow','toolcall','event','pause','dependency']},
+  'The A2A conversation':{layers:['agent','wire','bridge'], conns:['dataflow','pause','event']},
+  'Collect loop':     {layers:['agent','wire','bridge'], conns:['dataflow','toolcall']},
+  'Park & resume':    {layers:['agent','wire','bridge','substrate'], conns:['pause','event','dependency']},
+  'Inside the Bridge':{layers:['bridge','seam','substrate','config'], conns:['dataflow','toolcall','dependency']},
+};
+
+/* ---------- state ---------- */
+const DEFAULT_PRESET = 'Full System';
+const state = {
+  preset: DEFAULT_PRESET,
+  layers: Object.fromEntries(LAYERS.map(l=>[l.id,true])),
+  conns:  Object.fromEntries(CONNS.map(c=>[c.id,true])),
+  zoom: 1,
+  comments: [],
+  editing: null,
+};
+
+/* ---------- build controls ---------- */
+const presetsEl=document.getElementById('presets');
+Object.keys(PRESETS).forEach(name=>{
+  const b=document.createElement('button');
+  b.className='preset'; b.textContent=name; b.dataset.preset=name;
+  b.onclick=()=>applyPreset(name);
+  presetsEl.appendChild(b);
+});
+const layerTogEl=document.getElementById('layerToggles');
+LAYERS.forEach(l=>{
+  const lab=document.createElement('label'); lab.className='tog';
+  lab.innerHTML=`<input type="checkbox" data-layer="${l.id}" checked><span class="dot" style="background:${l.fill};border-color:${l.stroke}"></span>${l.name}`;
+  lab.querySelector('input').onchange=e=>{state.layers[l.id]=e.target.checked; state.preset=null; syncPresetButtons(); updateAll();};
+  layerTogEl.appendChild(lab);
+});
+const connTogEl=document.getElementById('connToggles');
+CONNS.forEach(c=>{
+  const lab=document.createElement('label'); lab.className='tog';
+  lab.innerHTML=`<input type="checkbox" data-conn="${c.id}" checked><span class="swatch" style="border-top-color:${c.color};border-top-style:${c.dash?'dashed':'solid'}"></span>${c.name}`;
+  lab.querySelector('input').onchange=e=>{state.conns[c.id]=e.target.checked; state.preset=null; syncPresetButtons(); updateAll();};
+  connTogEl.appendChild(lab);
+});
+// legend
+const legendEl=document.getElementById('legend');
+legendEl.innerHTML='<div style="color:#c9d1d9;font-weight:600;margin-bottom:2px">Connections</div>'+
+  CONNS.map(c=>`<div class="row"><span class="swatch" style="border-top-color:${c.color};border-top-style:${c.dash?'dashed':'solid'};width:26px"></span>${c.name}</div>`).join('');
+
+function applyPreset(name){
+  const p=PRESETS[name]; state.preset=name;
+  LAYERS.forEach(l=>state.layers[l.id]=p.layers.includes(l.id));
+  CONNS.forEach(c=>state.conns[c.id]=p.conns.includes(c.id));
+  document.querySelectorAll('[data-layer]').forEach(i=>i.checked=state.layers[i.dataset.layer]);
+  document.querySelectorAll('[data-conn]').forEach(i=>i.checked=state.conns[i.dataset.conn]);
+  syncPresetButtons(); updateAll();
+}
+function syncPresetButtons(){
+  document.querySelectorAll('[data-preset]').forEach(b=>b.classList.toggle('active',b.dataset.preset===state.preset));
+}
+
+/* ---------- SVG rendering ---------- */
+const svg=document.getElementById('svg');
+const SVGNS='http://www.w3.org/2000/svg';
+function el(tag,attrs){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+
+function anchors(a,b){
+  const acx=a.x+a.w/2, bcx=b.x+b.w/2;
+  const dx=bcx-acx;
+  const ay=a.y+NH/2, by=b.y+NH/2;
+  if(Math.abs(dx)>40){
+    const s = dx>0 ? {x:a.x+a.w,y:ay} : {x:a.x,y:ay};
+    const t = dx>0 ? {x:b.x,y:by}     : {x:b.x+b.w,y:by};
+    const mx=(s.x+t.x)/2;
+    return {s,t,c1:{x:mx,y:s.y},c2:{x:mx,y:t.y}};
+  }else{ // same column: bow left
+    const s={x:a.x,y:ay}, t={x:b.x,y:by};
+    const off=Math.min(a.x,b.x)-56;
+    return {s,t,c1:{x:off,y:ay},c2:{x:off,y:by}};
+  }
+}
+
+function drawDivider(vp){
+  // trust boundary between wire (x~312-498) and bridge (x600)
+  const x=545;
+  vp.appendChild(el('line',{x1:x,y1:24,x2:x,y2:740,stroke:'#586274','stroke-width':1.4,'stroke-dasharray':'2,6',opacity:.7}));
+  const t=el('text',{x:x,y:16,'text-anchor':'middle',fill:'#586274','font-size':10,'font-family':'ui-monospace,monospace'});
+  t.textContent='⟵ internal  |  Agent Gateway · Agent Identity  |  DMZ ⟶';
+  vp.appendChild(t);
+}
+
+function renderDiagram(){
+  svg.innerHTML='';
+  // defs (arrow markers)
+  const defs=el('defs',{});
+  CONNS.forEach(c=>{
+    const m=el('marker',{id:'arrow-'+c.id,markerWidth:9,markerHeight:7,refX:8,refY:3.5,orient:'auto',markerUnits:'userSpaceOnUse'});
+    m.appendChild(el('polygon',{points:'0 0, 9 3.5, 0 7',fill:c.color}));
+    defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+
+  const vp=el('g',{transform:`translate(${panX},${panY}) scale(${state.zoom})`});
+  svg.appendChild(vp);
+  drawDivider(vp);
+
+  const vis=id=>state.layers[NODE[id].layer];
+  // connections first
+  connections.forEach(cn=>{
+    if(!state.conns[cn.type]) return;
+    if(!vis(cn.from)||!vis(cn.to)) return;
+    const a=NODE[cn.from], b=NODE[cn.to], col=CCOLOR[cn.type];
+    const {s,t,c1,c2}=anchors(a,b);
+    const path=el('path',{d:`M${s.x},${s.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${t.x},${t.y}`,
+      fill:'none',stroke:col.color,'stroke-width':1.7,'marker-end':`url(#arrow-${cn.type})`,opacity:.85});
+    if(col.dash)path.setAttribute('stroke-dasharray',col.dash);
+    vp.appendChild(path);
+    if(cn.label){
+      const mx=(s.x+c1.x+c2.x+t.x)/4, my=(s.y+c1.y+c2.y+t.y)/4;
+      const lab=el('text',{x:mx,y:my-3,'text-anchor':'middle',class:'conn-label'});
+      lab.textContent=cn.label;
+      // bg for readability
+      const bg=el('rect',{x:mx-cn.label.length*2.9-3,y:my-12,width:cn.label.length*5.8+6,height:12,rx:3,fill:'#0d1117',opacity:.72});
+      vp.appendChild(bg); vp.appendChild(lab);
+    }
+  });
+  // nodes
+  nodes.forEach(n=>{
+    if(!state.layers[n.layer])return;
+    const st=STROKE[n.layer];
+    const hasComment=state.comments.some(c=>c.target===n.id);
+    const g=el('g',{class:'node'}); g.style.cursor='pointer';
+    g.addEventListener('click',()=>openModal(n));
+    const r=el('rect',{x:n.x,y:n.y,width:n.w,height:NH,rx:9,fill:st.fill,stroke:hasComment?'#f0b429':st.stroke,'stroke-width':hasComment?2.4:1.4});
+    g.appendChild(r);
+    // color tab
+    g.appendChild(el('rect',{x:n.x,y:n.y,width:4,height:NH,rx:2,fill:st.stroke}));
+    const title=el('text',{x:n.x+13,y:n.y+21,fill:'#e6edf3','font-size':12.5,'font-weight':600});
+    title.textContent=fit(n.label,n.w-20,12.5);
+    g.appendChild(title);
+    const sub=el('text',{x:n.x+13,y:n.y+38,fill:'#8b949e','font-size':10,'font-family':'ui-monospace,monospace'});
+    sub.textContent=fit(n.sub,n.w-20,6);
+    g.appendChild(sub);
+    if(hasComment){
+      g.appendChild(el('circle',{cx:n.x+n.w-11,cy:n.y+12,r:5.5,fill:'#f0b429'}));
+    }
+    vp.appendChild(g);
+  });
+}
+function fit(s,px,approx){const max=Math.floor(px/(approx*0.52));return s.length>max?s.slice(0,max-1)+'…':s;}
+
+/* ---------- zoom / pan ---------- */
+let panX=0,panY=0;
+function zoom(d){state.zoom=Math.max(0.5,Math.min(2,state.zoom+d));renderDiagram();}
+function zoomReset(){state.zoom=1;panX=0;panY=0;renderDiagram();}
+// drag to pan
+let dragging=false,sx,sy;
+svg.addEventListener('mousedown',e=>{if(e.target.closest('.node'))return;dragging=true;sx=e.clientX-panX;sy=e.clientY-panY;});
+window.addEventListener('mousemove',e=>{if(!dragging)return;panX=e.clientX-sx;panY=e.clientY-sy;renderDiagram();});
+window.addEventListener('mouseup',()=>dragging=false);
+
+/* ---------- modal / comments ---------- */
+const overlay=document.getElementById('overlay');
+function openModal(n){
+  state.editing=n.id;
+  document.getElementById('mTitle').textContent=n.label;
+  document.getElementById('mFile').textContent=n.sub;
+  document.getElementById('mDesc').textContent=n.desc||'';
+  const ex=state.comments.find(c=>c.target===n.id);
+  document.getElementById('mText').value=ex?ex.text:'';
+  overlay.classList.add('show');
+  setTimeout(()=>document.getElementById('mText').focus(),30);
+}
+function closeModal(){overlay.classList.remove('show');state.editing=null;}
+function saveComment(){
+  const txt=document.getElementById('mText').value.trim();
+  const id=state.editing;const n=NODE[id];
+  state.comments=state.comments.filter(c=>c.target!==id);
+  if(txt)state.comments.push({target:id,label:n.label,file:n.sub,text:txt});
+  closeModal();updateAll();
+}
+overlay.addEventListener('click',e=>{if(e.target===overlay)closeModal();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+function renderComments(){
+  const list=document.getElementById('commentList');
+  document.getElementById('ccount').textContent=state.comments.length;
+  if(!state.comments.length){list.innerHTML='<div class="empty">Click any component to attach feedback. It flows into the prompt below.</div>';return;}
+  list.innerHTML='';
+  state.comments.forEach((c,i)=>{
+    const d=document.createElement('div');d.className='comment';
+    d.innerHTML=`<button class="del" title="delete">×</button><div class="ct">${esc(c.label)}</div><div class="cf">${esc(c.file)}</div><div class="cx">${esc(c.text)}</div>`;
+    d.querySelector('.del').onclick=()=>{state.comments.splice(i,1);updateAll();};
+    list.appendChild(d);
+  });
+}
+function esc(s){return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
+
+/* ---------- prompt ---------- */
+function updatePrompt(){
+  const parts=[];
+  parts.push('This is the **Address service agent ↔ Document Bridge** architecture — the ADK service-agent `Workflow` graph (collect · gate · present on one shared durable session) and the canonical-A2A wire it uses to consume the Bridge.');
+
+  const offLayers=LAYERS.filter(l=>!state.layers[l.id]).map(l=>l.name);
+  const onLayers=LAYERS.filter(l=>state.layers[l.id]).map(l=>l.name);
+  if(offLayers.length){
+    parts.push(`Focus: showing ${onLayers.join(', ')} (hiding ${offLayers.join(', ')}).`);
+  }
+  const onConns=CONNS.filter(c=>state.conns[c.id]).map(c=>c.name.split('—')[0].trim());
+  if(onConns.length<CONNS.length){
+    parts.push(`Connections in view: ${onConns.join(', ')}.`);
+  }
+  if(state.preset && state.preset!=='Full System'){
+    parts.push(`Lens: "${state.preset}".`);
+  }
+
+  if(state.comments.length){
+    parts.push('\nFeedback on specific components:');
+    state.comments.forEach(c=>{
+      parts.push(`\n**${c.label}** (${c.file}):\n${c.text}`);
+    });
+  }else{
+    parts.push('\nExplain how a Collect turn flows across these components — from the Address agent\'s `RemoteA2aAgent` collect node through the A2A wire to the Bridge and back to the `is_satisfied` gate — and point out anything under-specified. (Click components above to attach targeted feedback.)');
+  }
+  document.getElementById('prompt').textContent=parts.join('\n');
+}
+
+/* ---------- copy ---------- */
+function copyPrompt(){
+  const t=document.getElementById('prompt').textContent;
+  navigator.clipboard.writeText(t).then(()=>{
+    const b=document.getElementById('copyBtn');b.textContent='Copied!';b.classList.add('copied');
+    setTimeout(()=>{b.textContent='Copy Prompt';b.classList.remove('copied');},1400);
+  });
+}
+
+/* ---------- loop ---------- */
+function updateAll(){renderDiagram();renderComments();updatePrompt();}
+syncPresetButtons();updateAll();
+</script>
+</body>
+</html>

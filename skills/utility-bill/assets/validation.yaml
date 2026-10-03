@@ -1,0 +1,13 @@
+rules:
+  - id: recent_bill
+    field: key_fields.statement_date
+    check: within_days
+    window_days: 90
+  - id: address_present
+    field: key_fields.service_address
+    check: non_empty
+signals:
+  legibility: bridge
+  type_match: bridge
+  confidence: bridge
+  completeness: agent

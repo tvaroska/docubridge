@@ -1,0 +1,74 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 983 >>
+stream
+BT
+/F1 16 Tf
+72 720 Td
+18 TL
+(Voluntary benefits rate quote ó carrier-f \(synthetic\)) Tj
+/F1 11 Tf
+T*
+(Carrier: carrier-f) Tj
+T*
+(Currency \(ISO 4217\): USD) Tj
+T*
+(Language \(BCP-47\): en) Tj
+T*
+(Product line: HOSPITAL_INDEMNITY) Tj
+T*
+(Carrier product name: HospitalGuard 1000) Tj
+T*
+(Plan year: 2027) Tj
+T*
+(Effective date: 2027-01-01) Tj
+T*
+(Expiry date: 2027-12-31) Tj
+T*
+(Commission basis: heaped) Tj
+T*
+(Commission rate \(%\): 35) Tj
+T*
+(Rates \(tier | tobacco | age band | amount | frequency | basis | benefit\):) Tj
+T*
+(Tier EE | Tobacco UNI | Age 30-39 | 18.20 | MONTHLY | FLAT | Benefit 1000.00) Tj
+T*
+(Tier EE_SPOUSE | Tobacco UNI | Age 30-39 | 16.75 | per pay period | FLAT | Benefit 1000.00) Tj
+T*
+(Tier FAMILY | Tobacco UNI | Age 30-39 | 52.30 | MONTHLY | FLAT | Benefit 1000.00) Tj
+T*
+(Benefit design \(provision | carrier term | value\):) Tj
+T*
+(Hospital Admission | 1000.00 per admission) Tj
+T*
+(Synthetic document ó fictitious data, no real personal data.) Tj
+ET
+
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000000344 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1378
+%%EOF

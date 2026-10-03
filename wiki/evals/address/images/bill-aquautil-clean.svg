@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="400" height="250">
+  <rect width="400" height="250" fill="#e8f0f8" stroke="#4a6a9a" stroke-width="2"/>
+  <text x="200" y="40" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#2c3f6f">SYNTHETIC DOCUMENT</text>
+  <text x="200" y="80" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#1a2a47">AquaUtil Water Bill</text>
+  <text x="20" y="120" font-family="Arial, sans-serif" font-size="14" fill="#333">Account Holder: Jordan Lee</text>
+  <text x="20" y="145" font-family="Arial, sans-serif" font-size="14" fill="#333">Service Address: 14 Elm Row, Springfield</text>
+  <text x="20" y="170" font-family="Arial, sans-serif" font-size="14" fill="#333">Statement Date: 2026-07-10</text>
+  <text x="20" y="195" font-family="Arial, sans-serif" font-size="14" fill="#333">Provider: AquaUtil</text>
+</svg>

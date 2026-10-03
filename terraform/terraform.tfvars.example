@@ -1,0 +1,48 @@
+# Sample non-secret values for the P7 substrate. Copy to terraform.tfvars and
+# edit. NO secrets belong here — the DB DSN / credentials ride a Secret Manager
+# secret env (P7-2), never a tfvars file.
+
+project_id     = "my-bridge-project"
+region         = "us-central1"
+service_name   = "bridge-runtime"
+
+# Real Bridge App image is wired at deploy (P7-9); the default public hello image
+# lets plans resolve before an image exists.
+container_image = "us-docker.pkg.dev/cloudrun/container/hello"
+
+# false = local/dev default (INGRESS_TRAFFIC_ALL); production sets true once the
+# gateway module (P7-5) fronts the runtime (INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER).
+enable_gateway = false
+
+# false = the frontend deploy module (P7-7) creates nothing; production sets true to
+# provision the public portal bucket + external HTTPS LB + Cloud CDN and the private
+# internal-zone console/dashboard staging buckets. frontend_ssl_domains fronts the
+# portal host (injected at deploy/P7-9; empty at plan time).
+enable_frontend      = false
+frontend_ssl_domains = []
+
+# Deployed-container seam wiring (P7-9). Empty at plan time (credential-free default
+# leaves the container env untouched). The deploy step (scripts/deploy.sh) sets
+# seam_mode = "gcp" (route every seam to its Gcp adapter — the master switch) and
+# extraction_engine = "gemini" (the deployed extraction engine).
+seam_mode         = ""
+extraction_engine = ""
+
+# Email intake (S0-arch-13) + the RFP board host that drains it (S0-arch-17). Off by
+# default. The board host is an internal Cloud Run service running as bridge-runtime;
+# Cloud Scheduler POSTs its /email/drain every email_drain_schedule (OIDC). Secret
+# VALUES (Graph client secret, clientState, token key) are added out-of-band.
+# enable_email_ingress    = true
+# email_mailbox           = "rfp-quotes@broker.example"
+# email_graph_tenant_id   = "00000000-0000-0000-0000-000000000000"
+# email_graph_client_id   = "11111111-1111-1111-1111-111111111111"
+# enable_rfp_board        = true
+# rfp_process             = "benefits-rfp"
+# rfp_board_max_instances = 1
+# email_drain_schedule    = "* * * * *"
+# rfp_board_ingress       = "INGRESS_TRAFFIC_INTERNAL_ONLY" # ALL if the Scheduler is refused at ingress
+# gateway_host            = "bridge.example.com" # BRIDGE_GATEWAY_HOST on the board (its chase route)
+
+labels = {
+  app = "document-bridge"
+}

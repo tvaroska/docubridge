@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" width="400" height="250">
+  <rect width="400" height="250" fill="#f8e8f0" stroke="#9a4a7a" stroke-width="2"/>
+  <text x="200" y="40" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#6f2c4f">SYNTHETIC DOCUMENT</text>
+  <text x="200" y="80" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#471a2a">Passport</text>
+  <text x="20" y="120" font-family="Arial, sans-serif" font-size="14" fill="#333">Name: Jordan Lee</text>
+  <text x="20" y="145" font-family="Arial, sans-serif" font-size="14" fill="#333">Passport No: P8472915</text>
+  <text x="20" y="170" font-family="Arial, sans-serif" font-size="14" fill="#333">Issuing Authority: Gov</text>
+  <text x="20" y="195" font-family="Arial, sans-serif" font-size="14" fill="#333">Expiry: 2028-05-20</text>
+  <text x="200" y="230" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#a33" font-style="italic">(Unsupported for proof of address)</text>
+</svg>

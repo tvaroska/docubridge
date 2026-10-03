@@ -1,0 +1,92 @@
+[project]
+name = "docbride"
+version = "0.1.0"
+description = "A2A Document Bridge — clean-slate build (Core + Address)"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7",
+    "google-adk[a2a]>=2.7.0,<3",
+    # a2a-sdk http-server extra pulls sse-starlette + starlette for A2AStarletteApplication (SSE).
+    # google-adk[a2a] pulls a2a-sdk but not its http-server extra.
+    "a2a-sdk[http-server]>=1.1,<2",
+    # Durable stores (P4-1, DUR-1/DUR-2): DatabaseSessionService (google-adk[db]) +
+    # DatabaseTaskStore (a2a-sdk[sql]) over local sqlite. sqlalchemy[asyncio] pulls greenlet;
+    # aiosqlite pinned explicitly (was only transitive). Postgres/Cloud-SQL extras are P7.
+    "sqlalchemy[asyncio]>=2,<3",
+    "aiosqlite>=0.20",
+    # P5-1 (PROA-1): bridge/sla.py parses policy.yaml at runtime (not just dev).
+    "pyyaml>=6",
+    "langgraph>=1.2,<2",
+]
+
+[project.scripts]
+# Cloud Run container entrypoint (P7-9): binds 0.0.0.0:$PORT via serve_container().
+# The image's CMD is ["bridge-serve"]. Distinct from serve() (loopback, S0-sec-3).
+bridge-serve = "bridge.edge.server:serve_container"
+
+[project.optional-dependencies]
+# Runtime deps are added per-phase as tasks introduce them
+# (google-adk, a2a-sdk, fastapi, sqlalchemy+aiosqlite, ...).
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pyyaml",
+    "ruff>=0.16,<0.17",
+]
+# GCP seam runtime deps, installed by the P7-9 provisioned run (BRIDGE_TEST_GCP=1):
+#   - asyncpg: the async Postgres driver for the Cloud SQL shared-store adapters
+#     (P7-2), imported transitively via create_async_engine("postgresql+asyncpg://…").
+#   - google-cloud-storage: the GCS client for the skill_registry adapter,
+#     GcsArtifactService, and the signed-URL signer (P7-3).
+#   - google-cloud-tasks: the Cloud Tasks client for the scheduler adapter (P7-4),
+#     imported lazily to mint the OIDC-authenticated follow-up Cloud Task.
+#   - google-cloud-documentai: the Document AI client for the docai extraction
+#     engine's OCR pre-pass (the client's processor, BRIDGE_DOCAI_PROCESSOR).
+# All are imported lazily INSIDE methods (never at module import), so the default
+# (non-gcp) test suite runs without any of them installed.
+gcp = [
+    "asyncpg>=0.29",
+    "google-cloud-documentai>=3.0",
+    "google-cloud-storage>=2.18",
+    "google-cloud-tasks>=2.16",
+]
+
+[tool.ruff]
+# Python 3.12 target; line width 88 (ruff/black default). `ruff format` owns line
+# width — E501 is intentionally NOT in the lint select (see [tool.ruff.lint]), so the
+# linter flags correctness/imports/modernization while the formatter handles wrapping.
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+# Pragmatic core: pyflakes (F) + a curated subset of pycodestyle (E4 imports, E7
+# statements, E9 syntax — NOT E501), isort (I), pyupgrade (UP), bugbear (B),
+# flake8-simplify (SIM), ruff-native (RUF). High signal, low churn.
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    # str+Enum → enum.StrEnum: changes __str__/wire-string behavior of the shared
+    # contract/ enums (StrEnum stringifies to the value, (str, Enum) to "Cls.name").
+    # Out of scope for lint config — do not touch wire semantics here.
+    "UP042",
+    # Ambiguous-unicode in docstrings: the → / ≤ / § characters are intentional domain
+    # notation (arrows, "≤ 3", spec section marks), not typos.
+    "RUF002",
+]
+
+[tool.ruff.lint.isort]
+# The four workspace packages both bridge/ and agents/ import, plus the test root.
+known-first-party = ["contract", "bridge", "agents", "skills", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# Package re-exports: names imported for the public surface, not used in-module.
+"**/__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+markers = [
+    "seam: shared seam-parity tests parametrized over local/gcp adapters",
+]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.uv]
+# dev extras installed by default in this workspace

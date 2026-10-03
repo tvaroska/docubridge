@@ -1,0 +1,327 @@
+{
+  "use_case": "benefits-conformance",
+  "note": "Consumer conformance oracle (S0-arch-9): a carrier PDF enters over the A2A edge BY REFERENCE, is extracted against the benefits-quote skill schema, lands on the ExchangeTurn, and is mapped onto the consumer's BenefitsQuote. Kept apart from expected.json on purpose: that file's five-record count feeds the normalize/standard/comparison invariants. Each record's id equals its PDF stem (the fixture/gemini parity pivot); each PDF is rendered from the record by tests/corpus_pdf.py. `consumer_intake` is the context the document never carries (client, program, incumbency). `expected_consumer_quote` is the mapped quote's model_dump(mode='json') minus `source` (the uri differs per leg and reference shape). Synthetic data only.",
+  "documents": [
+    {
+      "id": "benefits-conformance-ci-usd",
+      "doctype": "benefits-quote",
+      "party": "carrier-e",
+      "synthetic": true,
+      "artifact": "images/benefits-conformance-ci-usd.pdf",
+      "note": "Clean voluntary-benefit rate sheet (critical illness, USD/en). Four FLAT rate rows that mix MONTHLY, BI_WEEKLY and ANNUAL inside one quote (all inside the consumer's RateFrequency vocabulary) plus two benefit-design rows, each carrying the carrier's own term. No premium/deductible: Path B enforces no required key fields. Expected: accepted / auto_approve, and a lossless mapping onto the consumer's BenefitsQuote.",
+      "extraction": {
+        "fields": {
+          "doctype": "benefits-quote",
+          "issuer": "carrier-e",
+          "key_fields": {
+            "currency": "USD",
+            "language": "en",
+            "product_line": "CRITICAL_ILLNESS",
+            "carrier_product_name": "CritCare Plus",
+            "plan_year": "2027",
+            "effective_date": "2027-01-01",
+            "expiry_date": "2027-12-31",
+            "commission_basis": "level",
+            "commission_rate_pct": "20"
+          },
+          "tables": {
+            "rates": [
+              {
+                "coverage_tier": "EE",
+                "tobacco": "NON_TOBACCO",
+                "age_band": "30-39",
+                "amount": "12.40",
+                "frequency": "MONTHLY",
+                "rate_basis": "FLAT",
+                "benefit_amount": "10000.00"
+              },
+              {
+                "coverage_tier": "EE_SPOUSE",
+                "tobacco": "TOBACCO",
+                "age_band": "30-39",
+                "amount": "21.85",
+                "frequency": "MONTHLY",
+                "rate_basis": "FLAT",
+                "benefit_amount": "10000.00"
+              },
+              {
+                "coverage_tier": "FAMILY",
+                "tobacco": "UNI",
+                "age_band": "30-39",
+                "amount": "13.10",
+                "frequency": "BI_WEEKLY",
+                "rate_basis": "FLAT",
+                "benefit_amount": "10000.00"
+              },
+              {
+                "coverage_tier": "EE_CHILDREN",
+                "tobacco": "NON_TOBACCO",
+                "age_band": "30-39",
+                "amount": "215.00",
+                "frequency": "ANNUAL",
+                "rate_basis": "FLAT",
+                "benefit_amount": "10000.00"
+              }
+            ],
+            "design": [
+              {
+                "category": "Heart Attack",
+                "category_original": "Myocardial Infarction",
+                "value": "100%"
+              },
+              {
+                "category": "Pre-existing Condition Limitation",
+                "category_original": "Pre-Ex Limitation",
+                "value": "6 months"
+              }
+            ]
+          }
+        },
+        "overall_confidence": 0.94,
+        "field_confidence": {
+          "product_line": 0.98,
+          "effective_date": 0.97,
+          "expiry_date": 0.97,
+          "rates": 0.93
+        },
+        "legible": true,
+        "flagged_fields": []
+      },
+      "consumer_intake": {
+        "client": "Acme Robotics (synthetic)",
+        "program": "acme-vb-2027",
+        "is_incumbent": false
+      },
+      "expected_terminal": {
+        "disposition": "accepted",
+        "gate": "auto_approve",
+        "reason_code": "auto_approved",
+        "fields_requiring_review": []
+      },
+      "expected_consumer_quote": {
+        "contract_version": "1",
+        "carrier": "carrier-e",
+        "carrier_term_original": "CritCare Plus",
+        "client": "Acme Robotics (synthetic)",
+        "program": "acme-vb-2027",
+        "plan_year": 2027,
+        "product_line": "CRITICAL_ILLNESS",
+        "currency": "USD",
+        "language": "en",
+        "effective_date": "2027-01-01",
+        "expiration_date": "2027-12-31",
+        "is_incumbent": false,
+        "design": [
+          {
+            "category": "Heart Attack",
+            "category_original": "Myocardial Infarction",
+            "value": "100%",
+            "requested_value": null
+          },
+          {
+            "category": "Pre-existing Condition Limitation",
+            "category_original": "Pre-Ex Limitation",
+            "value": "6 months",
+            "requested_value": null
+          }
+        ],
+        "rates": [
+          {
+            "coverage_tier": "EE",
+            "tobacco": "NON_TOBACCO",
+            "age_band": "30-39",
+            "amount": "12.40",
+            "frequency": "MONTHLY",
+            "benefit_amount": "10000.00"
+          },
+          {
+            "coverage_tier": "EE_SPOUSE",
+            "tobacco": "TOBACCO",
+            "age_band": "30-39",
+            "amount": "21.85",
+            "frequency": "MONTHLY",
+            "benefit_amount": "10000.00"
+          },
+          {
+            "coverage_tier": "FAMILY",
+            "tobacco": "UNI",
+            "age_band": "30-39",
+            "amount": "13.10",
+            "frequency": "BI_WEEKLY",
+            "benefit_amount": "10000.00"
+          },
+          {
+            "coverage_tier": "EE_CHILDREN",
+            "tobacco": "NON_TOBACCO",
+            "age_band": "30-39",
+            "amount": "215.00",
+            "frequency": "ANNUAL",
+            "benefit_amount": "10000.00"
+          }
+        ],
+        "commission": {
+          "basis": "level",
+          "rate_pct": "20",
+          "notes": null
+        },
+        "extraction_confidence": 0.94,
+        "fields_requiring_review": [],
+        "caveats": []
+      }
+    },
+    {
+      "id": "benefits-conformance-hi-usd-flagged",
+      "doctype": "benefits-quote",
+      "party": "carrier-f",
+      "synthetic": true,
+      "artifact": "images/benefits-conformance-hi-usd-flagged.pdf",
+      "note": "Review-path voluntary-benefit rate sheet (hospital indemnity, USD/en). Row 1's billing frequency is PRINTED as 'per pay period' (pdf_overrides); the oracle cell is BI_WEEKLY and the engine states a low_confidence field review on fields.tables.rates[1].frequency with flagged_fields left empty, so the gate's dotted-path fallback parks it: pending / hitl_review / flagged_fields. The one design row carries no carrier term, so the consumer's own rule adds design[0].category_original to its review list.",
+      "pdf_overrides": {
+        "rates[1].frequency": "per pay period"
+      },
+      "extraction": {
+        "fields": {
+          "doctype": "benefits-quote",
+          "issuer": "carrier-f",
+          "key_fields": {
+            "currency": "USD",
+            "language": "en",
+            "product_line": "HOSPITAL_INDEMNITY",
+            "carrier_product_name": "HospitalGuard 1000",
+            "plan_year": "2027",
+            "effective_date": "2027-01-01",
+            "expiry_date": "2027-12-31",
+            "commission_basis": "heaped",
+            "commission_rate_pct": "35"
+          },
+          "tables": {
+            "rates": [
+              {
+                "coverage_tier": "EE",
+                "tobacco": "UNI",
+                "age_band": "30-39",
+                "amount": "18.20",
+                "frequency": "MONTHLY",
+                "rate_basis": "FLAT",
+                "benefit_amount": "1000.00"
+              },
+              {
+                "coverage_tier": "EE_SPOUSE",
+                "tobacco": "UNI",
+                "age_band": "30-39",
+                "amount": "16.75",
+                "frequency": "BI_WEEKLY",
+                "rate_basis": "FLAT",
+                "benefit_amount": "1000.00"
+              },
+              {
+                "coverage_tier": "FAMILY",
+                "tobacco": "UNI",
+                "age_band": "30-39",
+                "amount": "52.30",
+                "frequency": "MONTHLY",
+                "rate_basis": "FLAT",
+                "benefit_amount": "1000.00"
+              }
+            ],
+            "design": [
+              {
+                "category": "Hospital Admission",
+                "value": "1000.00 per admission"
+              }
+            ]
+          }
+        },
+        "overall_confidence": 0.9,
+        "field_confidence": {
+          "product_line": 0.97,
+          "effective_date": 0.96,
+          "expiry_date": 0.96,
+          "rates": 0.82
+        },
+        "legible": true,
+        "flagged_fields": [],
+        "field_reviews": [
+          {
+            "path": "fields.tables.rates[1].frequency",
+            "reason": "low_confidence",
+            "confidence": 0.61,
+            "detail": "printed as 'per pay period'"
+          }
+        ]
+      },
+      "consumer_intake": {
+        "client": "Acme Robotics (synthetic)",
+        "program": "acme-vb-2027",
+        "is_incumbent": false
+      },
+      "expected_terminal": {
+        "disposition": "pending",
+        "gate": "hitl_review",
+        "reason_code": "flagged_fields",
+        "fields_requiring_review": [
+          "fields.tables.rates[1].frequency"
+        ]
+      },
+      "expected_consumer_quote": {
+        "contract_version": "1",
+        "carrier": "carrier-f",
+        "carrier_term_original": "HospitalGuard 1000",
+        "client": "Acme Robotics (synthetic)",
+        "program": "acme-vb-2027",
+        "plan_year": 2027,
+        "product_line": "HOSPITAL_INDEMNITY",
+        "currency": "USD",
+        "language": "en",
+        "effective_date": "2027-01-01",
+        "expiration_date": "2027-12-31",
+        "is_incumbent": false,
+        "design": [
+          {
+            "category": "Hospital Admission",
+            "category_original": "Hospital Admission",
+            "value": "1000.00 per admission",
+            "requested_value": null
+          }
+        ],
+        "rates": [
+          {
+            "coverage_tier": "EE",
+            "tobacco": "UNI",
+            "age_band": "30-39",
+            "amount": "18.20",
+            "frequency": "MONTHLY",
+            "benefit_amount": "1000.00"
+          },
+          {
+            "coverage_tier": "EE_SPOUSE",
+            "tobacco": "UNI",
+            "age_band": "30-39",
+            "amount": "16.75",
+            "frequency": "BI_WEEKLY",
+            "benefit_amount": "1000.00"
+          },
+          {
+            "coverage_tier": "FAMILY",
+            "tobacco": "UNI",
+            "age_band": "30-39",
+            "amount": "52.30",
+            "frequency": "MONTHLY",
+            "benefit_amount": "1000.00"
+          }
+        ],
+        "commission": {
+          "basis": "heaped",
+          "rate_pct": "35",
+          "notes": null
+        },
+        "extraction_confidence": 0.9,
+        "fields_requiring_review": [
+          "rates[1].frequency",
+          "design[0].category_original"
+        ],
+        "caveats": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Disposition thresholds — MUST equal bridge/disposition.py DispositionThresholds
+# defaults (code carries built-ins; policy is the authoritative source per wiki).
+disposition:
+  auto_approve_at: 0.85
+  resubmit_below: 0.55
+  max_resubmissions: 3        # == timeline.json sla.resubmit_cap
+
+# SLA cadence + follow-up ladder (scheduler ticks). Consumed by P5-1, not this cycle.
+sla:
+  deadline: 3                 # escalate at tick 3  == timeline.json sla.escalate_ticks
+  cadence: 2
+  max_nudges: 2               # overdue + reminder before escalate
+  overdue_ticks: 1            # == timeline.json sla.overdue_ticks
+  reminder_ticks: 2           # == timeline.json sla.reminder_ticks
+  escalate_ticks: 3           # == timeline.json sla.escalate_ticks
+  ladder: [overdue, reminder, escalated]

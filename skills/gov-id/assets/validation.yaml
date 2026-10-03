@@ -1,0 +1,11 @@
+rules:
+  - id: not_expired
+    field: key_fields.expiry
+    check: date_in_future
+  - id: complete_fields
+    check: all_required_present
+signals:            # disposition-signal ownership (wiki/bridge-disposition)
+  legibility: bridge
+  type_match: bridge
+  confidence: bridge
+  completeness: agent   # sense B — advisory, app decides

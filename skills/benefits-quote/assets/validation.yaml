@@ -1,0 +1,19 @@
+rules:
+  - id: dated
+    field: key_fields.effective_date
+    check: non_empty
+  - id: currency_present
+    field: key_fields.currency
+    check: non_empty
+  # Row-level rules (schema v2, S0-arch-10). `[]` = every row of the table.
+  - id: rate_amount_present
+    field: tables.rates[].amount
+    check: non_empty
+  - id: rate_frequency_present
+    field: tables.rates[].frequency
+    check: non_empty
+signals:
+  legibility: bridge
+  type_match: bridge
+  confidence: bridge
+  completeness: agent

@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUJ-1 Data Flow — Address one-turn pull</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#30363d;
+    --ink:#e6edf3; --dim:#8b949e; --accent:#58a6ff; --accent2:#3fb950;
+    --route:#d29922; --wire:#a371f7; --ret:#f778ba; --hot:#f0f6fc;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --ui:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:13px}
+  .app{display:grid;grid-template-columns:320px 1fr;grid-template-rows:1fr auto;height:100vh}
+  .sidebar{grid-row:1/3;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:14px}
+  .stage{position:relative;overflow:hidden;background:
+     radial-gradient(circle at 30% 10%,#12182280,transparent 60%),var(--bg)}
+  .promptbar{grid-column:2;border-top:1px solid var(--line);background:var(--panel);padding:12px 16px;max-height:230px;overflow:auto}
+  h1{font-size:14px;margin:0 0 2px}
+  .sub{color:var(--dim);font-size:11px;margin:0 0 14px;line-height:1.4}
+  h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:16px 0 8px;font-weight:600}
+  .presets{display:flex;flex-wrap:wrap;gap:6px}
+  button{font-family:var(--ui);cursor:pointer;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 10px;font-size:12px;transition:.12s}
+  button:hover{border-color:var(--accent);color:var(--hot)}
+  button.on{background:var(--accent);border-color:var(--accent);color:#04101f;font-weight:600}
+  .preset{flex:1 1 auto}
+  .player{display:flex;align-items:center;gap:6px;margin:6px 0 4px}
+  .player button{padding:6px 9px;min-width:34px}
+  .play{background:var(--accent2);border-color:var(--accent2);color:#04140a;font-weight:700}
+  .slider{width:100%;margin:8px 0 2px;accent-color:var(--accent)}
+  .stepline{font-size:11px;color:var(--dim);display:flex;justify-content:space-between}
+  .toggles label{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;cursor:pointer;color:var(--ink)}
+  .toggles input{accent-color:var(--accent)}
+  .swatch{width:20px;height:0;border-top-width:3px;border-top-style:solid;display:inline-block}
+  .legend{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+  .legK{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim)}
+  .box{width:11px;height:11px;border-radius:3px;display:inline-block}
+  svg{width:100%;height:100%;display:block}
+  .node rect{transition:.18s}
+  .node text{font-family:var(--ui);fill:var(--ink);pointer-events:none}
+  .node .lbl{font-size:12.5px;font-weight:600}
+  .node .sfx{font-size:9.5px;fill:var(--dim)}
+  .node.active rect{filter:drop-shadow(0 0 10px var(--accent));stroke:var(--hot);stroke-width:2.2}
+  .node.dim{opacity:.28}
+  .edge{fill:none;stroke-width:2;opacity:.22;transition:.18s}
+  .edge.active{opacity:1;stroke-width:3.4;filter:drop-shadow(0 0 5px currentColor)}
+  .zone{fill:#ffffff05;stroke:#ffffff10;stroke-dasharray:4 5;rx:12}
+  .zlabel{fill:#ffffff22;font-size:10px;letter-spacing:.15em;text-transform:uppercase;font-weight:700}
+  .commentdot{fill:var(--ret);stroke:#04101f;stroke-width:1.5}
+  /* inspector */
+  .inspector{position:absolute;top:12px;right:12px;width:340px;max-height:calc(100% - 24px);overflow:auto;
+     background:#0d1117ee;border:1px solid var(--line);border-radius:10px;padding:12px 13px;backdrop-filter:blur(3px)}
+  .ins-step{font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.05em}
+  .ins-title{font-size:14px;font-weight:700;margin:2px 0 6px}
+  .ins-desc{color:var(--dim);font-size:12px;line-height:1.5;margin-bottom:10px}
+  .ins-file{font-family:var(--mono);font-size:10.5px;color:var(--wire);margin-bottom:8px;word-break:break-all}
+  pre{margin:0;background:#010409;border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;
+     font-family:var(--mono);font-size:11px;line-height:1.5;color:#c9d1d9}
+  .k{color:var(--wire)} .s{color:#a5d6ff} .n{color:#79c0ff} .c{color:#7d8590;font-style:italic} .g{color:var(--accent2);font-weight:700}
+  .zoomctl{position:absolute;left:12px;bottom:12px;display:flex;gap:6px}
+  .comments .c-item{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:7px 8px;margin-bottom:6px;font-size:11px}
+  .c-item b{color:var(--accent)}
+  .c-item .del{float:right;color:var(--dim);cursor:pointer;border:none;background:none;font-size:14px;padding:0 2px}
+  .promptbar h2{margin-top:0}
+  .prompt-out{font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;color:#c9d1d9;background:#010409;border:1px solid var(--line);border-radius:8px;padding:11px;line-height:1.5}
+  .copybtn{float:right;background:var(--accent2);border-color:var(--accent2);color:#04140a;font-weight:700}
+  .hint{color:var(--dim);font-size:10.5px;margin-top:6px}
+  /* modal */
+  .modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:20}
+  .modal.show{display:flex}
+  .modal-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:400px}
+  .modal-box textarea{width:100%;height:90px;background:#010409;border:1px solid var(--line);border-radius:7px;color:var(--ink);font-family:var(--ui);font-size:13px;padding:8px;resize:vertical}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <h1>CUJ-1 · Data Flow</h1>
+    <p class="sub">Servicer requests a <b>single document</b> and receives it normalized in one turn (Address, Path-A instant accept). Step through the real request→process→return chain, mock and real edge in parity.</p>
+
+    <h2>Focus preset</h2>
+    <div class="presets" id="presets"></div>
+
+    <h2>Playback</h2>
+    <div class="player">
+      <button id="first">⏮</button>
+      <button id="prev">◀</button>
+      <button id="play" class="play">▶ Play</button>
+      <button id="next">▶</button>
+      <button id="last">⏭</button>
+    </div>
+    <input type="range" min="0" max="13" value="0" class="slider" id="slider">
+    <div class="stepline"><span id="stepnum">Step 0 / 13</span><span id="stepzone"></span></div>
+
+    <h2>Zones (layers)</h2>
+    <div class="toggles" id="toggles"></div>
+
+    <h2>Data-flow legend</h2>
+    <div class="legend" id="legend"></div>
+
+    <h2>Comments (<span id="ccount">0</span>)</h2>
+    <div class="comments" id="comments"><p class="hint">Click any node to attach a note. Notes flow into the prompt below.</p></div>
+  </aside>
+
+  <main class="stage">
+    <svg id="svg" viewBox="0 0 1180 640" preserveAspectRatio="xMidYMid meet">
+      <defs id="markers"></defs>
+      <g id="viewport"></g>
+    </svg>
+    <div class="inspector" id="inspector"></div>
+    <div class="zoomctl">
+      <button id="zin">＋</button><button id="zout">－</button><button id="zreset">reset</button>
+    </div>
+  </main>
+
+  <section class="promptbar">
+    <button class="copybtn" id="copy">Copy Prompt</button>
+    <h2>Generated prompt</h2>
+    <div class="prompt-out" id="promptout"></div>
+    <p class="hint">Adjust the focus/step and add node comments, then copy this back into Claude to dig into a specific hop.</p>
+  </section>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div id="modal-title" style="font-weight:700;margin-bottom:2px"></div>
+    <div id="modal-file" class="ins-file"></div>
+    <textarea id="modal-text" placeholder="What do you want to ask / change about this hop?"></textarea>
+    <div class="modal-actions">
+      <button id="modal-cancel">Cancel</button>
+      <button id="modal-save" class="play">Save note</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Zones (layers) — horizontal bands.
+// ---------------------------------------------------------------------------
+const ZONES = [
+  {id:'consumer', label:'Consumer / Servicer (agents/address)', color:'#1f6feb', y:40,  h:150},
+  {id:'wire',     label:'A2A wire (JSON-RPC over HTTP)',        color:'#a371f7', y:210, h:70},
+  {id:'edge',     label:'Bridge edge (bridge/edge)',           color:'#d29922', y:300, h:110},
+  {id:'core',     label:'Bridge core (bridge/*)',              color:'#3fb950', y:430, h:110},
+  {id:'seam',     label:'Extraction seam + corpus (fixture)',  color:'#f778ba', y:560, h:70},
+];
+const ZFILL = {consumer:'#1f6feb22',wire:'#a371f722',edge:'#d2992222',core:'#3fb95022',seam:'#f778ba22'};
+const ZSTROKE = {consumer:'#1f6feb',wire:'#a371f7',edge:'#d29922',core:'#3fb950',seam:'#f778ba'};
+
+// ---------------------------------------------------------------------------
+// Nodes — real modules/functions in the CUJ-1 path.
+// ---------------------------------------------------------------------------
+const NODES = [
+  {id:'driver',   lbl:'Driver / Runner host', sfx:'driver.run_collection', zone:'consumer', x:40,  y:60,  w:150,h:52},
+  {id:'workflow', lbl:'Workflow graph',        sfx:'build_address_workflow', zone:'consumer', x:210, y:60,  w:140,h:52},
+  {id:'collect',  lbl:'collect node',          sfx:'RemoteA2aAgent',        zone:'consumer', x:370, y:60,  w:140,h:52},
+  {id:'reader',   lbl:'turn_reader',           sfx:'decode ExchangeTurn',   zone:'consumer', x:690, y:60,  w:140,h:52},
+  {id:'gate',     lbl:'gate node',             sfx:'gate.is_satisfied',     zone:'consumer', x:850, y:60,  w:140,h:52},
+  {id:'present',  lbl:'present node',           sfx:'present_node_fn',       zone:'consumer', x:1010,y:60,  w:140,h:52},
+
+  {id:'wireout',  lbl:'message/send  →',        sfx:'A2A request leg',       zone:'wire', x:370, y:220, w:200,h:50},
+  {id:'wireback', lbl:'←  artifact (last_chunk)',sfx:'A2A return leg',       zone:'wire', x:610, y:220, w:220,h:50},
+
+  {id:'server',   lbl:'edge server',            sfx:'build_a2a_app',         zone:'edge', x:370, y:322, w:130,h:50},
+  {id:'executor', lbl:'CollectExecutor',        sfx:'executor.execute',      zone:'edge', x:520, y:322, w:150,h:50},
+  {id:'intake',   lbl:'decode_submissions',     sfx:'edge/intake.py',        zone:'edge', x:690, y:322, w:160,h:50},
+
+  {id:'collector',lbl:'Collector.collect',      sfx:'bridge/collect.py',     zone:'core', x:520, y:452, w:150,h:50},
+  {id:'classify', lbl:'signals + classify',     sfx:'canonicalize_issuer',   zone:'core', x:690, y:452, w:160,h:50},
+  {id:'dispose',  lbl:'disposition gate',       sfx:'dispose → auto_approve',zone:'core', x:870, y:452, w:170,h:50},
+  {id:'project',  lbl:'project ledger',         sfx:'CollectionStatus/Turn', zone:'core', x:1060,y:452, w:100,h:50},
+
+  {id:'extract',  lbl:'FixtureExtractor',       sfx:'extraction seam',       zone:'seam', x:520, y:578, w:160,h:44},
+  {id:'corpus',   lbl:'eval corpus artifact',   sfx:'gov-id-clean.svg',      zone:'seam', x:700, y:578, w:170,h:44},
+];
+const N = Object.fromEntries(NODES.map(n=>[n.id,n]));
+
+// ---------------------------------------------------------------------------
+// Connection types.
+// ---------------------------------------------------------------------------
+const TYPES = {
+  call:  {label:'in-process call', color:'#58a6ff', dash:''},
+  wire:  {label:'A2A over the wire', color:'#a371f7', dash:''},
+  seam:  {label:'seam / data read', color:'#f778ba', dash:'6 4'},
+  route: {label:'gate route (done/again)', color:'#d29922', dash:'2 5'},
+  ret:   {label:'return / output', color:'#3fb950', dash:''},
+};
+
+// ---------------------------------------------------------------------------
+// Flow steps — the ordered data hops (0..13). Each drives highlight + payload.
+// ---------------------------------------------------------------------------
+const FLOW = [
+  { node:'driver', edge:null, zone:'consumer',
+    title:'Initialize the request',
+    file:'agents/address/driver.py::run_collection  ·  wire.py::encode_doc_parts',
+    desc:'The Address driver (an App/Runner host — not an ADK agent) seeds ONE opening message carrying both a scenario marker (for the mock) and the document by-reference (for the real edge). One message, each edge reads what it understands.',
+    code:`<span class=c># one opening message — dual payload</span>
+Message(parts=[
+  TextPart(<span class=s>"scenario:path-a-instant"</span>),
+  <span class=k>FilePart</span>(file_data,
+    uri=<span class=s>"artifact://gov-id-clean"</span>,
+    part_metadata={<span class=k>doc_id</span>:<span class=s>"gov-id-clean"</span>})
+])` },
+
+  { node:'workflow', edge:['driver','workflow','call'], zone:'consumer',
+    title:'Start the Workflow graph',
+    file:'agents/address/workflow.py::build_address_workflow',
+    desc:'run_collection builds the conditional cycle START→collect→gate→present on a Runner(node=wf) and kicks it off. Edges from START are unrouted; the gate’s two out-edges are routed.',
+    code:`START ──▶ collect ──▶ gate ─<span class=g>done</span>─▶ present
+                       └─<span class=k>again</span>─▶ collect
+<span class=c># Runner(node=wf) · ResumabilityConfig(App path)</span>` },
+
+  { node:'collect', edge:['workflow','collect','call'], zone:'consumer',
+    title:'collect node dials the Bridge',
+    file:'agents/address/collect.py::build_bridge_remote_agent',
+    desc:'The collect node is a plain ADK RemoteA2aAgent. It resolves the Agent Card URL and forwards the session’s message content to the Bridge. rerun_on_resume=True so a parked leg re-dials on resume.',
+    code:`RemoteA2aAgent(
+  agent_card=<span class=s>"…/.well-known/agent-card.json"</span>,
+  rerun_on_resume=<span class=n>True</span>)
+<span class=c># card URL is the ONLY thing that differs mock vs real</span>` },
+
+  { node:'wireout', edge:['collect','wireout','wire'], zone:'wire',
+    title:'A2A request leg',
+    file:'a2a-sdk JSON-RPC · POST message/send',
+    desc:'The message crosses the wire as JSON-RPC. Documents travel by reference (FileWithUri) — never inline bytes. This is a real A2A hop even in tests (in-process ASGITransport).',
+    code:`POST /  <span class=c>(JSON-RPC)</span>
+{ <span class=k>"method"</span>:<span class=s>"message/send"</span>,
+  <span class=k>"params"</span>:{ <span class=k>"message"</span>:{ parts:[…] } } }
+<span class=c># by-reference: no bytes on the wire (trap)</span>` },
+
+  { node:'server', edge:['wireout','server','wire'], zone:'edge',
+    title:'Edge server receives',
+    file:'bridge/edge/server.py::build_a2a_app',
+    desc:'The a2a-sdk server accepts message/send and hands the Message to the registered executor. The dynamic Agent Card was generated from the loaded skills’ metadata.',
+    code:`build_a2a_app(url=…, executor=CollectExecutor(…))
+<span class=c># _status_for: PENDING→INPUT_REQUIRED, else COMPLETED</span>` },
+
+  { node:'executor', edge:['server','executor','call'], zone:'edge',
+    title:'CollectExecutor.execute',
+    file:'bridge/edge/executor.py::CollectExecutor.execute',
+    desc:'Decision 1: the edge wraps the deterministic Collector, NOT the LlmAgent — so it emits a typed ExchangeTurn data part, not model text, and needs no Gemini at the edge.',
+    code:`async def execute(ctx, queue):
+    submissions = <span class=k>decode_submissions</span>(message)
+    turn = await self._collector.collect(submissions, …)
+    await self._emit_turn(turn, …)` },
+
+  { node:'intake', edge:['executor','intake','call'], zone:'edge',
+    title:'Decode submissions',
+    file:'bridge/edge/intake.py::decode_submissions',
+    desc:'Content-routed dual-mode intake: reads the by-reference document part back into a DocumentSubmission, keyed for the extraction seam. The scenario: marker is ignored by the real edge.',
+    code:`decode_submissions(msg) → [
+  <span class=k>DocumentSubmission</span>(
+    doc_id=<span class=s>"gov-id-clean"</span>,
+    artifact_name=<span class=s>"gov-id-clean"</span>)
+]` },
+
+  { node:'collector', edge:['intake','collector','call'], zone:'core',
+    title:'Collector: the one-turn path',
+    file:'bridge/collect.py::Collector.collect',
+    desc:'The deterministic Sense-A path. Reads the extraction seam per submission, disposes via the pure gate, projects the classified ledger. Imports contract + bridge.* only — never agents/, never google.adk.',
+    code:`class Collector:
+  async def collect(subs, …):
+    result = await self._extractor.extract(sub)  <span class=c># seam</span>
+    verdict = dispose(result)
+    return project_collection_status(entries)` },
+
+  { node:'extract', edge:['collector','extract','seam'], zone:'seam',
+    title:'Extraction seam → ExtractionResult',
+    file:'bridge/extraction/fixture.py::FixtureExtractor',
+    desc:'The seam’s local adapter loads the expected fields for this artifact from the eval corpus (the oracle). In P7 a Gemini adapter swaps in behind the same ABC — terminal-outcome parity, never ledger-identical.',
+    code:`ExtractionResult(
+  doctype_hint=<span class=s>"gov-id"</span>,
+  fields={ issuer:<span class=s>"State DMV"</span>,
+           name:<span class=s>"Jordan Lee"</span>, … },
+  overall_confidence=<span class=n>0.95</span>,
+  flagged_fields=[])   <span class=c># none → clean</span>` },
+
+  { node:'classify', edge:['collector','classify','call'], zone:'core',
+    title:'Signals, classify & canonicalize',
+    file:'bridge/signals.py · bridge/classification.py::canonicalize_issuer',
+    desc:'Four-signal classification pins the doctype; canonicalize_issuer folds issuer variants to a stable key (e.g. "Power Co." → power-co). This is what makes Sense-B distinct-issuer counting reliable.',
+    code:`doctype = <span class=s>"gov-id"</span>
+issuer  = canonicalize_issuer(<span class=s>"State DMV"</span>)
+        → <span class=s>"state-dmv"</span>` },
+
+  { node:'dispose', edge:['classify','dispose','call'], zone:'core',
+    title:'Disposition gate (the one inversion)',
+    file:'bridge/disposition.py::dispose / run_disposition_gate',
+    desc:'The sole authority that can mint acceptance — a pure deterministic FunctionTool the LLM cannot bypass. confidence 0.95 ≥ 0.85 and no flagged fields → auto_approve.',
+    code:`DispositionVerdict(
+  disposition=<span class=g>accepted</span>,
+  gate=<span class=g>auto_approve</span>,
+  reason_code=<span class=s>"auto_approved"</span>)
+<span class=c># 0.95 ≥ auto_approve_at(0.85), flagged=[]</span>` },
+
+  { node:'project', edge:['dispose','project','call'], zone:'core',
+    title:'Project the classified ledger',
+    file:'bridge/collect.py::project_collection_status / project_ledger_entry',
+    desc:'Dispositioned documents become a CollectionStatus (what we have) wrapped in a terminal ExchangeTurn. reason_code + message ride on every entry.',
+    code:`ExchangeTurn(
+  terminal=<span class=n>True</span>,
+  status=CollectionStatus(entries=[
+    LedgerEntry(doc_id=<span class=s>"gov-id-clean"</span>,
+      doctype=<span class=s>"gov-id"</span>,
+      disposition=<span class=g>accepted</span>,
+      gate=<span class=g>auto_approve</span>)]))` },
+
+  { node:'wireback', edge:['project','wireback','ret'], zone:'wire',
+    title:'A2A return leg',
+    file:'bridge/edge/executor.py::_emit_turn  ·  _status_for → COMPLETED',
+    desc:'The ExchangeTurn is encoded into A2A artifact/data parts with last_chunk=True and the task status maps to COMPLETED. It crosses back over the same wire.',
+    code:`_status_for(turn) → <span class=g>COMPLETED</span>
+Artifact(parts=[DataPart(exchange_turn)],
+         last_chunk=<span class=n>True</span>)` },
+
+  { node:'reader', edge:['wireback','reader','ret'], zone:'consumer',
+    title:'Consumer decodes the turn',
+    file:'agents/address/turn_reader.py',
+    desc:'Back on the consumer side, the collect node’s result is decoded off the shared durable session into a typed ExchangeTurn for the gate to judge.',
+    code:`turn = extract_exchange_turn(session)
+<span class=c># typed ExchangeTurn back in the consumer’s hands</span>` },
+
+  { node:'gate', edge:['reader','gate','route'], zone:'consumer',
+    title:'Gate: the Sense-B "done" verdict',
+    file:'agents/address/gate.py::is_satisfied / make_gate_node_fn',
+    desc:'The authoritative, pure, deterministic done rule — a model never mints "done". One accepted gov-id satisfies the address-proof policy → route "done". Round counter = 1.',
+    code:`is_satisfied(status) == <span class=g>True</span>
+ctx.route = <span class=g>"done"</span>
+gate_rounds == <span class=n>1</span>
+<span class=c># one gov-ID is the fast branch (CUJ-10 kin)</span>` },
+
+  { node:'present', edge:['gate','present','route'], zone:'consumer',
+    title:'Present — terminal outcome',
+    file:'agents/address/workflow.py::present_node_fn',
+    desc:'The presenter sets the terminal ExchangeTurn as the graph output and never routes. Terminal state: gov-id-clean accepted, gate auto_approve, satisfied. Identical on the mock and the real edge — parity = terminal outcome.',
+    code:`turn.terminal == <span class=n>True</span>
+accepted == [<span class=s>"gov-id-clean"</span>] (doctype gov-id)
+gate == <span class=g>auto_approve</span>
+is_satisfied == <span class=g>True</span>   gate_rounds == <span class=n>1</span>
+<span class=c># ✔ same outcome: mock ≡ real edge</span>` },
+];
+
+// ---------------------------------------------------------------------------
+// Presets — focus a slice by clamping the step range emphasis.
+// ---------------------------------------------------------------------------
+const PRESETS = {
+  'Full flow':        {zones:['consumer','wire','edge','core','seam'], step:0},
+  'Request leg':      {zones:['consumer','wire','edge'], step:3},
+  'Bridge processing':{zones:['edge','core','seam'], step:8},
+  'Disposition':      {zones:['core','seam'], step:10},
+  'Return + gate':    {zones:['consumer','wire','core'], step:13},
+};
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+const state = {
+  step: 0,
+  zones: {consumer:true, wire:true, edge:true, core:true, seam:true},
+  preset: 'Full flow',
+  comments: [],
+  zoom: 1,
+  playing: false,
+};
+let playTimer = null;
+
+// ---------------------------------------------------------------------------
+// Build markers
+// ---------------------------------------------------------------------------
+const markers = document.getElementById('markers');
+Object.entries(TYPES).forEach(([k,t])=>{
+  markers.insertAdjacentHTML('beforeend',
+    `<marker id="ah-${k}" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+       <polygon points="0 0, 9 3.5, 0 7" fill="${t.color}"/></marker>`);
+});
+
+// ---------------------------------------------------------------------------
+// Render diagram
+// ---------------------------------------------------------------------------
+const vp = document.getElementById('viewport');
+function edgePath(a,b){
+  const A=N[a], B=N[b];
+  const ax=A.x+A.w/2, ay=A.y+A.h/2, bx=B.x+B.w/2, by=B.y+B.h/2;
+  // anchor to nearest vertical edges for tidy curves
+  let x1=ax, y1=ay, x2=bx, y2=by;
+  if (Math.abs(A.y-B.y) < 20){ // same band → side to side
+    x1 = A.x + (bx>ax?A.w:0); x2 = B.x + (bx>ax?0:B.w);
+    y1=A.y+A.h/2; y2=B.y+B.h/2;
+    const mx=(x1+x2)/2;
+    return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+  }
+  // different band → top/bottom
+  y1 = A.y + (by>ay?A.h:0); y2 = B.y + (by>ay?0:B.h);
+  x1=A.x+A.w/2; x2=B.x+B.w/2;
+  const my=(y1+y2)/2;
+  return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+}
+
+function render(){
+  vp.setAttribute('transform',`scale(${state.zoom})`);
+  vp.innerHTML='';
+  // zones
+  ZONES.forEach(z=>{
+    if(!state.zones[z.id]) return;
+    vp.insertAdjacentHTML('beforeend',
+      `<rect class="zone" x="20" y="${z.y}" width="1140" height="${z.h}" rx="12"
+         style="fill:${ZFILL[z.id]};stroke:${ZSTROKE[z.id]}66"/>
+       <text class="zlabel" x="34" y="${z.y+16}" style="fill:${ZSTROKE[z.id]}aa">${z.label}</text>`);
+  });
+  // edges (all, faint) — active one highlighted
+  const active = FLOW[state.step];
+  FLOW.forEach((f)=>{
+    if(!f.edge) return;
+    const [a,b,type]=f.edge;
+    if(!state.zones[N[a].zone] || !state.zones[N[b].zone]) return;
+    const t=TYPES[type];
+    const isAct = active.edge && active.edge[0]===a && active.edge[1]===b;
+    vp.insertAdjacentHTML('beforeend',
+      `<path class="edge ${isAct?'active':''}" d="${edgePath(a,b)}"
+        style="stroke:${t.color};color:${t.color}" stroke-dasharray="${t.dash}"
+        marker-end="url(#ah-${type})"/>`);
+  });
+  // nodes
+  NODES.forEach(n=>{
+    if(!state.zones[n.zone]) return;
+    const isAct = active.node===n.id;
+    const done = FLOW.findIndex(f=>f.node===n.id) <= state.step && FLOW.findIndex(f=>f.node===n.id)>=0;
+    const hasC = state.comments.some(c=>c.target===n.id);
+    const col = ZSTROKE[n.zone];
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class',`node ${isAct?'active':''} ${done?'':'dim'}`);
+    g.style.cursor='pointer';
+    g.innerHTML=
+      `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="9"
+         style="fill:${isAct?col+'33':'#161b22'};stroke:${col};stroke-width:${isAct?2.2:1.3}"/>
+       <text class="lbl" x="${n.x+12}" y="${n.y+22}">${n.lbl}</text>
+       <text class="sfx" x="${n.x+12}" y="${n.y+38}">${n.sfx}</text>
+       ${hasC?`<circle class="commentdot" cx="${n.x+n.w-10}" cy="${n.y+10}" r="6"/>`:''}`;
+    g.addEventListener('click',()=>openComment(n));
+    vp.appendChild(g);
+  });
+  // inspector
+  renderInspector();
+  // ui sync
+  document.getElementById('slider').value=state.step;
+  document.getElementById('stepnum').textContent=`Step ${state.step} / ${FLOW.length-1}`;
+  document.getElementById('stepzone').textContent=ZONES.find(z=>z.id===active.zone).label.split(' ')[0];
+  updatePrompt();
+}
+
+function renderInspector(){
+  const f=FLOW[state.step];
+  document.getElementById('inspector').innerHTML=
+    `<div class="ins-step">STEP ${state.step} — ${f.zone.toUpperCase()}</div>
+     <div class="ins-title">${f.title}</div>
+     <div class="ins-file">${f.file}</div>
+     <div class="ins-desc">${f.desc}</div>
+     <pre>${f.code}</pre>`;
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+function setStep(s){
+  state.step=Math.max(0,Math.min(FLOW.length-1,s));
+  render();
+}
+document.getElementById('slider').addEventListener('input',e=>setStep(+e.target.value));
+document.getElementById('next').onclick=()=>setStep(state.step+1);
+document.getElementById('prev').onclick=()=>setStep(state.step-1);
+document.getElementById('first').onclick=()=>setStep(0);
+document.getElementById('last').onclick=()=>setStep(FLOW.length-1);
+const playBtn=document.getElementById('play');
+playBtn.onclick=()=>{
+  state.playing=!state.playing;
+  playBtn.textContent=state.playing?'❚❚ Pause':'▶ Play';
+  playBtn.classList.toggle('on',state.playing);
+  if(state.playing){
+    playTimer=setInterval(()=>{
+      if(state.step>=FLOW.length-1){ setStep(0); }
+      else setStep(state.step+1);
+    },1400);
+  } else clearInterval(playTimer);
+};
+
+// presets
+const presetWrap=document.getElementById('presets');
+Object.keys(PRESETS).forEach(name=>{
+  const b=document.createElement('button');
+  b.className='preset'+(name===state.preset?' on':'');
+  b.textContent=name;
+  b.onclick=()=>{
+    state.preset=name;
+    const p=PRESETS[name];
+    Object.keys(state.zones).forEach(z=>state.zones[z]=p.zones.includes(z));
+    setStep(p.step);
+    syncToggles();
+    [...presetWrap.children].forEach(c=>c.classList.toggle('on',c.textContent===name));
+  };
+  presetWrap.appendChild(b);
+});
+
+// zone toggles
+const togWrap=document.getElementById('toggles');
+ZONES.forEach(z=>{
+  const l=document.createElement('label');
+  l.innerHTML=`<input type="checkbox" data-z="${z.id}" ${state.zones[z.id]?'checked':''}>
+    <span class="box" style="background:${ZSTROKE[z.id]}"></span>${z.label}`;
+  l.querySelector('input').onchange=e=>{state.zones[z.id]=e.target.checked; render();};
+  togWrap.appendChild(l);
+});
+function syncToggles(){
+  togWrap.querySelectorAll('input').forEach(i=>i.checked=state.zones[i.dataset.z]);
+}
+
+// legend
+const legWrap=document.getElementById('legend');
+Object.entries(TYPES).forEach(([k,t])=>{
+  legWrap.insertAdjacentHTML('beforeend',
+    `<div class="legK"><span class="swatch" style="border-top-color:${t.color};${t.dash?'border-top-style:dashed':''}"></span>${t.label}</div>`);
+});
+
+// zoom
+document.getElementById('zin').onclick=()=>{state.zoom=Math.min(2,state.zoom+0.15);render();};
+document.getElementById('zout').onclick=()=>{state.zoom=Math.max(0.5,state.zoom-0.15);render();};
+document.getElementById('zreset').onclick=()=>{state.zoom=1;render();};
+
+// ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+const modal=document.getElementById('modal');
+let modalTarget=null;
+function openComment(n){
+  modalTarget=n;
+  document.getElementById('modal-title').textContent=`Note on: ${n.lbl}`;
+  document.getElementById('modal-file').textContent=n.sfx;
+  const existing=state.comments.find(c=>c.target===n.id);
+  document.getElementById('modal-text').value=existing?existing.text:'';
+  modal.classList.add('show');
+  document.getElementById('modal-text').focus();
+}
+document.getElementById('modal-cancel').onclick=()=>modal.classList.remove('show');
+document.getElementById('modal-save').onclick=()=>{
+  const text=document.getElementById('modal-text').value.trim();
+  state.comments=state.comments.filter(c=>c.target!==modalTarget.id);
+  if(text) state.comments.push({target:modalTarget.id,label:modalTarget.lbl,file:modalTarget.sfx,text});
+  modal.classList.remove('show');
+  renderComments(); render();
+};
+function renderComments(){
+  const wrap=document.getElementById('comments');
+  document.getElementById('ccount').textContent=state.comments.length;
+  if(!state.comments.length){ wrap.innerHTML='<p class="hint">Click any node to attach a note. Notes flow into the prompt below.</p>'; return; }
+  wrap.innerHTML='';
+  state.comments.forEach((c,i)=>{
+    const d=document.createElement('div');
+    d.className='c-item';
+    d.innerHTML=`<button class="del" title="delete">×</button><b>${c.label}</b><br>${c.text.replace(/</g,'&lt;')}`;
+    d.querySelector('.del').onclick=()=>{state.comments.splice(i,1);renderComments();render();};
+    wrap.appendChild(d);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Prompt output
+// ---------------------------------------------------------------------------
+function updatePrompt(){
+  const f=FLOW[state.step];
+  const shown=ZONES.filter(z=>state.zones[z.id]).map(z=>z.label.split(' (')[0]);
+  const allZones = shown.length===ZONES.length;
+  const parts=[];
+  parts.push(`I'm tracing the CUJ-1 data flow in the A2A Document Bridge — the Address "one-turn pull" (servicer requests a single document, receives it normalized; Path-A instant accept).`);
+  if(!allZones){
+    parts.push(`\nI'm currently focused on these layers: ${shown.join(', ')}.`);
+  }
+  parts.push(`\nRight now I'm looking at step ${state.step}/${FLOW.length-1} — "${f.title}" (${f.file}).`);
+
+  if(state.comments.length){
+    parts.push(`\nQuestions / notes on specific hops:`);
+    state.comments.forEach(c=>{
+      parts.push(`\n• ${c.label} (${c.file}):\n  ${c.text}`);
+    });
+  } else {
+    parts.push(`\nWalk me through this hop: what exactly crosses the boundary here, what invariant holds (e.g. by-reference not bytes / gate is the sole acceptance authority / terminal-outcome parity mock≡real), and where it's implemented.`);
+  }
+  document.getElementById('promptout').textContent=parts.join('\n');
+}
+
+document.getElementById('copy').onclick=()=>{
+  navigator.clipboard.writeText(document.getElementById('promptout').textContent).then(()=>{
+    const b=document.getElementById('copy'); const t=b.textContent;
+    b.textContent='Copied!'; setTimeout(()=>b.textContent=t,1200);
+  });
+};
+
+// keyboard
+document.addEventListener('keydown',e=>{
+  if(modal.classList.contains('show')) return;
+  if(e.key==='ArrowRight') setStep(state.step+1);
+  if(e.key==='ArrowLeft') setStep(state.step-1);
+});
+
+// ---------------------------------------------------------------------------
+render();
+renderComments();
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+.uv/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Playwright e2e artifacts
+test-results/
+playwright-report/
+.playwright/
+
+# Local state / secrets
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Claude Code local state (per-task plans are local-only)
+.claude/
+
+# Terraform (P7) — never commit provider plugins or local state
+terraform/.terraform/
+terraform/**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# OS
+.DS_Store

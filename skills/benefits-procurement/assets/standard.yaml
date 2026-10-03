@@ -1,0 +1,30 @@
+# Program-standard rules the comparison flags each normalized quote against
+# (sense A — the Bridge surfaces the gap, never decides the deal). Declared,
+# agent-overridable per client. Consumed by S1-benefits-3's standard-gap flagger
+# (bridge/standard.py).
+#
+# Vocabulary (finalized by S1-benefits-3): three check verbs —
+#   max               numeric ceiling (limit); gap iff value > limit
+#   must_include      substring present (value); gap iff value absent
+#   must_not_include  substring absent (value); gap iff value present
+# `field` values are NormalizedQuote attribute names (deductible, coverage_limits,
+# exclusions, premium, …): flagging runs POST-normalization (one currency/language),
+# so a numeric cap is comparable across carriers that quoted in different currencies.
+#
+# The default set: two rules every carrier conforms to (proving flagging is selective)
+# plus no_orthodontics_exclusion, which flags Carrier B alone (the sole carrier excluding
+# orthodontics) — the beat-4 coverage-gap that drives the revise loop (S1-benefits-5).
+rules:
+  - id: deductible_cap
+    field: deductible          # NormalizedQuote attr (USD, post-normalization)
+    check: max
+    limit: 1000
+  - id: must_cover_dental
+    field: coverage_limits
+    check: must_include
+    value: dental
+  - id: no_orthodontics_exclusion
+    field: exclusions
+    check: must_not_include
+    value: orthodontics
+overridable: true     # agent may swap per client (spec design parameter)

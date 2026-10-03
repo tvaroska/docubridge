@@ -1,0 +1,22 @@
+# Disposition thresholds — MUST equal bridge/disposition.py DispositionThresholds
+# defaults (code carries built-ins; policy is the authoritative source per wiki).
+disposition:
+  auto_approve_at: 0.85
+  resubmit_below: 0.55
+  max_resubmissions: 3
+
+# SLA cadence + follow-up ladder (scheduler ticks). Same invariants as address-proof
+# (monotone ladder, escalate == deadline, max_nudges == 2) — enforced by load_sla_policy.
+sla:
+  deadline: 3                 # escalate at tick 3
+  cadence: 2
+  max_nudges: 2               # overdue + reminder before escalate
+  overdue_ticks: 1
+  reminder_ticks: 2
+  escalate_ticks: 3
+  ladder: [overdue, reminder, escalated]
+
+# Negotiate revise-loop cap — max revise rounds per leg before escalate.
+# Consumed by S1-benefits-5 (Negotiate + versioned revise loop); not wired this task.
+negotiate:
+  revise_cap: 2

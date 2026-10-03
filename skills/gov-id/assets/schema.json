@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": ["doctype", "key_fields"],
+  "properties": {
+    "doctype": { "type": "string", "enum": ["gov-id"] },
+    "key_fields": {
+      "type": "object",
+      "required": ["name", "address", "doc_number", "issuing_authority", "expiry"],
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "doc_number": { "type": "string" },
+        "issuing_authority": { "type": "string" },
+        "expiry": { "type": "string", "description": "ISO date (YYYY-MM-DD)" }
+      }
+    }
+  }
+}

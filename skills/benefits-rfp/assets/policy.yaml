@@ -1,0 +1,26 @@
+# Disposition thresholds — MUST equal bridge/disposition.py DispositionThresholds
+# defaults (code carries built-ins; policy is the authoritative source per wiki).
+# max_resubmissions caps failed submissions per (carrier, product line) item before the
+# item escalates (same attempts > cap boundary as bridge/pathb.py).
+disposition:
+  auto_approve_at: 0.85
+  resubmit_below: 0.55
+  max_resubmissions: 3
+
+# SLA ladder (ticks; one tick = rfp.tick_seconds). Same invariants as address-proof
+# (monotone ladder, escalate == deadline, max_nudges == 2) — enforced by load_sla_policy.
+# bridge.rfp ANCHORS the ladder on the RFP due date: overdue fires at due_at, each later
+# step at due_at + (step_ticks - overdue_ticks) ticks -> reminder at +2d, escalated at +4d.
+sla:
+  deadline: 5
+  cadence: 2
+  max_nudges: 2               # overdue + reminder before escalate
+  overdue_ticks: 1
+  reminder_ticks: 3
+  escalate_ticks: 5
+  ladder: [overdue, reminder, escalated]
+
+# RFP collection knobs (bridge.rfp.load_rfp_policy).
+rfp:
+  tick_seconds: 86400         # one ladder tick = one day
+  item_field: product_line    # the extracted key_fields key naming an item (bridge.rfp.receive)
