@@ -3,8 +3,9 @@
 from google.adk.agents import LlmAgent
 from google.adk.apps.app import App, ResumabilityConfig
 from google.adk.models import BaseLlm
+from google.adk.planners import BuiltInPlanner
 from google.adk.tools import FunctionTool, LongRunningFunctionTool
-from google.adk.tools.agent_tool import AgentTool
+from google.genai import types
 
 from bridge.disposition import run_disposition_gate
 from bridge.extraction.agent import build_extraction_agent, resolve_model
@@ -50,8 +51,11 @@ def build_document_bridge(model: str | BaseLlm | None = None) -> LlmAgent:
         name="document_bridge",
         model=effective_model,
         instruction=INSTRUCTION,
+        planner=BuiltInPlanner(
+            thinking_config=types.ThinkingConfig(thinking_budget=0)
+        ),
+        sub_agents=[build_extraction_agent(effective_model)],
         tools=[
-            AgentTool(agent=build_extraction_agent(effective_model)),
             FunctionTool(func=run_disposition_gate),
             FunctionTool(func=handle_deletion_request),
             FunctionTool(func=reject_submission),
@@ -90,3 +94,7 @@ def build_app(model: str | BaseLlm | None = None, *, is_resumable: bool = True) 
         root_agent=build_document_bridge(model),
         resumability_config=ResumabilityConfig(is_resumable=is_resumable),
     )
+
+
+root_agent = build_document_bridge()
+app = build_app()

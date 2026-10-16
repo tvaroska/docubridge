@@ -16,7 +16,7 @@ live status + sequencing is [`TODO.md`](TODO.md); the feature catalog is
   ignored (wire-enum `__str__` semantics; intentional docstring unicode).
 - **Frontend**: pnpm workspaces (`frontend/*`), React + TS + Vite + MUI; `frontend/shared`
   is the shared lib, `frontend/e2e` the Playwright suite.
-- ADK is pinned `google-adk >= 2.7.0, < 3`; A2A on `a2a-sdk`.
+- ADK is pinned `google-adk >= 2.11.0, < 3`; A2A on `a2a-sdk`.
 
 ## Repo shape (the load-bearing invariant)
 ```

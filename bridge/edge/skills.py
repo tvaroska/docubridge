@@ -33,6 +33,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import yaml
+from google.adk.skills._utils import _parse_skill_md_content
+from google.adk.skills.models import Frontmatter
 from pydantic import BaseModel, ConfigDict
 
 from bridge.doctypes import DEFAULT_SCHEMA_ASSET
@@ -124,17 +126,15 @@ def skill_meta_from_dir(skill_dir: Path) -> SkillMeta:
     """
     md = skill_dir / "SKILL.md"
     raw = md.read_text()
-    parts = raw.split("---\n", 2)
-    if len(parts) < 3:
-        raise ValueError(f"{md} missing frontmatter fence (---…---)")
     try:
-        fm = yaml.safe_load(parts[1])
-    except yaml.YAMLError as exc:
-        detail = " ".join(str(exc).split())
-        raise ValueError(f"{md}: frontmatter is not valid YAML ({detail})") from exc
-    fm = {} if fm is None else fm
-    if not isinstance(fm, dict):
-        raise ValueError(f"{md}: frontmatter is not a mapping")
+        fm, _body = _parse_skill_md_content(raw)
+    except ValueError as exc:
+        msg = str(exc)
+        if "frontmatter" in msg.lower():
+            raise ValueError(
+                f"{md}: missing frontmatter fence (---...---) ({msg})"
+            ) from exc
+        raise ValueError(f"{md}: {msg}") from exc
     meta = fm.get("metadata")
     meta = {} if meta is None else meta
     if not isinstance(meta, dict):
@@ -143,14 +143,15 @@ def skill_meta_from_dir(skill_dir: Path) -> SkillMeta:
         if key not in block:
             label = key if block is fm else f"metadata.{key}"
             raise ValueError(f"{md}: missing frontmatter key {label!r}")
+    adk_fm = Frontmatter(name=str(fm["name"]), description=str(fm["description"]))
     kind = meta["bridge-kind"]
     if kind not in SKILL_KINDS:
         raise ValueError(
             f"{md}: unknown bridge-kind {kind!r} (expected process or doctype)"
         )
-    if fm["name"] != skill_dir.name:
+    if adk_fm.name != skill_dir.name:
         raise ValueError(
-            f"{md}: frontmatter name {fm['name']!r} does not match its folder "
+            f"{md}: frontmatter name {adk_fm.name!r} does not match its folder "
             f"{skill_dir.name!r}"
         )
     schema_asset = str(meta.get("bridge-schema", "") or "")

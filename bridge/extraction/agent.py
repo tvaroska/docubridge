@@ -4,7 +4,9 @@ import os
 
 from google.adk.agents import LlmAgent
 from google.adk.models import BaseLlm
+from google.adk.planners import BuiltInPlanner
 from google.adk.tools import FunctionTool, ToolContext
+from google.genai import types
 
 from bridge import gatepin
 from bridge.classification import canonicalize_issuer
@@ -75,7 +77,12 @@ def build_extraction_agent(model: str | BaseLlm | None = None) -> LlmAgent:
     effective_model = resolve_model(model)
     return LlmAgent(
         name="extraction_agent",
+        description="Extracts normalized document fields and disposition signals from a submitted artifact.",
         model=effective_model,
+        mode="single_turn",
         instruction=EXTRACTION_INSTRUCTION,
+        planner=BuiltInPlanner(
+            thinking_config=types.ThinkingConfig(thinking_budget=0)
+        ),
         tools=[FunctionTool(func=extract_document)],
     )

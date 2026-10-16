@@ -17,6 +17,10 @@ from bridge.seams import SEAM_NAMES, SeamMode, is_valid_seam
 # Enable pytester for collection-guard tests
 pytest_plugins = ["pytester"]
 
+# Ensure loopback test servers (127.0.0.1 / localhost) bypass any ambient HTTP_PROXY.
+os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
+os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
+
 # Read BRIDGE_TEST_GCP at collection time for the gcp gate
 _GCP = os.environ.get("BRIDGE_TEST_GCP") == "1"
 

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from google.adk.events import Event
+
 from agents.address.turn_reader import read_latest_exchange_turn
 from contract.enums import Disposition
 from contract.wire import CollectionStatus
@@ -84,13 +86,7 @@ def make_gate_node_fn(max_rounds: int = DEFAULT_MAX_ROUNDS) -> Callable:
                 ctx.state[STATE_EXCHANGE_CONTEXT_ID] = turn.context_id
 
         done = turn is not None and is_satisfied(turn.status)
-
-        if rounds >= max_rounds:
-            # Round ceiling — force done regardless (fail fast on a
-            # non-terminating scenario).
-            ctx.route = "done"
-        else:
-            ctx.route = "done" if done else "again"
-        return None
+        route = "done" if (rounds >= max_rounds or done) else "again"
+        yield Event(route=route)
 
     return gate_node_fn

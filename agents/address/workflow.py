@@ -30,17 +30,16 @@ from agents.address.gate import DEFAULT_MAX_ROUNDS, make_gate_node_fn
 from agents.address.turn_reader import read_latest_exchange_turn
 
 
-def present_node_fn(ctx) -> None:
-    """Presenter node (AGENT-4): set the terminal ``ExchangeTurn`` as graph output.
+def present_node_fn(ctx) -> dict | None:
+    """Presenter node (AGENT-4): return the terminal ``ExchangeTurn`` as graph output.
 
     Reads the latest terminal turn off the shared session (falling back to the
-    turn the gate recorded to state) and sets it as the workflow output as a
-    JSON-mode dict. Never routes — routing already happened in the gate; an
-    ``LlmAgent`` presenter could drop in here unchanged.
+    turn the gate recorded to state) and returns it as a JSON-mode dict so
+    ``FunctionNode`` emits ``Event(output=...)``. Never routes — routing already
+    happened in the gate; an ``LlmAgent`` presenter could drop in here unchanged.
     """
     turn = read_latest_exchange_turn(ctx)
-    ctx.output = None if turn is None else turn.model_dump(mode="json")
-    return None
+    return None if turn is None else turn.model_dump(mode="json")
 
 
 def build_address_workflow(

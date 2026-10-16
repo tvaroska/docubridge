@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import httpx
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
@@ -174,7 +175,7 @@ def test_module_entry_help_returns_zero():
     """Smoke test — ``python -m agents.address --help`` resolves and prints usage."""
     result = subprocess.run(
         [sys.executable, "-m", "agents.address", "--help"],
-        cwd="/home/boris/docbride3",
+        cwd=Path(__file__).resolve().parents[2],
         capture_output=True,
         text=True,
     )

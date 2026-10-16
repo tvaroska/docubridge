@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-ADK_PIN = ("2.7.0", "3.0.0")  # [min_inclusive, max_exclusive) — mirrors pyproject "google-adk>=2.7.0,<3"
+ADK_PIN = ("2.11.0", "3.0.0")  # [min_inclusive, max_exclusive) — mirrors pyproject "google-adk>=2.11.0,<3"
 
 
 @dataclass(frozen=True)
