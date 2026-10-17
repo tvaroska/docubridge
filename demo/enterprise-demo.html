@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aon Document Bridge — Enterprise Data Architecture & Agent Gym (Live GCP)</title>
+<style>
+  :root {
+    --aon-red: #e11b22;
+    --aon-red-dark: #b9141a;
+    --aon-navy: #1b1c27;
+    --aon-gray8: #f4f5f7;
+    --aon-border: #e4e7ec;
+    --aon-text: #111827;
+    --aon-muted: #6b7280;
+    --aon-green: #059669;
+    --aon-green-bg: #ecfdf5;
+    --aon-amber: #d97706;
+    --aon-amber-bg: #fffbeb;
+    --aon-purple: #6d28d9;
+    --aon-purple-bg: #f5f3ff;
+    --aon-blue: #1d4ed8;
+    --aon-blue-bg: #eff6ff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--aon-gray8);
+    color: var(--aon-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  /* Top Header — Internal Zone (Aon Navy + Red Bottom Border) */
+  header.aon-header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: var(--aon-navy);
+    border-bottom: 3px solid var(--aon-red);
+    box-shadow: 0 4px 20px rgba(27, 28, 39, 0.25);
+  }
+  .header-inner {
+    max-width: 1760px;
+    margin: 0 auto;
+    padding: 13px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .aon-wordmark {
+    font-size: 34px;
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    color: var(--aon-red);
+    line-height: 1;
+  }
+  .brand-divider {
+    width: 1px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .brand-title {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .brand-sub {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  /* Journey & Step Pills */
+  .nav-center {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .journey-toggle {
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    padding: 3px;
+  }
+  .journey-btn {
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 15px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .journey-btn.active {
+    background: #ffffff;
+    color: var(--aon-navy);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  }
+  .steps-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .step-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .step-pill.active {
+    background: #ffffff;
+    color: var(--aon-navy);
+    border-color: #ffffff;
+  }
+  .step-pill.done {
+    border-color: rgba(16, 185, 129, 0.55);
+    color: #a7f3d0;
+  }
+  .step-num {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+  .step-pill.active .step-num {
+    background: var(--aon-red);
+    color: #fff;
+  }
+  .step-pill.done .step-num {
+    background: #10b981;
+    color: #fff;
+  }
+
+  /* Persona + Client Right Group */
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .persona-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    padding: 7px 14px;
+    color: #fff;
+    font-size: 12px;
+  }
+  .persona-label {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .persona-value {
+    font-weight: 700;
+    color: #fff;
+  }
+  .client-info {
+    text-align: right;
+  }
+  .client-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+  }
+  .client-name {
+    color: #fff;
+    font-size: 13.5px;
+    font-weight: 700;
+  }
+  .client-sub {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 11px;
+  }
+
+  /* External Zone Header Variant */
+  header.portal-header {
+    background: #181924;
+    border-bottom: 1px solid #2e3244;
+    padding: 14px 32px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .portal-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #fff;
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .ext-zone-badge {
+    background: var(--aon-red);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    padding: 4px 10px;
+    border-radius: 5px;
+    text-transform: uppercase;
+  }
+
+  /* Page Container */
+  main.page-wrap {
+    max-width: 1580px;
+    margin: 0 auto;
+    padding: 22px 32px 130px;
+  }
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--aon-red);
+    margin-bottom: 4px;
+  }
+  .page-headline-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .page-title {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0;
+    color: var(--aon-navy);
+  }
+  .page-subtitle {
+    font-size: 13.5px;
+    color: var(--aon-muted);
+    margin-top: 4px;
+  }
+  .live-gcp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--aon-navy);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 999px;
+  }
+  .pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #10b981;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.25);
+  }
+
+  /* Cards & Grids */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .grid-sidebar {
+    display: grid;
+    grid-template-columns: 1.55fr 1fr;
+    gap: 18px;
+  }
+  .card {
+    background: #ffffff;
+    border: 1px solid var(--aon-border);
+    border-radius: 16px;
+    padding: 18px 22px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
+  }
+  .card-dark {
+    background: var(--aon-navy);
+    color: #ffffff;
+    border-radius: 16px;
+    padding: 20px 24px;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .card-title {
+    font-size: 16.5px;
+    font-weight: 700;
+    color: var(--aon-navy);
+    margin: 0;
+  }
+  .card-sub {
+    font-size: 12.5px;
+    color: var(--aon-muted);
+    margin-top: 2px;
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .badge-green {
+    background: var(--aon-green-bg);
+    color: var(--aon-green);
+    border: 1px solid #a7f3d0;
+  }
+  .badge-amber {
+    background: var(--aon-amber-bg);
+    color: var(--aon-amber);
+    border: 1px solid #fde68a;
+  }
+  .badge-red {
+    background: #fef2f2;
+    color: var(--aon-red);
+    border: 1px solid #fecaca;
+  }
+  .badge-purple {
+    background: var(--aon-purple-bg);
+    color: var(--aon-purple);
+    border: 1px solid #ddd6fe;
+  }
+  .badge-blue {
+    background: var(--aon-blue-bg);
+    color: var(--aon-blue);
+    border: 1px solid #bfdbfe;
+  }
+  .badge-navy {
+    background: #f1f5f9;
+    color: #1e293b;
+    border: 1px solid #cbd5e1;
+  }
+
+  /* Tables */
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.data-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--aon-muted);
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--aon-border);
+    background: #f9fafb;
+  }
+  table.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+  }
+  table.data-table tr.highlight-row {
+    background: #fffbeb;
+  }
+  table.data-table tr.success-row {
+    background: #f0fdf4;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-red {
+    background: var(--aon-red);
+    color: #fff;
+  }
+  .btn-navy {
+    background: var(--aon-navy);
+    color: #fff;
+  }
+  .btn-green {
+    background: #059669;
+    color: #fff;
+  }
+  .btn-outline {
+    background: #fff;
+    border-color: #d1d5db;
+    color: #374151;
+  }
+  .btn-active-ring {
+    box-shadow: 0 0 0 4px rgba(225, 27, 34, 0.28);
+    transform: translateY(-1px);
+  }
+
+  /* Progress Bar */
+  .seg-bar {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    margin: 9px 0;
+  }
+  .seg-item {
+    height: 6px;
+    border-radius: 999px;
+    background: #e5e7eb;
+  }
+  .seg-item.done {
+    background: #059669;
+  }
+  .seg-item.active {
+    background: var(--aon-purple);
+  }
+  .seg-item.parked {
+    background: var(--aon-amber);
+  }
+
+  /* Source Anchor Pill */
+  .anchor-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 6px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  /* Lower-Third Caption Banner Overlay (matches placement gcp-end-to-end-demo.mp4) */
+  .caption-banner {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1260px;
+    max-width: 92vw;
+    background: rgba(20, 22, 33, 0.96);
+    border: 1.5px solid var(--aon-red);
+    border-radius: 16px;
+    padding: 14px 24px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+    z-index: 100;
+    color: #ffffff;
+  }
+  .caption-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 5px;
+  }
+  .caption-part-badge {
+    background: var(--aon-red);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    padding: 4px 12px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .caption-headline {
+    font-size: 16.5px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.3;
+  }
+  .caption-sub {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12.5px;
+    color: #9ca3af;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .scene { display: none; }
+  .scene.active { display: block; }
+</style>
+</head>
+<body>
+
+<!-- EXTERNAL ZONE HEADER (Used in Scene 1.1) -->
+<header id="portal-header" class="portal-header">
+  <div class="portal-brand">
+    <span>Aon Provider Portal</span>
+    <span class="ext-zone-badge">EXTERNAL ZONE</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <span style="color:#9ca3af;font-size:12.5px;" class="mono">spiffe://agents.global.aon.net/portal/external-portal-agent</span>
+    <button class="btn btn-outline" style="background:transparent;color:#e5e7eb;border-color:#4b5563;padding:6px 14px;">Carrier: Chubb Commercial</button>
+  </div>
+</header>
+
+<!-- INTERNAL ZONE HEADER (Aon Navy + Red Border) -->
+<header id="internal-header" class="aon-header">
+  <div class="header-inner">
+    <div class="brand-group">
+      <span class="aon-wordmark">AON</span>
+      <span class="brand-divider"></span>
+      <div>
+        <div class="brand-title">Document Bridge</div>
+        <div class="brand-sub" id="header-subtitle">Enterprise Data Architecture · Agent Gym &amp; A2A Edge</div>
+      </div>
+    </div>
+
+    <div class="nav-center">
+      <div class="journey-toggle">
+        <button id="journey-intake" class="journey-btn active">Intake &amp; Consolidation</button>
+        <button id="journey-gym" class="journey-btn">A2UI Inbox &amp; Agent Gym</button>
+      </div>
+      <div class="steps-nav">
+        <div id="step-pill-1" class="step-pill active">
+          <span class="step-num" id="step-num-1">1</span>
+          <span>Dual-Path Intake &amp; Vault</span>
+        </div>
+        <div id="step-pill-2" class="step-pill">
+          <span class="step-num" id="step-num-2">2</span>
+          <span>Consolidation &amp; Views</span>
+        </div>
+        <div id="step-pill-3" class="step-pill">
+          <span class="step-num" id="step-num-3">3</span>
+          <span>A2UI Inbox &amp; SPIFFE</span>
+        </div>
+        <div id="step-pill-4" class="step-pill">
+          <span class="step-num" id="step-num-4">4</span>
+          <span>Agent Gym &amp; Trust Dial</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="persona-pill" id="persona-pill">
+        <span class="persona-label">PERSONA</span>
+        <span class="persona-value" id="persona-display">Lead Underwriter (SPIFFE OBO · All Grants) ▾</span>
+      </div>
+      <div class="client-info">
+        <div class="client-tag">CLIENT · GCP DOCUMENTS001</div>
+        <div class="client-name">Terrepower Coastal LLC</div>
+        <div class="client-sub">2027 Property &amp; Benefits Renewal</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="page-wrap">
+
+  <!-- ===================================================================== -->
+  <!-- SCENE 1A: EXTERNAL ZONE — CARRIER PROVIDER PORTAL & A2A AGENT CARD    -->
+  <!-- ===================================================================== -->
+  <section id="scene-portal" class="scene">
+    <div style="max-width:980px;margin:0 auto;">
+      <div style="margin-bottom:18px;">
+        <h1 style="font-size:28px;font-weight:800;margin:0;color:#111827;">Chubb Commercial · Provider Portal</h1>
+        <p style="font-size:13.5px;color:#6b7280;margin:4px 0 0;">
+          External zone — isolated to Chubb's own quote &amp; endorsement submissions. Internal broker notes, competing carrier quotes, and census PII never cross this boundary.
+        </p>
+      </div>
+
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">Terrepower Coastal LLC — 2027 Renewal Submission Checklist</h2>
+            <div class="card-sub">Connected to Live A2A Edge: <span class="mono" id="live-edge-url">https://documents001-bridge-sf6etnew5q-uc.a.run.app</span></div>
+          </div>
+          <span class="badge badge-green" id="live-card-badge">● Live A2A Agent Card Verified (18 Skills in GCS)</span>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;font-size:12.5px;" class="mono">
+          <div style="color:#475569;font-weight:700;margin-bottom:4px;">GET /.well-known/agent-card.json → documents001-bridge (Cloud Run v2)</div>
+          <div id="agent-card-preview" style="color:#0f172a;">Loading live Agent Card from documents001-bridge...</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Path A · Structured Data (Schema-Validated)</h3>
+            <span class="badge badge-navy">{ } Parsed by Code · 0 AI Tokens</span>
+          </div>
+          <p style="font-size:13px;color:#4b5563;margin-top:0;">
+            Property schedule spreadsheets &amp; JSON files validate directly against deterministic schema rules with zero OCR or model cost.
+          </p>
+          <div style="padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;margin-bottom:14px;">
+            <div style="font-weight:700;font-size:13.5px;">📄 terrepower-coastal-sov-2027.xlsx</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:3px;">14 Coastal Locations · Total Insured Value $142,500,000 · Exact Decimal schema check</div>
+          </div>
+          <button id="btn-submit-path-a" class="btn btn-navy">Validate &amp; Lock in Audit Vault</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Path B · Unstructured Carrier PDF (Layout + Gate)</h3>
+            <span class="badge badge-purple">✦ Document AI + Gemini 3.5 Flash</span>
+          </div>
+          <p style="font-size:13px;color:#4b5563;margin-top:0;">
+            Multi-page carrier binder &amp; coastal endorsement PDF parsed with page/bounding-box anchors, edge PII redaction, and 4-Signal Disposition Gate.
+          </p>
+          <div style="padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;margin-bottom:14px;">
+            <div style="font-weight:700;font-size:13.5px;">📑 chubb-coastal-property-quote-2027.pdf</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:3px;">Cover Page ($50,000 Base Deductible) + Page 4 Schedule B Coastal Wind Endorsement ($100,000)</div>
+          </div>
+          <button id="btn-submit-path-b" class="btn btn-red">Submit Carrier PDF to Document Bridge</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SCENE 1B: INTERNAL ZONE — DUAL-PATH INTAKE, QUARANTINE & WORM VAULT   -->
+  <!-- ===================================================================== -->
+  <section id="scene-intake" class="scene active">
+    <div class="eyebrow">ZONE 1, ZONE 2 &amp; ZONE 3 · DUAL-PATH INTAKE, REVIEW QUARANTINE &amp; TAMPER-PROOF AUDIT VAULT</div>
+    <div class="page-headline-row">
+      <div>
+        <h1 class="page-title">Dual-Path Intake &amp; Two-Zone Cloud Storage</h1>
+        <div class="page-subtitle">
+          Path A validates structured spreadsheets in code; Path B extracts layout-anchored PDFs, strips personal data at the edge, and gates low-confidence fields into Review Quarantine.
+        </div>
+      </div>
+      <div class="live-gcp-pill">
+        <span class="pulse-dot"></span>
+        <span>LIVE · Cloud Run (documents001-bridge) + GCS Audit Vault</span>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-bottom:16px;">
+      <!-- Card 1: Path A Structured -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div style="font-size:15px;font-weight:800;color:var(--aon-navy);">Terrepower Property Schedule</div>
+            <div style="font-size:12px;color:var(--aon-muted);" class="mono">terrepower-coastal-sov-2027.xlsx</div>
+          </div>
+          <span class="badge badge-green">Accepted · Path A</span>
+        </div>
+        <span class="badge badge-navy" style="margin-bottom:8px;">{ } Parsed by deterministic code · 0 AI calls</span>
+        <div class="seg-bar">
+          <div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div>
+        </div>
+        <div style="font-size:12.5px;color:#374151;line-height:1.5;margin-top:8px;">
+          <div><strong>Total Insured Value:</strong> <span class="mono">$142,500,000.00</span> (14 locations)</div>
+          <div><strong>Edge PII Redaction:</strong> <span class="mono">2 claimant SSNs masked ([REDACTED-SSN])</span></div>
+          <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://documents001-bridge-audit-vault/sha256:9f84...e21c</span></div>
+          <div><strong>Retention Lock:</strong> Locked 7 Years (2,555 days · Write-Once)</div>
+        </div>
+      </div>
+
+      <!-- Card 2: Path B Chubb Carrier Quote (Quarantined on Schedule B Deductible) -->
+      <div class="card" style="border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,0.15);">
+        <div class="card-header">
+          <div>
+            <div style="font-size:15px;font-weight:800;color:var(--aon-navy);">Chubb · Property Quote</div>
+            <div style="font-size:12px;color:var(--aon-muted);" class="mono">chubb-coastal-property-quote-2027.pdf</div>
+          </div>
+          <span class="badge badge-amber" id="chubb-intake-badge">Quarantined · Review Needed</span>
+        </div>
+        <span class="badge badge-purple" style="margin-bottom:8px;">✦ Document AI OCR + 4-Signal Disposition Gate</span>
+        <div class="seg-bar">
+          <div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item parked"></div><div class="seg-item"></div>
+        </div>
+        <div style="font-size:12.5px;color:#374151;line-height:1.5;margin-top:8px;">
+          <div><strong>Cover Page Deductible:</strong> <span class="mono">$50,000</span> <span class="anchor-chip">Page 1 · Region [0.14, 0.31]</span></div>
+          <div><strong>Schedule B Endorsement:</strong> <span class="mono" style="color:#b45309;font-weight:700;">$100,000 (Coastal Wind)</span> <span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></div>
+          <div><strong>Zone 2 Quarantine URI:</strong> <span class="mono">gs://documents001-bridge-artifacts/quarantine/doc_chubb_001</span></div>
+          <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#b45309;">awaiting_human_review (Schedule B override conflict)</span></div>
+        </div>
+      </div>
+
+      <!-- Card 3: Path B AIG Endorsement -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div style="font-size:15px;font-weight:800;color:var(--aon-navy);">AIG · Signed Binder &amp; Endorsement</div>
+            <div style="font-size:12px;color:var(--aon-muted);" class="mono">aig-excess-property-binder-2027.pdf</div>
+          </div>
+          <span class="badge badge-green">Accepted · Locked</span>
+        </div>
+        <span class="badge badge-purple" style="margin-bottom:8px;">✦ Multi-Window Table Merging (Pages 1–18)</span>
+        <div class="seg-bar">
+          <div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div>
+        </div>
+        <div style="font-size:12.5px;color:#374151;line-height:1.5;margin-top:8px;">
+          <div><strong>Layer Limit:</strong> <span class="mono">$25,000,000 xs $50,000,000</span> <span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></div>
+          <div><strong>Annual Premium:</strong> <span class="mono">$412,000.00</span> <span class="anchor-chip">Page 14 · Region [0.22, 0.61]</span></div>
+          <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://documents001-bridge-audit-vault/sha256:4a19...c802</span></div>
+          <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#059669;">auto_approved (Confidence 99% · 0 anomalies)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone 6 Live Asset Map from Cloud Run -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Zone 6 · Governed Storage &amp; Data Asset Map (Live from Cloud Run <span class="mono">documents001-bridge-rfp-board</span>)</h2>
+          <div class="card-sub">Every document artifact, quarantine object, operational table, and Agent Gym store is registered in the Knowledge Catalog (<span class="mono">GET /v1/catalog/assets</span>).</div>
+        </div>
+        <span class="badge badge-blue" id="catalog-count-badge">Loading Catalog Assets...</span>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Asset ID</th>
+            <th>Architecture Zone</th>
+            <th>Physical URI / Storage Target</th>
+            <th>Owner Domain</th>
+            <th>Classification</th>
+          </tr>
+        </thead>
+        <tbody id="catalog-assets-tbody">
+          <tr><td colspan="5">Fetching live catalog assets from https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app/v1/catalog/assets...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SCENE 2: CONSOLIDATION RULES, BI-TEMPORAL STORE & ROLE-BASED VIEWS    -->
+  <!-- ===================================================================== -->
+  <section id="scene-consolidation" class="scene">
+    <div class="eyebrow">ZONE 4 &amp; ZONE 6 · CONSOLIDATION RULES ENGINE, HISTORICAL OPERATIONAL STORE &amp; END-TO-END LINEAGE</div>
+    <div class="page-headline-row">
+      <div>
+        <h1 class="page-title">Deterministic Consolidation &amp; Historical Operational Store</h1>
+        <div class="page-subtitle">
+          100% exact Decimal math and Source Priority Hierarchy (Signed Endorsement &gt; Binder &gt; Quote &gt; Submission). Tracks both when a value was learned and when coverage takes effect.
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="view-btn-broker" class="btn btn-navy">Broker View (Market &amp; Conflicts)</button>
+        <button id="view-btn-underwriter" class="btn btn-outline">Underwriter View (Risk &amp; Deductibles)</button>
+        <button id="view-btn-claims" class="btn btn-outline">Claims View (Effective-Date Coverage)</button>
+      </div>
+    </div>
+
+    <div class="grid-sidebar">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title" id="active-view-title">Role-Based Projection: Broker View</h2>
+            <div class="card-sub">Selects highest-priority source per coverage field while preserving full historical audit trail and cross-document conflict alerts.</div>
+          </div>
+          <span class="badge badge-navy">{ } 100% Engine Decimal Math · 0 AI Calculations</span>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Field / Coverage Term</th>
+              <th>Winning Value</th>
+              <th>Winning Source (Priority)</th>
+              <th>Timeline (Learned vs. Effective)</th>
+              <th>Source Page Link</th>
+              <th>Reconciliation Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Total Insured Value</strong></td>
+              <td class="mono" style="font-weight:700;">$142,500,000.00</td>
+              <td>Signed Property Schedule <span class="badge badge-navy">Prio 90</span></td>
+              <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:54Z<br/>Effective: 2027-01-01</td>
+              <td><span class="anchor-chip">Schedule Tab 1 · Row 14</span></td>
+              <td><span class="badge badge-green">✓ Reconciled</span></td>
+            </tr>
+            <tr class="highlight-row">
+              <td><strong>Coastal Wind Deductible</strong></td>
+              <td class="mono" style="font-weight:800;color:#b45309;">$100,000.00</td>
+              <td>Schedule B Endorsement <span class="badge badge-purple">Prio 100</span></td>
+              <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:57Z<br/>Effective: 2027-01-01</td>
+              <td><span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></td>
+              <td><span class="badge badge-amber">⚠ Conflict vs Cover Page ($50,000)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Primary Property Limit</strong></td>
+              <td class="mono" style="font-weight:700;">$50,000,000.00</td>
+              <td>Chubb Primary Quote <span class="badge badge-blue">Prio 60</span></td>
+              <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:55Z<br/>Effective: 2027-01-01</td>
+              <td><span class="anchor-chip">Page 2 · Region [0.15, 0.28]</span></td>
+              <td><span class="badge badge-green">✓ Verified</span></td>
+            </tr>
+            <tr>
+              <td><strong>Excess Layer 1 Limit</strong></td>
+              <td class="mono" style="font-weight:700;">$25,000,000.00</td>
+              <td>AIG Signed Binder <span class="badge badge-green">Prio 80</span></td>
+              <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:56Z<br/>Effective: 2027-01-01</td>
+              <td><span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></td>
+              <td><span class="badge badge-green">✓ Verified</span></td>
+            </tr>
+            <tr class="success-row">
+              <td><strong>Carrier Entity Resolution</strong></td>
+              <td class="mono" style="font-weight:700;">Campala (Canonical)</td>
+              <td>Agent Gym Rule <span class="mono">rule-entity-01</span></td>
+              <td class="mono" style="font-size:11.5px;">Mapped "Campala Ltd." → "Campala"<br/>Syndicate 2987 ≠ 1183 preserved</td>
+              <td><span class="anchor-chip">Page 1 · Header</span></td>
+              <td><span class="badge badge-green">✓ Canonicalized</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Right Column: 6-Hop End-to-End Lineage + BigQuery Iceberg Sync -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Zone 6 · 6-Hop End-to-End Field Lineage</h3>
+            <span class="badge badge-blue">Click-to-Source Trace</span>
+          </div>
+          <div style="font-size:12.5px;display:flex;flex-direction:column;gap:7px;">
+            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid var(--aon-navy);border-radius:6px;">
+              <strong>1. Intake Document:</strong> <span class="mono">chubb-coastal-property-quote-2027.pdf (Page 4)</span>
+            </div>
+            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #6d28d9;border-radius:6px;">
+              <strong>2. Extraction Engine:</strong> <span class="mono">Document AI Layout + Agent Gym Hint</span>
+            </div>
+            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #059669;border-radius:6px;">
+              <strong>3. Audit Vault:</strong> <span class="mono">gs://documents001-bridge-audit-vault/vault/chubb#v1</span>
+            </div>
+            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #d97706;border-radius:6px;">
+              <strong>4. Consolidation Rule:</strong> <span class="mono">Endorsement Overrides Quote (Prio 100 &gt; Prio 60)</span>
+            </div>
+            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #1d4ed8;border-radius:6px;">
+              <strong>5. Operational Store:</strong> <span class="mono">Cloud SQL bridge-sql (10.68.0.3) · Fact v2</span>
+            </div>
+            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid var(--aon-red);border-radius:6px;">
+              <strong>6. User Interface Card:</strong> <span class="mono">Underwriter Review Card · Citation Chip [Page 4]</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">BigQuery Analytics &amp; Open Iceberg Sync</h3>
+            <span class="badge badge-green">Watermark Synced</span>
+          </div>
+          <div style="font-size:12.5px;color:#374151;line-height:1.5;">
+            <div><strong>Target Table:</strong> <span class="mono">aon_analytics.operational_facts_iceberg</span></div>
+            <div><strong>Format:</strong> Open Iceberg over Cloud Storage (Incremental Sync)</div>
+            <div><strong>Latest Watermark:</strong> <span class="mono">2026-10-17T18:57:27Z (4 deltas exported)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SCENE 3: SPIFFE IDENTITY, OBO ACCESS CONTROL & A2UI v0.9 ACTION INBOX -->
+  <!-- ===================================================================== -->
+  <section id="scene-inbox" class="scene">
+    <div class="eyebrow">ZONE 5 &amp; ZONE 6 · SPIFFE WORKLOAD IDENTITY (ON-BEHALF-OF) &amp; A2UI v0.9 ACTION INBOX</div>
+    <div class="page-headline-row">
+      <div>
+        <h1 class="page-title">A2UI v0.9 Action Inbox &amp; SPIFFE Compound Identity</h1>
+        <div class="page-subtitle">
+          Cryptographic SPIFFE agent identity combined with the signed-in human user. Effective permission is the strict intersection of Agent and User grants.
+        </div>
+      </div>
+      <div class="live-gcp-pill">
+        <span class="pulse-dot"></span>
+        <span>Trust Domain: spiffe://agents.global.aon.net</span>
+      </div>
+    </div>
+
+    <div class="grid-sidebar">
+      <!-- Left: A2UI v0.9 Action Progress Card + ADK Confirmation Inbox -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">A2UI v0.9 Surface · Live Action Progress &amp; Approval Card</h2>
+            <div class="card-sub">Catalog: <span class="mono">https://aon.com/a2ui/v0_9/catalogs/enterprise_inbox_catalog.json</span> (Internal Zone Only)</div>
+          </div>
+          <span class="badge badge-amber" id="inbox-status-badge">⏸ PAUSED · Awaiting Human Confirmation</span>
+        </div>
+
+        <!-- Step-by-Step Progress Tracker -->
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin-bottom:14px;">
+          <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">
+            Real-Time Action Progress (Live Data Model Delta — Zero UI Flicker)
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:12.5px;">
+            <div style="padding:9px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;">
+              <div style="font-weight:700;color:#059669;">✓ 1. Edge Intake &amp; PII</div>
+              <div style="font-size:11px;color:#047857;">Completed · 180ms</div>
+            </div>
+            <div style="padding:9px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;">
+              <div style="font-weight:700;color:#059669;">✓ 2. Layout &amp; Anchors</div>
+              <div style="font-size:11px;color:#047857;">Page 4 region extracted</div>
+            </div>
+            <div id="step-box-3" style="padding:9px;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;">
+              <div style="font-weight:700;color:#b45309;" id="step-box-3-title">⏸ 3. Underwriter Gate</div>
+              <div style="font-size:11px;color:#92400e;" id="step-box-3-sub">Awaiting human review</div>
+            </div>
+            <div id="step-box-4" style="padding:9px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;">
+              <div style="font-weight:700;color:#6b7280;" id="step-box-4-title">○ 4. Commit &amp; Gym Signal</div>
+              <div style="font-size:11px;color:#6b7280;" id="step-box-4-sub">Pending approval</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RBAC 403 Refusal Alert (Shown during Scene 3.1 when Broker Associate tries to approve $100k) -->
+        <div id="rbac-refusal-banner" style="display:none;background:#fef2f2;border:1.5px solid #ef4444;border-radius:12px;padding:12px 16px;margin-bottom:14px;color:#991b1b;">
+          <div style="font-weight:800;font-size:13px;">⛔ HTTP 403 FORBIDDEN — Compound Identity Authority Check Failed</div>
+          <div style="font-size:12px;margin-top:3px;" class="mono">
+            Principal "broker.associate@aon.com" (role=broker, max_approval=$25,000) cannot approve $100,000.00 HIGH-risk deductible override. Switch to Lead Underwriter persona.
+          </div>
+        </div>
+
+        <!-- Approval Card Form (4+1 Governance Verbs) -->
+        <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div>
+              <div style="font-size:15px;font-weight:800;color:var(--aon-navy);">Resolve Coastal Wind Deductible Conflict (Chubb · Schedule B)</div>
+              <div style="font-size:12.5px;color:var(--aon-muted);">Proposed by Agent: <span class="mono">$50,000</span> (Cover Page) vs. Schedule B Endorsement: <span class="mono">$100,000</span> (<span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span>)</div>
+            </div>
+            <span class="badge badge-red">HIGH RISK · $100,000 Authority</span>
+          </div>
+
+          <div class="grid-2" style="margin-bottom:12px;">
+            <div>
+              <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">VERIFIED DEDUCTIBLE VALUE</label>
+              <input id="input-verified-deductible" type="text" value="$100,000" class="mono" style="width:100%;padding:8px 12px;border:1.5px solid #6d28d9;border-radius:8px;font-size:14px;font-weight:700;background:#f5f3ff;" readonly />
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">EXPERT AUDIT NOTE (CAPTURED BY AGENT GYM)</label>
+              <input id="input-expert-memo" type="text" value="Coastal Schedule B endorsement on page 4 overrides base cover page deductible to $100,000." style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;" readonly />
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid #f1f5f9;">
+            <div style="display:flex;gap:8px;">
+              <button id="btn-edit-approve" class="btn btn-green">✓ Edit &amp; Approve</button>
+              <button class="btn btn-outline">Accept As-Is</button>
+              <button class="btn btn-outline">Respond / Clarify</button>
+              <button class="btn btn-outline" style="color:var(--aon-red);border-color:#fecaca;">Reject</button>
+              <button class="btn btn-outline">Escalate</button>
+            </div>
+            <span class="mono" style="font-size:11.5px;color:#6b7280;" id="rfc6902-patch-label">Audit Diff: [{"op":"replace","path":"/deductible_usd","value":"$100,000"}]</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Live SPIFFE Agent Registry & Compound Token Claims -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Live SPIFFE Agent Registry (<span class="mono">GET /v1/catalog/spiffe-agents</span>)</h3>
+            <span class="badge badge-green">Shadow AI Blocked</span>
+          </div>
+          <div id="spiffe-agents-list" style="display:flex;flex-direction:column;gap:7px;font-size:12px;">
+            Loading registered SPIFFE agents from Cloud Run...
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Verified Compound Identity Token</h3>
+            <span class="badge badge-purple" id="svid-badge">SPIFFE SVID Verified</span>
+          </div>
+          <div style="background:#0f172a;color:#e2e8f0;padding:11px 14px;border-radius:10px;font-size:11.5px;line-height:1.45;" class="mono" id="compound-jwt-box">
+            {
+              "iss": "spiffe://agents.global.aon.net",
+              "sub": "spiffe://agents.global.aon.net/internal/underwriter-agent",
+              "aud": ["aon-docubridge"],
+              "obo": {
+                "sub": "lead.underwriter@aon.com",
+                "role": "underwriter",
+                "tenant_id": "tenant-terrepower",
+                "max_approval_amount": "50000000"
+              }
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- SCENE 4: AGENT GYM — CONTINUOUS LEARNING & PROGRAMMABLE TRUST DIAL    -->
+  <!-- ===================================================================== -->
+  <section id="scene-gym" class="scene">
+    <div class="eyebrow">ZONE 6 · AGENT GYM — CONTINUOUS LEARNING ("EXAMPLE OF ONE") &amp; PROGRAMMABLE TRUST DIAL (CLOUD SQL)</div>
+    <div class="page-headline-row">
+      <div>
+        <h1 class="page-title">Agent Gym: Continuous Learning &amp; Programmable Trust</h1>
+        <div class="page-subtitle">
+          Every expert override in Quarantine or the A2UI Inbox is distilled into a candidate Tribal Knowledge Rule, stress-tested against synthetic perturbations, and gated before promotion in Cloud SQL.
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button id="btn-distill-signal" class="btn btn-navy">1. Distill "Example of One" Signal</button>
+        <button id="btn-evaluate-rule" class="btn btn-red">2. Run Stress Suite &amp; Report Card Gate</button>
+      </div>
+    </div>
+
+    <!-- Top Metrics Row (Mirrors placement's Proven Accuracy 97.9% + Release Gate layout) -->
+    <div class="grid-2" style="margin-bottom:18px;">
+      <div class="card-dark" style="display:flex;flex-direction:column;justify-content:space-between;">
+        <div>
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;color:#9ca3af;text-transform:uppercase;">
+            TARGET SLICE ACCURACY (CHUBB* · QUOTE · DEDUCTIBLE_USD) · CLOUD SQL BRIDGE-SQL
+          </div>
+          <div style="display:flex;align-items:baseline;gap:16px;margin:10px 0;">
+            <span style="font-size:62px;font-weight:900;line-height:1;letter-spacing:-0.03em;" id="gym-score-big">100.0<span style="font-size:34px;color:#9ca3af;">%</span></span>
+            <span class="badge badge-green" style="font-size:13px;" id="gym-delta-badge">↑ +50.0% Slice Improvement (Baseline 50.0% → 100.0%)</span>
+          </div>
+        </div>
+        <div style="font-size:13px;color:#cbd5e1;" id="gym-rule-summary-line">
+          <strong>Promoted Rule <span class="mono" id="live-rule-id">rule-1269c4fd</span>:</strong> When extracting <span class="mono">deductible_usd</span> from <span class="mono">Chubb*</span> quote documents (see page 4), map <span class="mono">$50,000 → $100,000</span> (Coastal Schedule B endorsement).
+        </div>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;">
+        <div class="card-header" style="margin-bottom:6px;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;color:var(--aon-muted);text-transform:uppercase;">
+            OFFLINE GYM LOOP · QUALITY REPORT CARD GATE
+          </div>
+          <span class="badge badge-green" id="gate-status-pill">● Gate Passed · 0 Regressions</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:16px;margin:4px 0;">
+          <div style="width:46px;height:46px;border-radius:12px;background:#ecfdf5;border:1px solid #a7f3d0;display:flex;align-items:center;justify-content:center;font-size:22px;color:#059669;flex-shrink:0;">
+            🛡️
+          </div>
+          <div>
+            <div style="font-size:17.5px;font-weight:800;color:var(--aon-navy);" id="gate-headline">
+              4 / 4 Synthetic Perturbation Stress Cases Passed · 12 / 12 Historical Benchmarks Intact
+            </div>
+            <div style="font-size:12.5px;color:#4b5563;margin-top:4px;" id="gate-detail">
+              Verified against carrier layout shifts (cover page → Schedule B addendum), legal suffix variants (Campala Ltd. → Campala), distinct Lloyd's syndicate collision guard (Syndicate 2987 ≠ Syndicate 1183), and deterministic Decimal math firewall.
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;font-size:11.5px;">
+          <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Layout Shift</div>
+          <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Legal Suffix</div>
+          <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Syndicate Guard</div>
+          <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Decimal Firewall</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Card: Programmable Trust Dial (Live from /v1/gym/trust-policies on Cloud Run) -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Programmable Trust Dial (<span class="mono">GET / POST /v1/gym/trust-policies</span> on <span class="mono">documents001-bridge-rfp-board</span>)</h2>
+          <div class="card-sub">
+            Graduated autonomy per document slice: <strong>1. Shadow Mode (Silent Test)</strong> → <strong>2. Guided Human Review Queue</strong> → <strong>3. Trusted Auto-Approve</strong> (with automatic safety dial-back on carrier drift).
+          </div>
+        </div>
+        <button id="btn-promote-trust" class="btn btn-green">Promote AIG* Endorsement Slice to Trusted Auto-Approve</button>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Document Slice ID</th>
+            <th>Carrier / DocType / Risk</th>
+            <th>Current Autonomy Level</th>
+            <th>Shadow / Guided Match Streak</th>
+            <th>Accuracy Rate</th>
+            <th>Governance Audit Trail (Cloud SQL)</th>
+          </tr>
+        </thead>
+        <tbody id="trust-policies-tbody">
+          <tr><td colspan="6">Loading live Programmable Trust Policies from Cloud SQL via documents001-bridge-rfp-board...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- LOWER-THIRD CAPTION BANNER (Matches placement/demo/_captures/gcp-end-to-end-demo.mp4) -->
+<div class="caption-banner" id="caption-banner">
+  <div class="caption-top">
+    <span class="caption-part-badge" id="caption-badge">PART 1 · STEP 1: EXTERNAL PROVIDER PORTAL (A2A EDGE)</span>
+    <span class="caption-headline" id="caption-headline">Carrier opens External Zone Provider Portal connected to live Document Bridge A2A Edge in GCP.</span>
+  </div>
+  <div class="caption-sub" id="caption-sub">
+    GET https://documents001-bridge-sf6etnew5q-uc.a.run.app/.well-known/agent-card.json -> 18 Agent Skills in gs://documents001-bridge-skills
+  </div>
+</div>
+
+<script>
+  window.setCaption = function(badge, headline, sub) {
+    document.getElementById("caption-badge").textContent = badge;
+    document.getElementById("caption-headline").textContent = headline;
+    document.getElementById("caption-sub").textContent = sub;
+  };
+
+  window.switchScene = function(sceneId, stepIndex, isExternalPortal) {
+    document.getElementById("portal-header").style.display = isExternalPortal ? "flex" : "none";
+    document.getElementById("internal-header").style.display = isExternalPortal ? "none" : "block";
+
+    document.querySelectorAll(".scene").forEach(el => el.classList.remove("active"));
+    const target = document.getElementById(sceneId);
+    if (target) target.classList.add("active");
+
+    const jIntake = document.getElementById("journey-intake");
+    const jGym = document.getElementById("journey-gym");
+    if (stepIndex <= 2) {
+      jIntake.classList.add("active");
+      jGym.classList.remove("active");
+    } else {
+      jIntake.classList.remove("active");
+      jGym.classList.add("active");
+    }
+
+    for (let i = 1; i <= 4; i++) {
+      const pill = document.getElementById("step-pill-" + i);
+      const num = document.getElementById("step-num-" + i);
+      pill.classList.remove("active", "done");
+      if (i < stepIndex) {
+        pill.classList.add("done");
+        num.textContent = "✓";
+      } else if (i === stepIndex) {
+        pill.classList.add("active");
+        num.textContent = String(i);
+      } else {
+        num.textContent = String(i);
+      }
+    }
+  };
+
+  window.renderCatalogAssets = function(assets) {
+    const tbody = document.getElementById("catalog-assets-tbody");
+    const badge = document.getElementById("catalog-count-badge");
+    badge.textContent = "✓ " + assets.length + " Governed Assets Registered (Live GCP)";
+    tbody.innerHTML = assets.slice(0, 5).map(a => `
+      <tr>
+        <td class="mono" style="font-weight:700;color:#1e293b;">${a.asset_id}</td>
+        <td><span class="badge badge-navy">${a.zone}</span></td>
+        <td class="mono" style="font-size:12px;color:#0f172a;">${a.physical_uri}</td>
+        <td>${a.owner_domain}</td>
+        <td><span class="badge ${a.classification === 'restricted_pii' ? 'badge-red' : 'badge-green'}">${a.classification}</span></td>
+      </tr>
+    `).join("");
+  };
+
+  window.renderSpiffeAgents = function(agents) {
+    const box = document.getElementById("spiffe-agents-list");
+    box.innerHTML = agents.map(ag => `
+      <div style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:700;color:#0f172a;">${ag.display_name}</div>
+          <div class="mono" style="font-size:11px;color:#475569;">${ag.spiffe_id}</div>
+        </div>
+        <span class="badge ${ag.security_zone === 'internal' ? 'badge-purple' : 'badge-amber'}">${ag.security_zone.toUpperCase()}</span>
+      </div>
+    `).join("");
+  };
+
+  window.renderTrustPolicies = function(policies) {
+    const tbody = document.getElementById("trust-policies-tbody");
+    tbody.innerHTML = policies.map(p => {
+      let modeBadge = '<span class="badge badge-navy">1. Shadow Mode</span>';
+      if (p.autonomy_level === "guided_review") {
+        modeBadge = '<span class="badge badge-amber">2. Guided Human Review</span>';
+      } else if (p.autonomy_level === "trusted_auto_approve") {
+        modeBadge = '<span class="badge badge-green">3. Trusted Auto-Approve ✓</span>';
+      }
+      return `
+        <tr class="${p.autonomy_level === 'trusted_auto_approve' ? 'success-row' : ''}">
+          <td class="mono" style="font-weight:700;">${p.slice_id}</td>
+          <td><strong>${p.issuer_pattern}</strong> · ${p.doctype} <span class="badge badge-navy">${p.risk_level}</span></td>
+          <td>${modeBadge}</td>
+          <td class="mono" style="font-weight:700;">${p.consecutive_matches} / ${p.required_matches_for_promotion} matches</td>
+          <td class="mono" style="font-weight:700;color:#059669;">${(p.accuracy_rate * 100).toFixed(1)}% (${p.drift_incidents} drift)</td>
+          <td style="font-size:12px;color:#374151;"><strong>${p.last_updated_by}</strong> — ${p.last_updated_reason}</td>
+        </tr>
+      `;
+    }).join("");
+  };
+</script>
+</body>
+</html>

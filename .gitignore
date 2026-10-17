@@ -37,3 +37,6 @@ crash.log
 
 # OS
 .DS_Store
+
+# Demo video captures (regenerated via demo/record_gcp_demo.py)
+demo/_captures/*.mp4
