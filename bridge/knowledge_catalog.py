@@ -66,6 +66,7 @@ class AssetLocationZone(StrEnum):
     BUSINESS_VIEW = "4_role_based_business_views"
     BIGQUERY_ICEBERG = "4_bigquery_analytics_iceberg"
     USER_INTERACTION_A2UI = "5_user_interaction_a2ui"
+    KNOWLEDGE_CATALOG_GYM = "6_knowledge_catalog_agent_gym"
 
 
 class QualityRule(BaseModel):
@@ -405,6 +406,46 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         physical_uri="a2ui://custom-web/external",
         owner_domain="digital-client-portal",
         classification="client_shared",
+    ),
+    CatalogAsset(
+        asset_id="asset.gym_feedback_diff_log",
+        name="Agent Gym Feedback & Diff Log",
+        asset_type="operational_table",
+        zone=AssetLocationZone.KNOWLEDGE_CATALOG_GYM,
+        physical_uri="alloydb://aon-enterprise-data/gym/feedback_diff_log",
+        owner_domain="agent-gym-governance",
+        classification="internal_only",
+        schema_fields=("signal_id", "source_zone", "issuer", "doctype", "field_path", "patches"),
+    ),
+    CatalogAsset(
+        asset_id="asset.gym_benchmark_test_suite",
+        name="Agent Gym Benchmark & Synthetic Test Suite",
+        asset_type="operational_table",
+        zone=AssetLocationZone.KNOWLEDGE_CATALOG_GYM,
+        physical_uri="alloydb://aon-enterprise-data/gym/benchmark_test_suite",
+        owner_domain="agent-gym-governance",
+        classification="internal_only",
+        schema_fields=("case_id", "perturbation_type", "baseline_passed", "candidate_passed"),
+    ),
+    CatalogAsset(
+        asset_id="asset.gym_tribal_rulebook",
+        name="Active Tribal Rulebook & Entity Alias Map",
+        asset_type="operational_table",
+        zone=AssetLocationZone.KNOWLEDGE_CATALOG_GYM,
+        physical_uri="alloydb://aon-enterprise-data/gym/active_tribal_rulebook",
+        owner_domain="agent-gym-governance",
+        classification="internal_only",
+        schema_fields=("rule_id", "category", "issuer_pattern", "doctype", "instruction", "status"),
+    ),
+    CatalogAsset(
+        asset_id="asset.gym_trust_policy_registry",
+        name="Programmable Trust Policy Registry",
+        asset_type="operational_table",
+        zone=AssetLocationZone.KNOWLEDGE_CATALOG_GYM,
+        physical_uri="alloydb://aon-enterprise-data/gym/trust_policy_registry",
+        owner_domain="agent-gym-governance",
+        classification="internal_only",
+        schema_fields=("slice_id", "issuer_pattern", "autonomy_level", "consecutive_matches"),
     ),
 )
 

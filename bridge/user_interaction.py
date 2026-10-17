@@ -30,7 +30,7 @@ from bridge.a2ui_inbox import (
     A2UI_V09_MIME_TYPE,
     A2UI_V09_VERSION,
     ENTERPRISE_INBOX_CATALOG_SCHEMA,
-     INBOX_CATALOG_ID,
+    INBOX_CATALOG_ID,
     PORTAL_CATALOG_ID,
     PORTAL_CUSTOMER_CATALOG_SCHEMA,
     A2aDataPart,
@@ -56,6 +56,14 @@ from bridge.a2ui_inbox import (
     format_a2ui_sse_frames,
     request_a2ui_inbox_confirmation,
     wrap_a2ui_in_a2a_data_part,
+)
+from bridge.agent_gym import (
+    AgentGymEngine,
+    TribalRuleCategory,
+    TribalRuleStatus,
+    TrustAutonomyLevel,
+    agent_gym_from_env,
+    build_a2ui_trust_readiness_surface,
 )
 from bridge.identity import (
     ALLOWED_ENTITIES_HEADER,
@@ -272,6 +280,7 @@ def resolve_compound_identity(
     request: Request,
     *,
     query_role: CatalogRole | None = None,
+    default_role: CatalogRole | None = None,
     principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
     require_svid: bool = False,
@@ -337,7 +346,7 @@ def resolve_compound_identity(
         if obo_role is not None
         else resolve_caller_role(
             request,
-            query_role=query_role,
+            query_role=query_role or default_role,
             principal_roles=principal_roles,
             require_auth=require_auth,
         )
@@ -585,6 +594,7 @@ def render_domain_agent_a2ui(
     effective_on: datetime | None = None,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
+    agent_gym: AgentGymEngine | None = None,
     principal: UserPrincipal | None = None,
     agent_spiffe_id: str | None = None,
     svid_verified: bool = False,
@@ -592,6 +602,7 @@ def render_domain_agent_a2ui(
     """Execute a governed Domain Agent query and return an A2UI delivery envelope."""
     store = operational_store or operational_store_from_env()
     catalog = knowledge_catalog or knowledge_catalog_from_env(operational_store=store)
+    gym = agent_gym_from_env(agent_gym)
     if hasattr(catalog, "bind_operational_store"):
         catalog.bind_operational_store(store)
     resolved_view = target_view or _DEFAULT_VIEW_BY_ROLE[role]
@@ -643,6 +654,22 @@ def render_domain_agent_a2ui(
         headline = f"Underwriter exposure view for {entity_id}"
     else:
         raise ValueError(f"Unsupported business view '{resolved_view}'.")
+
+    # Apply Stage 3 Agent Gym presentation preferences for internal Gemini App roles
+    if channel == "gemini_app" and widgets:
+        prefs = gym.get_presentation_preferences(role=role)
+        if prefs:
+            primary_data = dict(widgets[0].data)
+            primary_data["applied_tribal_rules"] = [
+                {
+                    "rule_id": r.rule_id,
+                    "title": r.title,
+                    "field_path": r.field_path,
+                    "instruction": r.instruction,
+                }
+                for r in prefs
+            ]
+            widgets[0] = widgets[0].model_copy(update={"data": primary_data})
 
     # Attach bi-temporal history timeline widget when multiple versions exist
     all_history = store.list_facts(entity_id)
@@ -727,6 +754,7 @@ def ingest_accepted_submission(
     vault_store: AuditVaultStore | None = None,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
+    agent_gym: AgentGymEngine | None = None,
     recorded_at: datetime | None = None,
     effective_from: datetime | None = None,
 ) -> EnterpriseIngestionResult:
@@ -734,11 +762,28 @@ def ingest_accepted_submission(
     vault = vault_store or vault_from_env()
     store = operational_store or operational_store_from_env()
     catalog = knowledge_catalog or knowledge_catalog_from_env()
+    gym = agent_gym_from_env(agent_gym)
+
+    # Apply Stage 2 Agent Gym Entity/Carrier Alias normalization before consolidation
+    # while keeping 100% of financial math deterministic in OperationalStore.
+    normalized_entry = entry
+    if entry.issuer:
+        norm_issuer = gym.normalize_entity_or_issuer(entry.issuer)
+        if norm_issuer and norm_issuer != entry.issuer:
+            new_key_fields = dict(entry.key_fields)
+            if "issuer" in new_key_fields:
+                new_key_fields["issuer"] = norm_issuer
+            normalized_entry = entry.model_copy(
+                update={
+                    "issuer": norm_issuer,
+                    "key_fields": new_key_fields,
+                }
+            )
 
     promoted_entry, vault_record = promote_accepted_to_vault(
         vault,
         context_id=context_id,
-        entry=entry,
+        entry=normalized_entry,
         data=raw_document_bytes,
         filename=filename,
         version=version,
@@ -795,21 +840,79 @@ class AdvanceActionStepRequest(BaseModel):
     hint: str | None = None
 
 
+class DistillQuarantineFixRequest(BaseModel):
+    """Request body to distill a Tribal Knowledge Rule from a Zone 2 Quarantine fix."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_id: str
+    doc_id: str
+    doctype: str = "quote"
+    issuer: str
+    field_path: str
+    before_value: str
+    after_value: str
+    expert_memo: str
+    page_number: int | None = None
+    category: TribalRuleCategory | None = None
+    distinct_entities: list[str] = Field(default_factory=list)
+
+
+class DistillInboxAuditRequest(BaseModel):
+    """Request body to distill a Tribal Knowledge Rule from a Zone 5 Inbox audit record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    doc_id: str = "doc-inbox"
+    doctype: str = "quote"
+    issuer: str = "Carrier"
+    field_path: str | None = None
+    category: TribalRuleCategory | None = None
+    distinct_entities: list[str] = Field(default_factory=list)
+
+
+class RecordShadowComparisonRequest(BaseModel):
+    """Request body to record a Shadow Mode AI vs. Human comparison outcome."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_id: str
+    doc_id: str
+    issuer: str
+    doctype: str = "quote"
+    field_path: str
+    ai_value: str
+    human_value: str
+    risk_level: RiskTier = "MEDIUM"
+
+
+class DialTrustPolicyRequest(BaseModel):
+    """Request body to promote or dial back a slice's Programmable Trust level."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_level: TrustAutonomyLevel
+    reason: str = "Domain lead updated Programmable Trust dial."
+    force: bool = False
+
+
 def build_user_interaction_router(
     *,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
     inbox_store: ActionInboxStore | None = None,
+    agent_gym: AgentGymEngine | None = None,
     principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
 ) -> APIRouter:
     """Create a FastAPI router exposing Zone 5 A2UI, A2UI v0.9 Action Progress/Inbox,
-    and Zone 6 Knowledge Catalog endpoints."""
+    Agent Gym continuous learning, and Zone 6 Knowledge Catalog endpoints."""
     store = operational_store or operational_store_from_env()
     catalog = knowledge_catalog or knowledge_catalog_from_env(operational_store=store)
     if hasattr(catalog, "bind_operational_store"):
         catalog.bind_operational_store(store)
     inbox = action_inbox_store_from_env(inbox_store)
+    gym = agent_gym_from_env(agent_gym)
     router = APIRouter()
 
     @router.get("/v1/a2ui/catalogs/{catalog_name}")
@@ -1162,10 +1265,243 @@ def build_user_interaction_router(
                 effective_on=effective_on,
                 operational_store=store,
                 knowledge_catalog=catalog,
+                agent_gym=gym,
                 principal=compound.user,
                 agent_spiffe_id=compound.agent_spiffe_id,
                 svid_verified=compound.svid_verified,
             )
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    # ------------------------------------------------------------------ #
+    # Agent Gym: Continuous Learning ("Example of One") & Trust Dial     #
+    # ------------------------------------------------------------------ #
+
+    @router.post("/v1/gym/signals/from-quarantine")
+    def distill_from_quarantine_endpoint(
+        request: Request,
+        body: DistillQuarantineFixRequest,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role,
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            if compound.user.role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{compound.user.role}' cannot submit Agent Gym quarantine rules."
+                )
+            anchor = (
+                SourceAnchor(page_number=body.page_number)
+                if body.page_number is not None
+                else None
+            )
+            signal, rule = gym.distill_from_quarantine_correction(
+                entity_id=body.entity_id,
+                doc_id=body.doc_id,
+                doctype=body.doctype,
+                issuer=body.issuer,
+                field_path=body.field_path,
+                before_value=body.before_value,
+                after_value=body.after_value,
+                expert_memo=body.expert_memo,
+                actor_principal=compound.user.subject,
+                actor_role=compound.user.role,
+                agent_spiffe_id=compound.agent_spiffe_id,
+                source_anchor=anchor,
+                category=body.category,
+                distinct_entities=tuple(body.distinct_entities),
+            )
+            return {
+                "signal": signal.model_dump(mode="json"),
+                "candidate_rule": rule.model_dump(mode="json"),
+            }
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.post("/v1/gym/signals/from-inbox/{item_id}")
+    def distill_from_inbox_endpoint(
+        request: Request,
+        item_id: str,
+        body: DistillInboxAuditRequest,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role,
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            if compound.user.role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{compound.user.role}' cannot distill Agent Gym rules."
+                )
+            audits = inbox.list_audit_records(item_id)
+            if not audits:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No InboxAuditRecord found for action item '{item_id}'.",
+                )
+            latest_audit = audits[-1]
+            signal, rule = gym.distill_from_inbox_audit(
+                latest_audit,
+                doc_id=body.doc_id,
+                doctype=body.doctype,
+                issuer=body.issuer,
+                field_path=body.field_path,
+                category=body.category,
+                distinct_entities=tuple(body.distinct_entities),
+            )
+            return {
+                "signal": signal.model_dump(mode="json"),
+                "candidate_rule": rule.model_dump(mode="json"),
+            }
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.post("/v1/gym/rules/{rule_id}/evaluate")
+    def evaluate_gym_rule_endpoint(
+        request: Request,
+        rule_id: str,
+        auto_promote: bool = True,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role,
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            if compound.user.role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{compound.user.role}' cannot evaluate or promote Agent Gym rules."
+                )
+            report = gym.evaluate_candidate_rule(
+                rule_id, auto_promote=auto_promote
+            )
+            rule = next(
+                r for r in gym.list_rules() if r.rule_id == rule_id
+            )
+            return {
+                "report_card": report.model_dump(mode="json"),
+                "rule": rule.model_dump(mode="json"),
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.get("/v1/gym/rules")
+    def list_gym_rules_endpoint(
+        category: TribalRuleCategory | None = None,
+        status: TribalRuleStatus | None = None,
+        issuer: str | None = None,
+        doctype: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return [
+            r.model_dump(mode="json")
+            for r in gym.list_rules(
+                category=category,
+                status=status,
+                issuer=issuer,
+                doctype=doctype,
+            )
+        ]
+
+    @router.get("/v1/gym/extraction-hints")
+    def get_gym_extraction_hints_endpoint(
+        issuer: str,
+        doctype: str = "quote",
+    ) -> list[dict[str, Any]]:
+        return [
+            r.model_dump(mode="json")
+            for r in gym.get_extraction_hints(issuer=issuer, doctype=doctype)
+        ]
+
+    @router.get("/v1/gym/trust-policies")
+    def list_gym_trust_policies_endpoint() -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for p in gym.list_trust_policies():
+            dumped = p.model_dump(mode="json")
+            dumped["accuracy_rate"] = p.accuracy_rate
+            dumped["ready_for_promotion"] = p.ready_for_promotion
+            dumped["recommended_next_level"] = p.recommended_next_level.value
+            dumped["a2ui_messages"] = build_a2ui_trust_readiness_surface(p)
+            results.append(dumped)
+        return results
+
+    @router.post("/v1/gym/trust-policies/{slice_id}/shadow")
+    def record_shadow_comparison_endpoint(
+        slice_id: str,
+        body: RecordShadowComparisonRequest,
+    ) -> dict[str, Any]:
+        record, policy = gym.record_shadow_comparison(
+            slice_id=slice_id,
+            entity_id=body.entity_id,
+            doc_id=body.doc_id,
+            issuer=body.issuer,
+            doctype=body.doctype,
+            field_path=body.field_path,
+            ai_value=body.ai_value,
+            human_value=body.human_value,
+            risk_level=body.risk_level,
+        )
+        return {
+            "comparison": record.model_dump(mode="json"),
+            "policy": policy.model_dump(mode="json"),
+            "ready_for_promotion": policy.ready_for_promotion,
+            "a2ui_messages": build_a2ui_trust_readiness_surface(policy),
+        }
+
+    @router.post("/v1/gym/trust-policies/{slice_id}/dial")
+    def dial_trust_policy_endpoint(
+        request: Request,
+        slice_id: str,
+        body: DialTrustPolicyRequest,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role,
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            policy = gym.dial_trust_policy(
+                slice_id,
+                target_level=body.target_level,
+                actor_principal=compound.user.subject,
+                actor_role=compound.user.role,
+                reason=body.reason,
+                agent_spiffe_id=compound.agent_spiffe_id,
+                force=body.force,
+            )
+            return {
+                "policy": policy.model_dump(mode="json"),
+                "ready_for_promotion": policy.ready_for_promotion,
+                "a2ui_messages": build_a2ui_trust_readiness_surface(policy),
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except AuthenticationRequiredError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         except PermissionError as exc:
@@ -1222,6 +1558,7 @@ def build_user_interaction_app(
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
     inbox_store: ActionInboxStore | None = None,
+    agent_gym: AgentGymEngine | None = None,
     principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
 ) -> FastAPI:
@@ -1235,6 +1572,7 @@ def build_user_interaction_app(
             operational_store=operational_store,
             knowledge_catalog=knowledge_catalog,
             inbox_store=inbox_store,
+            agent_gym=agent_gym,
             principal_roles=principal_roles,
             require_auth=require_auth,
         )

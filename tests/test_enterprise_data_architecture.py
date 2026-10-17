@@ -1438,4 +1438,470 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
     )
 
 
+def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> None:
+    """Verify Slide 3 Columns 1-3: 'Example of One' signal capture, Offline Agent Gym
+    Synthetic Stress Testing + Quality Report Card Gate, and production improvements
+    across Extraction, Consolidation ('Campala Ltd.' vs distinct syndicate), and A2UI Presentation."""
+    from bridge.a2ui_inbox import InMemoryActionInboxStore
+    from bridge.agent_gym import (
+        InMemoryAgentGymEngine,
+        TribalRuleCategory,
+        TribalRuleStatus,
+    )
+    from bridge.identity import mint_jwt_svid
+
+    vault = InMemoryAuditVaultStore()
+    store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=store)
+    inbox_store = InMemoryActionInboxStore()
+    gym = InMemoryAgentGymEngine()
+
+    app = build_user_interaction_app(
+        operational_store=store,
+        knowledge_catalog=catalog,
+        inbox_store=inbox_store,
+        agent_gym=gym,
+    )
+    client = TestClient(app)
+
+    broker_svid = mint_jwt_svid(
+        "spiffe://agents.global.aon.net/internal/broker-agent",
+        obo_subject="usr:lead.broker@aon.com",
+        obo_role="broker",
+        tenant_id="tenant:acme",
+        allowed_entities=("SUB-CAMPALA-001",),
+        max_approval_amount="250000.00",
+    )
+    headers = {"X-Bridge-Spiffe-Svid": f"Bearer {broker_svid}"}
+
+    # 1. Stage 1 (Smarter Doc Extraction): Distill a carrier extraction hint from a
+    #    Zone 2 Review Quarantine fix ("Example of One")
+    q_resp = client.post(
+        "/v1/gym/signals/from-quarantine",
+        headers=headers,
+        json={
+            "entity_id": "SUB-CAMPALA-001",
+            "doc_id": "doc-lloyds-q1",
+            "doctype": "quote",
+            "issuer": "Lloyd's Syndicate 2987",
+            "field_path": "deductible",
+            "before_value": "$50,000.00",
+            "after_value": "$125,000.00",
+            "expert_memo": "Read policy deductible from Schedule B p. 7 instead of cover summary.",
+            "page_number": 7,
+        },
+    )
+    assert q_resp.status_code == 200
+    ext_rule_id = q_resp.json()["candidate_rule"]["rule_id"]
+    assert (
+        q_resp.json()["candidate_rule"]["category"]
+        == TribalRuleCategory.EXTRACTION_HINT.value
+    )
+    assert (
+        q_resp.json()["candidate_rule"]["status"]
+        == TribalRuleStatus.CANDIDATE.value
+    )
+
+    # Evaluate via Synthetic Stress Testing + Quality Report Card Gate -> auto-promotes
+    eval_ext = client.post(
+        f"/v1/gym/rules/{ext_rule_id}/evaluate",
+        headers=headers,
+    )
+    assert eval_ext.status_code == 200
+    report_ext = eval_ext.json()["report_card"]
+    assert report_ext["passed_gate"] is True
+    assert report_ext["math_firewall_intact"] is True
+    assert report_ext["stress_cases_total"] == 4
+    assert report_ext["stress_cases_passed"] == 4
+    assert len(report_ext["historical_regressions"]) == 0
+    assert (
+        eval_ext.json()["rule"]["status"] == TribalRuleStatus.PROMOTED.value
+    )
+
+    # Promoted hint is now returned by Stage 1 Extraction Hints API
+    hints_resp = client.get(
+        "/v1/gym/extraction-hints?issuer=Lloyd's%20Syndicate%202987&doctype=quote"
+    )
+    assert hints_resp.status_code == 200
+    assert len(hints_resp.json()) == 1
+    assert hints_resp.json()[0]["rule_id"] == ext_rule_id
+
+    # 2. Stage 2 (Cleaner Consolidation): Distill an Entity/Carrier Alias rule
+    #    ("Campala Ltd." -> "Campala", while keeping "Campala Syndicate 1183" distinct)
+    #    directly from a single Zone 5 Gemini App A2UI Inbox edit ("Teach Agent")!
+    create_inb = client.post(
+        "/v1/a2ui/inbox/actions?channel=gemini_app",
+        headers=headers,
+        json={
+            "entity_id": "SUB-CAMPALA-001",
+            "pause_for_review": True,
+            "data_model": {
+                "resolution": {"selectedValue": "Campala Ltd."},
+            },
+        },
+    )
+    assert create_inb.status_code == 200
+    inb_item_id = create_inb.json()["item_id"]
+
+    # Broker edits "Campala Ltd." -> "Campala" in the Gemini App A2UI Inbox
+    act_resp = client.post(
+        f"/v1/a2ui/inbox/items/{inb_item_id}/action?channel=gemini_app",
+        headers=headers,
+        json={
+            "version": "v0.9",
+            "action": {
+                "name": "edit_and_approve",
+                "context": {
+                    "decision": "edit",
+                    "resolution": {"selectedValue": "Campala"},
+                    "review": {
+                        "memo": (
+                            "Teach Agent: Campala Ltd. is a legal suffix alias for Campala, "
+                            "whereas Campala Syndicate 1183 is a separate syndicate."
+                        )
+                    },
+                },
+            },
+        },
+    )
+    assert act_resp.status_code == 200
+
+    distill_inb = client.post(
+        f"/v1/gym/signals/from-inbox/{inb_item_id}",
+        headers=headers,
+        json={
+            "doc_id": "doc-campala-q1",
+            "doctype": "quote",
+            "issuer": "Campala Ltd.",
+            "field_path": "issuer",
+            "category": "entity_alias",
+            "distinct_entities": ["Campala Syndicate 1183"],
+        },
+    )
+    assert distill_inb.status_code == 200
+    alias_rule_id = distill_inb.json()["candidate_rule"]["rule_id"]
+
+    eval_alias = client.post(
+        f"/v1/gym/rules/{alias_rule_id}/evaluate",
+        headers=headers,
+    )
+    assert eval_alias.status_code == 200
+    assert eval_alias.json()["report_card"]["passed_gate"] is True
+
+    # Verify Stage 2 Consolidation normalizes "Campala Ltd." -> "Campala"
+    # while keeping "Campala Syndicate 1183" separate, and keeping Decimal math exact!
+    e_campala_ltd = _make_accepted_entry(
+        doc_id="doc-campala-ltd",
+        doctype="carrier-quote",
+        issuer="Campala Ltd.",
+        key_fields={
+            "currency": "USD",
+            "premium": "$500,000.00",
+            "deductible": "$50,000.00",
+            "coverage_limit": "$5,000,000.00",
+            "total_insured_value": "$10,000,000.00",
+        },
+    )
+    e_syndicate = _make_accepted_entry(
+        doc_id="doc-campala-syndicate",
+        doctype="carrier-quote",
+        issuer="Campala Syndicate 1183",
+        key_fields={
+            "currency": "USD",
+            "premium": "$300,000.00",
+            "deductible": "$25,000.00",
+            "coverage_limit": "$5,000,000.00",
+            "total_insured_value": "$10,000,000.00",
+        },
+    )
+    res_1 = ingest_accepted_submission(
+        e_campala_ltd,
+        entity_id="SUB-CAMPALA-001",
+        context_id="ctx-campala",
+        vault_store=vault,
+        operational_store=store,
+        knowledge_catalog=catalog,
+        agent_gym=gym,
+    )
+    res_2 = ingest_accepted_submission(
+        e_syndicate,
+        entity_id="SUB-CAMPALA-001",
+        context_id="ctx-campala",
+        vault_store=vault,
+        operational_store=store,
+        knowledge_catalog=catalog,
+        agent_gym=gym,
+    )
+    assert res_1.entry.issuer == "Campala"
+    assert res_2.entry.issuer == "Campala Syndicate 1183"
+
+    # 3. Stage 3 (Tailored User Presentation): Distill & promote a presentation preference
+    #    and verify it surfaces in the Gemini App A2UI widget!
+    pres_q = client.post(
+        "/v1/gym/signals/from-quarantine",
+        headers=headers,
+        json={
+            "entity_id": "SUB-CAMPALA-001",
+            "doc_id": "doc-campala-ltd",
+            "doctype": "quote",
+            "issuer": "Campala",
+            "field_path": "deductible",
+            "before_value": "collapsed",
+            "after_value": "pre-highlight Schedule B p. 7",
+            "expert_memo": "Always highlight deductible schedule page on broker view cards.",
+            "category": "presentation_preference",
+        },
+    )
+    assert pres_q.status_code == 200
+    pres_rule_id = pres_q.json()["candidate_rule"]["rule_id"]
+    client.post(f"/v1/gym/rules/{pres_rule_id}/evaluate", headers=headers)
+
+    a2ui_resp = client.get(
+        "/v1/a2ui/gemini_app/SUB-CAMPALA-001",
+        headers=headers,
+    )
+    assert a2ui_resp.status_code == 200
+    primary_widget = a2ui_resp.json()["widgets"][0]
+    assert "applied_tribal_rules" in primary_widget["data"]
+    assert primary_widget["data"]["applied_tribal_rules"][0]["rule_id"] == pres_rule_id
+
+    # 4. Hallucination Firewall Gate: any rule attempting to override Decimal math is BLOCKED
+    bad_q = client.post(
+        "/v1/gym/signals/from-quarantine",
+        headers=headers,
+        json={
+            "entity_id": "SUB-CAMPALA-001",
+            "doc_id": "doc-bad",
+            "doctype": "quote",
+            "issuer": "Campala",
+            "field_path": "premium",
+            "before_value": "$500,000.00",
+            "after_value": "$510,000.00",
+            "expert_memo": "Use override_decimal_math and approximate_sum in LLM.",
+        },
+    )
+    bad_rule_id = bad_q.json()["candidate_rule"]["rule_id"]
+    bad_eval = client.post(
+        f"/v1/gym/rules/{bad_rule_id}/evaluate",
+        headers=headers,
+    )
+    assert bad_eval.status_code == 200
+    assert bad_eval.json()["report_card"]["math_firewall_intact"] is False
+    assert bad_eval.json()["report_card"]["passed_gate"] is False
+    assert (
+        bad_eval.json()["rule"]["status"] == TribalRuleStatus.REJECTED.value
+    )
+
+
+def test_agent_gym_programmable_trust_dial_and_instant_safety_dialback() -> None:
+    """Verify Slide 3 Column 4: Programmable Trust graduated autonomy (Shadow Mode ->
+    Guided Review -> Trusted Auto-Approve), Gemini App A2UI Trust Controls, and
+    Instant Safety Dial-Back on carrier format drift."""
+    from bridge.agent_gym import InMemoryAgentGymEngine, TrustAutonomyLevel
+    from bridge.identity import mint_jwt_svid
+
+    gym = InMemoryAgentGymEngine()
+    app = build_user_interaction_app(agent_gym=gym)
+    client = TestClient(app)
+
+    lead_svid = mint_jwt_svid(
+        "spiffe://agents.global.aon.net/internal/underwriter-agent",
+        obo_subject="usr:lead.underwriter@aon.com",
+        obo_role="underwriter",
+    )
+    headers = {"X-Bridge-Spiffe-Svid": f"Bearer {lead_svid}"}
+
+    # 1. Inspect initial Programmable Trust policies & A2UI Trust Readiness surfaces
+    list_resp = client.get("/v1/gym/trust-policies")
+    assert list_resp.status_code == 200
+    policies = {p["slice_id"]: p for p in list_resp.json()}
+    aig_slice = policies["slice:aig:endorsement:MEDIUM"]
+    assert aig_slice["autonomy_level"] == TrustAutonomyLevel.GUIDED_REVIEW.value
+    assert aig_slice["consecutive_matches"] == 4
+    assert aig_slice["ready_for_promotion"] is False
+    assert len(aig_slice["a2ui_messages"]) == 3
+
+    # 2. Premature promotion to Trusted Auto-Approve before 5 consecutive matches is blocked (422)
+    early_dial = client.post(
+        "/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial",
+        headers=headers,
+        json={
+            "target_level": "trusted_auto_approve",
+            "reason": "Trying to promote at 4/5 matches.",
+        },
+    )
+    assert early_dial.status_code == 422
+
+    # 3. Record 5th consecutive exact match in Shadow/Review comparison -> ready_for_promotion=True!
+    shd_resp = client.post(
+        "/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/shadow",
+        json={
+            "entity_id": "SUB-AIG-009",
+            "doc_id": "doc-aig-end-5",
+            "issuer": "AIG",
+            "doctype": "endorsement",
+            "field_path": "coverage_limit",
+            "ai_value": "$15,000,000.00",
+            "human_value": "$15,000,000.00",
+            "risk_level": "MEDIUM",
+        },
+    )
+    assert shd_resp.status_code == 200
+    assert shd_resp.json()["policy"]["consecutive_matches"] == 5
+    assert shd_resp.json()["ready_for_promotion"] is True
+
+    # 4. Domain Lead promotes slice to `trusted_auto_approve` via Gemini App Trust Controls
+    promote_resp = client.post(
+        "/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial",
+        headers=headers,
+        json={
+            "target_level": "trusted_auto_approve",
+            "reason": "Promoted after 5/5 consecutive exact matches.",
+        },
+    )
+    assert promote_resp.status_code == 200
+    assert (
+        promote_resp.json()["policy"]["autonomy_level"]
+        == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE.value
+    )
+    assert (
+        promote_resp.json()["policy"]["last_updated_by"]
+        == "usr:lead.underwriter@aon.com"
+    )
+    assert (
+        promote_resp.json()["policy"]["agent_spiffe_id"]
+        == "spiffe://agents.global.aon.net/internal/underwriter-agent"
+    )
+
+    # 5. Instant Safety Dial-Back: when carrier format drift occurs (`ai_value != human_value`),
+    #    the slice is automatically demoted from `trusted_auto_approve` back to `guided_review`!
+    drift_resp = client.post(
+        "/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/shadow",
+        json={
+            "entity_id": "SUB-AIG-010",
+            "doc_id": "doc-aig-end-6",
+            "issuer": "AIG",
+            "doctype": "endorsement",
+            "field_path": "coverage_limit",
+            "ai_value": "$10,000,000.00",
+            "human_value": "$15,000,000.00",
+            "risk_level": "MEDIUM",
+        },
+    )
+    assert drift_resp.status_code == 200
+    assert drift_resp.json()["comparison"]["exact_match"] is False
+    assert (
+        drift_resp.json()["policy"]["autonomy_level"]
+        == TrustAutonomyLevel.GUIDED_REVIEW.value
+    )
+    assert drift_resp.json()["policy"]["consecutive_matches"] == 0
+    assert drift_resp.json()["policy"]["drift_incidents"] == 1
+
+    # 6. External client/carrier role is blocked (403 Forbidden) from dialing trust policies
+    client_svid = mint_jwt_svid(
+        "spiffe://agents.global.aon.net/portal/external-portal-agent",
+        obo_subject="usr:cfo@acme.com",
+        obo_role="client",
+    )
+    ext_dial = client.post(
+        "/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial",
+        headers={"X-Bridge-Spiffe-Svid": f"Bearer {client_svid}"},
+        json={
+            "target_level": "shadow_mode",
+            "reason": "External attempt",
+        },
+    )
+    assert ext_dial.status_code == 403
+
+
+def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify SqlAgentGymEngine and agent_gym_from_env() persist rules, report cards,
+    and Programmable Trust state across independent Cloud Run & Vertex AI Agent Engine
+    processes, and refuse in-memory fallback when BRIDGE_SEAM_MODE=gcp."""
+    import pytest
+
+    from bridge.agent_gym import (
+        SqlAgentGymEngine,
+        TribalRuleCategory,
+        TrustAutonomyLevel,
+        agent_gym_from_env,
+    )
+
+    # 1. Refuses in-memory fallback when running in GCP / Agent Engine mode without a DB DSN
+    monkeypatch.delenv("BRIDGE_GYM_DB_URL", raising=False)
+    monkeypatch.delenv("BRIDGE_OPERATIONAL_DB_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("BRIDGE_SEAM_MODE", "gcp")
+    with pytest.raises(RuntimeError, match="session-affinity trap"):
+        agent_gym_from_env()
+    monkeypatch.delenv("BRIDGE_SEAM_MODE", raising=False)
+
+    # 2. Instance A (simulating Cloud Run UI replica) distills & promotes a rule and dials trust
+    db_file = tmp_path / "agent_gym_shared.db"
+    dsn = f"sqlite+aiosqlite:///{db_file}"
+    monkeypatch.setenv("DATABASE_URL", dsn)
+
+    cloud_run_gym = agent_gym_from_env()
+    assert isinstance(cloud_run_gym, SqlAgentGymEngine)
+
+    _, rule = cloud_run_gym.distill_from_quarantine_correction(
+        entity_id="SUB-AGENT-ENGINE-01",
+        doc_id="doc-ae-1",
+        doctype="quote",
+        issuer="Campala Ltd.",
+        field_path="issuer",
+        before_value="Campala Ltd.",
+        after_value="Campala",
+        expert_memo="Normalize Campala Ltd. legal suffix for AlloyDB consolidation.",
+        actor_principal="usr:broker@aon.com",
+        actor_role="broker",
+        category=TribalRuleCategory.ENTITY_ALIAS,
+        distinct_entities=("Campala Syndicate 1183",),
+    )
+    report = cloud_run_gym.evaluate_candidate_rule(rule.rule_id, auto_promote=True)
+    assert report.passed_gate is True
+
+    cloud_run_gym.record_shadow_comparison(
+        slice_id="slice:aig:endorsement:MEDIUM",
+        entity_id="SUB-AGENT-ENGINE-01",
+        doc_id="doc-ae-2",
+        issuer="AIG",
+        doctype="endorsement",
+        field_path="coverage_limit",
+        ai_value="$15,000,000.00",
+        human_value="$15,000,000.00",
+    )
+    cloud_run_gym.dial_trust_policy(
+        "slice:aig:endorsement:MEDIUM",
+        target_level=TrustAutonomyLevel.TRUSTED_AUTO_APPROVE,
+        actor_principal="usr:lead.underwriter@aon.com",
+        actor_role="underwriter",
+        reason="Promoted on Cloud Run UI replica.",
+    )
+    cloud_run_gym.close()
+
+    # 3. Instance B (simulating a separate Vertex AI Agent Engine reasoning container)
+    #    connects to the same DSN and immediately sees the promoted rule & trust level!
+    agent_engine_gym = SqlAgentGymEngine(dsn)
+    try:
+        assert (
+            agent_engine_gym.normalize_entity_or_issuer("Campala Ltd.")
+            == "Campala"
+        )
+        assert (
+            agent_engine_gym.normalize_entity_or_issuer("Campala Syndicate 1183")
+            == "Campala Syndicate 1183"
+        )
+        aig_policy = agent_engine_gym.get_trust_policy("slice:aig:endorsement:MEDIUM")
+        assert aig_policy is not None
+        assert aig_policy.autonomy_level == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE
+        assert aig_policy.consecutive_matches == 5
+    finally:
+        agent_engine_gym.close()
+
+
+
+
 
