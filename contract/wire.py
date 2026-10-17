@@ -9,7 +9,7 @@ from typing import Any, Literal, Union, get_args, get_origin
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from contract.enums import Disposition, Gate, LifecycleStatus, RequirementStatus
-from contract.extraction import FieldReview
+from contract.extraction import FieldReview, SourceAnchor
 
 # Major.minor. A minor bump is ADDITIVE only (a new defaulted field); a reader on an
 # older minor strips what it does not know (``decode_wire``). "1.1" = S0-arch-10
@@ -54,6 +54,14 @@ class LedgerEntry(BaseModel):
     # `None` means "no engine number" (e.g. a schema_invalid entry), not a real zero.
     overall_confidence: float | None = None
     field_confidence: dict[str, float] = {}
+    # Enterprise Data Architecture extensions (all additive + defaulted):
+    # - source_anchors: page & bounding-box provenance per extracted field/path
+    # - recorded_at / effective_from: bi-temporal timestamps (when learned vs. effective)
+    # - vault_uri: immutable Cloud Storage Audit Vault URI once promoted on acceptance
+    source_anchors: dict[str, SourceAnchor] = {}
+    recorded_at: datetime | None = None
+    effective_from: datetime | None = None
+    vault_uri: str | None = None
 
 
 class Requirement(BaseModel):

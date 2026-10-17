@@ -265,3 +265,22 @@ variable "email_drain_schedule" {
   description = "Cloud Scheduler cron (Etc/UTC) for the POST /email/drain tick on the RFP board service."
   default     = "* * * * *"
 }
+
+# Enterprise Data Architecture — Cloud Storage Audit Vault (Zone 3 WORM store).
+variable "enable_audit_vault" {
+  type        = bool
+  description = "Provision the immutable WORM Audit Vault bucket (<service_name>-audit-vault) and inject BRIDGE_VAULT_BUCKET into runtime services."
+  default     = false
+}
+
+variable "vault_retention_days" {
+  type        = number
+  description = "WORM retention policy duration (days) for the Cloud Storage Audit Vault bucket."
+  default     = 2555
+}
+
+variable "lock_audit_vault_retention" {
+  type        = bool
+  description = "Permanently lock the Audit Vault bucket retention policy (true in prod; false in dev/staging)."
+  default     = false
+}

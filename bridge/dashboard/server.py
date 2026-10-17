@@ -46,11 +46,14 @@ from bridge.exchange_store import StaleExchangeWrite
 from bridge.portal import session as portal_session
 from bridge.portal.session import NoActivePark
 from bridge.portal.store import InMemoryPortalStore, PortalSessionRecord, PortalStore
+from bridge.user_interaction import build_user_interaction_router
 from contract.enums import Disposition
 
 if TYPE_CHECKING:
     from bridge.dashboard.board import ProgramBoard, RfpBoard
     from bridge.edge.email_ingress import EmailProcessor
+    from bridge.knowledge_catalog import KnowledgeCatalog
+    from bridge.operational_store import OperationalStore
     from bridge.outbound import A2AClient
 
 # The Vite dev server origins. One per frontend app so ``scripts/run-all.sh`` can bring
@@ -86,6 +89,8 @@ def build_dashboard_app(
     email: EmailProcessor | None = None,
     email_drain_interval: float | None = None,
     max_ticks: int = 2000,
+    operational_store: OperationalStore | None = None,
+    knowledge_catalog: KnowledgeCatalog | None = None,
 ) -> FastAPI:
     """Build the Ops Dashboard FastAPI host.
 
@@ -230,6 +235,12 @@ def build_dashboard_app(
     mount_rfp_routes(app, rfps=rfps, intake=reply_intake, outbound=outbound)
     if processor is not None:
         mount_email_drain_routes(app, processor)
+    app.include_router(
+        build_user_interaction_router(
+            operational_store=operational_store,
+            knowledge_catalog=knowledge_catalog,
+        )
+    )
     app.state.email_processor = processor
     app.state.email_drain_interval = interval
 

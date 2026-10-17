@@ -62,6 +62,7 @@ locals {
     BRIDGE_GATEWAY_HOST         = var.gateway_host
     BRIDGE_SEAM_MODE            = var.seam_mode
     BRIDGE_ARTIFACT_BUCKET      = var.artifacts_bucket
+    BRIDGE_VAULT_BUCKET         = var.vault_bucket
     BRIDGE_SKILLS_BUCKET        = var.skills_bucket
     BRIDGE_EXTRACTION_ENGINE    = var.extraction_engine
     BRIDGE_DOCAI_PROCESSOR      = var.docai_processor
@@ -123,6 +124,14 @@ resource "google_cloud_run_v2_service" "bridge" {
         content {
           name  = "BRIDGE_ARTIFACT_BUCKET"
           value = var.artifacts_bucket
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.vault_bucket != "" ? [1] : []
+        content {
+          name  = "BRIDGE_VAULT_BUCKET"
+          value = var.vault_bucket
         }
       }
 

@@ -51,6 +51,7 @@ from contract.extraction import (
     ExtractionFields,
     ExtractionResult,
     FieldReview,
+    SourceAnchor,
     review_path,
 )
 
@@ -299,8 +300,9 @@ def merge_window_results(
                 wa, wb, _ = windows[winner[key]]
                 _conflict(key, key_fields[key], _span(wa, wb), value, _span(a, b))
 
-    # -- tables + rebased review paths --------------------------------------------------
+    # -- tables + rebased review paths + source_anchors --------------------------------
     merged_tables: dict[str, list[dict[str, str]]] = {}
+    merged_anchors: dict[str, SourceAnchor] = {}
     offsets: dict[str, int] = {}
     flagged: list[str] = []
     reviews: list[FieldReview] = []
@@ -327,12 +329,25 @@ def merge_window_results(
         )
         for key, value in result.field_confidence.items():
             confidences.setdefault(_rebase(key), []).append((w, value))
+        for anchor_key, anchor in result.fields.source_anchors.items():
+            rebased_anchor_key = _rebase(anchor_key)
+            if rebased_anchor_key not in merged_anchors:
+                window_span = b - a + 1
+                if a > 1 and 1 <= anchor.page_number <= window_span:
+                    anchor = anchor.model_copy(
+                        update={"page_number": anchor.page_number + (a - 1)}
+                    )
+                merged_anchors[rebased_anchor_key] = anchor
         for table, rows in result.fields.tables.items():
             merged_tables.setdefault(table, []).extend(rows)
             offsets[table] = offsets.get(table, 0) + len(rows)
 
     fields = ExtractionFields(
-        doctype=doctype, issuer=issuer, key_fields=key_fields, tables=merged_tables
+        doctype=doctype,
+        issuer=issuer,
+        key_fields=key_fields,
+        tables=merged_tables,
+        source_anchors=merged_anchors,
     )
 
     # The merge's own disagreement findings lead (first-wins dedupe keeps their detail).

@@ -131,3 +131,39 @@ resource "google_storage_bucket_iam_member" "email" {
   role   = each.value.role
   member = each.value.member
 }
+
+# Cloud Storage Audit Vault bucket (Zone 3 WORM compliance archive).
+# Write-once, immutable object retention policy (no lifecycle Delete during the
+# regulatory retention window; create-only + viewer IAM so runtime SA cannot
+# overwrite or delete locked vault objects).
+resource "google_storage_bucket" "audit_vault" {
+  count = var.enable_audit_vault ? 1 : 0
+
+  project  = var.project_id
+  name     = "${var.name_prefix}-audit-vault"
+  location = var.location
+  labels   = var.labels
+
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+
+  retention_policy {
+    is_locked        = var.lock_audit_vault_retention
+    retention_period = var.vault_retention_days * 86400
+  }
+}
+
+locals {
+  audit_vault_bucket_grants = var.enable_audit_vault ? {
+    runtime_viewer  = { role = "roles/storage.objectViewer", member = var.service_account_member }
+    runtime_creator = { role = "roles/storage.objectCreator", member = var.service_account_member }
+  } : {}
+}
+
+resource "google_storage_bucket_iam_member" "audit_vault" {
+  for_each = local.audit_vault_bucket_grants
+
+  bucket = google_storage_bucket.audit_vault[0].name
+  role   = each.value.role
+  member = each.value.member
+}

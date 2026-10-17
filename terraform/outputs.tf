@@ -90,6 +90,11 @@ output "artifacts_bucket_name" {
   value       = module.gcs.artifacts_bucket_name
 }
 
+output "audit_vault_bucket_name" {
+  description = "The immutable WORM Audit Vault GCS bucket name (BRIDGE_VAULT_BUCKET runtime env; \"\" when disabled)."
+  value       = module.gcs.audit_vault_bucket_name
+}
+
 # Cloud Tasks surface (P7-4) — the queue the runtime injects as BRIDGE_TASKS_QUEUE
 # (the GcpScheduler queue_path; a queue path is not a secret, so it rides a plain env).
 output "tasks_queue_name" {

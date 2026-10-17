@@ -12,3 +12,8 @@ output "email_bucket_name" {
   description = "The email landing bucket name — injected as BRIDGE_EMAIL_BUCKET on the runtime + the webhook (\"\" when disabled)."
   value       = var.enable_email_ingress ? google_storage_bucket.email[0].name : ""
 }
+
+output "audit_vault_bucket_name" {
+  description = "The immutable WORM Audit Vault bucket name — injected as BRIDGE_VAULT_BUCKET on the runtime (\"\" when disabled)."
+  value       = var.enable_audit_vault ? google_storage_bucket.audit_vault[0].name : ""
+}

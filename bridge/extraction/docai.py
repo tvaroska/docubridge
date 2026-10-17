@@ -53,6 +53,7 @@ import re
 from dataclasses import dataclass
 
 from bridge.extraction.resolve import ResolvedDocument, maybe_await
+from contract.extraction import SourceAnchor
 
 _LOG = logging.getLogger("bridge.extraction.docai")
 
@@ -229,6 +230,76 @@ def build_ocr_context(text: str) -> str:
         body = body[:MAX_OCR_CHARS]
         truncated = f"; truncated to the first {MAX_OCR_CHARS} characters"
     return OCR_CONTEXT.format(truncated=truncated, text=body)
+
+
+def _bbox_from_poly(poly) -> tuple[float, float, float, float] | None:
+    """Convert a Document AI ``bounding_poly.normalized_vertices`` list to ``(x0, y0, x1, y1)``."""
+    verts = getattr(poly, "normalized_vertices", None) or []
+    if not verts:
+        return None
+    xs = [max(0.0, min(1.0, float(getattr(v, "x", 0.0) or 0.0))) for v in verts]
+    ys = [max(0.0, min(1.0, float(getattr(v, "y", 0.0) or 0.0))) for v in verts]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def extract_docai_source_anchors(
+    document, *, artifact_uri: str | None = None
+) -> dict[str, SourceAnchor]:
+    """Extract ``SourceAnchor`` (page number + normalized bounding box) per field from a
+    Document AI ``Document`` response (``entities`` and ``pages[*].form_fields``)."""
+    if document is None:
+        return {}
+    anchors: dict[str, SourceAnchor] = {}
+
+    for entity in getattr(document, "entities", None) or []:
+        field_name = (
+            getattr(entity, "type_", None) or getattr(entity, "type", None) or ""
+        ).strip()
+        if not field_name or field_name in anchors:
+            continue
+        snippet = (getattr(entity, "mention_text", None) or "").strip() or None
+        page_number = 1
+        bbox: tuple[float, float, float, float] | None = None
+        page_anchor = getattr(entity, "page_anchor", None)
+        page_refs = getattr(page_anchor, "page_refs", None) or []
+        if page_refs:
+            ref0 = page_refs[0]
+            raw_page = getattr(ref0, "page", 0)
+            page_number = max(1, int(raw_page or 0) + 1)
+            bbox = _bbox_from_poly(getattr(ref0, "bounding_poly", None))
+        anchors[field_name] = SourceAnchor(
+            page_number=page_number,
+            bounding_box=bbox,
+            snippet=snippet,
+            artifact_uri=artifact_uri,
+        )
+
+    for idx, page in enumerate(getattr(document, "pages", None) or []):
+        page_num = max(1, int(getattr(page, "page_number", 0) or (idx + 1)))
+        for ff in getattr(page, "form_fields", None) or []:
+            name_layout = getattr(ff, "field_name", None)
+            val_layout = getattr(ff, "field_value", None)
+            raw_name = (
+                getattr(name_layout, "content", None)
+                or getattr(getattr(name_layout, "text_anchor", None), "content", None)
+                or ""
+            ).strip().rstrip(":")
+            if not raw_name or raw_name in anchors:
+                continue
+            raw_val = (
+                getattr(val_layout, "content", None)
+                or getattr(getattr(val_layout, "text_anchor", None), "content", None)
+                or ""
+            ).strip() or None
+            bbox = _bbox_from_poly(getattr(val_layout, "bounding_poly", None))
+            anchors[raw_name] = SourceAnchor(
+                page_number=page_num,
+                bounding_box=bbox,
+                snippet=raw_val,
+                artifact_uri=artifact_uri,
+            )
+
+    return anchors
 
 
 class DocAIPrepass:

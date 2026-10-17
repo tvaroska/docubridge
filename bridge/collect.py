@@ -5,7 +5,12 @@ CollectionStatus/ExchangeTurn. Imports contract + bridge.* only — NO google.ad
 NEVER agents/. The one inversion (the gate) stays the sole disposition authority;
 this module only *assembles* verdicts, it never mints one.
 """
+
+from __future__ import annotations
+
+import os
 import uuid
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
@@ -14,6 +19,7 @@ from bridge.disposition import DispositionVerdict
 from bridge.seams import Seam, get_adapter, resolve_mode
 from bridge.seams.protocols import ExtractionSeam
 from bridge.signals import dispose_signals, signals_from_result
+from bridge.vault import redact_personal_data
 from contract.enums import Disposition, RequirementStatus
 from contract.extraction import ExtractionResult, field_reviews_for
 from contract.wire import (
@@ -25,6 +31,11 @@ from contract.wire import (
     Requirement,
     RequirementsList,
 )
+
+if TYPE_CHECKING:
+    from bridge.knowledge_catalog import KnowledgeCatalog
+    from bridge.operational_store import OperationalStore
+    from bridge.vault import AuditVaultStore
 
 
 class DocumentSubmission(BaseModel):
@@ -62,6 +73,7 @@ def project_ledger_entry(
         field_reviews=field_reviews_for(result),
         overall_confidence=result.overall_confidence,
         field_confidence=dict(result.field_confidence),
+        source_anchors=dict(result.fields.source_anchors),
     )
 
 
@@ -101,10 +113,23 @@ def project_collection_status(
 
 class Collector:
     """The deterministic one-turn collect path (COLL-4). Reads the extraction seam,
-    disposes per the pure gate, projects the classified ledger."""
+    disposes per the pure gate, projects the classified ledger, and optionally promotes
+    accepted entries through the Audit Vault, Operational Store, and Knowledge Catalog."""
 
-    def __init__(self, extractor: ExtractionSeam | None = None) -> None:
+    def __init__(
+        self,
+        extractor: ExtractionSeam | None = None,
+        *,
+        redact_pii: bool | None = None,
+        vault_store: AuditVaultStore | None = None,
+        operational_store: OperationalStore | None = None,
+        knowledge_catalog: KnowledgeCatalog | None = None,
+    ) -> None:
         self._extractor = extractor  # None -> resolve the extraction seam lazily
+        self._redact_pii = redact_pii
+        self._vault_store = vault_store
+        self._operational_store = operational_store
+        self._knowledge_catalog = knowledge_catalog
 
     async def collect(
         self, request: CollectRequest, *,
@@ -112,7 +137,7 @@ class Collector:
         candidate_doctypes: list[str],
         results_out: dict[str, ExtractionResult] | None = None,
     ) -> ExchangeTurn:
-        """Run one collect turn: extract -> dispose -> project -> ExchangeTurn(terminal=True).
+        """Run one collect turn: extract -> (redact) -> dispose -> project -> (promote).
 
         ``results_out`` (optional, additive): when given, filled with each document's
         genuine ``ExtractionResult`` keyed by ``doc_id`` — the edge's HITL handoff seeds
@@ -121,16 +146,49 @@ class Collector:
         """
         extractor = self._extractor or get_adapter(Seam.extraction, resolve_mode(Seam.extraction))
         context_id = request.context_id or uuid.uuid4().hex
+        entity_id = request.party or context_id
+        should_redact = (
+            self._redact_pii
+            if self._redact_pii is not None
+            else (
+                os.environ.get("BRIDGE_REDACT_PII", "").strip() == "1"
+                or self._vault_store is not None
+                or self._operational_store is not None
+            )
+        )
         entries: list[LedgerEntry] = []
         for sub in documents:
             result = await extractor.extract(sub.artifact_name)
+            if should_redact:
+                result, _ = redact_personal_data(result)
             if results_out is not None:
                 results_out[sub.doc_id] = result
             signals = signals_from_result(result, candidate_doctypes=candidate_doctypes)
             verdict = dispose_signals(signals)
-            entries.append(project_ledger_entry(
+            entry = project_ledger_entry(
                 doc_id=sub.doc_id, result=result, verdict=verdict, artifact=sub.artifact,
-            ))
+            )
+            if (
+                entry.disposition is Disposition.accepted
+                and (
+                    self._vault_store is not None
+                    or self._operational_store is not None
+                    or self._knowledge_catalog is not None
+                )
+            ):
+                from bridge.user_interaction import ingest_accepted_submission
+
+                ingested = ingest_accepted_submission(
+                    entry,
+                    entity_id=entity_id,
+                    context_id=context_id,
+                    filename=sub.artifact_name,
+                    vault_store=self._vault_store,
+                    operational_store=self._operational_store,
+                    knowledge_catalog=self._knowledge_catalog,
+                )
+                entry = ingested.entry
+            entries.append(entry)
         status = project_collection_status(entries)
         return ExchangeTurn(
             context_id=context_id,

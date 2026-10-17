@@ -42,11 +42,14 @@ from bridge.portal import session as engine
 from bridge.portal.session import NoActivePark
 from bridge.portal.store import InMemoryPortalStore, PortalSessionRecord, PortalStore
 from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.user_interaction import build_user_interaction_router
 from contract.enums import Disposition
 from contract.wire import ArtifactRef
 
 if TYPE_CHECKING:
     from bridge.dashboard.board import RfpBoard
+    from bridge.knowledge_catalog import KnowledgeCatalog
+    from bridge.operational_store import OperationalStore
 
 # The Vite dev server origins. One per frontend app so ``scripts/run-all.sh`` can bring
 # the surfaces up side by side (docs/local-dev.md); real per-party Gateway/Agent-Identity
@@ -108,6 +111,8 @@ def build_portal_app(
     rfps: RfpBoard | None = None,
     intake: IntakeAddressing | None = None,
     extraction: Any = None,
+    operational_store: OperationalStore | None = None,
+    knowledge_catalog: KnowledgeCatalog | None = None,
 ) -> FastAPI:
     """Build the Provider-Portal FastAPI host.
 
@@ -225,6 +230,13 @@ def build_portal_app(
                 status_code=404, detail="unknown RFP leg or product line"
             ) from e
         return checklist.model_dump(mode="json")
+
+    app.include_router(
+        build_user_interaction_router(
+            operational_store=operational_store,
+            knowledge_catalog=knowledge_catalog,
+        )
+    )
 
     return app
 

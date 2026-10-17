@@ -12,6 +12,7 @@ from contract.extraction import (
     ExtractionResult,
     FieldReview,
     GovIdKeyFields,
+    SourceAnchor,
     UtilityBillKeyFields,
     field_reviews_for,
     fields_requiring_review,
@@ -51,6 +52,7 @@ __all__ = [
     "RequirementStatus",
     "RequirementsList",
     "ReviewReason",
+    "SourceAnchor",
     "UtilityBillKeyFields",
     # Review-vocabulary projection (consumer-facing mapping)
     "field_reviews_for",

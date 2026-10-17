@@ -135,6 +135,10 @@ module "gcs" {
   enable_email_ingress = var.enable_email_ingress
   email_webhook_member = module.iam.email_webhook_member
   email_retention_days = var.email_retention_days
+  # Enterprise Data Architecture — Cloud Storage Audit Vault (Zone 3 WORM store).
+  enable_audit_vault         = var.enable_audit_vault
+  vault_retention_days       = var.vault_retention_days
+  lock_audit_vault_retention = var.lock_audit_vault_retention
 }
 
 # tasks — the bridge-followups Cloud Tasks queue (P7-4). The substrate behind the
@@ -168,6 +172,7 @@ module "runtime" {
   # secret_key_ref. Select the GCS skill registry + GcsArtifactService/signed-URL path.
   skills_bucket    = module.gcs.skills_bucket_name
   artifacts_bucket = module.gcs.artifacts_bucket_name
+  vault_bucket     = module.gcs.audit_vault_bucket_name
   # Cloud Tasks scheduler wiring (P7-4) as plain envs (a queue path / SA email are
   # not secrets). The follow-up callback URL is the runtime's OWN service_uri — a
   # Terraform self-reference cycle, so it is injected out-of-band at deploy (P7-9)

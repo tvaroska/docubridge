@@ -31,6 +31,8 @@ Which tables and columns a doctype carries is declared by its skill schema
 (``properties.tables``), exactly as ``key_fields`` is.
 """
 
+from __future__ import annotations
+
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from contract.enums import ReviewReason
@@ -56,6 +58,27 @@ class UtilityBillKeyFields(BaseModel):
     statement_date: str  # ISO date string; kept as str for lossless corpus round-trip
 
 
+class SourceAnchor(BaseModel):
+    """Exact document page and bounding-box location for an extracted value."""
+    model_config = ConfigDict(extra="forbid")
+
+    page_number: int = Field(ge=1)
+    bounding_box: tuple[float, float, float, float] | None = None
+    snippet: str | None = None
+    artifact_uri: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_bbox(self) -> SourceAnchor:
+        if self.bounding_box is not None:
+            x0, y0, x1, y1 = self.bounding_box
+            if not (0.0 <= x0 <= x1 <= 1.0 and 0.0 <= y0 <= y1 <= 1.0):
+                raise ValueError(
+                    "bounding_box must satisfy 0.0 <= x0 <= x1 <= 1.0 and "
+                    f"0.0 <= y0 <= y1 <= 1.0; got {self.bounding_box!r}"
+                )
+        return self
+
+
 class ExtractionFields(BaseModel):
     """Wire shape for extraction.fields carried in ExtractionResult."""
     model_config = ConfigDict(extra="forbid")
@@ -66,6 +89,8 @@ class ExtractionFields(BaseModel):
     # Row-shaped data (S0-arch-10): table name -> rows, each row column -> text.
     # Additive + defaulted, so every existing payload validates unchanged.
     tables: dict[str, list[dict[str, str]]] = {}
+    # Source-page and bounding-box anchors keyed by field name or dotted path.
+    source_anchors: dict[str, SourceAnchor] = {}
 
 
 class FieldReview(BaseModel):

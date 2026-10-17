@@ -70,3 +70,27 @@ variable "email_retention_days" {
     error_message = "email_retention_days must be at least 1."
   }
 }
+
+# Enterprise Data Architecture — Cloud Storage Audit Vault (Zone 3 WORM store).
+variable "enable_audit_vault" {
+  type        = bool
+  description = "Create the immutable WORM Audit Vault bucket (<prefix>-audit-vault) + its create-only/viewer grants."
+  default     = false
+}
+
+variable "vault_retention_days" {
+  type        = number
+  description = "WORM retention policy duration (days) for the Cloud Storage Audit Vault bucket."
+  default     = 2555 # 7 years regulatory compliance retention
+
+  validation {
+    condition     = var.vault_retention_days >= 1
+    error_message = "vault_retention_days must be at least 1."
+  }
+}
+
+variable "lock_audit_vault_retention" {
+  type        = bool
+  description = "Permanently lock the Audit Vault bucket retention policy (true in prod; false in dev/staging so test buckets can be torn down)."
+  default     = false
+}

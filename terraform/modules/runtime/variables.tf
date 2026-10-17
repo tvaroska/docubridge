@@ -78,6 +78,16 @@ variable "artifacts_bucket" {
   default     = ""
 }
 
+variable "vault_bucket" {
+  type        = string
+  description = <<-EOT
+    Immutable Audit Vault GCS bucket name, injected as the BRIDGE_VAULT_BUCKET
+    plain env (selects GcpAuditVaultStore for Zone 3 WORM storage). Empty ("") =
+    no env (local/default). Set to module.gcs.audit_vault_bucket_name.
+  EOT
+  default     = ""
+}
+
 variable "tasks_queue_path" {
   type        = string
   description = <<-EOT
