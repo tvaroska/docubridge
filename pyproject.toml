@@ -46,7 +46,7 @@ dev = [
 # (non-gcp) test suite runs without any of them installed.
 gcp = [
     "asyncpg>=0.29",
-    "google-cloud-aiplatform>=1.93",
+    "google-cloud-aiplatform[agent-engines]>=1.148.1,<2",
     "google-cloud-documentai>=3.0",
     "google-cloud-storage>=2.18",
     "google-cloud-tasks>=2.16",
