@@ -74,7 +74,8 @@ import google.genai.types as genai_types
 from google.adk.apps import App
 from google.adk.artifacts import BaseArtifactService
 from google.adk.errors.already_exists_error import AlreadyExistsError
-from google.adk.events import Event
+from google.adk.events import Event, EventActions
+from google.adk.memory import BaseMemoryService
 from google.adk.models import BaseLlm
 from google.adk.runners import Runner
 from google.adk.sessions import BaseSessionService, Session
@@ -92,10 +93,14 @@ from bridge.offscript import (
     REASON_NOTHING_TO_DELETE,
     REASON_OFF_SCRIPT_REJECT,
 )
-from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.seams import Seam, SeamMode, get_adapter, resolve_mode
 from bridge.signals import dispose_signals
 from contract.enums import Disposition, Gate, LifecycleStatus
 from contract.wire import ExchangeTurn, LedgerEntry
+
+# Opt-in env toggle to stream LlmLeg turns through a deployed Vertex AI Agent Engine
+# ReasoningEngine (async_stream_query) instead of an in-process Runner.
+BRIDGE_AGENT_ENGINE_REMOTE_ENV = "BRIDGE_AGENT_ENGINE_REMOTE"
 
 # The ADK app_name of the LLM-leg session — the artifact store's app_name. Must equal
 # ``bridge.agent.build_app().name`` (enforced by test; the core never imports the edge).
@@ -607,14 +612,62 @@ class LlmResumeResult:
         return self.review.turn
 
 
+def _default_memory_service() -> BaseMemoryService | None:
+    """Resolve the default ``BaseMemoryService`` from the memory_bank seam.
+
+    In local mode, always builds the local adapter (`InMemoryMemoryService` or
+    `SqliteMemoryService` when `BRIDGE_MEMORY_DB_PATH` is set). In GCP mode, builds
+    `VertexAiMemoryBankService` when `BRIDGE_AGENT_ENGINE_ID` (or an explicit
+    `BRIDGE_SEAM_MODE_MEMORY_BANK=gcp` override) is set; returns `None` when GCP mode
+    is running on Cloud SQL without an Agent Engine ID.
+    """
+    mode = resolve_mode(Seam.memory_bank)
+    if (
+        mode is SeamMode.gcp
+        and not os.environ.get("BRIDGE_AGENT_ENGINE_ID", "").strip()
+        and not os.environ.get("BRIDGE_SEAM_MODE_MEMORY_BANK", "").strip()
+    ):
+        return None
+    return get_adapter(Seam.memory_bank, mode).build_memory_service()
+
+
+def _default_remote_engine() -> Any | None:
+    """Resolve a remote Vertex AI Agent Engine ``ReasoningEngine`` handle when
+    ``BRIDGE_AGENT_ENGINE_REMOTE`` is enabled (`1`/`true`/`yes`)."""
+    flag = os.environ.get(BRIDGE_AGENT_ENGINE_REMOTE_ENV, "").strip().lower()
+    if flag not in {"1", "true", "yes"}:
+        return None
+    from bridge.seams.gcp import parse_agent_engine_resource
+
+    proj, loc, eid = parse_agent_engine_resource(None)
+    import vertexai
+
+    resource_name = (
+        f"projects/{proj}/locations/{loc}/reasoningEngines/{eid}"
+        if proj and loc
+        else eid
+    )
+    return vertexai.agent_engines.get(resource_name)
+
+
+def _coerce_event(item: Event | Mapping[str, Any]) -> Event:
+    """Coerce an event yielded by ``Runner.run_async`` or remote
+    ``ReasoningEngine.async_stream_query`` into an ADK ``Event``."""
+    if isinstance(item, Event):
+        return item
+    return Event.model_validate(item)
+
+
 class LlmLeg:
     """Runtime for the LLM leg: the resumable ``document_bridge`` App on a fresh
-    ``Runner`` per invocation, over seam-wired sessions and the shared artifact store.
+    ``Runner`` per invocation (or a remote Vertex AI Agent Engine ``ReasoningEngine``),
+    over seam-wired sessions, memory bank, and the shared artifact store.
 
     Every collaborator is injectable; the defaults are host-controlled (P7-8): the
     App from :func:`bridge.agent.build_app` (``model`` may be a name or a
-    ``BaseLlm``), the session service from the sessions seam, the artifact store
-    from :func:`bridge.edge.artifacts.build_artifact_store`.
+    ``BaseLlm``), the session service from the sessions seam, the memory service
+    from the memory_bank seam, and the artifact store from
+    :func:`bridge.edge.artifacts.build_artifact_store`.
     """
 
     def __init__(
@@ -624,12 +677,20 @@ class LlmLeg:
         app: App | None = None,
         session_service: BaseSessionService | None = None,
         artifact_store: BaseArtifactService | None = None,
+        memory_service: BaseMemoryService | None = None,
+        remote_engine: Any | None = None,
     ) -> None:
         self._app = app or build_app(model)
         self._sessions = session_service or get_adapter(
             Seam.sessions, resolve_mode(Seam.sessions)
         ).build_session_service()
         self._store = artifact_store or artifacts.build_artifact_store()
+        self._memory = (
+            memory_service if memory_service is not None else _default_memory_service()
+        )
+        self._remote_engine = (
+            remote_engine if remote_engine is not None else _default_remote_engine()
+        )
 
     def bind_store(self, store: BaseArtifactService) -> None:
         """Share an artifact store (the edge's) with this leg — mirrors
@@ -651,6 +712,16 @@ class LlmLeg:
         """The (shared) artifact store."""
         return self._store
 
+    @property
+    def memory_service(self) -> BaseMemoryService | None:
+        """The seam-wired memory service (`BaseMemoryService`), if configured."""
+        return self._memory
+
+    @property
+    def remote_engine(self) -> Any | None:
+        """Optional remote Vertex AI Agent Engine (`ReasoningEngine`) handle."""
+        return self._remote_engine
+
     def runner(self) -> Runner:
         """A FRESH ``Runner`` over the App — never cached (no Runner state is held
         across turns; a resume runs on a fresh Runner over the durable session)."""
@@ -658,7 +729,47 @@ class LlmLeg:
             app=self._app,
             session_service=self._sessions,
             artifact_service=self._store,
+            memory_service=self._memory,
         )
+
+    async def _stream_events(
+        self,
+        *,
+        session: Session | None,
+        user_id: str,
+        session_id: str,
+        new_message: genai_types.Content,
+        state_delta: dict[str, Any] | None = None,
+    ) -> list[Event]:
+        """Run one invocation either locally (`Runner.run_async`) or against a remote
+        Vertex AI Agent Engine (`ReasoningEngine.async_stream_query`)."""
+        if self._remote_engine is None:
+            return [
+                event
+                async for event in self.runner().run_async(
+                    user_id=user_id,
+                    session_id=session_id,
+                    new_message=new_message,
+                    state_delta=state_delta,
+                )
+            ]
+        if state_delta and session is not None:
+            await self._sessions.append_event(
+                session=session,
+                event=Event(
+                    author="bridge",
+                    actions=EventActions(state_delta=state_delta),
+                ),
+            )
+        payload = new_message.model_dump(mode="json", exclude_none=True)
+        return [
+            _coerce_event(raw)
+            async for raw in self._remote_engine.async_stream_query(
+                user_id=user_id,
+                session_id=session_id,
+                message=payload,
+            )
+        ]
 
     async def ensure_session(
         self, key: SessionKey, *, state: dict[str, Any] | None = None
@@ -730,15 +841,13 @@ class LlmLeg:
             if isinstance(message, genai_types.Content)
             else genai_types.Content(role="user", parts=[genai_types.Part(text=message)])
         )
-        events = [
-            event
-            async for event in self.runner().run_async(
-                user_id=key.user_id,
-                session_id=key.session_id,
-                new_message=content,
-                state_delta=delta or None,
-            )
-        ]
+        events = await self._stream_events(
+            session=session,
+            user_id=key.user_id,
+            session_id=key.session_id,
+            new_message=content,
+            state_delta=delta or None,
+        )
         return LlmLegResult(
             key=key,
             events=tuple(events),
@@ -815,12 +924,12 @@ class LlmLeg:
                 )
             ],
         )
-        events = [
-            event
-            async for event in self.runner().run_async(
-                user_id=key.user_id, session_id=key.session_id, new_message=content
-            )
-        ]
+        events = await self._stream_events(
+            session=None,
+            user_id=key.user_id,
+            session_id=key.session_id,
+            new_message=content,
+        )
         session = await self.get_session(key)
         if session is None:  # the session existed a moment ago (pending check)
             raise RuntimeError(f"LLM-leg session vanished during resume: {key}")

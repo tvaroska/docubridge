@@ -536,6 +536,65 @@ def test_bind_store_shares_the_edge_store():
     assert leg.runner().artifact_service is shared
 
 
+def test_llm_leg_wires_memory_service():
+    from google.adk.memory import InMemoryMemoryService
+
+    mem = InMemoryMemoryService()
+    leg = LlmLeg(
+        session_service=InMemorySessionService(),
+        artifact_store=InMemoryArtifactService(),
+        memory_service=mem,
+    )
+    assert leg.memory_service is mem
+    assert leg.runner().memory_service is mem
+
+
+async def test_llm_leg_streams_from_remote_agent_engine():
+    """When remote_engine is injected, LlmLeg.run persists seed state_delta to the
+    session and streams raw event dicts from remote_engine.async_stream_query,
+    projecting them via project_from_events."""
+    queries: list[dict[str, object]] = []
+
+    class _FakeRemoteEngine:
+        async def async_stream_query(self, *, user_id, session_id, message):
+            queries.append(
+                {"user_id": user_id, "session_id": session_id, "message": message}
+            )
+            call_ev, resp_ev = _pair(
+                "c-esc",
+                llm_leg.ESCALATE_TOOL,
+                {"reason": "need human"},
+                {"reason_code": REASON_ESCALATED, "message": "Escalated remotely."},
+            )
+            yield call_ev.model_dump(mode="json")
+            yield resp_ev
+
+    sessions = InMemorySessionService()
+    store = InMemoryArtifactService()
+    leg = LlmLeg(
+        session_service=sessions,
+        artifact_store=store,
+        remote_engine=_FakeRemoteEngine(),
+    )
+    res = await leg.run(
+        party="jordan-lee",
+        context_id=CTX,
+        message="I need a human",
+        label_space=["utility-bill"],
+    )
+    assert len(queries) == 1
+    assert queries[0]["user_id"] == "jordan-lee"
+    assert queries[0]["session_id"] == CTX
+    assert res.projection.reason_code == REASON_ESCALATED
+    assert res.turn.lifecycle is LifecycleStatus.escalated
+    assert res.turn.terminal is False
+    persisted = await sessions.get_session(
+        app_name="document_bridge", user_id="jordan-lee", session_id=CTX
+    )
+    assert persisted is not None
+    assert persisted.state.get(gatepin.LABEL_SPACE_KEY) == ["utility-bill"]
+
+
 # --------------------------------------------------------------------------- #
 # TEST-4 + Decision 2 (AST scans)                                              #
 # --------------------------------------------------------------------------- #

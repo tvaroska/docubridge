@@ -7,6 +7,7 @@ from .seam import Seam
 
 if TYPE_CHECKING:
     from a2a.server.tasks import PushNotificationConfigStore, TaskStore
+    from google.adk.memory import BaseMemoryService
     from google.adk.sessions import BaseSessionService
 
     from bridge.edge.skills import SkillMeta
@@ -22,12 +23,12 @@ class SeamABC(abc.ABC):
 
 
 class SessionsSeam(SeamABC):
-    """Agent Platform Sessions (Vertex Agent Engine or Cloud SQL)."""
+    """Agent Platform Sessions (Vertex Agent Engine ``VertexAiSessionService`` or Cloud SQL ``DatabaseSessionService``)."""
     seam = Seam.sessions
 
     @abc.abstractmethod
     def build_session_service(self, db_url: str | None = None) -> "BaseSessionService":
-        """Return an ADK ``BaseSessionService`` (durable when a DSN is configured)."""
+        """Return an ADK ``BaseSessionService`` (Agent Engine or durable SQL when configured)."""
         raise NotImplementedError
 
 
@@ -120,14 +121,15 @@ class SkillRegistrySeam(SeamABC):
 
 
 class MemoryBankSeam(SeamABC):
-    """Memory bank (Vertex Agent Engine or Cloud SQL) — **deferred, empty by design**.
-
-    No domain methods this cycle (cross-collection memory is out of Core+Address
-    scope), so this ABC intentionally declares none and carries no
-    ``@pytest.mark.seam`` parity test. Kept as a named seam for the P7 GCP swap and
-    the uniform seam invariant. See TODO.md "Deferred to later cycles".
-    """
+    """Memory bank (Vertex Agent Engine ``VertexAiMemoryBankService`` or local ``SqliteMemoryService`` / ``InMemoryMemoryService``)."""
     seam = Seam.memory_bank
+
+    @abc.abstractmethod
+    def build_memory_service(
+        self, db_path: str | None = None
+    ) -> "BaseMemoryService":
+        """Return an ADK ``BaseMemoryService`` (Vertex AI Memory Bank on GCP; SQLite or in-memory locally)."""
+        raise NotImplementedError
 
 
 class SchedulerSeam(SeamABC):

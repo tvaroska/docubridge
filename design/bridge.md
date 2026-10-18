@@ -10,6 +10,7 @@ down:
   - "skills.md"
   - "gcp-substrate.md"
   - "outbound.md"
+  - "agent-gym.md"
   - "../spec/demos/demo-suite.md"
   - "../spec/cujs.md"
   - "architecture.md"
@@ -48,6 +49,7 @@ tags: [bridge]
 - [service-agent reference architecture](service-agent-architecture.md) — the reusable whole-agent shape: `Workflow` graph (collect · gate · present) on one durable session
 - [skills](skills.md) — demos as configuration
 - [GCP substrate](gcp-substrate.md) — seams, network zones, deploy, proactive engine
+- [Agent Gym & Programmable Trust](agent-gym.md) — continuous learning, graduated autonomy, and two-sided human-oversight calibration literature
 
 **Context**
 - [demo implementations](../spec/demos/demo-suite.md) — the three demos on one deployed core

@@ -15,11 +15,11 @@ The seams are **[Ring 2](../spec/standards.md)** — the standardization priorit
 
 | Seam | Local adapter | GCP adapter |
 |---|---|---|
-| **Sessions** | ADK `DatabaseSessionService` on async sqlite (in-memory when no DSN) | the same `DatabaseSessionService` on Cloud SQL Postgres |
+| **Sessions** | ADK `DatabaseSessionService` on async sqlite (in-memory when no DSN) | ADK `VertexAiSessionService` on Vertex AI Agent Engine when `BRIDGE_AGENT_ENGINE_ID` is set (or `DatabaseSessionService` on Cloud SQL Postgres when unset) |
 | **Task store** | local embedded store | a managed relational store, adoptable as the platform's managed task store via a one-adapter swap |
 | **Exchange store** | local embedded store | a managed relational store |
 | **Skill registry** | directory of [Agent Skills](skills.md) folders | GCP Skill Registry (same [Agent Skills format](skills.md)) |
-| **Memory bank** | an empty adapter — the seam declares no methods | none (the registry raises) |
+| **Memory bank** | ADK `InMemoryMemoryService` (or `SqliteMemoryService` when `BRIDGE_MEMORY_DB_PATH` is set) | ADK `VertexAiMemoryBankService` on Vertex AI Agent Engine (`BRIDGE_AGENT_ENGINE_ID`) |
 | **Scheduler/Timer** | in-process, virtual clock | Cloud Tasks |
 | **A2A client (outbound)** | injected fake transport | authenticated transport with Agent Identity |
 | **Extraction** | fixture extractor (deterministic) | Gemini *or* Gemini + Document AI pre-pass — engine-selectable |

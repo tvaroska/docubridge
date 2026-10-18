@@ -2,7 +2,7 @@
 name = "docbride"
 version = "0.1.0"
 description = "A2A Document Bridge — clean-slate build (Core + Address)"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2.7",
     "google-adk[a2a]>=2.11.0,<3",
@@ -46,6 +46,7 @@ dev = [
 # (non-gcp) test suite runs without any of them installed.
 gcp = [
     "asyncpg>=0.29",
+    "google-cloud-aiplatform>=1.93",
     "google-cloud-documentai>=3.0",
     "google-cloud-storage>=2.18",
     "google-cloud-tasks>=2.16",

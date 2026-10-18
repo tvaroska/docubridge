@@ -29,6 +29,12 @@ variable "internal_subnet_cidr" {
   default     = "10.20.0.0/24"
 }
 
+variable "enable_agent_engine_psc" {
+  type        = bool
+  description = "Whether to provision a Private Service Connect network attachment on the internal subnet for Vertex AI Agent Engine private VPC egress."
+  default     = false
+}
+
 variable "labels" {
   type        = map(string)
   description = "Resource labels."

@@ -145,17 +145,19 @@ async def wake_task(
     *,
     index: SessionIndex,
     card_url: str,
-    session_service=None,  # test seam; else built from BRIDGE_SESSION_DB_URL
+    session_service=None,  # test seam; else built from BRIDGE_AGENT_ENGINE_ID / BRIDGE_SESSION_DB_URL
     httpx_client=None,  # test seam: in-process mock to the Bridge
     process: str = "address-proof",
     max_rounds: int | None = None,
     max_resumes: int | None = None,
+    remote_engine=None,  # optional Agent Engine ReasoningEngine handle
 ):
     """Wake a parked leg on a "task X changed" doorbell (restore, then run_async).
 
     Look up the ``SessionRef``, restore the durable session, find the pending
     ``LongRunningFunctionTool`` call, and feed an id-matched ``FunctionResponse``
-    to a fresh resumable ``Runner`` (stock restore via ``_resume_parked``).
+    to a fresh resumable ``Runner`` (or ``remote_engine`` when hosted on Vertex AI
+    Agent Engine) via ``_resume_parked``.
 
     Idempotent (§2d): an unknown task id (not in the index), a missing session, or
     no pending call (already terminal / already woken) → no-op returning ``None``.
@@ -182,6 +184,7 @@ async def wake_task(
         httpx_client=httpx_client,
         process=process,
         max_resumes=max_resumes,
+        remote_engine=remote_engine,
         **kwargs,
     )
 

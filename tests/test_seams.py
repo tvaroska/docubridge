@@ -101,19 +101,17 @@ def test_local_adapters_instantiate_and_are_typed():
         assert hasattr(instance, "seam")
 
 
-def test_gcp_unimplemented_seams_raise_until_their_p7_task():
-    """The seams whose GCP adapter is deferred still raise NotImplementedError.
+def test_all_gcp_adapters_instantiate_and_are_typed():
+    """All nine seams have registered GCP adapters (`GcpMemoryBank` landed with Option A
+    Vertex AI Agent Engine migration)."""
+    from bridge.seams import GCP_ADAPTERS
+    from bridge.seams.gcp import GcpMemoryBank
 
-    P7-2 lands the three shared-store seams (sessions/task_store/exchange_store),
-    P7-3 lands skill_registry, P7-4 lands scheduler, P7-5 lands a2a_client, and P7-6
-    lands the Gemini extraction engine; only ``memory_bank`` (deferred, empty by
-    design) still raises.
-    """
-    for seam in (Seam.memory_bank,):
-        with pytest.raises(
-            NotImplementedError, match=f"gcp adapter for {seam.value} lands at P7"
-        ):
-            get_adapter(seam, SeamMode.gcp)
+    assert len(GCP_ADAPTERS) == 9
+    for seam in Seam:
+        instance = get_adapter(seam, SeamMode.gcp)
+        assert instance.seam is seam
+    assert isinstance(get_adapter(Seam.memory_bank, SeamMode.gcp), GcpMemoryBank)
 
 
 def test_gcp_shared_store_adapters_dispatch():

@@ -72,3 +72,18 @@ resource "google_compute_firewall" "allow_internal" {
   source_ranges      = [var.internal_subnet_cidr]
   destination_ranges = [var.internal_subnet_cidr]
 }
+
+# Private Service Connect (PSC) network attachment for Vertex AI Agent Engine
+# (`aiplatform.googleapis.com` ReasoningEngine) private VPC egress into the internal
+# (trusted) subnet, allowing Agent Engine workloads to reach private-IP Cloud SQL /
+# internal services without public IPs. Gated on enable_agent_engine_psc so the
+# default plan stays unchanged.
+resource "google_compute_network_attachment" "agent_engine_psc" {
+  count = var.enable_agent_engine_psc ? 1 : 0
+
+  project               = var.project_id
+  name                  = "${var.network_name}-agent-engine-psc"
+  region                = var.region
+  connection_preference = "ACCEPT_AUTOMATIC"
+  subnetworks           = [google_compute_subnetwork.internal.self_link]
+}

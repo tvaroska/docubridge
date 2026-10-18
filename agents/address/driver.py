@@ -158,14 +158,32 @@ def _pending_long_running_call(session):
     return None
 
 
-async def _run_once(runner, *, user_id, session_id, new_message):
-    """Run one turn on ``runner`` and return the last ``event.output`` (raw dict|None).
+async def _run_once(
+    runner, *, user_id, session_id, new_message, remote_engine=None
+):
+    """Run one turn on ``runner`` (or ``remote_engine`` when deployed to Vertex AI
+    Agent Engine) and return the last ``event.output`` (raw dict|None).
 
     Shared by the seed turn and every resume turn on the durable path: iterate
-    ``run_async`` to exhaustion (a parked turn produces no ``event.output`` and the
-    invocation ends — zero compute), capturing the most recent terminal output.
+    ``run_async`` (or ``remote_engine.async_stream_query``) to exhaustion (a parked
+    turn produces no ``event.output`` and the invocation ends — zero compute),
+    capturing the most recent terminal output.
     """
     final_output = None
+    if remote_engine is not None:
+        payload = new_message.model_dump(mode="json", exclude_none=True)
+        async for event in remote_engine.async_stream_query(
+            user_id=user_id, session_id=session_id, message=payload
+        ):
+            out = (
+                event.get("output")
+                if isinstance(event, dict)
+                else getattr(event, "output", None)
+            )
+            if out is not None:
+                final_output = out
+        return final_output
+
     async for event in runner.run_async(
         user_id=user_id, session_id=session_id, new_message=new_message
     ):
@@ -188,6 +206,7 @@ async def _resume_parked(
     artifact_service=None,
     req: CollectRequest | None = None,
     documents: list[DocRef] | None = None,
+    remote_engine=None,
 ) -> ExchangeTurn | None:
     """Drive an already-parked durable session to terminal (shared restore path).
 
@@ -229,12 +248,13 @@ async def _resume_parked(
         call = _pending_long_running_call(session) if session is not None else None
         if call is None:
             break  # neither parked nor (any longer) resumable → done
-        # DUR-4: id-matched FunctionResponse on a fresh Runner (same DB).
+        # DUR-4: id-matched FunctionResponse on a fresh Runner (same DB) or remote engine.
         final_output = await _run_once(
-            _new_runner(),
+            _new_runner() if remote_engine is None else None,
             user_id=user_id,
             session_id=session_id,
             new_message=_resume_content(call.id, call.name, req, documents),
+            remote_engine=remote_engine,
         )
         if final_output is not None:
             break  # terminal turn surfaced → done

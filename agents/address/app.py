@@ -48,15 +48,70 @@ def require_async_driver(dsn: str) -> str:
     return dsn
 
 
-def build_durable_session_service(db_url: str | None = None):
+def _parse_agent_engine_resource(
+    raw: str | None,
+    *,
+    project: str | None = None,
+    location: str | None = None,
+) -> tuple[str | None, str | None, str | None]:
+    """Parse an Agent Engine ID or full resource name (duplicated from
+    ``bridge.seams.gcp`` so ``agents/`` never imports ``bridge/``)."""
+    proj = (project or os.environ.get("GOOGLE_CLOUD_PROJECT", "")).strip() or None
+    loc = (location or os.environ.get("GOOGLE_CLOUD_LOCATION", "")).strip() or None
+    val = (
+        raw if raw is not None else os.environ.get("BRIDGE_AGENT_ENGINE_ID", "")
+    ).strip()
+    if not val:
+        return proj, loc, None
+    parts = val.strip("/").split("/")
+    if (
+        len(parts) == 6
+        and parts[0] == "projects"
+        and parts[2] == "locations"
+        and parts[4] == "reasoningEngines"
+    ):
+        return parts[1] or proj, parts[3] or loc, parts[5] or None
+    return proj, loc, val
+
+
+def build_durable_session_service(
+    db_url: str | None = None,
+    *,
+    agent_engine_id: str | None = None,
+    project: str | None = None,
+    location: str | None = None,
+    vertex_factory=None,
+):
     """Build the Address consumer's session service.
 
-    Durable ``DatabaseSessionService`` over an async sqlite DSN when one is
-    configured (``db_url`` arg or ``BRIDGE_SESSION_DB_URL`` env), else an in-memory
-    service (keeps the default driver path file-free). Mirrors the sessions seam's
-    local adapter (§1.4).
+    Precedence:
+    1. Explicit ``db_url`` argument → ``DatabaseSessionService(db_url=db_url)``.
+    2. ``agent_engine_id`` argument or ``BRIDGE_AGENT_ENGINE_ID`` env →
+       ``VertexAiSessionService(project=..., location=..., agent_engine_id=...)``.
+    3. ``BRIDGE_SESSION_DB_URL`` or ``DATABASE_URL`` env →
+       ``DatabaseSessionService(db_url=dsn)``.
+    4. Else ``InMemorySessionService()`` (keeps the default local driver file-free).
     """
-    dsn = db_url or os.environ.get("BRIDGE_SESSION_DB_URL", "").strip()
+    if db_url:
+        require_async_driver(db_url)
+        from google.adk.sessions import DatabaseSessionService
+
+        return DatabaseSessionService(db_url=db_url)
+
+    proj, loc, eid = _parse_agent_engine_resource(
+        agent_engine_id, project=project, location=location
+    )
+    if eid:
+        if vertex_factory is not None:
+            return vertex_factory(project=proj, location=loc, agent_engine_id=eid)
+        from google.adk.sessions import VertexAiSessionService
+
+        return VertexAiSessionService(project=proj, location=loc, agent_engine_id=eid)
+
+    dsn = (
+        os.environ.get("BRIDGE_SESSION_DB_URL", "").strip()
+        or os.environ.get("DATABASE_URL", "").strip()
+    )
     if not dsn:
         from google.adk.sessions import InMemorySessionService
 

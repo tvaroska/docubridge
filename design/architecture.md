@@ -110,4 +110,4 @@ The eval corpus is the enforced source of truth for field names + expected dispo
 Remaining genuinely-open items live in [open-questions](../spec/open-questions.md).
 
 ## Related
-- [the Bridge](bridge.md) · [running on ADK](adk.md) · [seams](seams.md) · [demos](../spec/demos/demo-suite.md) · [CUJ catalog](../spec/cujs.md)
+- [the Bridge](bridge.md) · [running on ADK](adk.md) · [seams](seams.md) · [Agent Gym & Programmable Trust](agent-gym.md) · [demos](../spec/demos/demo-suite.md) · [CUJ catalog](../spec/cujs.md)

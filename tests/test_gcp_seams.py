@@ -14,12 +14,17 @@ import pytest
 
 from bridge.seams import Seam, SeamMode, get_adapter
 from bridge.seams.gcp import (
+    BRIDGE_AGENT_ENGINE_ID_ENV,
+    BRIDGE_GCP_LOCATION_ENV,
+    BRIDGE_GCP_PROJECT_ENV,
     DATABASE_URL_ENV,
     GcpExchangeStore,
+    GcpMemoryBank,
     GcpSessions,
     GcpTaskStore,
     _resolve_dsn,
     _TerminalRetryTaskStore,
+    parse_agent_engine_resource,
     require_async_pg_driver,
 )
 
@@ -213,3 +218,118 @@ def test_importing_gcp_pkg_does_not_import_asyncpg():
     # the invariant is simply that doing so did not import asyncpg.
     assert "bridge.seams.gcp" in sys.modules
     assert "asyncpg" not in sys.modules
+
+
+# --- Vertex AI Agent Engine (Option A: Sessions + Memory Bank) ------------
+
+
+def test_parse_agent_engine_resource_short_id_and_full_name(monkeypatch):
+    monkeypatch.setenv(BRIDGE_GCP_PROJECT_ENV, "env-proj")
+    monkeypatch.setenv(BRIDGE_GCP_LOCATION_ENV, "us-central1")
+    monkeypatch.delenv(BRIDGE_AGENT_ENGINE_ID_ENV, raising=False)
+
+    with pytest.raises(RuntimeError, match=BRIDGE_AGENT_ENGINE_ID_ENV):
+        parse_agent_engine_resource(None)
+    assert parse_agent_engine_resource("12345") == ("env-proj", "us-central1", "12345")
+    assert parse_agent_engine_resource(
+        "projects/res-proj/locations/europe-west1/reasoningEngines/98765"
+    ) == ("res-proj", "europe-west1", "98765")
+
+
+def test_gcp_sessions_uses_vertex_agent_engine_when_configured(monkeypatch):
+    """When BRIDGE_AGENT_ENGINE_ID is set and db_url is None, GcpSessions builds a
+    VertexAiSessionService (exercised via injectable vertex_factory so vertexai extra
+    need not be installed)."""
+    monkeypatch.setenv(BRIDGE_GCP_PROJECT_ENV, "doc-proj")
+    monkeypatch.setenv(BRIDGE_GCP_LOCATION_ENV, "us-central1")
+    monkeypatch.setenv(BRIDGE_AGENT_ENGINE_ID_ENV, "ae-42")
+    monkeypatch.delenv(DATABASE_URL_ENV, raising=False)
+
+    captured: dict[str, str | None] = {}
+
+    def _fake_vertex(*, project, location, agent_engine_id):
+        captured.update(
+            project=project, location=location, agent_engine_id=agent_engine_id
+        )
+        return "vertex-session-svc"
+
+    svc = GcpSessions().build_session_service(vertex_factory=_fake_vertex)
+    assert svc == "vertex-session-svc"
+    assert captured == {
+        "project": "doc-proj",
+        "location": "us-central1",
+        "agent_engine_id": "ae-42",
+    }
+
+
+def test_gcp_memory_bank_requires_agent_engine_id_and_builds_service(monkeypatch):
+    """GcpMemoryBank refuses loudly when BRIDGE_AGENT_ENGINE_ID is unset and builds
+    VertexAiMemoryBankService when configured."""
+    monkeypatch.delenv(BRIDGE_AGENT_ENGINE_ID_ENV, raising=False)
+    adapter = get_adapter(Seam.memory_bank, SeamMode.gcp)
+    assert isinstance(adapter, GcpMemoryBank)
+
+    with pytest.raises(RuntimeError, match="BRIDGE_AGENT_ENGINE_ID"):
+        adapter.build_memory_service()
+
+    captured: dict[str, str | None] = {}
+
+    def _fake_memory(*, project, location, agent_engine_id):
+        captured.update(
+            project=project, location=location, agent_engine_id=agent_engine_id
+        )
+        return "vertex-memory-svc"
+
+    svc = adapter.build_memory_service(
+        agent_engine_id="projects/p1/locations/us-east4/reasoningEngines/eng-9",
+        vertex_factory=_fake_memory,
+    )
+    assert svc == "vertex-memory-svc"
+    assert captured == {
+        "project": "p1",
+        "location": "us-east4",
+        "agent_engine_id": "eng-9",
+    }
+
+
+def test_local_memory_bank_in_memory_and_sqlite(monkeypatch, tmp_path):
+    """LocalMemoryBank builds InMemoryMemoryService by default and SqliteMemoryService
+    when BRIDGE_MEMORY_DB_PATH or db_path is provided."""
+    from google.adk.memory import InMemoryMemoryService, SqliteMemoryService
+
+    monkeypatch.delenv("BRIDGE_MEMORY_DB_PATH", raising=False)
+    local_mb = get_adapter(Seam.memory_bank, SeamMode.local)
+    assert isinstance(local_mb.build_memory_service(), InMemoryMemoryService)
+
+    db_file = str(tmp_path / "memory.sqlite")
+    assert isinstance(
+        local_mb.build_memory_service(db_path=db_file), SqliteMemoryService
+    )
+
+
+def test_address_durable_session_service_supports_agent_engine(monkeypatch):
+    """agents.address.app.build_durable_session_service routes to VertexAiSessionService
+    when BRIDGE_AGENT_ENGINE_ID is configured."""
+    from agents.address.app import build_durable_session_service
+
+    monkeypatch.setenv(
+        BRIDGE_AGENT_ENGINE_ID_ENV,
+        "projects/addr-proj/locations/us-central1/reasoningEngines/addr-ae",
+    )
+    captured: dict[str, str | None] = {}
+
+    def _fake_vertex(*, project, location, agent_engine_id):
+        captured.update(
+            project=project, location=location, agent_engine_id=agent_engine_id
+        )
+        return "addr-vertex-session"
+
+    assert (
+        build_durable_session_service(vertex_factory=_fake_vertex)
+        == "addr-vertex-session"
+    )
+    assert captured == {
+        "project": "addr-proj",
+        "location": "us-central1",
+        "agent_engine_id": "addr-ae",
+    }

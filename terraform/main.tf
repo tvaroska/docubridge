@@ -64,9 +64,10 @@ provider "google-beta" {
 module "network" {
   source = "./modules/network"
 
-  project_id = var.project_id
-  region     = var.region
-  labels     = var.labels
+  project_id              = var.project_id
+  region                  = var.region
+  enable_agent_engine_psc = var.enable_agent_engine_psc
+  labels                  = var.labels
 }
 
 module "iam" {
@@ -223,6 +224,8 @@ module "runtime" {
   # The client's Document AI processor for the docai engine (BRIDGE_DOCAI_PROCESSOR
   # plain env); default "" = no env.
   docai_processor     = var.docai_processor
+  agent_engine_id     = var.agent_engine_id
+  agent_engine_remote = var.agent_engine_remote
   deletion_protection = var.deletion_protection
   labels              = var.labels
 }

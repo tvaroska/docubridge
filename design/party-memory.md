@@ -12,7 +12,11 @@ tags: [bridge]
 
 **Intent.** The internal agent already knows its counterparties, so it supplies a stable [counterparty reference](aggregate-model.md) (falling back to the exchange context). Party memory is the cross-exchange record keyed by that reference; its intended shape is an append-only log of observations (corrections, disposition outcomes, channel/format/latency) with a derived per-party profile.
 
-**The interface as built.** `Seam.memory_bank` / `MemoryBankSeam` is a named [seam](seams.md) that **declares no methods**. The local adapter is empty, there is no GCP adapter (the registry raises), and there is no parity test. So no event log, profile rollup or Memory Bank exists, and nothing in the Bridge reads or writes party memory. Outbound uses a fixed channel (`Nudge.channel = "email"`), and chase copy is the Bridge default.
+**The interface as built.** `Seam.memory_bank` / `MemoryBankSeam` declares `build_memory_service(db_path: str | None = None) -> BaseMemoryService` and is wired into `LlmLeg` (`bridge/edge/llm_leg.py`):
+- **Local (`LocalMemoryBank`)**: returns ADK `InMemoryMemoryService()` by default, or `SqliteMemoryService(db_path=...)` when `db_path` or `BRIDGE_MEMORY_DB_PATH` is set.
+- **GCP (`GcpMemoryBank`)**: returns ADK `VertexAiMemoryBankService(project=..., location=..., agent_engine_id=...)` backed by Vertex AI Agent Engine (`BRIDGE_AGENT_ENGINE_ID`), refusing loudly if `BRIDGE_AGENT_ENGINE_ID` is unset.
+
+Higher-level domain consumers (disposition pre-arming, extraction hints, outbound channel defaults) remain advisory-only and are not wired into the deterministic disposition gate (`Outbound` still uses `Nudge.channel = "email"` and default chase copy).
 
 Three intended consumers:
 

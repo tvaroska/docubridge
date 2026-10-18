@@ -20,6 +20,11 @@ output "internal_subnet_id" {
   value       = module.network.internal_subnet_id
 }
 
+output "agent_engine_network_attachment_id" {
+  description = "PSC network attachment id for Vertex AI Agent Engine private VPC egress (\"\" when enable_agent_engine_psc = false)."
+  value       = module.network.agent_engine_network_attachment_id
+}
+
 output "bridge_runtime_email" {
   description = "The bridge-runtime workload SA email."
   value       = module.iam.bridge_runtime_email

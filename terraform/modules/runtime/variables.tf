@@ -283,6 +283,18 @@ variable "docai_processor" {
   default     = ""
 }
 
+variable "agent_engine_id" {
+  type        = string
+  description = "Vertex AI Agent Engine ID or full reasoningEngines/... resource name, injected as the BRIDGE_AGENT_ENGINE_ID plain env (selects VertexAiSessionService + VertexAiMemoryBankService). Empty = no env (Cloud SQL default)."
+  default     = ""
+}
+
+variable "agent_engine_remote" {
+  type        = string
+  description = "Set to \"1\" to stream LlmLeg turns through the deployed Vertex AI Agent Engine ReasoningEngine (BRIDGE_AGENT_ENGINE_REMOTE plain env). Empty = no env."
+  default     = ""
+}
+
 variable "deletion_protection" {
   type        = bool
   description = "Guard the service against deletion (true in prod; dev/tests may disable)."

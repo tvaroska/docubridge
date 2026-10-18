@@ -33,6 +33,7 @@ from ..protocols import (
     EmailIngressSeam,
     ExchangeStoreSeam,
     ExtractionSeam,
+    MemoryBankSeam,
     SchedulerSeam,
     SeamABC,
     SessionsSeam,
@@ -56,10 +57,67 @@ SKILLS_BUCKET_ENV = "BRIDGE_SKILLS_BUCKET"
 # (DECISIONS.md 2026-08-24).
 DATABASE_URL_ENV = "DATABASE_URL"
 
+# Vertex AI Agent Engine resource ID or full resource name
+# (projects/<project>/locations/<location>/reasoningEngines/<id>) for managed
+# Agent Sessions (VertexAiSessionService), Memory Bank (VertexAiMemoryBankService),
+# and remote ReasoningEngine execution.
+BRIDGE_AGENT_ENGINE_ID_ENV = "BRIDGE_AGENT_ENGINE_ID"
+BRIDGE_GCP_PROJECT_ENV = "GOOGLE_CLOUD_PROJECT"
+BRIDGE_GCP_LOCATION_ENV = "GOOGLE_CLOUD_LOCATION"
+
 # The one async Postgres driver we target (asyncpg — the gcp extra). A bare
 # sync ``postgresql://`` (psycopg2) slips past the local ``require_async_driver``
 # (which only rejects sync sqlite), so the gcp adapter enforces async Postgres.
 _ASYNC_PG_PREFIX = "postgresql+asyncpg://"
+
+
+def parse_agent_engine_resource(
+    raw: str | None = None,
+    *,
+    project: str | None = None,
+    location: str | None = None,
+) -> tuple[str | None, str | None, str]:
+    """Resolve ``(project, location, agent_engine_id)`` from an Agent Engine ID or full resource path.
+
+    Accepts either:
+    - a full resource path ``projects/<project>/locations/<location>/reasoningEngines/<id>``
+      (explicit ``project``/``location`` args still win if supplied), or
+    - a short engine ID ``<id>``, resolving ``project`` and ``location`` from args or
+      ``GOOGLE_CLOUD_PROJECT`` / ``GOOGLE_CLOUD_LOCATION`` env vars.
+
+    Raises ``RuntimeError`` when no Agent Engine ID is provided (neither arg nor
+    ``BRIDGE_AGENT_ENGINE_ID`` env), and ``ValueError`` if a resource path is malformed.
+    """
+    import re
+
+    val = (raw or os.environ.get(BRIDGE_AGENT_ENGINE_ID_ENV, "")).strip()
+    if not val:
+        raise RuntimeError(
+            f"GCP Agent Engine seam requires an Agent Engine ID "
+            f"({BRIDGE_AGENT_ENGINE_ID_ENV} env or agent_engine_id=); "
+            "refusing an in-memory fallback (the session-affinity trap)."
+        )
+    arg_proj = (project or "").strip() or None
+    arg_loc = (location or "").strip() or None
+    env_proj = os.environ.get(BRIDGE_GCP_PROJECT_ENV, "").strip() or None
+    env_loc = os.environ.get(BRIDGE_GCP_LOCATION_ENV, "").strip() or None
+    if "/" in val:
+        m = re.fullmatch(
+            r"projects/([^/]+)/locations/([^/]+)/reasoningEngines/([^/]+)", val
+        )
+        if not m:
+            raise ValueError(
+                f"invalid Agent Engine resource name {val!r}: expected "
+                "'projects/<project>/locations/<location>/reasoningEngines/<id>' or short '<id>'"
+            )
+        p_from_path, l_from_path, engine_id = m.groups()
+        resolved_proj = arg_proj or p_from_path or env_proj
+        resolved_loc = arg_loc or l_from_path or env_loc
+    else:
+        engine_id = val
+        resolved_proj = arg_proj or env_proj
+        resolved_loc = arg_loc or env_loc
+    return resolved_proj, resolved_loc, engine_id
 
 
 def require_async_pg_driver(dsn: str) -> str:
@@ -96,17 +154,107 @@ def _resolve_dsn(db_url: str | None = None, env: str = DATABASE_URL_ENV) -> str:
 
 
 class GcpSessions(SessionsSeam):
-    """GCP sessions adapter (P7-2) — Cloud SQL ``DatabaseSessionService``.
+    """GCP sessions adapter (P7-2 / Agent Engine Option A).
 
-    The same ADK ``DatabaseSessionService`` the local adapter builds, over the
-    Cloud SQL Postgres DSN. Agent-Engine-backed sessions stay a documented later
-    swap behind this same seam.
+    Supports two managed backends behind the same ``SessionsSeam``:
+    1. **Vertex AI Agent Engine** (``VertexAiSessionService``) when ``agent_engine_id``
+       or ``BRIDGE_AGENT_ENGINE_ID`` env is set (and no explicit ``db_url`` override
+       is passed).
+    2. **Cloud SQL Postgres** (``DatabaseSessionService``) over the ``DATABASE_URL``
+       secret env or ``db_url`` arg.
+
+    Refuses an in-memory fallback when neither is configured (the session-affinity trap).
     """
 
-    def build_session_service(self, db_url: str | None = None):
+    def __init__(
+        self,
+        *,
+        agent_engine_id: str | None = None,
+        project: str | None = None,
+        location: str | None = None,
+    ) -> None:
+        self._agent_engine_id = agent_engine_id
+        self._project = project
+        self._location = location
+
+    def build_session_service(
+        self,
+        db_url: str | None = None,
+        *,
+        agent_engine_id: str | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        vertex_factory=None,
+    ):
+        raw_engine_id = (
+            agent_engine_id
+            or self._agent_engine_id
+            or os.environ.get(BRIDGE_AGENT_ENGINE_ID_ENV, "")
+        ).strip()
+        if raw_engine_id and db_url is None:
+            proj, loc, eid = parse_agent_engine_resource(
+                raw_engine_id,
+                project=project or self._project,
+                location=location or self._location,
+            )
+            if vertex_factory is not None:
+                return vertex_factory(
+                    project=proj, location=loc, agent_engine_id=eid
+                )
+            from google.adk.sessions import VertexAiSessionService
+
+            return VertexAiSessionService(
+                project=proj, location=loc, agent_engine_id=eid
+            )
+
         from google.adk.sessions import DatabaseSessionService
 
         return DatabaseSessionService(db_url=_resolve_dsn(db_url))
+
+
+class GcpMemoryBank(MemoryBankSeam):
+    """GCP memory_bank adapter — Vertex AI Agent Engine ``VertexAiMemoryBankService``.
+
+    Resolves ``(project, location, agent_engine_id)`` from args or
+    ``BRIDGE_AGENT_ENGINE_ID`` / ``GOOGLE_CLOUD_PROJECT`` / ``GOOGLE_CLOUD_LOCATION``
+    envs. Refuses a silent in-memory fallback when ``BRIDGE_AGENT_ENGINE_ID`` is unset.
+    ``vertex_factory`` is injectable for credential-free unit tests without
+    ``google-cloud-aiplatform`` installed.
+    """
+
+    def __init__(
+        self,
+        *,
+        agent_engine_id: str | None = None,
+        project: str | None = None,
+        location: str | None = None,
+    ) -> None:
+        self._agent_engine_id = agent_engine_id
+        self._project = project
+        self._location = location
+
+    def build_memory_service(
+        self,
+        db_path: str | None = None,
+        *,
+        agent_engine_id: str | None = None,
+        project: str | None = None,
+        location: str | None = None,
+        vertex_factory=None,
+    ):
+        del db_path  # local-only SQLite path parameter; unused on Vertex Memory Bank
+        proj, loc, eid = parse_agent_engine_resource(
+            agent_engine_id or self._agent_engine_id,
+            project=project or self._project,
+            location=location or self._location,
+        )
+        if vertex_factory is not None:
+            return vertex_factory(project=proj, location=loc, agent_engine_id=eid)
+        from google.adk.memory import VertexAiMemoryBankService
+
+        return VertexAiMemoryBankService(
+            project=proj, location=loc, agent_engine_id=eid
+        )
 
 
 class GcpTaskStore(TaskStoreSeam):
@@ -1102,14 +1250,20 @@ class GcpEmailIngress(EmailIngressSeam):
 
 
 GCP_ADAPTERS: dict[Seam, type[SeamABC]] = {
-    # The shared-store seams (P7-2), the GCS skill_registry (P7-3), the Cloud Tasks
-    # scheduler (P7-4), the Agent-Identity a2a_client (P7-5), the Gemini extraction
-    # engine (P7-6) and the email_ingress landing bucket (S0-arch-13). Only
-    # memory_bank (deferred, empty by design) still raises in the registry.
+    # All nine seams are wired to their GCP adapters:
+    # - sessions: VertexAiSessionService (BRIDGE_AGENT_ENGINE_ID) or Cloud SQL (DATABASE_URL)
+    # - memory_bank: VertexAiMemoryBankService (BRIDGE_AGENT_ENGINE_ID)
+    # - task_store / exchange_store: Cloud SQL (P7-2 / S0-arch-14)
+    # - skill_registry: GCS (P7-3)
+    # - scheduler: Cloud Tasks (P7-4)
+    # - a2a_client: Agent-Identity transport (P7-5)
+    # - extraction: Gemini / Document AI pre-pass (P7-6)
+    # - email_ingress: GCS landing bucket (S0-arch-13)
     Seam.sessions: GcpSessions,
     Seam.task_store: GcpTaskStore,
     Seam.exchange_store: GcpExchangeStore,
     Seam.skill_registry: GcpSkillRegistry,
+    Seam.memory_bank: GcpMemoryBank,
     Seam.scheduler: GcpScheduler,
     Seam.a2a_client: GcpA2AClient,
     Seam.extraction: GcpExtraction,

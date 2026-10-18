@@ -27,6 +27,9 @@ EMAIL_DIR_ENV = "BRIDGE_EMAIL_DIR"
 # The DSN of the local exchange_store adapter (S0-arch-14). Unset → in-memory records.
 EXCHANGE_DB_URL_ENV = "BRIDGE_EXCHANGE_DB_URL"
 
+# The SQLite path of the local memory_bank adapter. Unset → in-memory service.
+MEMORY_DB_PATH_ENV = "BRIDGE_MEMORY_DB_PATH"
+
 # Default sqlite DSN prefix — the async driver is mandatory (see require_async_driver).
 # An empty path after the driver is an in-memory async sqlite database.
 DEFAULT_SQLITE_DSN = "sqlite+aiosqlite:///"
@@ -227,10 +230,22 @@ class LocalSkillRegistry(SkillRegistrySeam):
 
 
 class LocalMemoryBank(MemoryBankSeam):
-    """Local memory_bank adapter — **deferred, empty by design** (cross-collection
-    memory is out of Core+Address scope this cycle). Kept for the uniform seam
-    invariant / P7 GCP swap; see ``MemoryBankSeam``."""
-    pass
+    """Local memory_bank adapter — ADK ``SqliteMemoryService`` or ``InMemoryMemoryService``.
+
+    Builds a durable ``SqliteMemoryService`` when a path is configured (``db_path`` arg
+    or ``BRIDGE_MEMORY_DB_PATH`` env), else ``InMemoryMemoryService`` (mirrors
+    ``LocalSessions``).
+    """
+
+    def build_memory_service(self, db_path: str | None = None):
+        path = (db_path or os.environ.get(MEMORY_DB_PATH_ENV, "")).strip()
+        if not path:
+            from google.adk.memory import InMemoryMemoryService
+
+            return InMemoryMemoryService()
+        from google.adk.memory import SqliteMemoryService
+
+        return SqliteMemoryService(db_path=path)
 
 
 class LocalScheduler(SchedulerSeam):

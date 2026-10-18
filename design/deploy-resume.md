@@ -31,13 +31,14 @@ The resume path maps onto the GCP substrate ([gcp-substrate](gcp-substrate.md)) 
 
 | Seam | Local (dev) | GCP (deploy) | Role in resume |
 |---|---|---|---|
-| **Compute / runtime** | local process | **Cloud Run v2** (Terraform `runtime` module) | hosts the stock `Runner`; scale-to-zero = **zero cost across a weeks-long park** |
-| **Sessions** | `InMemorySessionService` → `DatabaseSessionService` (SQLite) | `DatabaseSessionService` → Cloud SQL Postgres (`GcpSessions`; asyncpg DSN from `DATABASE_URL`, in-memory refused); a managed session service would be a one-adapter swap behind this seam | **restore**: reloads state + event history by `(app, user, session_id)`; peer `task_id`/`context_id` ride `event.custom_metadata`, auto-repopulated |
+| **Compute / runtime** | local process | **Cloud Run v2** edge + **Vertex AI Agent Engine** (`BRIDGE_AGENT_ENGINE_ID`, `BRIDGE_AGENT_ENGINE_REMOTE=1`) | hosts the stock `Runner` (or remote `ReasoningEngine`); scale-to-zero = **zero cost across a weeks-long park** |
+| **Sessions** | `InMemorySessionService` → `DatabaseSessionService` (SQLite) | `VertexAiSessionService` on Vertex AI Agent Engine when `BRIDGE_AGENT_ENGINE_ID` is set, or `DatabaseSessionService` → Cloud SQL Postgres (`GcpSessions`; asyncpg DSN from `DATABASE_URL`, in-memory refused) | **restore**: reloads state + event history by `(app, user, session_id)`; peer `task_id`/`context_id` ride `event.custom_metadata`, auto-repopulated |
+| **Memory bank** | `InMemoryMemoryService` → `SqliteMemoryService` (`BRIDGE_MEMORY_DB_PATH`) | `VertexAiMemoryBankService` on Vertex AI Agent Engine (`GcpMemoryBank`, `BRIDGE_AGENT_ENGINE_ID`) | durable cross-session ADK `BaseMemoryService` wired into `LlmLeg` |
 | **Task store** | `InMemoryTaskStore` → `DatabaseTaskStore` (SQLite) | Cloud SQL Postgres (`DatabaseTaskStore`); a managed task store would be a one-adapter swap behind this seam | **restore**: task + artifacts + `context_id` survive restart |
 | **Resumability** | `ResumabilityConfig(is_resumable=True)` on the `App` | same (`@experimental`) | **restore**: the switch that makes a park survive a restart |
 | **Scheduler** | virtual clock | **Cloud Tasks** (`bridge-followups` queue) | the clock alarm that can *wake* a leg (SLA/escalation), alongside the party-turn webhook |
 
-> **Naming reconciliation.** The ADK agent runs as a **Cloud Run v2 container** and consumes Cloud SQL-backed sessions via the **Sessions** seam — "Agent Runtime" is the platform pillar, not a separate compute host.
+> **Naming reconciliation (Option A).** In Option A, Vertex AI Agent Engine (`aiplatform.googleapis.com` `ReasoningEngine`) provides managed `VertexAiSessionService`, `VertexAiMemoryBankService`, and optional remote `App` execution (`async_stream_query`), while **Cloud Run v2** hosts the custom HTTP/A2A/webhook/REST edge (`wake.py`, A2UI portal, `/artifacts/{context_id}/{name}`, email webhook, RFP board). Moving the A2A JSON-RPC server itself onto Agent Engine's native A2A runtime (**Option B**) is tracked in the backlog (`TODO.md` / `DECISIONS.md`) as a future decision.
 
 ## Restore — works on the target as a config swap
 

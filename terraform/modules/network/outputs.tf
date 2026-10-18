@@ -37,3 +37,8 @@ output "internal_subnet_cidr" {
   description = "The internal subnet CIDR."
   value       = google_compute_subnetwork.internal.ip_cidr_range
 }
+
+output "agent_engine_network_attachment_id" {
+  description = "The PSC network attachment id for Vertex AI Agent Engine private VPC egress (\"\" when enable_agent_engine_psc = false)."
+  value       = var.enable_agent_engine_psc ? google_compute_network_attachment.agent_engine_psc[0].id : ""
+}

@@ -66,6 +66,8 @@ locals {
     BRIDGE_SKILLS_BUCKET        = var.skills_bucket
     BRIDGE_EXTRACTION_ENGINE    = var.extraction_engine
     BRIDGE_DOCAI_PROCESSOR      = var.docai_processor
+    BRIDGE_AGENT_ENGINE_ID      = var.agent_engine_id
+    BRIDGE_AGENT_ENGINE_REMOTE  = var.agent_engine_remote
     BRIDGE_PUBLIC_URL           = local.effective_public_url
     BRIDGE_EMAIL_BUCKET         = var.email_bucket
     BRIDGE_EMAIL_MAILBOX        = var.email_mailbox
@@ -203,6 +205,25 @@ resource "google_cloud_run_v2_service" "bridge" {
         content {
           name  = "BRIDGE_DOCAI_PROCESSOR"
           value = var.docai_processor
+        }
+      }
+
+      # Vertex AI Agent Engine resource ID / name (Option A: VertexAiSessionService +
+      # VertexAiMemoryBankService + optional remote LlmLeg execution). PLAIN envs —
+      # resource identifiers/flags are not secrets. Empty = no env (Cloud SQL default).
+      dynamic "env" {
+        for_each = var.agent_engine_id != "" ? [1] : []
+        content {
+          name  = "BRIDGE_AGENT_ENGINE_ID"
+          value = var.agent_engine_id
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.agent_engine_remote != "" ? [1] : []
+        content {
+          name  = "BRIDGE_AGENT_ENGINE_REMOTE"
+          value = var.agent_engine_remote
         }
       }
 

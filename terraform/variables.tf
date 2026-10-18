@@ -284,3 +284,22 @@ variable "lock_audit_vault_retention" {
   description = "Permanently lock the Audit Vault bucket retention policy (true in prod; false in dev/staging)."
   default     = false
 }
+
+# Vertex AI Agent Engine (Option A: Managed Sessions, Memory Bank, and ADK App runtime).
+variable "enable_agent_engine_psc" {
+  type        = bool
+  description = "Provision a Private Service Connect network attachment on the internal subnet for Vertex AI Agent Engine private VPC egress."
+  default     = false
+}
+
+variable "agent_engine_id" {
+  type        = string
+  description = "Vertex AI Agent Engine ID or full reasoningEngines/... resource name, injected as BRIDGE_AGENT_ENGINE_ID into Cloud Run services. Empty = no env (Cloud SQL default)."
+  default     = ""
+}
+
+variable "agent_engine_remote" {
+  type        = string
+  description = "Set \"1\" to stream LlmLeg turns through the deployed Vertex AI Agent Engine ReasoningEngine (BRIDGE_AGENT_ENGINE_REMOTE). Empty = no env."
+  default     = ""
+}

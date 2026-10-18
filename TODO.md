@@ -227,7 +227,17 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 ## Deferred to later cycles
 
-RFP live use-case-add (CUJ‑9) is Sprint 4; deferred: cold unsolicited inbound push (the Extract secondary edge). See [layout & scope](design/architecture.md) and [open questions](spec/open-questions.md).
+RFP live use-case-add (CUJ‑9) is Sprint 4; deferred:
+- **Cold unsolicited inbound push** (the Extract secondary edge).
+- **Future Decision — Option B: Move the A2A Server itself onto Vertex AI Agent Engine's native A2A runtime.**
+  - **Current state (Option A — built 2026-10-18):** Vertex AI Agent Engine (`aiplatform.googleapis.com` `ReasoningEngine`, configured via `BRIDGE_AGENT_ENGINE_ID` and `BRIDGE_AGENT_ENGINE_REMOTE=1`) hosts ADK `VertexAiSessionService` (`Seam.sessions`), `VertexAiMemoryBankService` (`Seam.memory_bank`), and remote `document_bridge` / `address` ADK `App` execution (`LlmLeg._stream_events` / `wake_task`), while Cloud Run v2 stays as the thin HTTP/A2A/webhook/REST edge (`CollectExecutor`, `/artifacts/{context_id}/{name}`, `/followups`, `/wake`, A2UI portal, email intake webhook, RFP board, console/ops/timewarp).
+  - **What Option B entails if chosen later:** Host `CollectExecutor` (`a2a-sdk` `AgentExecutor`) directly inside Vertex AI Agent Engine's native A2A runtime (`ReasoningEngine` A2A template) instead of the Cloud Run `A2AStarletteApplication`.
+  - **Trade-offs / prerequisites before adopting Option B:**
+    1. *Dynamic Agent Card regeneration (CUJ-8 / CUJ-9)*: `bridge/edge/server.py` currently intercepts `GET /.well-known/agent-card.json` per request (`_live_card`) so live-installed skills appear immediately without redeploying. On Agent Engine's native A2A surface, the card is registered on the `ReasoningEngine` resource, so `install_skill` would need to patch the `ReasoningEngine` resource asynchronously or an API Gateway / Cloud Run proxy would still need to front `/.well-known/agent-card.json`.
+    2. *Custom non-A2A HTTP routes*: Agent Engine only exposes `:query`, `:streamQuery`, and native A2A JSON-RPC endpoints. Custom routes (`GET /artifacts/{context_id}/{name}`, `POST /followups`, `POST /email/graph/notifications`, `POST /wake`, and the A2UI/Ops/Console REST+SSE endpoints) must either remain on a thin Cloud Run BFF/proxy or move to separate Cloud Run functions.
+    3. *Shared `DatabaseTaskStore` & `SqlExchangeStore` reachability*: Agent Engine must attach to the internal subnet via the Private Service Connect network attachment (`enable_agent_engine_psc = true` in `terraform/modules/network`) so `CollectExecutor` inside Agent Engine can reach private-IP Cloud SQL (`DATABASE_URL`).
+
+See [layout & scope](design/architecture.md) and [open questions](spec/open-questions.md).
 (Benefits — Negotiate/FX/interop + dial-out/Deliver, CUJ‑3/11/12 — was the Sprint 1
 cycle; **closed 2026-09-07**, T3-green, archived to `docs/features/benefits.md`.)
 (P7 — GCP substrate & deployed-path parity, Cycle 1's M7 "it's deployed" milestone —
