@@ -68,6 +68,9 @@ locals {
     BRIDGE_DOCAI_PROCESSOR      = var.docai_processor
     BRIDGE_AGENT_ENGINE_ID      = var.agent_engine_id
     BRIDGE_AGENT_ENGINE_REMOTE  = var.agent_engine_remote
+    GOOGLE_GENAI_USE_VERTEXAI   = var.seam_mode == "gcp" ? "TRUE" : ""
+    GOOGLE_CLOUD_PROJECT        = var.seam_mode == "gcp" ? var.project_id : ""
+    GOOGLE_CLOUD_LOCATION       = var.seam_mode == "gcp" ? var.region : ""
     BRIDGE_PUBLIC_URL           = local.effective_public_url
     BRIDGE_EMAIL_BUCKET         = var.email_bucket
     BRIDGE_EMAIL_MAILBOX        = var.email_mailbox
@@ -181,6 +184,30 @@ resource "google_cloud_run_v2_service" "bridge" {
         content {
           name  = "BRIDGE_SEAM_MODE"
           value = var.seam_mode
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.seam_mode == "gcp" ? [1] : []
+        content {
+          name  = "GOOGLE_GENAI_USE_VERTEXAI"
+          value = "TRUE"
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.seam_mode == "gcp" ? [1] : []
+        content {
+          name  = "GOOGLE_CLOUD_PROJECT"
+          value = var.project_id
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.seam_mode == "gcp" ? [1] : []
+        content {
+          name  = "GOOGLE_CLOUD_LOCATION"
+          value = var.region
         }
       }
 
