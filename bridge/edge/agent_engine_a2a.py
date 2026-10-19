@@ -116,6 +116,9 @@ def resolve_a2a_engine(a2a_engine: Any = None) -> Any | None:
     proj, loc, eid = parse_agent_engine_resource(None)
     import vertexai
 
+    if not hasattr(vertexai, "agent_engines"):
+        import vertexai.agent_engines
+
     if proj and loc:
         vertexai.init(project=proj, location=loc)
     resource_name = (
