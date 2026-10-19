@@ -35,7 +35,7 @@ Jordan Lee is asked for proof of address, submits two bills from the **same** co
 |---|---|---|
 | **Benefits** | Negotiate over a program, FX normalization, ADK↔LangGraph A2A interop, Bridge-as-client dial-out + Deliver | 3, 11, 12 |
 | **RFP** | Emergent Collect (agent-mutated requirements, N suppliers), email reply intake, live use-case-add | 9, 13, 15 |
-| **Later swaps** | Cold unsolicited inbound push (the Extract edge); Option B: moving the A2A JSON-RPC server onto Vertex AI Agent Engine's native A2A runtime (Option A — Agent Engine Sessions, Memory Bank, and ADK `App` runtime with Cloud Run HTTP/A2A edge — is built) | — |
+| **Later swaps** | Cold unsolicited inbound push (the Extract edge). Both Vertex AI Agent Engine migration steps are built: Option A (Agent Engine Sessions, Memory Bank, and ADK `App` runtime) and Option B (`BridgeA2aAgentEngine` hosting the A2A JSON-RPC server, `CollectExecutor`, and dynamic Agent Card on Agent Engine behind `BRIDGE_AGENT_ENGINE_A2A=1`) | — |
 
 The architecture is whole from day one — outbound seam, trust boundary, contracts — so these cycles add demand-driven capability, not new machinery. See [layout & scope](../design/architecture.md) and [open questions](../spec/open-questions.md).
 

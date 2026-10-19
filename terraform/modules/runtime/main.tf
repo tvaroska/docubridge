@@ -254,6 +254,14 @@ resource "google_cloud_run_v2_service" "bridge" {
         }
       }
 
+      dynamic "env" {
+        for_each = var.agent_engine_a2a != "" ? [1] : []
+        content {
+          name  = "BRIDGE_AGENT_ENGINE_A2A"
+          value = var.agent_engine_a2a
+        }
+      }
+
       # The public URL as a PLAIN env (P7-5) — not a secret. The served Agent Card
       # advertises this origin so a consumer's RemoteA2aAgent passes the adk >=2.7
       # same-origin card validation (DECISIONS.md P7-5). Sourced from the computed

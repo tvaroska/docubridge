@@ -303,3 +303,9 @@ variable "agent_engine_remote" {
   description = "Set \"1\" to stream LlmLeg turns through the deployed Vertex AI Agent Engine ReasoningEngine (BRIDGE_AGENT_ENGINE_REMOTE). Empty = no env."
   default     = ""
 }
+
+variable "agent_engine_a2a" {
+  type        = string
+  description = "Set \"1\" to delegate A2A discovery (/.well-known/agent-card.json) and JSON-RPC POST / to BridgeA2aAgentEngine on Vertex AI Agent Engine (BRIDGE_AGENT_ENGINE_A2A). Empty = no env (in-process default)."
+  default     = ""
+}

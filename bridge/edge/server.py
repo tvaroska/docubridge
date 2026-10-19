@@ -43,6 +43,11 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.routing import Mount
 
+from bridge.edge.agent_engine_a2a import (
+    BridgeA2aAgentEngine,
+    build_remote_a2a_routes,
+    resolve_a2a_engine,
+)
 from bridge.edge.artifacts import (
     ARTIFACTS_PREFIX,
     build_artifact_store,
@@ -132,6 +137,7 @@ def build_a2a_app(
     auth_backend: AuthenticationBackend | None = None,
     satisfaction: SatisfactionAssessor | str | None = None,
     rfp_board: RfpBoard | None = None,
+    a2a_engine: Any = None,
 ) -> Starlette:
     """Build the Bridge A2A Starlette app (with the ART-2 fetch endpoint).
 
@@ -205,6 +211,54 @@ def build_a2a_app(
     # behavior unchanged).
     if url == DEFAULT_URL:
         url = resolved_card_url()
+
+    # Option B (A2A server on Vertex AI Agent Engine): when ``a2a_engine`` is injected
+    # or ``BRIDGE_AGENT_ENGINE_A2A=1`` is set, delegate ``/.well-known/agent-card.json``
+    # and JSON-RPC ``POST /`` to the Agent Engine runtime while keeping ``/artifacts``
+    # mounted on the thin edge over the shared artifact store.
+    active_a2a_engine = resolve_a2a_engine(a2a_engine)
+    if active_a2a_engine is not None:
+        if (
+            isinstance(active_a2a_engine, BridgeA2aAgentEngine)
+            and artifact_store is None
+            and active_a2a_engine._injected.get("artifact_store") is not None
+        ):
+            store = active_a2a_engine.artifact_store
+        else:
+            store = artifact_store or build_artifact_store()
+            if (
+                isinstance(active_a2a_engine, BridgeA2aAgentEngine)
+                and active_a2a_engine._app is None
+                and active_a2a_engine._injected.get("artifact_store") is None
+            ):
+                active_a2a_engine._injected["artifact_store"] = store
+
+        board = rfp_board or (
+            active_a2a_engine.rfp_board
+            if isinstance(active_a2a_engine, BridgeA2aAgentEngine)
+            else rfp_board_from_env()
+        )
+        routes = [
+            *build_remote_a2a_routes(
+                active_a2a_engine, url=url, rpc_path=RPC_PATH
+            ),
+            Mount(
+                ARTIFACTS_PREFIX,
+                app=build_fetch_app(store, signer=build_fetch_signer()),
+            ),
+        ]
+        if auth_backend is None:
+            app = Starlette(routes=routes)
+        else:
+            app = Starlette(
+                routes=routes,
+                middleware=[
+                    Middleware(AuthenticationMiddleware, backend=auth_backend)
+                ],
+            )
+        app.state.rfp_board = board
+        app.state.a2a_engine = active_a2a_engine
+        return app
 
     card = agent_card or build_agent_card(url)
     # ART-2 store: GCS on deploy (BRIDGE_ARTIFACT_BUCKET) else in-memory (P7-3);
@@ -292,6 +346,7 @@ def build_a2a_app(
             middleware=[Middleware(AuthenticationMiddleware, backend=auth_backend)],
         )
     app.state.rfp_board = board
+    app.state.a2a_engine = None
     return app
 
 

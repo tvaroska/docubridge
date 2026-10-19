@@ -168,3 +168,41 @@ run "docai_envs_when_deployed" {
     error_message = "docai_processor must inject BRIDGE_DOCAI_PROCESSOR as a plain env"
   }
 }
+
+run "agent_engine_a2a_envs_when_deployed" {
+  command = plan
+
+  module {
+    source = "./modules/runtime"
+  }
+
+  variables {
+    project_id            = "test-project"
+    region                = "us-central1"
+    container_image       = "us-docker.pkg.dev/cloudrun/container/hello"
+    enable_gateway        = false
+    service_account_email = "bridge-runtime@test-project.iam.gserviceaccount.com"
+    vpc_network           = "projects/test-project/global/networks/bridge-vpc"
+    egress_subnet         = "projects/test-project/regions/us-central1/subnetworks/bridge-vpc-internal"
+    seam_mode             = "gcp"
+    agent_engine_id       = "projects/test-project/locations/us-central1/reasoningEngines/5963861295097708544"
+    agent_engine_remote   = "1"
+    agent_engine_a2a      = "1"
+  }
+
+  assert {
+    condition = length([
+      for e in google_cloud_run_v2_service.bridge.template[0].containers[0].env
+      : e if e.name == "BRIDGE_AGENT_ENGINE_ID" && e.value == "projects/test-project/locations/us-central1/reasoningEngines/5963861295097708544"
+    ]) == 1
+    error_message = "agent_engine_id must inject BRIDGE_AGENT_ENGINE_ID as a plain env"
+  }
+
+  assert {
+    condition = length([
+      for e in google_cloud_run_v2_service.bridge.template[0].containers[0].env
+      : e if e.name == "BRIDGE_AGENT_ENGINE_A2A" && e.value == "1"
+    ]) == 1
+    error_message = "agent_engine_a2a = 1 must inject BRIDGE_AGENT_ENGINE_A2A=1 as a plain env"
+  }
+}

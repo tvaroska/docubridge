@@ -642,6 +642,8 @@ def _default_remote_engine() -> Any | None:
     proj, loc, eid = parse_agent_engine_resource(None)
     import vertexai
 
+    if proj and loc:
+        vertexai.init(project=proj, location=loc)
     resource_name = (
         f"projects/{proj}/locations/{loc}/reasoningEngines/{eid}"
         if proj and loc

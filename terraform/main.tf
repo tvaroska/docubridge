@@ -226,6 +226,7 @@ module "runtime" {
   docai_processor     = var.docai_processor
   agent_engine_id     = var.agent_engine_id
   agent_engine_remote = var.agent_engine_remote
+  agent_engine_a2a    = var.agent_engine_a2a
   deletion_protection = var.deletion_protection
   labels              = var.labels
 }

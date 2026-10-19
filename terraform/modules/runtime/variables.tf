@@ -295,6 +295,12 @@ variable "agent_engine_remote" {
   default     = ""
 }
 
+variable "agent_engine_a2a" {
+  type        = string
+  description = "Set to \"1\" to delegate A2A discovery (/.well-known/agent-card.json) and JSON-RPC POST / to BridgeA2aAgentEngine on Vertex AI Agent Engine (BRIDGE_AGENT_ENGINE_A2A plain env). Empty = no env (in-process default)."
+  default     = ""
+}
+
 variable "deletion_protection" {
   type        = bool
   description = "Guard the service against deletion (true in prod; dev/tests may disable)."

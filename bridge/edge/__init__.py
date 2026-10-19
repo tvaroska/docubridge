@@ -28,6 +28,14 @@ from bridge.edge.a2ui import (
     render_party_status,
     render_upload_prompt,
 )
+from bridge.edge.agent_engine_a2a import (
+    AGENT_ENGINE_A2A_ENV,
+    BridgeA2aAgentEngine,
+    agent_engine_app,
+    build_remote_a2a_routes,
+    is_agent_engine_a2a_enabled,
+    resolve_a2a_engine,
+)
 from bridge.edge.artifacts import (
     ARTIFACTS_PREFIX,
     build_fetch_app,
@@ -68,6 +76,7 @@ from bridge.edge.wire import (
 )
 
 __all__ = [
+    "AGENT_ENGINE_A2A_ENV",
     "ARTIFACTS_PREFIX",
     "DEFAULT_SCENARIO",
     "SCENARIOS",
@@ -75,6 +84,7 @@ __all__ = [
     "A2uiItem",
     "A2uiRequirement",
     "A2uiView",
+    "BridgeA2aAgentEngine",
     "CollectExecutor",
     "EdgeMode",
     "Path",
@@ -83,10 +93,12 @@ __all__ = [
     "ScriptedBridgeExecutor",
     "SkillMeta",
     "agent_card_from_skills",
+    "agent_engine_app",
     "build_a2a_app",
     "build_agent_card",
     "build_fetch_app",
     "build_mock_bridge_app",
+    "build_remote_a2a_routes",
     "classify_path",
     "classify_route",
     "decode_assertion",
@@ -97,12 +109,14 @@ __all__ = [
     "encode_a2ui_view",
     "encode_collect_request",
     "encode_exchange_turn",
+    "is_agent_engine_a2a_enabled",
     "loaded_skills",
     "parse_text_request",
     "persist_submission",
     "render_hitl_review",
     "render_party_status",
     "render_upload_prompt",
+    "resolve_a2a_engine",
     "resolve_bytes",
     "resolve_edge_mode",
     "scoped_uri",
