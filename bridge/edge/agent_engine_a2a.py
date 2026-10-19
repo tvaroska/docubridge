@@ -300,6 +300,20 @@ class BridgeA2aAgentEngine:
         ae_id = os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID", "").strip()
         if ae_id and not os.environ.get("BRIDGE_AGENT_ENGINE_ID"):
             os.environ["BRIDGE_AGENT_ENGINE_ID"] = ae_id
+        if (
+            os.environ.get("BRIDGE_SEAM_MODE", "").strip() == "gcp"
+            and not os.environ.get("DATABASE_URL", "").strip()
+        ):
+            os.environ.setdefault("BRIDGE_SEAM_TASK_STORE", "local")
+            os.environ.setdefault(
+                "BRIDGE_TASK_DB_URL",
+                "sqlite+aiosqlite:////tmp/bridge_tasks.sqlite",
+            )
+            os.environ.setdefault("BRIDGE_SEAM_EXCHANGE_STORE", "local")
+            os.environ.setdefault(
+                "BRIDGE_EXCHANGE_DB_URL",
+                "sqlite+aiosqlite:////tmp/bridge_exchange.sqlite",
+            )
 
         from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 
