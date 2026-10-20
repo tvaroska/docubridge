@@ -301,6 +301,12 @@ variable "agent_engine_a2a" {
   default     = ""
 }
 
+variable "telemetry_bq_table" {
+  type        = string
+  description = "Fully qualified BigQuery table (project.dataset.table) injected as BRIDGE_TELEMETRY_BQ_TABLE for OpenTelemetry span streaming and SQL analytics. Empty = no env."
+  default     = ""
+}
+
 variable "deletion_protection" {
   type        = bool
   description = "Guard the service against deletion (true in prod; dev/tests may disable)."

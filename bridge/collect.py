@@ -19,6 +19,7 @@ from bridge.disposition import DispositionVerdict
 from bridge.seams import Seam, get_adapter, resolve_mode
 from bridge.seams.protocols import ExtractionSeam
 from bridge.signals import dispose_signals, signals_from_result
+from bridge.telemetry import trace_step
 from bridge.vault import redact_personal_data
 from contract.enums import Disposition, RequirementStatus
 from contract.extraction import ExtractionResult, field_reviews_for
@@ -157,39 +158,74 @@ class Collector:
             )
         )
         entries: list[LedgerEntry] = []
-        for sub in documents:
-            result = await extractor.extract(sub.artifact_name)
-            if should_redact:
-                result, _ = redact_personal_data(result)
-            if results_out is not None:
-                results_out[sub.doc_id] = result
-            signals = signals_from_result(result, candidate_doctypes=candidate_doctypes)
-            verdict = dispose_signals(signals)
-            entry = project_ledger_entry(
-                doc_id=sub.doc_id, result=result, verdict=verdict, artifact=sub.artifact,
-            )
-            if (
-                entry.disposition is Disposition.accepted
-                and (
-                    self._vault_store is not None
-                    or self._operational_store is not None
-                    or self._knowledge_catalog is not None
-                )
-            ):
-                from bridge.user_interaction import ingest_accepted_submission
+        with trace_step(
+            "docubridge.intake.collect_turn",
+            {
+                "docubridge.process": request.process,
+                "docubridge.entity_id": entity_id,
+                "docubridge.context_id": context_id,
+                "docubridge.document_count": len(documents),
+            },
+        ) as turn_span:
+            for sub in documents:
+                with trace_step(
+                    "docubridge.intake.collect_document",
+                    {
+                        "docubridge.process": request.process,
+                        "docubridge.entity_id": entity_id,
+                        "docubridge.doc_id": sub.doc_id,
+                        "docubridge.artifact_name": sub.artifact_name,
+                    },
+                ) as doc_span:
+                    result = await extractor.extract(sub.artifact_name)
+                    if should_redact:
+                        result, _ = redact_personal_data(result)
+                    if results_out is not None:
+                        results_out[sub.doc_id] = result
+                    signals = signals_from_result(
+                        result, candidate_doctypes=candidate_doctypes
+                    )
+                    verdict = dispose_signals(signals)
+                    entry = project_ledger_entry(
+                        doc_id=sub.doc_id,
+                        result=result,
+                        verdict=verdict,
+                        artifact=sub.artifact,
+                    )
+                    doc_span.set_attribute("docubridge.doctype", entry.doctype)
+                    doc_span.set_attribute(
+                        "docubridge.disposition", entry.disposition.value
+                    )
+                    doc_span.set_attribute("docubridge.gate", entry.gate.value)
+                    doc_span.set_attribute(
+                        "docubridge.confidence", entry.overall_confidence
+                    )
+                    if entry.disposition is Disposition.accepted and (
+                        self._vault_store is not None
+                        or self._operational_store is not None
+                        or self._knowledge_catalog is not None
+                    ):
+                        from bridge.user_interaction import ingest_accepted_submission
 
-                ingested = ingest_accepted_submission(
-                    entry,
-                    entity_id=entity_id,
-                    context_id=context_id,
-                    filename=sub.artifact_name,
-                    vault_store=self._vault_store,
-                    operational_store=self._operational_store,
-                    knowledge_catalog=self._knowledge_catalog,
-                )
-                entry = ingested.entry
-            entries.append(entry)
-        status = project_collection_status(entries)
+                        ingested = ingest_accepted_submission(
+                            entry,
+                            entity_id=entity_id,
+                            context_id=context_id,
+                            filename=sub.artifact_name,
+                            vault_store=self._vault_store,
+                            operational_store=self._operational_store,
+                            knowledge_catalog=self._knowledge_catalog,
+                        )
+                        entry = ingested.entry
+                    entries.append(entry)
+            status = project_collection_status(entries)
+            turn_span.set_attribute(
+                "docubridge.accepted_count",
+                sum(1 for e in entries if e.disposition is Disposition.accepted),
+            )
+            turn_span.set_attribute(
+                "docubridge.outstanding_count", len(status.outstanding.requirements)
+            )
         return ExchangeTurn(
             context_id=context_id,
             status=status,

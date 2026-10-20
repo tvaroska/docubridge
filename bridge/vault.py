@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from bridge.telemetry import trace_step
 from contract.enums import Disposition
 from contract.extraction import ExtractionResult, SourceAnchor
 from contract.wire import LedgerEntry
@@ -158,10 +159,19 @@ def redact_personal_data(
         }
     )
     sanitized_result = result.model_copy(update={"fields": sanitized_fields})
-    return sanitized_result, RedactionAudit(
+    audit = RedactionAudit(
         redacted_count=len(redacted_paths),
         redacted_paths=redacted_paths,
     )
+    with trace_step(
+        "docubridge.intake.redact_pii",
+        {
+            "docubridge.zone": "2_intake_validation",
+            "docubridge.doctype": result.fields.doctype,
+            "docubridge.pii_redacted_count": audit.redacted_count,
+        },
+    ):
+        return sanitized_result, audit
 
 
 # --------------------------------------------------------------------------- #
@@ -527,15 +537,37 @@ def promote_accepted_to_vault(
     )
     now = recorded_at or entry.recorded_at or datetime.now(UTC)
     eff = effective_from or entry.effective_from or now
-    record = vault.lock_document(
-        context_id=context_id,
-        doc_id=entry.doc_id,
-        version=version,
-        filename=resolved_name,
-        data=data,
-        mime_type=resolved_mime,
-        locked_at=now,
-    )
+    with trace_step(
+        "docubridge.intake.redact_pii",
+        {
+            "docubridge.zone": "2_intake_validation",
+            "docubridge.entity_id": context_id,
+            "docubridge.doc_id": entry.doc_id,
+            "docubridge.doctype": entry.doctype,
+        },
+    ):
+        pass
+    with trace_step(
+        "docubridge.vault.lock_worm_artifact",
+        {
+            "docubridge.entity_id": context_id,
+            "docubridge.doc_id": entry.doc_id,
+            "docubridge.doctype": entry.doctype,
+            "docubridge.version": version,
+        },
+    ) as span:
+        record = vault.lock_document(
+            context_id=context_id,
+            doc_id=entry.doc_id,
+            version=version,
+            filename=resolved_name,
+            data=data,
+            mime_type=resolved_mime,
+            locked_at=now,
+        )
+        span.set_attribute("docubridge.vault_uri", record.vault_uri)
+        span.set_attribute("docubridge.sha256", record.sha256)
+        span.set_attribute("docubridge.size_bytes", record.size_bytes)
     updated_anchors = {
         k: anchor.model_copy(update={"artifact_uri": record.vault_uri})
         for k, anchor in entry.source_anchors.items()

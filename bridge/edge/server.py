@@ -61,6 +61,7 @@ from bridge.edge.pushguard import guarded_push_config_store
 from bridge.edge.rfp_open import rfp_board_from_env
 from bridge.satisfaction import SatisfactionAssessor, resolve_assessor
 from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.telemetry import OtelAsgiMiddleware
 
 if TYPE_CHECKING:
     import httpx
@@ -247,15 +248,12 @@ def build_a2a_app(
                 app=build_fetch_app(store, signer=build_fetch_signer()),
             ),
         ]
-        if auth_backend is None:
-            app = Starlette(routes=routes)
-        else:
-            app = Starlette(
-                routes=routes,
-                middleware=[
-                    Middleware(AuthenticationMiddleware, backend=auth_backend)
-                ],
+        edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge_proxy")]
+        if auth_backend is not None:
+            edge_mw.append(
+                Middleware(AuthenticationMiddleware, backend=auth_backend)
             )
+        app = Starlette(routes=routes, middleware=edge_mw)
         app.state.rfp_board = board
         app.state.a2a_engine = active_a2a_engine
         return app
@@ -338,13 +336,10 @@ def build_a2a_app(
             ),
         ]
     )
-    if auth_backend is None:
-        app = Starlette(routes=routes)
-    else:
-        app = Starlette(
-            routes=routes,
-            middleware=[Middleware(AuthenticationMiddleware, backend=auth_backend)],
-        )
+    edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge")]
+    if auth_backend is not None:
+        edge_mw.append(Middleware(AuthenticationMiddleware, backend=auth_backend))
+    app = Starlette(routes=routes, middleware=edge_mw)
     app.state.rfp_board = board
     app.state.a2a_engine = None
     return app

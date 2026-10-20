@@ -75,13 +75,13 @@ def _make_accepted_entry(
             page_number=4,
             bounding_box=(0.12, 0.34, 0.56, 0.41),
             snippet="Total Annual Premium: $1,200,000.00",
-            artifact_uri="gs://aon-docubridge-audit-vault/vault/ctx-1/doc-quote-v1/v1/quote.pdf",
+            artifact_uri="gs://docubridge-audit-vault/vault/ctx-1/doc-quote-v1/v1/quote.pdf",
         ),
         "deductible": SourceAnchor(
             page_number=7,
             bounding_box=(0.15, 0.50, 0.48, 0.55),
             snippet="Specific Deductible: $150,000.00",
-            artifact_uri="gs://aon-docubridge-audit-vault/vault/ctx-1/doc-quote-v1/v1/quote.pdf",
+            artifact_uri="gs://docubridge-audit-vault/vault/ctx-1/doc-quote-v1/v1/quote.pdf",
         ),
         "coverage_limit": SourceAnchor(
             page_number=3,
@@ -1283,16 +1283,20 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
     agents_resp = client.get("/v1/catalog/spiffe-agents?security_zone=internal")
     assert agents_resp.status_code == 200
     internal_spiffe_ids = {a["spiffe_id"] for a in agents_resp.json()}
-    assert "spiffe://agents.global.aon.net/internal/broker-agent" in internal_spiffe_ids
+    assert "spiffe://agents.docubridge.io/internal/broker-agent" in internal_spiffe_ids
     assert (
-        "spiffe://agents.global.aon.net/portal/external-portal-agent"
+        "spiffe://agents.docubridge.io/internal/credit-officer-agent"
+        in internal_spiffe_ids
+    )
+    assert (
+        "spiffe://agents.docubridge.io/portal/external-portal-agent"
         not in internal_spiffe_ids
     )
 
     # 2. Valid signed SPIFFE JWT-SVID + OBO broker principal succeeds on gemini_app
     broker_svid = mint_jwt_svid(
-        "spiffe://agents.global.aon.net/internal/broker-agent",
-        obo_subject="usr:alice.broker@aon.com",
+        "spiffe://agents.docubridge.io/internal/broker-agent",
+        obo_subject="usr:alice.broker@docubridge.io",
         obo_role="broker",
         max_approval_amount="50000.00",
     )
@@ -1304,7 +1308,7 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
     gov = ok_resp.json()["governance"]
     assert (
         gov["agent_spiffe_id"]
-        == "spiffe://agents.global.aon.net/internal/broker-agent"
+        == "spiffe://agents.docubridge.io/internal/broker-agent"
     )
     assert gov["svid_verified"] is True
 
@@ -1318,8 +1322,8 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
 
     # 4. Unregistered Shadow AI SPIFFE ID is blocked with 403 (ShadowAgentError)
     shadow_svid = mint_jwt_svid(
-        "spiffe://agents.global.aon.net/internal/shadow-rogue-agent",
-        obo_subject="usr:alice.broker@aon.com",
+        "spiffe://agents.docubridge.io/internal/shadow-rogue-agent",
+        obo_subject="usr:alice.broker@docubridge.io",
         obo_role="broker",
     )
     shadow_resp = client.get(
@@ -1331,7 +1335,7 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
 
     # 5. Least-privilege intersection: External portal SPIFFE agent cannot call gemini_app
     portal_agent_cross_zone = mint_jwt_svid(
-        "spiffe://agents.global.aon.net/portal/external-portal-agent",
+        "spiffe://agents.docubridge.io/portal/external-portal-agent",
         obo_subject="usr:client.acme",
         obo_role="client",
         tenant_id="acme",
@@ -1359,7 +1363,7 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
 
     # 7. Carrier Affiliation Isolation: Chubb carrier only sees Chubb quote, never AIG quote
     chubb_carrier_svid = mint_jwt_svid(
-        "spiffe://agents.global.aon.net/portal/external-portal-agent",
+        "spiffe://agents.docubridge.io/portal/external-portal-agent",
         obo_subject="usr:underwriter@chubb.com",
         obo_role="carrier",
         carrier_slug="chubb",
@@ -1427,14 +1431,14 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
     assert approve_ok.status_code == 200
     assert (
         approve_ok.json()["agent_spiffe_id"]
-        == "spiffe://agents.global.aon.net/internal/broker-agent"
+        == "spiffe://agents.docubridge.io/internal/broker-agent"
     )
     audit_records = inbox_store.list_audit_records(acme_item_id)
     assert len(audit_records) == 1
-    assert audit_records[0].actor_principal == "usr:alice.broker@aon.com"
+    assert audit_records[0].actor_principal == "usr:alice.broker@docubridge.io"
     assert (
         audit_records[0].agent_spiffe_id
-        == "spiffe://agents.global.aon.net/internal/broker-agent"
+        == "spiffe://agents.docubridge.io/internal/broker-agent"
     )
 
 
@@ -1465,8 +1469,8 @@ def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> 
     client = TestClient(app)
 
     broker_svid = mint_jwt_svid(
-        "spiffe://agents.global.aon.net/internal/broker-agent",
-        obo_subject="usr:lead.broker@aon.com",
+        "spiffe://agents.docubridge.io/internal/broker-agent",
+        obo_subject="usr:lead.broker@docubridge.io",
         obo_role="broker",
         tenant_id="tenant:acme",
         allowed_entities=("SUB-CAMPALA-001",),
@@ -1705,8 +1709,8 @@ def test_agent_gym_programmable_trust_dial_and_instant_safety_dialback() -> None
     client = TestClient(app)
 
     lead_svid = mint_jwt_svid(
-        "spiffe://agents.global.aon.net/internal/underwriter-agent",
-        obo_subject="usr:lead.underwriter@aon.com",
+        "spiffe://agents.docubridge.io/internal/underwriter-agent",
+        obo_subject="usr:lead.underwriter@docubridge.io",
         obo_role="underwriter",
     )
     headers = {"X-Bridge-Spiffe-Svid": f"Bearer {lead_svid}"}
@@ -1766,11 +1770,11 @@ def test_agent_gym_programmable_trust_dial_and_instant_safety_dialback() -> None
     )
     assert (
         promote_resp.json()["policy"]["last_updated_by"]
-        == "usr:lead.underwriter@aon.com"
+        == "usr:lead.underwriter@docubridge.io"
     )
     assert (
         promote_resp.json()["policy"]["agent_spiffe_id"]
-        == "spiffe://agents.global.aon.net/internal/underwriter-agent"
+        == "spiffe://agents.docubridge.io/internal/underwriter-agent"
     )
 
     # 5. Instant Safety Dial-Back: when carrier format drift occurs (`ai_value != human_value`),
@@ -1799,7 +1803,7 @@ def test_agent_gym_programmable_trust_dial_and_instant_safety_dialback() -> None
 
     # 6. External client/carrier role is blocked (403 Forbidden) from dialing trust policies
     client_svid = mint_jwt_svid(
-        "spiffe://agents.global.aon.net/portal/external-portal-agent",
+        "spiffe://agents.docubridge.io/portal/external-portal-agent",
         obo_subject="usr:cfo@acme.com",
         obo_role="client",
     )
@@ -1855,7 +1859,7 @@ def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
         before_value="Campala Ltd.",
         after_value="Campala",
         expert_memo="Normalize Campala Ltd. legal suffix for AlloyDB consolidation.",
-        actor_principal="usr:broker@aon.com",
+        actor_principal="usr:broker@docubridge.io",
         actor_role="broker",
         category=TribalRuleCategory.ENTITY_ALIAS,
         distinct_entities=("Campala Syndicate 1183",),
@@ -1876,7 +1880,7 @@ def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
     cloud_run_gym.dial_trust_policy(
         "slice:aig:endorsement:MEDIUM",
         target_level=TrustAutonomyLevel.TRUSTED_AUTO_APPROVE,
-        actor_principal="usr:lead.underwriter@aon.com",
+        actor_principal="usr:lead.underwriter@docubridge.io",
         actor_role="underwriter",
         reason="Promoted on Cloud Run UI replica.",
     )
@@ -1900,6 +1904,526 @@ def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
         assert aig_policy.consecutive_matches == 5
     finally:
         agent_engine_gym.close()
+
+
+def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> None:
+    """Verify all 4 pillars (Tracing/Lineage/Bi-Temporal, SPIFFE OBO + A2UI v0.9 SSE,
+    Agent Gym Stress Suite + Decimal Firewall, and Programmable Trust + Safety Dial-Back)
+    on the Banking Commercial Real Estate Loan Underwriting scenario (LOAN-MERIDIAN-001),
+    plus the live interactive console routes (/demo and /console)."""
+    from bridge.a2ui_inbox import InMemoryActionInboxStore
+    from bridge.agent_gym import (
+        InMemoryAgentGymEngine,
+        TribalRuleCategory,
+        TribalRuleStatus,
+        TrustAutonomyLevel,
+    )
+    from bridge.identity import mint_jwt_svid
+
+    vault = InMemoryAuditVaultStore()
+    store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=store)
+    inbox_store = InMemoryActionInboxStore()
+    gym = InMemoryAgentGymEngine()
+
+    app = build_user_interaction_app(
+        operational_store=store,
+        knowledge_catalog=catalog,
+        inbox_store=inbox_store,
+        agent_gym=gym,
+        require_auth=True,
+    )
+    client = TestClient(app)
+
+    # 0. Interactive Console Routes (/demo and /console) & Vendor Neutrality Check
+    for route in ("/demo", "/console"):
+        demo_resp = client.get(route)
+        assert demo_resp.status_code == 200
+        assert "DOCUBRIDGE" in demo_resp.text
+        assert "Meridian Logistics Center LLC" in demo_resp.text
+        assert "Terrepower Coastal LLC" in demo_resp.text
+        assert "agents.global.aon.net" not in demo_resp.text
+
+    assets_resp = client.get("/v1/catalog/assets")
+    assert assets_resp.status_code == 200
+    raw_assets_text = assets_resp.text
+    assert "docubridge-audit-vault" in raw_assets_text
+    assert "docubridge_lakehouse.bq_operational_facts_iceberg" in raw_assets_text
+    assert "aon-docubridge-audit-vault" not in raw_assets_text
+    assert "aon_lakehouse" not in raw_assets_text
+
+    # ------------------------------------------------------------------ #
+    # Pillar 1: Tracing, Provenance & Bi-Temporal Observability          #
+    # ------------------------------------------------------------------ #
+    t0 = datetime(2026, 10, 19, 18, 0, 0, tzinfo=UTC)
+    t1 = datetime(2026, 10, 19, 20, 0, 0, tzinfo=UTC)
+    eff_date = datetime(2026, 11, 1, 0, 0, 0, tzinfo=UTC)
+
+    term_sheet_entry = _make_accepted_entry(
+        doc_id="doc-meridian-ts-v1",
+        doctype="term-sheet",
+        issuer="Syndicated Lenders Group",
+        key_fields={
+            "currency": "USD",
+            "loan_amount": "$45,000,000.00",
+            "appraised_value": "$62,500,000.00",
+            "origination_fee": "$50,000.00",
+            "net_operating_income": "$4,185,000.00",
+        },
+        source_anchors={
+            "origination_fee": SourceAnchor(
+                page_number=1,
+                bounding_box=(0.14, 0.31, 0.48, 0.36),
+                snippet="Base Origination Fee: $50,000.00",
+                artifact_uri="gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-ts-v1/v1/ts.pdf",
+            ),
+            "loan_amount": SourceAnchor(
+                page_number=2,
+                bounding_box=(0.15, 0.28, 0.52, 0.33),
+                snippet="Senior Term Loan Facility: $45,000,000.00",
+            ),
+            "appraised_value": SourceAnchor(
+                page_number=11,
+                bounding_box=(0.18, 0.52, 0.60, 0.58),
+                snippet="As-Stabilized Appraised Collateral Value: $62,500,000.00",
+            ),
+        },
+        recorded_at=t0,
+        effective_from=eff_date,
+    )
+    ingest_accepted_submission(
+        term_sheet_entry,
+        entity_id="LOAN-MERIDIAN-001",
+        context_id="ctx-meridian-001",
+        raw_document_bytes=b"%PDF-1.7 term-sheet",
+        vault_store=vault,
+        operational_store=store,
+        knowledge_catalog=catalog,
+        agent_gym=gym,
+        recorded_at=t0,
+        effective_from=eff_date,
+    )
+
+    addendum_entry = _make_accepted_entry(
+        doc_id="doc-meridian-addendum-v2",
+        doctype="closing-disclosure",
+        issuer="Syndicated Lenders Group",
+        key_fields={
+            "currency": "USD",
+            "origination_fee": "$100,000.00",
+        },
+        source_anchors={
+            "origination_fee": SourceAnchor(
+                page_number=4,
+                bounding_box=(0.12, 0.44, 0.58, 0.51),
+                snippet="Schedule B Origination & Rate-Lock Fee: $100,000.00",
+                artifact_uri="gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-addendum-v2/v1/addendum.pdf",
+            ),
+        },
+        recorded_at=t1,
+        effective_from=eff_date,
+    )
+    ingest_accepted_submission(
+        addendum_entry,
+        entity_id="LOAN-MERIDIAN-001",
+        context_id="ctx-meridian-001",
+        raw_document_bytes=b"%PDF-1.7 schedule-b-addendum",
+        vault_store=vault,
+        operational_store=store,
+        knowledge_catalog=catalog,
+        agent_gym=gym,
+        recorded_at=t1,
+        effective_from=eff_date,
+    )
+
+    # 6-Hop End-to-End Lineage Trace
+    trace = catalog.trace_lineage("LOAN-MERIDIAN-001", "origination_fee")
+    assert trace is not None
+    assert trace.current_value == "$100,000.00"
+    assert trace.source_anchor is not None
+    assert trace.source_anchor.page_number == 4
+    assert "priority=40" in trace.consolidation_rule
+    zones_in_trace = [node.zone for node in trace.nodes]
+    assert zones_in_trace == [
+        AssetLocationZone.INBOUND,
+        AssetLocationZone.AUDIT_VAULT,
+        AssetLocationZone.OPERATIONAL_STORE,
+        AssetLocationZone.BUSINESS_VIEW,
+        AssetLocationZone.BIGQUERY_ICEBERG,
+        AssetLocationZone.USER_INTERACTION_A2UI,
+    ]
+
+    # Bi-temporal point-in-time query (t0 vs t1) and FactConflict detection
+    uw_at_t0 = store.underwriter_view("LOAN-MERIDIAN-001", learned_as_of=t0)
+    fee_at_t0 = next(
+        i
+        for i in uw_at_t0.exposure_items
+        if i.field_path.endswith("origination_fee")
+    )
+    assert fee_at_t0.field_value == "$50,000.00"
+
+    uw_at_t1 = store.underwriter_view("LOAN-MERIDIAN-001", learned_as_of=t1)
+    fee_at_t1 = next(
+        i
+        for i in uw_at_t1.exposure_items
+        if i.field_path.endswith("origination_fee")
+    )
+    assert fee_at_t1.field_value == "$100,000.00"
+    assert uw_at_t1.financials.total_coverage_limit == "45000000.00"
+    assert uw_at_t1.financials.total_insured_value == "62500000.00"
+    assert uw_at_t1.financials.total_deductible == "100000.00"
+
+    bv_at_t1 = store.broker_view("LOAN-MERIDIAN-001", learned_as_of=t1)
+    assert len(bv_at_t1.conflicts) == 1
+    assert bv_at_t1.conflicts[0].field_path.endswith("origination_fee")
+    assert bv_at_t1.conflicts[0].winning_doc_id == "doc-meridian-addendum-v2"
+    assert bv_at_t1.conflicts[0].conflicting_doc_id == "doc-meridian-ts-v1"
+
+    # Watermarked BigQuery Open Iceberg CDC export
+    cdc_delta = store.export_bigquery_sync_batch(
+        "LOAN-MERIDIAN-001", since_recorded_at=t0
+    )
+    assert cdc_delta.iceberg_table == "docubridge_lakehouse.bq_operational_facts_iceberg"
+    assert all(r.doc_id == "doc-meridian-addendum-v2" for r in cdc_delta.records)
+    assert any(r.field_value == "$100,000.00" for r in cdc_delta.records)
+
+    # ------------------------------------------------------------------ #
+    # Pillar 2: Runtime Governance, SPIFFE OBO & A2UI v0.9 SSE Telemetry #
+    # ------------------------------------------------------------------ #
+    junior_svid = mint_jwt_svid(
+        "spiffe://agents.docubridge.io/internal/credit-officer-agent",
+        obo_subject="usr:junior.officer@docubridge.io",
+        obo_role="underwriter",
+        max_approval_amount="25000.00",
+    )
+    senior_svid = mint_jwt_svid(
+        "spiffe://agents.docubridge.io/internal/credit-officer-agent",
+        obo_subject="usr:senior.credit.officer@docubridge.io",
+        obo_role="underwriter",
+        max_approval_amount="25000000.00",
+    )
+
+    create_action_resp = client.post(
+        "/v1/a2ui/inbox/actions?channel=gemini_app",
+        headers={"X-Bridge-Spiffe-Svid": f"Bearer {senior_svid}"},
+        json={
+            "entity_id": "LOAN-MERIDIAN-001",
+            "title": "Resolve Schedule B Origination Fee Conflict",
+            "assigned_role": "underwriter",
+            "target_view": "v_underwriter_exposure",
+            "pause_for_review": True,
+            "data_model": {
+                "transfer": {"approvedAmount": 100000.0},
+                "resolution": {"selectedValue": "$50,000.00"},
+            },
+        },
+    )
+    assert create_action_resp.status_code == 200
+    loan_item_id = create_action_resp.json()["item_id"]
+
+    # Junior Loan Officer ($25k authority) is blocked with HTTP 422 on $100,000 approval
+    jr_attempt = client.post(
+        f"/v1/a2ui/inbox/items/{loan_item_id}/action?channel=gemini_app&role=underwriter",
+        headers={"X-Bridge-Spiffe-Svid": f"Bearer {junior_svid}"},
+        json={
+            "version": "v0.9",
+            "action": {
+                "name": "edit_and_approve",
+                "context": {
+                    "decision": "edit",
+                    "transfer": {"approvedAmount": 100000.0},
+                    "resolution": {"selectedValue": "$100,000.00"},
+                },
+            },
+        },
+    )
+    assert jr_attempt.status_code == 422
+
+    # Senior Credit Officer ($25M authority) succeeds and logs RFC 6902 patch + SPIFFE OBO
+    sr_approve = client.post(
+        f"/v1/a2ui/inbox/items/{loan_item_id}/action?channel=gemini_app&role=underwriter",
+        headers={"X-Bridge-Spiffe-Svid": f"Bearer {senior_svid}"},
+        json={
+            "version": "v0.9",
+            "action": {
+                "name": "edit_and_approve",
+                "context": {
+                    "decision": "edit",
+                    "transfer": {"approvedAmount": 100000.0},
+                    "resolution": {"selectedValue": "$100,000.00"},
+                    "review": {
+                        "memo": "Schedule B fee addendum on page 4 sets origination fee to $100,000.00."
+                    },
+                },
+            },
+        },
+    )
+    assert sr_approve.status_code == 200
+    audits = inbox_store.list_audit_records(loan_item_id)
+    assert len(audits) == 1
+    assert audits[0].actor_principal == "usr:senior.credit.officer@docubridge.io"
+    assert (
+        audits[0].agent_spiffe_id
+        == "spiffe://agents.docubridge.io/internal/credit-officer-agent"
+    )
+    patch_paths = {p.path for p in audits[0].patches}
+    assert "/resolution/selectedValue" in patch_paths
+
+    # Live SSE stream emits a2ui.surface and a2ui.delta frames
+    sr_headers = {"X-Bridge-Spiffe-Svid": f"Bearer {senior_svid}"}
+    sse_resp = client.get(
+        f"/v1/a2ui/inbox/items/{loan_item_id}/events?role=underwriter",
+        headers=sr_headers,
+    )
+    assert sse_resp.status_code == 200
+    assert "event: a2ui.surface" in sse_resp.text
+    assert "event: a2ui.delta" in sse_resp.text
+
+    # ------------------------------------------------------------------ #
+    # Pillar 3: Continuous Evaluation (Agent Gym + Decimal Firewall)     #
+    # ------------------------------------------------------------------ #
+    distill_resp = client.post(
+        "/v1/gym/signals/from-quarantine",
+        headers=sr_headers,
+        json={
+            "entity_id": "LOAN-MERIDIAN-001",
+            "doc_id": "syndicated-credit-agreement-meridian-2026.pdf",
+            "doctype": "addendum",
+            "issuer": "Syndicated Credit Agreement",
+            "field_path": "origination_fee",
+            "before_value": "$50,000.00",
+            "after_value": "$100,000.00",
+            "expert_memo": "Read origination fee from Schedule B p. 4 instead of cover summary.",
+            "page_number": 4,
+            "category": "extraction_hint",
+        },
+    )
+    assert distill_resp.status_code == 200
+    banking_rule_id = distill_resp.json()["candidate_rule"]["rule_id"]
+
+    eval_resp = client.post(
+        f"/v1/gym/rules/{banking_rule_id}/evaluate",
+        headers=sr_headers,
+    )
+    assert eval_resp.status_code == 200
+    rep = eval_resp.json()["report_card"]
+    assert rep["passed_gate"] is True
+    assert rep["math_firewall_intact"] is True
+    assert rep["stress_cases_total"] == 4
+    assert rep["stress_cases_passed"] == 4
+    assert len(rep["historical_regressions"]) == 0
+    assert rep["baseline_slice_score"] == 0.5
+    assert rep["candidate_slice_score"] == 1.0
+    assert eval_resp.json()["rule"]["status"] == TribalRuleStatus.PROMOTED.value
+
+    # Borrower Entity Alias Rule ("Meridian Logistics Holdings Ltd." -> "Meridian Logistics", preserving "Meridian SPV II")
+    alias_resp = client.post(
+        "/v1/gym/signals/from-quarantine",
+        headers=sr_headers,
+        json={
+            "entity_id": "LOAN-MERIDIAN-001",
+            "doc_id": "doc-meridian-alias-1",
+            "doctype": "credit-agreement",
+            "issuer": "Meridian Logistics Holdings Ltd.",
+            "field_path": "issuer",
+            "before_value": "Meridian Logistics Holdings Ltd.",
+            "after_value": "Meridian Logistics",
+            "expert_memo": "Normalize borrower legal suffix while keeping Meridian SPV II separate.",
+            "category": TribalRuleCategory.ENTITY_ALIAS.value,
+            "distinct_entities": ["Meridian SPV II"],
+        },
+    )
+    assert alias_resp.status_code == 200
+    alias_rule_id = alias_resp.json()["candidate_rule"]["rule_id"]
+    alias_eval = client.post(
+        f"/v1/gym/rules/{alias_rule_id}/evaluate", headers=sr_headers
+    )
+    assert alias_eval.status_code == 200
+    assert alias_eval.json()["report_card"]["passed_gate"] is True
+    assert (
+        gym.normalize_entity_or_issuer("Meridian Logistics Holdings Ltd.")
+        == "Meridian Logistics"
+    )
+    assert (
+        gym.normalize_entity_or_issuer("Meridian SPV II") == "Meridian SPV II"
+    )
+
+    # Hallucination / Decimal Math Firewall Gate blocks rule attempting to override Decimal math
+    bad_math_resp = client.post(
+        "/v1/gym/signals/from-quarantine",
+        headers=sr_headers,
+        json={
+            "entity_id": "LOAN-MERIDIAN-001",
+            "doc_id": "doc-bad-math",
+            "doctype": "addendum",
+            "issuer": "Syndicated",
+            "field_path": "loan_amount",
+            "before_value": "$45,000,000.00",
+            "after_value": "$45,000,000.00",
+            "expert_memo": "Use override_decimal_math and llm_calculate_total instead of Decimal.",
+        },
+    )
+    bad_rule_id = bad_math_resp.json()["candidate_rule"]["rule_id"]
+    bad_eval = client.post(
+        f"/v1/gym/rules/{bad_rule_id}/evaluate", headers=sr_headers
+    )
+    assert bad_eval.status_code == 200
+    assert bad_eval.json()["report_card"]["math_firewall_intact"] is False
+    assert bad_eval.json()["report_card"]["passed_gate"] is False
+    assert bad_eval.json()["rule"]["status"] == TribalRuleStatus.REJECTED.value
+
+    # ------------------------------------------------------------------ #
+    # Pillar 4: Graduated Autonomy & Instant Safety Dial-Back            #
+    # ------------------------------------------------------------------ #
+    policies_resp = client.get("/v1/gym/trust-policies", headers=sr_headers)
+    assert policies_resp.status_code == 200
+    policy_map = {p["slice_id"]: p for p in policies_resp.json()}
+    assert "slice:closing-disclosure:fee-schedule:LOW" in policy_map
+    assert "slice:credit-agreement:addendum:MEDIUM" in policy_map
+    assert "slice:appraisal-report:commercial:HIGH" in policy_map
+
+    credit_slice = policy_map["slice:credit-agreement:addendum:MEDIUM"]
+    assert credit_slice["autonomy_level"] == TrustAutonomyLevel.GUIDED_REVIEW.value
+    assert credit_slice["consecutive_matches"] == 4
+    assert credit_slice["ready_for_promotion"] is False
+
+    # Record 5th exact match -> ready_for_promotion=True -> promote to trusted_auto_approve
+    shd5_resp = client.post(
+        "/v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/shadow",
+        headers=sr_headers,
+        json={
+            "entity_id": "LOAN-MERIDIAN-001",
+            "doc_id": "syndicated-credit-agreement-meridian-2026.pdf",
+            "issuer": "Syndicated",
+            "doctype": "addendum",
+            "field_path": "origination_fee",
+            "ai_value": "$100,000.00",
+            "human_value": "$100,000.00",
+            "risk_level": "MEDIUM",
+        },
+    )
+    assert shd5_resp.status_code == 200
+    assert shd5_resp.json()["ready_for_promotion"] is True
+    assert shd5_resp.json()["policy"]["consecutive_matches"] == 5
+
+    dial_promote = client.post(
+        "/v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/dial",
+        headers=sr_headers,
+        json={
+            "target_level": "trusted_auto_approve",
+            "reason": "Promoted after 5/5 consecutive exact matches on credit addenda.",
+        },
+    )
+    assert dial_promote.status_code == 200
+    assert (
+        dial_promote.json()["policy"]["autonomy_level"]
+        == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE.value
+    )
+
+    # Inject format drift -> Instant Safety Dial-Back to guided_review with 0 streak and 1 drift
+    drift_banking = client.post(
+        "/v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/shadow",
+        headers=sr_headers,
+        json={
+            "entity_id": "LOAN-MERIDIAN-002",
+            "doc_id": "syndicated-credit-agreement-drift.pdf",
+            "issuer": "Syndicated",
+            "doctype": "addendum",
+            "field_path": "origination_fee",
+            "ai_value": "$50,000.00",
+            "human_value": "$100,000.00",
+            "risk_level": "MEDIUM",
+        },
+    )
+    assert drift_banking.status_code == 200
+    assert (
+        drift_banking.json()["policy"]["autonomy_level"]
+        == TrustAutonomyLevel.GUIDED_REVIEW.value
+    )
+    assert drift_banking.json()["policy"]["consecutive_matches"] == 0
+    assert drift_banking.json()["policy"]["drift_incidents"] == 1
+
+    # Reset endpoint restores default 6 slices cleanly
+    reset_resp = client.post("/v1/gym/trust-policies/reset", headers=sr_headers)
+    assert reset_resp.status_code == 200
+    reset_map = {p["slice_id"]: p for p in reset_resp.json()}
+    assert reset_map["slice:credit-agreement:addendum:MEDIUM"]["consecutive_matches"] == 4
+    assert reset_map["slice:credit-agreement:addendum:MEDIUM"]["drift_incidents"] == 0
+
+    # ------------------------------------------------------------------ #
+    # End-to-End OpenTelemetry Spans Verification across all steps       #
+    # ------------------------------------------------------------------ #
+    otel_resp = client.get("/v1/telemetry/spans?limit=500")
+    assert otel_resp.status_code == 200
+    otel_payload = otel_resp.json()
+    assert otel_payload["count"] > 10
+    span_names = {s["name"] for s in otel_payload["spans"]}
+    expected_step_spans = {
+        "docubridge.intake.ingest_accepted_submission",
+        "docubridge.intake.redact_pii",
+        "docubridge.vault.lock_worm_artifact",
+        "docubridge.consolidation.promote_to_operational_store",
+        "docubridge.consolidation.bitemporal_query_as_of",
+        "docubridge.consolidation.role_based_view",
+        "docubridge.consolidation.compute_financial_summary",
+        "docubridge.consolidation.bigquery_iceberg_sync",
+        "docubridge.catalog.register_lineage",
+        "docubridge.catalog.lineage_trace",
+        "docubridge.catalog.authorize_access",
+        "docubridge.identity.verify_jwt_svid",
+        "docubridge.identity.authorize_spiffe_agent",
+        "docubridge.identity.authorize_entity_access",
+        "docubridge.a2ui.create_action_item",
+        "docubridge.a2ui.resolve_inbox_action",
+        "docubridge.agent_gym.distill_signal",
+        "docubridge.agent_gym.evaluate_rule",
+        "docubridge.agent_gym.shadow_comparison",
+        "docubridge.agent_gym.dial_trust_policy",
+        "docubridge.agent_gym.reset_trust_policies",
+    }
+    assert expected_step_spans.issubset(span_names)
+
+    # Verify W3C traceparent propagation links HTTP server span and all child spans
+    custom_trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+    custom_parent_span = "00f067aa0ba902b7"
+    traced_lineage = client.get(
+        "/v1/catalog/lineage/LOAN-MERIDIAN-001/origination_fee",
+        headers={"traceparent": f"00-{custom_trace_id}-{custom_parent_span}-01"},
+    )
+    assert traced_lineage.status_code == 200
+    assert traced_lineage.headers.get("x-docubridge-trace-id") == custom_trace_id
+
+    trace_spans_resp = client.get(f"/v1/telemetry/spans?trace_id={custom_trace_id}")
+    assert trace_spans_resp.status_code == 200
+    trace_spans = trace_spans_resp.json()["spans"]
+    traced_names = {s["name"] for s in trace_spans}
+    assert "docubridge.catalog.lineage_trace" in traced_names
+    assert any(
+        s["name"].startswith("docubridge.http.user_interaction GET")
+        and s["parent_span_id"] == custom_parent_span
+        for s in trace_spans
+    )
+
+    # Verify BigQuery Trace Analytics endpoint (/v1/telemetry/analytics) & row formatting
+    from bridge.telemetry import CloudTraceV2SpanExporter
+
+    analytics_resp = client.get("/v1/telemetry/analytics?limit=500")
+    assert analytics_resp.status_code == 200
+    analytics_data = analytics_resp.json()
+    assert analytics_data["total_spans_analyzed"] > 10
+    assert analytics_data["bigquery_target"]["dataset_id"] == "docubridge_telemetry"
+    assert analytics_data["bigquery_target"]["table_id"] == "otel_spans"
+    assert len(analytics_data["step_latency"]) >= 15
+    assert len(analytics_data["trace_waterfall"]) >= 10
+    assert len(analytics_data["entity_pipeline_summary"]) >= 1
+
+    bq_row = CloudTraceV2SpanExporter._to_bigquery_row(trace_spans[0])
+    assert bq_row["insertId"] == f"{trace_spans[0]['trace_id']}:{trace_spans[0]['span_id']}"
+    assert bq_row["json"]["trace_id"] == custom_trace_id
+    assert "attributes_json" in bq_row["json"]
+
+
+
 
 
 

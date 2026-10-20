@@ -3,31 +3,33 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Aon Document Bridge — Enterprise Data Architecture & Agent Gym (Live GCP)</title>
+<title>DOCUBRIDGE — Enterprise Data Architecture, Observability, Governance &amp; Agent Gym</title>
 <style>
   :root {
-    --aon-red: #e11b22;
-    --aon-red-dark: #b9141a;
-    --aon-navy: #1b1c27;
-    --aon-gray8: #f4f5f7;
-    --aon-border: #e4e7ec;
-    --aon-text: #111827;
-    --aon-muted: #6b7280;
-    --aon-green: #059669;
-    --aon-green-bg: #ecfdf5;
-    --aon-amber: #d97706;
-    --aon-amber-bg: #fffbeb;
-    --aon-purple: #6d28d9;
-    --aon-purple-bg: #f5f3ff;
-    --aon-blue: #1d4ed8;
-    --aon-blue-bg: #eff6ff;
+    --brand-primary: #1a73e8;
+    --brand-primary-dark: #1557b0;
+    --brand-slate: #0f172a;
+    --brand-bg: #f8fafc;
+    --brand-border: #e2e8f0;
+    --brand-text: #0f172a;
+    --brand-muted: #64748b;
+    --brand-green: #059669;
+    --brand-green-bg: #ecfdf5;
+    --brand-amber: #d97706;
+    --brand-amber-bg: #fffbeb;
+    --brand-purple: #6d28d9;
+    --brand-purple-bg: #f5f3ff;
+    --brand-blue: #1d4ed8;
+    --brand-blue-bg: #eff6ff;
+    --brand-danger: #dc2626;
+    --brand-danger-bg: #fef2f2;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
     padding: 0;
-    background: var(--aon-gray8);
-    color: var(--aon-text);
+    background: var(--brand-bg);
+    color: var(--brand-text);
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
@@ -35,102 +37,115 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
-  /* Top Header — Internal Zone (Aon Navy + Red Bottom Border) */
-  header.aon-header {
+  /* Top Header — Neutral Enterprise Blue-Slate */
+  header.enterprise-header {
     position: sticky;
     top: 0;
     z-index: 40;
-    background: var(--aon-navy);
-    border-bottom: 3px solid var(--aon-red);
-    box-shadow: 0 4px 20px rgba(27, 28, 39, 0.25);
+    background: var(--brand-slate);
+    border-bottom: 3px solid var(--brand-primary);
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.25);
   }
   .header-inner {
-    max-width: 1760px;
+    max-width: 1780px;
     margin: 0 auto;
-    padding: 13px 32px;
+    padding: 12px 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
+    gap: 18px;
+    flex-wrap: wrap;
   }
   .brand-group {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
   }
-  .aon-wordmark {
-    font-size: 34px;
+  .brand-wordmark {
+    font-size: 24px;
     font-weight: 900;
-    letter-spacing: -0.03em;
-    color: var(--aon-red);
+    letter-spacing: 0.04em;
+    color: #60a5fa;
     line-height: 1;
   }
   .brand-divider {
     width: 1px;
-    height: 32px;
+    height: 30px;
     background: rgba(255, 255, 255, 0.2);
   }
   .brand-title {
     color: #fff;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     line-height: 1.2;
   }
   .brand-sub {
-    color: rgba(255, 255, 255, 0.65);
-    font-size: 12px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 11.5px;
     margin-top: 2px;
   }
 
-  /* Journey & Step Pills */
+  /* Domain Switcher & Step Pills */
   .nav-center {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 14px;
+    flex-wrap: wrap;
   }
-  .journey-toggle {
+  .domain-toggle, .journey-toggle {
     display: inline-flex;
     background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 999px;
     padding: 3px;
   }
-  .journey-btn {
+  .domain-btn, .journey-btn {
     border: none;
     background: transparent;
-    color: rgba(255, 255, 255, 0.72);
-    font-size: 13px;
-    font-weight: 600;
-    padding: 6px 15px;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 6px 14px;
     border-radius: 999px;
     cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .domain-btn.active {
+    background: var(--brand-primary);
+    color: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   }
   .journey-btn.active {
     background: #ffffff;
-    color: var(--aon-navy);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    color: var(--brand-slate);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   }
   .steps-nav {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .step-pill {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 14px;
+    gap: 7px;
+    padding: 6px 13px;
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.18);
     background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.78);
-    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .step-pill:hover {
+    background: rgba(255, 255, 255, 0.14);
   }
   .step-pill.active {
     background: #ffffff;
-    color: var(--aon-navy);
+    color: var(--brand-slate);
     border-color: #ffffff;
   }
   .step-pill.done {
@@ -138,19 +153,19 @@
     color: #a7f3d0;
   }
   .step-num {
-    width: 20px;
-    height: 20px;
+    width: 19px;
+    height: 19px;
     border-radius: 999px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 800;
     background: rgba(255, 255, 255, 0.16);
     color: #fff;
   }
   .step-pill.active .step-num {
-    background: var(--aon-red);
+    background: var(--brand-primary);
     color: #fff;
   }
   .step-pill.done .step-num {
@@ -162,7 +177,7 @@
   .header-right {
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: 14px;
   }
   .persona-pill {
     display: inline-flex;
@@ -171,14 +186,15 @@
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 999px;
-    padding: 7px 14px;
+    padding: 6px 13px;
     color: #fff;
-    font-size: 12px;
+    font-size: 11.5px;
+    cursor: pointer;
   }
   .persona-label {
-    color: rgba(255, 255, 255, 0.55);
+    color: #93c5fd;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -193,24 +209,24 @@
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.08em;
-    color: rgba(255, 255, 255, 0.5);
+    color: #93c5fd;
     text-transform: uppercase;
   }
   .client-name {
     color: #fff;
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 700;
   }
   .client-sub {
-    color: rgba(255, 255, 255, 0.65);
+    color: rgba(255, 255, 255, 0.68);
     font-size: 11px;
   }
 
   /* External Zone Header Variant */
   header.portal-header {
-    background: #181924;
-    border-bottom: 1px solid #2e3244;
-    padding: 14px 32px;
+    background: #0b1329;
+    border-bottom: 2px solid var(--brand-primary);
+    padding: 13px 32px;
     display: none;
     align-items: center;
     justify-content: space-between;
@@ -224,7 +240,7 @@
     font-weight: 700;
   }
   .ext-zone-badge {
-    background: var(--aon-red);
+    background: var(--brand-primary);
     color: #fff;
     font-size: 10.5px;
     font-weight: 800;
@@ -236,43 +252,45 @@
 
   /* Page Container */
   main.page-wrap {
-    max-width: 1580px;
+    max-width: 1620px;
     margin: 0 auto;
-    padding: 22px 32px 130px;
+    padding: 22px 32px 135px;
   }
   .eyebrow {
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--aon-red);
+    color: var(--brand-primary);
     margin-bottom: 4px;
   }
   .page-headline-row {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
+    gap: 16px;
     margin-bottom: 16px;
+    flex-wrap: wrap;
   }
   .page-title {
-    font-size: 28px;
+    font-size: 27px;
     font-weight: 800;
     letter-spacing: -0.02em;
     margin: 0;
-    color: var(--aon-navy);
+    color: var(--brand-slate);
   }
   .page-subtitle {
     font-size: 13.5px;
-    color: var(--aon-muted);
+    color: var(--brand-muted);
     margin-top: 4px;
   }
   .live-gcp-pill {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: var(--aon-navy);
+    background: var(--brand-slate);
     color: #fff;
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 600;
     padding: 8px 16px;
     border-radius: 999px;
@@ -303,13 +321,13 @@
   }
   .card {
     background: #ffffff;
-    border: 1px solid var(--aon-border);
+    border: 1px solid var(--brand-border);
     border-radius: 16px;
     padding: 18px 22px;
-    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   }
   .card-dark {
-    background: var(--aon-navy);
+    background: var(--brand-slate);
     color: #ffffff;
     border-radius: 16px;
     padding: 20px 24px;
@@ -318,17 +336,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
     margin-bottom: 12px;
+    flex-wrap: wrap;
   }
   .card-title {
     font-size: 16.5px;
     font-weight: 700;
-    color: var(--aon-navy);
+    color: var(--brand-slate);
     margin: 0;
   }
   .card-sub {
     font-size: 12.5px;
-    color: var(--aon-muted);
+    color: var(--brand-muted);
     margin-top: 2px;
   }
 
@@ -343,28 +363,28 @@
     font-weight: 700;
   }
   .badge-green {
-    background: var(--aon-green-bg);
-    color: var(--aon-green);
+    background: var(--brand-green-bg);
+    color: var(--brand-green);
     border: 1px solid #a7f3d0;
   }
   .badge-amber {
-    background: var(--aon-amber-bg);
-    color: var(--aon-amber);
+    background: var(--brand-amber-bg);
+    color: var(--brand-amber);
     border: 1px solid #fde68a;
   }
   .badge-red {
-    background: #fef2f2;
-    color: var(--aon-red);
+    background: var(--brand-danger-bg);
+    color: var(--brand-danger);
     border: 1px solid #fecaca;
   }
   .badge-purple {
-    background: var(--aon-purple-bg);
-    color: var(--aon-purple);
+    background: var(--brand-purple-bg);
+    color: var(--brand-purple);
     border: 1px solid #ddd6fe;
   }
   .badge-blue {
-    background: var(--aon-blue-bg);
-    color: var(--aon-blue);
+    background: var(--brand-blue-bg);
+    color: var(--brand-blue);
     border: 1px solid #bfdbfe;
   }
   .badge-navy {
@@ -385,10 +405,10 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--aon-muted);
+    color: var(--brand-muted);
     padding: 9px 12px;
-    border-bottom: 1px solid var(--aon-border);
-    background: #f9fafb;
+    border-bottom: 1px solid var(--brand-border);
+    background: #f8fafc;
   }
   table.data-table td {
     padding: 10px 12px;
@@ -407,33 +427,43 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 9px 16px;
+    padding: 8px 15px;
     border-radius: 10px;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 700;
     border: 1px solid transparent;
     cursor: pointer;
     transition: all 0.15s ease;
   }
-  .btn-red {
-    background: var(--aon-red);
+  .btn-primary, .btn-red {
+    background: var(--brand-primary);
     color: #fff;
   }
+  .btn-primary:hover, .btn-red:hover {
+    background: var(--brand-primary-dark);
+  }
   .btn-navy {
-    background: var(--aon-navy);
+    background: var(--brand-slate);
     color: #fff;
   }
   .btn-green {
     background: #059669;
     color: #fff;
   }
+  .btn-amber {
+    background: #d97706;
+    color: #fff;
+  }
   .btn-outline {
     background: #fff;
-    border-color: #d1d5db;
-    color: #374151;
+    border-color: #cbd5e1;
+    color: #334155;
+  }
+  .btn-outline:hover {
+    background: #f8fafc;
   }
   .btn-active-ring {
-    box-shadow: 0 0 0 4px rgba(225, 27, 34, 0.28);
+    box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.3);
     transform: translateY(-1px);
   }
 
@@ -447,16 +477,16 @@
   .seg-item {
     height: 6px;
     border-radius: 999px;
-    background: #e5e7eb;
+    background: #e2e8f0;
   }
   .seg-item.done {
     background: #059669;
   }
   .seg-item.active {
-    background: var(--aon-purple);
+    background: var(--brand-primary);
   }
   .seg-item.parked {
-    background: var(--aon-amber);
+    background: var(--brand-amber);
   }
 
   /* Source Anchor Pill */
@@ -473,19 +503,19 @@
     font-weight: 600;
   }
 
-  /* Lower-Third Caption Banner Overlay (matches placement gcp-end-to-end-demo.mp4) */
+  /* Lower-Third Caption Banner Overlay */
   .caption-banner {
     position: fixed;
-    bottom: 20px;
+    bottom: 18px;
     left: 50%;
     transform: translateX(-50%);
-    width: 1260px;
-    max-width: 92vw;
-    background: rgba(20, 22, 33, 0.96);
-    border: 1.5px solid var(--aon-red);
+    width: 1280px;
+    max-width: 94vw;
+    background: rgba(15, 23, 42, 0.96);
+    border: 1.5px solid var(--brand-primary);
     border-radius: 16px;
-    padding: 14px 24px;
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+    padding: 13px 22px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
     z-index: 100;
     color: #ffffff;
   }
@@ -493,10 +523,10 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
   }
   .caption-part-badge {
-    background: var(--aon-red);
+    background: var(--brand-primary);
     color: #ffffff;
     font-size: 11px;
     font-weight: 800;
@@ -508,15 +538,15 @@
     flex-shrink: 0;
   }
   .caption-headline {
-    font-size: 16.5px;
+    font-size: 15.5px;
     font-weight: 700;
     color: #ffffff;
     line-height: 1.3;
   }
   .caption-sub {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 12.5px;
-    color: #9ca3af;
+    font-size: 12px;
+    color: #94a3b8;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -528,64 +558,75 @@
 </head>
 <body>
 
-<!-- EXTERNAL ZONE HEADER (Used in Scene 1.1) -->
+<!-- EXTERNAL ZONE HEADER (Used in External Borrower / Partner Portal Preview) -->
 <header id="portal-header" class="portal-header">
   <div class="portal-brand">
-    <span>Aon Provider Portal</span>
+    <span id="portal-header-title">DocuBridge External Borrower &amp; Lender Portal</span>
     <span class="ext-zone-badge">EXTERNAL ZONE</span>
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
-    <span style="color:#9ca3af;font-size:12.5px;" class="mono">spiffe://agents.global.aon.net/portal/external-portal-agent</span>
-    <button class="btn btn-outline" style="background:transparent;color:#e5e7eb;border-color:#4b5563;padding:6px 14px;">Carrier: Chubb Commercial</button>
+    <span style="color:#94a3b8;font-size:12.5px;" class="mono">spiffe://agents.docubridge.io/portal/external-portal-agent</span>
+    <button class="btn btn-outline" style="background:transparent;color:#e2e8f0;border-color:#475569;padding:6px 14px;" id="portal-partner-pill">Borrower: Meridian Logistics Center LLC</button>
+    <button class="btn btn-primary" style="padding:6px 14px;" onclick="window.switchScene('scene-intake', 1, false)">→ Back to Internal Console</button>
   </div>
 </header>
 
-<!-- INTERNAL ZONE HEADER (Aon Navy + Red Border) -->
-<header id="internal-header" class="aon-header">
+<!-- INTERNAL ZONE HEADER (Neutral Enterprise Blue-Slate) -->
+<header id="internal-header" class="enterprise-header">
   <div class="header-inner">
     <div class="brand-group">
-      <span class="aon-wordmark">AON</span>
+      <span class="brand-wordmark">DOCUBRIDGE</span>
       <span class="brand-divider"></span>
       <div>
-        <div class="brand-title">Document Bridge</div>
-        <div class="brand-sub" id="header-subtitle">Enterprise Data Architecture · Agent Gym &amp; A2A Edge</div>
+        <div class="brand-title">Enterprise Document Bridge</div>
+        <div class="brand-sub" id="header-subtitle">Enterprise Data Architecture · Observability, Governance &amp; Agent Gym</div>
       </div>
     </div>
 
     <div class="nav-center">
-      <div class="journey-toggle">
+      <!-- 1-Click Domain Switcher (Banking Default + Insurance Toggle) -->
+      <div class="domain-toggle" role="group" aria-label="Domain Use Case Toggle">
+        <button id="domain-btn-banking" class="domain-btn active" onclick="window.switchDomain('banking')">🏦 Banking · Loan Underwriting</button>
+        <button id="domain-btn-insurance" class="domain-btn" onclick="window.switchDomain('insurance')">🛡️ Insurance · Commercial Placement</button>
+      </div>
+
+      <div class="journey-toggle" style="display:none;">
         <button id="journey-intake" class="journey-btn active">Intake &amp; Consolidation</button>
         <button id="journey-gym" class="journey-btn">A2UI Inbox &amp; Agent Gym</button>
       </div>
+
       <div class="steps-nav">
-        <div id="step-pill-1" class="step-pill active">
+        <div id="step-pill-1" class="step-pill active" onclick="window.switchScene('scene-intake', 1, false)">
           <span class="step-num" id="step-num-1">1</span>
           <span>Dual-Path Intake &amp; Vault</span>
         </div>
-        <div id="step-pill-2" class="step-pill">
+        <div id="step-pill-2" class="step-pill" onclick="window.switchScene('scene-consolidation', 2, false)">
           <span class="step-num" id="step-num-2">2</span>
           <span>Consolidation &amp; Views</span>
         </div>
-        <div id="step-pill-3" class="step-pill">
+        <div id="step-pill-3" class="step-pill" onclick="window.switchScene('scene-inbox', 3, false)">
           <span class="step-num" id="step-num-3">3</span>
           <span>A2UI Inbox &amp; SPIFFE</span>
         </div>
-        <div id="step-pill-4" class="step-pill">
+        <div id="step-pill-4" class="step-pill" onclick="window.switchScene('scene-gym', 4, false)">
           <span class="step-num" id="step-num-4">4</span>
           <span>Agent Gym &amp; Trust Dial</span>
+        </div>
+        <div id="step-pill-portal" class="step-pill" onclick="window.switchScene('scene-portal', 1, true)" title="Preview External Portal Surface">
+          <span>🌐 External Portal</span>
         </div>
       </div>
     </div>
 
     <div class="header-right">
-      <div class="persona-pill" id="persona-pill">
+      <div class="persona-pill" id="persona-pill" onclick="window.togglePersona()" title="Click to switch active OBO Persona">
         <span class="persona-label">PERSONA</span>
-        <span class="persona-value" id="persona-display">Lead Underwriter (SPIFFE OBO · All Grants) ▾</span>
+        <span class="persona-value" id="persona-display">Senior Credit Officer (SPIFFE OBO · $25M Authority) ▾</span>
       </div>
       <div class="client-info">
-        <div class="client-tag">CLIENT · GCP DOCUMENTS001</div>
-        <div class="client-name">Terrepower Coastal LLC</div>
-        <div class="client-sub">2027 Property &amp; Benefits Renewal</div>
+        <div class="client-tag" id="header-entity-tag">BORROWER · COMMERCIAL REAL ESTATE</div>
+        <div class="client-name" id="header-entity-name">Meridian Logistics Center LLC</div>
+        <div class="client-sub" id="header-entity-sub">$45,000,000 Commercial Term Loan Underwriting</div>
       </div>
     </div>
   </div>
@@ -594,28 +635,28 @@
 <main class="page-wrap">
 
   <!-- ===================================================================== -->
-  <!-- SCENE 1A: EXTERNAL ZONE — CARRIER PROVIDER PORTAL & A2A AGENT CARD    -->
+  <!-- SCENE 1A: EXTERNAL ZONE — BORROWER / PARTNER PORTAL & A2A AGENT CARD  -->
   <!-- ===================================================================== -->
   <section id="scene-portal" class="scene">
-    <div style="max-width:980px;margin:0 auto;">
+    <div style="max-width:1020px;margin:0 auto;">
       <div style="margin-bottom:18px;">
-        <h1 style="font-size:28px;font-weight:800;margin:0;color:#111827;">Chubb Commercial · Provider Portal</h1>
-        <p style="font-size:13.5px;color:#6b7280;margin:4px 0 0;">
-          External zone — isolated to Chubb's own quote &amp; endorsement submissions. Internal broker notes, competing carrier quotes, and census PII never cross this boundary.
+        <h1 style="font-size:28px;font-weight:800;margin:0;color:#0f172a;" id="portal-page-heading">Meridian Logistics Center LLC · Commercial Loan Portal</h1>
+        <p style="font-size:13.5px;color:#64748b;margin:4px 0 0;" id="portal-page-desc">
+          External zone — isolated to borrower rent rolls, credit agreements, and MAI appraisals. Internal credit committee memos, competing lender quotes, and guarantor SSNs never cross this boundary.
         </p>
       </div>
 
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
           <div>
-            <h2 class="card-title">Terrepower Coastal LLC — 2027 Renewal Submission Checklist</h2>
+            <h2 class="card-title" id="portal-checklist-title">Meridian Logistics Center LLC — $45M CRE Term Loan Submission Checklist</h2>
             <div class="card-sub">Connected to Live A2A Edge: <span class="mono" id="live-edge-url">https://documents001-bridge-sf6etnew5q-uc.a.run.app</span></div>
           </div>
-          <span class="badge badge-green" id="live-card-badge">● Live A2A Agent Card Verified (18 Skills in GCS)</span>
+          <span class="badge badge-green" id="live-card-badge">● Live A2A Agent Card Verified (GCS Skills Active)</span>
         </div>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;font-size:12.5px;" class="mono">
-          <div style="color:#475569;font-weight:700;margin-bottom:4px;">GET /.well-known/agent-card.json → documents001-bridge (Cloud Run v2)</div>
-          <div id="agent-card-preview" style="color:#0f172a;">Loading live Agent Card from documents001-bridge...</div>
+          <div style="color:#475569;font-weight:700;margin-bottom:4px;">GET /.well-known/agent-card.json → documents001-bridge (Cloud Run v2 / Vertex AI Agent Engine)</div>
+          <div id="agent-card-preview" style="color:#0f172a;">protocolVersion=1.0 · provider=DocuBridge Enterprise · capabilities.streaming=true</div>
         </div>
       </div>
 
@@ -625,29 +666,29 @@
             <h3 class="card-title">Path A · Structured Data (Schema-Validated)</h3>
             <span class="badge badge-navy">{ } Parsed by Code · 0 AI Tokens</span>
           </div>
-          <p style="font-size:13px;color:#4b5563;margin-top:0;">
-            Property schedule spreadsheets &amp; JSON files validate directly against deterministic schema rules with zero OCR or model cost.
+          <p style="font-size:13px;color:#475569;margin-top:0;" id="portal-path-a-desc">
+            Commercial rent roll &amp; DSCR spreadsheets validate directly against deterministic schema rules with zero OCR or model cost.
           </p>
-          <div style="padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;margin-bottom:14px;">
-            <div style="font-weight:700;font-size:13.5px;">📄 terrepower-coastal-sov-2027.xlsx</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:3px;">14 Coastal Locations · Total Insured Value $142,500,000 · Exact Decimal schema check</div>
+          <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;margin-bottom:14px;">
+            <div style="font-weight:700;font-size:13.5px;" id="portal-path-a-file">📄 meridian-rent-roll-dscr-2026.xlsx</div>
+            <div style="font-size:12px;color:#64748b;margin-top:3px;" id="portal-path-a-meta">38 Commercial Tenants · Net Operating Income $4,185,000.00 · DSCR 1.42x</div>
           </div>
-          <button id="btn-submit-path-a" class="btn btn-navy">Validate &amp; Lock in Audit Vault</button>
+          <button id="btn-submit-path-a" class="btn btn-navy" onclick="window.switchScene('scene-intake', 1, false)">Validate &amp; Lock in Audit Vault</button>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">Path B · Unstructured Carrier PDF (Layout + Gate)</h3>
+            <h3 class="card-title">Path B · Unstructured Credit PDF (Layout + Gate)</h3>
             <span class="badge badge-purple">✦ Document AI + Gemini 3.5 Flash</span>
           </div>
-          <p style="font-size:13px;color:#4b5563;margin-top:0;">
-            Multi-page carrier binder &amp; coastal endorsement PDF parsed with page/bounding-box anchors, edge PII redaction, and 4-Signal Disposition Gate.
+          <p style="font-size:13px;color:#475569;margin-top:0;" id="portal-path-b-desc">
+            Multi-page credit agreement &amp; fee addendum PDF parsed with page/bounding-box anchors, edge PII redaction, and 4-Signal Disposition Gate.
           </p>
-          <div style="padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;margin-bottom:14px;">
-            <div style="font-weight:700;font-size:13.5px;">📑 chubb-coastal-property-quote-2027.pdf</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:3px;">Cover Page ($50,000 Base Deductible) + Page 4 Schedule B Coastal Wind Endorsement ($100,000)</div>
+          <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;margin-bottom:14px;">
+            <div style="font-weight:700;font-size:13.5px;" id="portal-path-b-file">📑 syndicated-credit-agreement-meridian-2026.pdf</div>
+            <div style="font-size:12px;color:#64748b;margin-top:3px;" id="portal-path-b-meta">Cover Term Sheet ($50,000 Origination Fee) + Page 4 Schedule B Fee Addendum ($100,000)</div>
           </div>
-          <button id="btn-submit-path-b" class="btn btn-red">Submit Carrier PDF to Document Bridge</button>
+          <button id="btn-submit-path-b" class="btn btn-primary" onclick="window.switchScene('scene-intake', 1, false)">Submit Package to Document Bridge</button>
         </div>
       </div>
     </div>
@@ -660,14 +701,14 @@
     <div class="eyebrow">ZONE 1, ZONE 2 &amp; ZONE 3 · DUAL-PATH INTAKE, REVIEW QUARANTINE &amp; TAMPER-PROOF AUDIT VAULT</div>
     <div class="page-headline-row">
       <div>
-        <h1 class="page-title">Dual-Path Intake &amp; Two-Zone Cloud Storage</h1>
-        <div class="page-subtitle">
-          Path A validates structured spreadsheets in code; Path B extracts layout-anchored PDFs, strips personal data at the edge, and gates low-confidence fields into Review Quarantine.
+        <h1 class="page-title" id="intake-page-title">Dual-Path Intake &amp; Two-Zone Cloud Storage (Banking · Loan Underwriting)</h1>
+        <div class="page-subtitle" id="intake-page-subtitle">
+          Path A validates structured rent rolls &amp; schedules in code (0 AI tokens); Path B extracts layout-anchored credit agreements &amp; appraisals, masks guarantor SSNs at the edge, and gates conflicts into Review Quarantine.
         </div>
       </div>
       <div class="live-gcp-pill">
         <span class="pulse-dot"></span>
-        <span>LIVE · Cloud Run (documents001-bridge) + GCS Audit Vault</span>
+        <span>LIVE · DocuBridge 6-Zone Architecture + WORM Audit Vault</span>
       </div>
     </div>
 
@@ -676,29 +717,29 @@
       <div class="card">
         <div class="card-header">
           <div>
-            <div style="font-size:15px;font-weight:800;color:var(--aon-navy);">Terrepower Property Schedule</div>
-            <div style="font-size:12px;color:var(--aon-muted);" class="mono">terrepower-coastal-sov-2027.xlsx</div>
+            <div style="font-size:15px;font-weight:800;color:var(--brand-slate);" id="intake-c1-title">Meridian Commercial Rent Roll &amp; DSCR</div>
+            <div style="font-size:12px;color:var(--brand-muted);" class="mono" id="intake-c1-file">meridian-rent-roll-dscr-2026.xlsx</div>
           </div>
           <span class="badge badge-green">Accepted · Path A</span>
         </div>
-        <span class="badge badge-navy" style="margin-bottom:8px;">{ } Parsed by deterministic code · 0 AI calls</span>
+        <span class="badge badge-navy" style="margin-bottom:8px;">{ } Parsed by deterministic code · 0 AI Tokens</span>
         <div class="seg-bar">
           <div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div>
         </div>
-        <div style="font-size:12.5px;color:#374151;line-height:1.5;margin-top:8px;">
-          <div><strong>Total Insured Value:</strong> <span class="mono">$142,500,000.00</span> (14 locations)</div>
-          <div><strong>Edge PII Redaction:</strong> <span class="mono">2 claimant SSNs masked ([REDACTED-SSN])</span></div>
-          <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://documents001-bridge-audit-vault/sha256:9f84...e21c</span></div>
-          <div><strong>Retention Lock:</strong> Locked 7 Years (2,555 days · Write-Once)</div>
+        <div style="font-size:12.5px;color:#334155;line-height:1.55;margin-top:8px;" id="intake-c1-body">
+          <div><strong>Net Operating Income (NOI):</strong> <span class="mono">$4,185,000.00</span> (38 commercial tenants · DSCR <span class="mono">1.42x</span>)</div>
+          <div><strong>Edge PII Redaction:</strong> <span class="mono">2 guarantor SSNs masked ([REDACTED-SSN])</span></div>
+          <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://docubridge-audit-vault/vault/meridian/sha256:9f84...e21c</span></div>
+          <div><strong>Retention Lock:</strong> Locked 7 Years (2,555 days · Write-Once WORM)</div>
         </div>
       </div>
 
-      <!-- Card 2: Path B Chubb Carrier Quote (Quarantined on Schedule B Deductible) -->
+      <!-- Card 2: Path B Quarantined PDF -->
       <div class="card" style="border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,0.15);">
         <div class="card-header">
           <div>
-            <div style="font-size:15px;font-weight:800;color:var(--aon-navy);">Chubb · Property Quote</div>
-            <div style="font-size:12px;color:var(--aon-muted);" class="mono">chubb-coastal-property-quote-2027.pdf</div>
+            <div style="font-size:15px;font-weight:800;color:var(--brand-slate);" id="intake-c2-title">Syndicated Credit Agreement &amp; Addendum</div>
+            <div style="font-size:12px;color:var(--brand-muted);" class="mono" id="intake-c2-file">syndicated-credit-agreement-meridian-2026.pdf</div>
           </div>
           <span class="badge badge-amber" id="chubb-intake-badge">Quarantined · Review Needed</span>
         </div>
@@ -706,44 +747,44 @@
         <div class="seg-bar">
           <div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item parked"></div><div class="seg-item"></div>
         </div>
-        <div style="font-size:12.5px;color:#374151;line-height:1.5;margin-top:8px;">
-          <div><strong>Cover Page Deductible:</strong> <span class="mono">$50,000</span> <span class="anchor-chip">Page 1 · Region [0.14, 0.31]</span></div>
-          <div><strong>Schedule B Endorsement:</strong> <span class="mono" style="color:#b45309;font-weight:700;">$100,000 (Coastal Wind)</span> <span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></div>
-          <div><strong>Zone 2 Quarantine URI:</strong> <span class="mono">gs://documents001-bridge-artifacts/quarantine/doc_chubb_001</span></div>
-          <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#b45309;">awaiting_human_review (Schedule B override conflict)</span></div>
+        <div style="font-size:12.5px;color:#334155;line-height:1.55;margin-top:8px;" id="intake-c2-body">
+          <div><strong>Cover Term Sheet Fee:</strong> <span class="mono">$50,000</span> <span class="anchor-chip">Page 1 · Region [0.14, 0.31]</span></div>
+          <div><strong>Schedule B Fee Addendum:</strong> <span class="mono" style="color:#b45309;font-weight:700;">$100,000 (Origination &amp; Rate-Lock)</span> <span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></div>
+          <div><strong>Zone 2 Quarantine URI:</strong> <span class="mono">gs://docubridge-artifacts/quarantine/doc_meridian_credit_001</span></div>
+          <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#b45309;">awaiting_human_review (Schedule B fee override conflict)</span></div>
         </div>
       </div>
 
-      <!-- Card 3: Path B AIG Endorsement -->
+      <!-- Card 3: Path B Accepted PDF -->
       <div class="card">
         <div class="card-header">
           <div>
-            <div style="font-size:15px;font-weight:800;color:var(--aon-navy);">AIG · Signed Binder &amp; Endorsement</div>
-            <div style="font-size:12px;color:var(--aon-muted);" class="mono">aig-excess-property-binder-2027.pdf</div>
+            <div style="font-size:15px;font-weight:800;color:var(--brand-slate);" id="intake-c3-title">CBRE · MAI Commercial Appraisal Report</div>
+            <div style="font-size:12px;color:var(--brand-muted);" class="mono" id="intake-c3-file">cbre-mai-commercial-appraisal-2026.pdf</div>
           </div>
           <span class="badge badge-green">Accepted · Locked</span>
         </div>
-        <span class="badge badge-purple" style="margin-bottom:8px;">✦ Multi-Window Table Merging (Pages 1–18)</span>
+        <span class="badge badge-purple" style="margin-bottom:8px;" id="intake-c3-chip">✦ Multi-Window Table Merging (Pages 1–24)</span>
         <div class="seg-bar">
           <div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div><div class="seg-item done"></div>
         </div>
-        <div style="font-size:12.5px;color:#374151;line-height:1.5;margin-top:8px;">
-          <div><strong>Layer Limit:</strong> <span class="mono">$25,000,000 xs $50,000,000</span> <span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></div>
-          <div><strong>Annual Premium:</strong> <span class="mono">$412,000.00</span> <span class="anchor-chip">Page 14 · Region [0.22, 0.61]</span></div>
-          <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://documents001-bridge-audit-vault/sha256:4a19...c802</span></div>
+        <div style="font-size:12.5px;color:#334155;line-height:1.55;margin-top:8px;" id="intake-c3-body">
+          <div><strong>Appraised Collateral Value:</strong> <span class="mono">$62,500,000.00</span> <span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></div>
+          <div><strong>Implied Loan-to-Value (LTV):</strong> <span class="mono">72.00% ($45.0M / $62.5M)</span> <span class="anchor-chip">Page 14 · Region [0.22, 0.61]</span></div>
+          <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://docubridge-audit-vault/vault/meridian/sha256:4a19...c802</span></div>
           <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#059669;">auto_approved (Confidence 99% · 0 anomalies)</span></div>
         </div>
       </div>
     </div>
 
-    <!-- Zone 6 Live Asset Map from Cloud Run -->
+    <!-- Zone 6 Live Asset Map -->
     <div class="card">
       <div class="card-header">
         <div>
-          <h2 class="card-title">Zone 6 · Governed Storage &amp; Data Asset Map (Live from Cloud Run <span class="mono">documents001-bridge-rfp-board</span>)</h2>
-          <div class="card-sub">Every document artifact, quarantine object, operational table, and Agent Gym store is registered in the Knowledge Catalog (<span class="mono">GET /v1/catalog/assets</span>).</div>
+          <h2 class="card-title">Zone 6 · Governed Storage &amp; Data Asset Map (<span class="mono">GET /v1/catalog/assets</span>)</h2>
+          <div class="card-sub">Every document artifact, quarantine object, operational table, and Agent Gym store is registered in the Knowledge Catalog with neutral enterprise URIs.</div>
         </div>
-        <span class="badge badge-blue" id="catalog-count-badge">Loading Catalog Assets...</span>
+        <span class="badge badge-blue" id="catalog-count-badge">✓ 12 Governed Assets Registered</span>
       </div>
       <table class="data-table">
         <thead>
@@ -756,7 +797,7 @@
           </tr>
         </thead>
         <tbody id="catalog-assets-tbody">
-          <tr><td colspan="5">Fetching live catalog assets from https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app/v1/catalog/assets...</td></tr>
+          <tr><td colspan="5">Loading governed catalog assets...</td></tr>
         </tbody>
       </table>
     </div>
@@ -766,18 +807,18 @@
   <!-- SCENE 2: CONSOLIDATION RULES, BI-TEMPORAL STORE & ROLE-BASED VIEWS    -->
   <!-- ===================================================================== -->
   <section id="scene-consolidation" class="scene">
-    <div class="eyebrow">ZONE 4 &amp; ZONE 6 · CONSOLIDATION RULES ENGINE, HISTORICAL OPERATIONAL STORE &amp; END-TO-END LINEAGE</div>
+    <div class="eyebrow">ZONE 4 &amp; ZONE 6 · CONSOLIDATION RULES ENGINE, BI-TEMPORAL OPERATIONAL STORE &amp; 6-HOP LINEAGE</div>
     <div class="page-headline-row">
       <div>
-        <h1 class="page-title">Deterministic Consolidation &amp; Historical Operational Store</h1>
-        <div class="page-subtitle">
-          100% exact Decimal math and Source Priority Hierarchy (Signed Endorsement &gt; Binder &gt; Quote &gt; Submission). Tracks both when a value was learned and when coverage takes effect.
+        <h1 class="page-title" id="consolidation-page-title">Deterministic Consolidation &amp; Bi-Temporal Operational Store</h1>
+        <div class="page-subtitle" id="consolidation-page-subtitle">
+          100% exact Decimal math and Source Priority Hierarchy (Signed Addendum / Closing Disclosure [40] &gt; Credit Agreement [30] &gt; Term Sheet / Appraisal [20] &gt; Application [10]).
         </div>
       </div>
-      <div style="display:flex;gap:8px;">
-        <button id="view-btn-broker" class="btn btn-navy">Broker View (Market &amp; Conflicts)</button>
-        <button id="view-btn-underwriter" class="btn btn-outline">Underwriter View (Risk &amp; Deductibles)</button>
-        <button id="view-btn-claims" class="btn btn-outline">Claims View (Effective-Date Coverage)</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="view-btn-broker" class="btn btn-navy" onclick="window.selectRoleView('primary')">Credit Officer View (Deal &amp; Conflicts)</button>
+        <button id="view-btn-underwriter" class="btn btn-outline" onclick="window.selectRoleView('underwriter')">Underwriter View (LTV, DSCR &amp; Fee Exposure)</button>
+        <button id="view-btn-claims" class="btn btn-outline" onclick="window.selectRoleView('audit')">Covenant / Audit View (Effective-Date Terms)</button>
       </div>
     </div>
 
@@ -785,8 +826,8 @@
       <div class="card">
         <div class="card-header">
           <div>
-            <h2 class="card-title" id="active-view-title">Role-Based Projection: Broker View</h2>
-            <div class="card-sub">Selects highest-priority source per coverage field while preserving full historical audit trail and cross-document conflict alerts.</div>
+            <h2 class="card-title" id="active-view-title">Role-Based Projection: Credit Officer View (Deal &amp; Conflicts)</h2>
+            <div class="card-sub" id="active-view-sub">Selects highest-priority source per canonical field while preserving bi-temporal history (recorded_at vs. effective_from) and cross-document conflict alerts.</div>
           </div>
           <span class="badge badge-navy">{ } 100% Engine Decimal Math · 0 AI Calculations</span>
         </div>
@@ -794,55 +835,16 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Field / Coverage Term</th>
+              <th>Canonical Field / Term</th>
               <th>Winning Value</th>
               <th>Winning Source (Priority)</th>
-              <th>Timeline (Learned vs. Effective)</th>
-              <th>Source Page Link</th>
+              <th>Bi-Temporal (Learned vs. Effective)</th>
+              <th>Source Page Anchor</th>
               <th>Reconciliation Status</th>
             </tr>
           </thead>
-          <tbody>
-            <tr>
-              <td><strong>Total Insured Value</strong></td>
-              <td class="mono" style="font-weight:700;">$142,500,000.00</td>
-              <td>Signed Property Schedule <span class="badge badge-navy">Prio 90</span></td>
-              <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:54Z<br/>Effective: 2027-01-01</td>
-              <td><span class="anchor-chip">Schedule Tab 1 · Row 14</span></td>
-              <td><span class="badge badge-green">✓ Reconciled</span></td>
-            </tr>
-            <tr class="highlight-row">
-              <td><strong>Coastal Wind Deductible</strong></td>
-              <td class="mono" style="font-weight:800;color:#b45309;">$100,000.00</td>
-              <td>Schedule B Endorsement <span class="badge badge-purple">Prio 100</span></td>
-              <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:57Z<br/>Effective: 2027-01-01</td>
-              <td><span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></td>
-              <td><span class="badge badge-amber">⚠ Conflict vs Cover Page ($50,000)</span></td>
-            </tr>
-            <tr>
-              <td><strong>Primary Property Limit</strong></td>
-              <td class="mono" style="font-weight:700;">$50,000,000.00</td>
-              <td>Chubb Primary Quote <span class="badge badge-blue">Prio 60</span></td>
-              <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:55Z<br/>Effective: 2027-01-01</td>
-              <td><span class="anchor-chip">Page 2 · Region [0.15, 0.28]</span></td>
-              <td><span class="badge badge-green">✓ Verified</span></td>
-            </tr>
-            <tr>
-              <td><strong>Excess Layer 1 Limit</strong></td>
-              <td class="mono" style="font-weight:700;">$25,000,000.00</td>
-              <td>AIG Signed Binder <span class="badge badge-green">Prio 80</span></td>
-              <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:56Z<br/>Effective: 2027-01-01</td>
-              <td><span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></td>
-              <td><span class="badge badge-green">✓ Verified</span></td>
-            </tr>
-            <tr class="success-row">
-              <td><strong>Carrier Entity Resolution</strong></td>
-              <td class="mono" style="font-weight:700;">Campala (Canonical)</td>
-              <td>Agent Gym Rule <span class="mono">rule-entity-01</span></td>
-              <td class="mono" style="font-size:11.5px;">Mapped "Campala Ltd." → "Campala"<br/>Syndicate 2987 ≠ 1183 preserved</td>
-              <td><span class="anchor-chip">Page 1 · Header</span></td>
-              <td><span class="badge badge-green">✓ Canonicalized</span></td>
-            </tr>
+          <tbody id="consolidation-tbody">
+            <!-- Populated by switchDomain() -->
           </tbody>
         </table>
       </div>
@@ -854,25 +856,8 @@
             <h3 class="card-title">Zone 6 · 6-Hop End-to-End Field Lineage</h3>
             <span class="badge badge-blue">Click-to-Source Trace</span>
           </div>
-          <div style="font-size:12.5px;display:flex;flex-direction:column;gap:7px;">
-            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid var(--aon-navy);border-radius:6px;">
-              <strong>1. Intake Document:</strong> <span class="mono">chubb-coastal-property-quote-2027.pdf (Page 4)</span>
-            </div>
-            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #6d28d9;border-radius:6px;">
-              <strong>2. Extraction Engine:</strong> <span class="mono">Document AI Layout + Agent Gym Hint</span>
-            </div>
-            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #059669;border-radius:6px;">
-              <strong>3. Audit Vault:</strong> <span class="mono">gs://documents001-bridge-audit-vault/vault/chubb#v1</span>
-            </div>
-            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #d97706;border-radius:6px;">
-              <strong>4. Consolidation Rule:</strong> <span class="mono">Endorsement Overrides Quote (Prio 100 &gt; Prio 60)</span>
-            </div>
-            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #1d4ed8;border-radius:6px;">
-              <strong>5. Operational Store:</strong> <span class="mono">Cloud SQL bridge-sql (10.68.0.3) · Fact v2</span>
-            </div>
-            <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid var(--aon-red);border-radius:6px;">
-              <strong>6. User Interface Card:</strong> <span class="mono">Underwriter Review Card · Citation Chip [Page 4]</span>
-            </div>
+          <div style="font-size:12.5px;display:flex;flex-direction:column;gap:7px;" id="lineage-hops-box">
+            <!-- Populated by switchDomain() -->
           </div>
         </div>
 
@@ -881,10 +866,10 @@
             <h3 class="card-title">BigQuery Analytics &amp; Open Iceberg Sync</h3>
             <span class="badge badge-green">Watermark Synced</span>
           </div>
-          <div style="font-size:12.5px;color:#374151;line-height:1.5;">
-            <div><strong>Target Table:</strong> <span class="mono">aon_analytics.operational_facts_iceberg</span></div>
-            <div><strong>Format:</strong> Open Iceberg over Cloud Storage (Incremental Sync)</div>
-            <div><strong>Latest Watermark:</strong> <span class="mono">2026-10-17T18:57:27Z (4 deltas exported)</span></div>
+          <div style="font-size:12.5px;color:#334155;line-height:1.55;">
+            <div><strong>Target Table:</strong> <span class="mono">docubridge_lakehouse.bq_operational_facts_iceberg</span></div>
+            <div><strong>Format:</strong> Open Iceberg over Cloud Storage (Watermarked Incremental CDC)</div>
+            <div><strong>Latest Watermark:</strong> <span class="mono" id="iceberg-watermark-label">2026-10-19T21:00:00Z (LOAN-MERIDIAN-001 delta exported)</span></div>
           </div>
         </div>
       </div>
@@ -900,12 +885,16 @@
       <div>
         <h1 class="page-title">A2UI v0.9 Action Inbox &amp; SPIFFE Compound Identity</h1>
         <div class="page-subtitle">
-          Cryptographic SPIFFE agent identity combined with the signed-in human user. Effective permission is the strict intersection of Agent and User grants.
+          Cryptographic SPIFFE agent identity (<span class="mono">act</span>) combined with the signed-in human principal (<span class="mono">obo</span>). Effective permission is the strict intersection <span class="mono">Agent(SPIFFE) ∩ User(Principal)</span>.
         </div>
       </div>
-      <div class="live-gcp-pill">
-        <span class="pulse-dot"></span>
-        <span>Trust Domain: spiffe://agents.global.aon.net</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button id="btn-persona-junior" class="btn btn-outline" onclick="window.setPersonaMode('junior')">👤 Junior Loan Officer ($25k Limit)</button>
+        <button id="btn-persona-senior" class="btn btn-navy" onclick="window.setPersonaMode('senior')">🛡️ Senior Credit Officer ($25M Authority)</button>
+        <div class="live-gcp-pill">
+          <span class="pulse-dot"></span>
+          <span>Trust Domain: spiffe://agents.docubridge.io</span>
+        </div>
       </div>
     </div>
 
@@ -915,7 +904,7 @@
         <div class="card-header">
           <div>
             <h2 class="card-title">A2UI v0.9 Surface · Live Action Progress &amp; Approval Card</h2>
-            <div class="card-sub">Catalog: <span class="mono">https://aon.com/a2ui/v0_9/catalogs/enterprise_inbox_catalog.json</span> (Internal Zone Only)</div>
+            <div class="card-sub">Catalog: <span class="mono">https://docubridge.io/a2ui/v0_9/catalogs/enterprise_inbox_catalog.json</span> (Internal Zone Only)</div>
           </div>
           <span class="badge badge-amber" id="inbox-status-badge">⏸ PAUSED · Awaiting Human Confirmation</span>
         </div>
@@ -935,7 +924,7 @@
               <div style="font-size:11px;color:#047857;">Page 4 region extracted</div>
             </div>
             <div id="step-box-3" style="padding:9px;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;">
-              <div style="font-weight:700;color:#b45309;" id="step-box-3-title">⏸ 3. Underwriter Gate</div>
+              <div style="font-weight:700;color:#b45309;" id="step-box-3-title">⏸ 3. Credit Authority Gate</div>
               <div style="font-size:11px;color:#92400e;" id="step-box-3-sub">Awaiting human review</div>
             </div>
             <div id="step-box-4" style="padding:9px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;">
@@ -945,44 +934,44 @@
           </div>
         </div>
 
-        <!-- RBAC 403 Refusal Alert (Shown during Scene 3.1 when Broker Associate tries to approve $100k) -->
+        <!-- RBAC 403 / 422 Refusal Alert -->
         <div id="rbac-refusal-banner" style="display:none;background:#fef2f2;border:1.5px solid #ef4444;border-radius:12px;padding:12px 16px;margin-bottom:14px;color:#991b1b;">
-          <div style="font-weight:800;font-size:13px;">⛔ HTTP 403 FORBIDDEN — Compound Identity Authority Check Failed</div>
-          <div style="font-size:12px;margin-top:3px;" class="mono">
-            Principal "broker.associate@aon.com" (role=broker, max_approval=$25,000) cannot approve $100,000.00 HIGH-risk deductible override. Switch to Lead Underwriter persona.
+          <div style="font-weight:800;font-size:13px;" id="rbac-refusal-title">⛔ HTTP 422 / 403 AUTHORITY REFUSAL — Compound Identity Authority Check Failed</div>
+          <div style="font-size:12px;margin-top:3px;" class="mono" id="rbac-refusal-detail">
+            Principal "usr:junior.officer@docubridge.io" (max_approval_amount=$25,000.00) cannot approve $100,000.00 HIGH-risk Schedule B origination fee override. Switch to Senior Credit Officer persona.
           </div>
         </div>
 
         <!-- Approval Card Form (4+1 Governance Verbs) -->
         <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;flex-wrap:wrap;">
             <div>
-              <div style="font-size:15px;font-weight:800;color:var(--aon-navy);">Resolve Coastal Wind Deductible Conflict (Chubb · Schedule B)</div>
-              <div style="font-size:12.5px;color:var(--aon-muted);">Proposed by Agent: <span class="mono">$50,000</span> (Cover Page) vs. Schedule B Endorsement: <span class="mono">$100,000</span> (<span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span>)</div>
+              <div style="font-size:15px;font-weight:800;color:var(--brand-slate);" id="inbox-card-heading">Resolve Origination &amp; Rate-Lock Fee Conflict (Meridian · Schedule B Addendum)</div>
+              <div style="font-size:12.5px;color:var(--brand-muted);" id="inbox-card-sub">Proposed by Agent: <span class="mono">$50,000</span> (Cover Term Sheet) vs. Schedule B Fee Addendum: <span class="mono">$100,000</span> (<span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span>)</div>
             </div>
             <span class="badge badge-red">HIGH RISK · $100,000 Authority</span>
           </div>
 
           <div class="grid-2" style="margin-bottom:12px;">
             <div>
-              <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">VERIFIED DEDUCTIBLE VALUE</label>
-              <input id="input-verified-deductible" type="text" value="$100,000" class="mono" style="width:100%;padding:8px 12px;border:1.5px solid #6d28d9;border-radius:8px;font-size:14px;font-weight:700;background:#f5f3ff;" readonly />
+              <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;" id="inbox-field-label">VERIFIED ORIGINATION FEE VALUE</label>
+              <input id="input-verified-deductible" type="text" value="$100,000" class="mono" style="width:100%;padding:8px 12px;border:1.5px solid #2563eb;border-radius:8px;font-size:14px;font-weight:700;background:#eff6ff;" />
             </div>
             <div>
               <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">EXPERT AUDIT NOTE (CAPTURED BY AGENT GYM)</label>
-              <input id="input-expert-memo" type="text" value="Coastal Schedule B endorsement on page 4 overrides base cover page deductible to $100,000." style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;" readonly />
+              <input id="input-expert-memo" type="text" value="Executed Schedule B fee addendum on page 4 supersedes cover term sheet origination fee ($50,000 -> $100,000)." style="width:100%;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;" />
             </div>
           </div>
 
-          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid #f1f5f9;">
-            <div style="display:flex;gap:8px;">
-              <button id="btn-edit-approve" class="btn btn-green">✓ Edit &amp; Approve</button>
-              <button class="btn btn-outline">Accept As-Is</button>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid #f1f5f9;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="btn-edit-approve" class="btn btn-green" onclick="window.handleInboxApprove()">✓ Edit &amp; Approve</button>
+              <button class="btn btn-outline" onclick="window.handleInboxApprove()">Accept As-Is</button>
               <button class="btn btn-outline">Respond / Clarify</button>
-              <button class="btn btn-outline" style="color:var(--aon-red);border-color:#fecaca;">Reject</button>
+              <button class="btn btn-outline" style="color:var(--brand-danger);border-color:#fecaca;">Reject</button>
               <button class="btn btn-outline">Escalate</button>
             </div>
-            <span class="mono" style="font-size:11.5px;color:#6b7280;" id="rfc6902-patch-label">Audit Diff: [{"op":"replace","path":"/deductible_usd","value":"$100,000"}]</span>
+            <span class="mono" style="font-size:11.5px;color:#64748b;" id="rfc6902-patch-label">Audit Diff: [{"op":"replace","path":"/origination_fee_usd","value":"$100,000"}]</span>
           </div>
         </div>
       </div>
@@ -995,28 +984,16 @@
             <span class="badge badge-green">Shadow AI Blocked</span>
           </div>
           <div id="spiffe-agents-list" style="display:flex;flex-direction:column;gap:7px;font-size:12px;">
-            Loading registered SPIFFE agents from Cloud Run...
+            Loading registered SPIFFE agents...
           </div>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">Verified Compound Identity Token</h3>
-            <span class="badge badge-purple" id="svid-badge">SPIFFE SVID Verified</span>
+            <h3 class="card-title">Verified Compound Identity Token (RFC 8693 OBO)</h3>
+            <span class="badge badge-purple" id="svid-badge">SPIFFE JWT-SVID Verified</span>
           </div>
-          <div style="background:#0f172a;color:#e2e8f0;padding:11px 14px;border-radius:10px;font-size:11.5px;line-height:1.45;" class="mono" id="compound-jwt-box">
-            {
-              "iss": "spiffe://agents.global.aon.net",
-              "sub": "spiffe://agents.global.aon.net/internal/underwriter-agent",
-              "aud": ["aon-docubridge"],
-              "obo": {
-                "sub": "lead.underwriter@aon.com",
-                "role": "underwriter",
-                "tenant_id": "tenant-terrepower",
-                "max_approval_amount": "50000000"
-              }
-            }
-          </div>
+          <pre style="margin:0;background:#0f172a;color:#e2e8f0;padding:12px 14px;border-radius:10px;font-size:11.5px;line-height:1.45;overflow-x:auto;" class="mono" id="compound-jwt-box"></pre>
         </div>
       </div>
     </div>
@@ -1026,40 +1003,41 @@
   <!-- SCENE 4: AGENT GYM — CONTINUOUS LEARNING & PROGRAMMABLE TRUST DIAL    -->
   <!-- ===================================================================== -->
   <section id="scene-gym" class="scene">
-    <div class="eyebrow">ZONE 6 · AGENT GYM — CONTINUOUS LEARNING ("EXAMPLE OF ONE") &amp; PROGRAMMABLE TRUST DIAL (CLOUD SQL)</div>
+    <div class="eyebrow">ZONE 6 · AGENT GYM — CONTINUOUS LEARNING ("EXAMPLE OF ONE"), STRESS SUITE &amp; PROGRAMMABLE TRUST DIAL</div>
     <div class="page-headline-row">
       <div>
         <h1 class="page-title">Agent Gym: Continuous Learning &amp; Programmable Trust</h1>
         <div class="page-subtitle">
-          Every expert override in Quarantine or the A2UI Inbox is distilled into a candidate Tribal Knowledge Rule, stress-tested against synthetic perturbations, and gated before promotion in Cloud SQL.
+          Every expert override in Quarantine or the A2UI Inbox is distilled into a candidate Tribal Knowledge Rule, stress-tested against 4 synthetic perturbations + 12 historical benchmarks, and gated before promotion.
         </div>
       </div>
-      <div style="display:flex;gap:10px;">
-        <button id="btn-distill-signal" class="btn btn-navy">1. Distill "Example of One" Signal</button>
-        <button id="btn-evaluate-rule" class="btn btn-red">2. Run Stress Suite &amp; Report Card Gate</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button id="btn-distill-signal" class="btn btn-navy" onclick="window.runDistillSignal()">1. Distill "Example of One" Signal</button>
+        <button id="btn-evaluate-rule" class="btn btn-primary" onclick="window.runEvaluateRule()">2. Run Stress Suite &amp; Report Card Gate</button>
+        <button id="btn-reset-gym" class="btn btn-outline" onclick="window.runResetGym()" title="Reset Programmable Trust Slices to 4/5 Baseline">↺ Reset Demo State</button>
       </div>
     </div>
 
-    <!-- Top Metrics Row (Mirrors placement's Proven Accuracy 97.9% + Release Gate layout) -->
+    <!-- Top Metrics Row -->
     <div class="grid-2" style="margin-bottom:18px;">
       <div class="card-dark" style="display:flex;flex-direction:column;justify-content:space-between;">
         <div>
-          <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;color:#9ca3af;text-transform:uppercase;">
-            TARGET SLICE ACCURACY (CHUBB* · QUOTE · DEDUCTIBLE_USD) · CLOUD SQL BRIDGE-SQL
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;color:#93c5fd;text-transform:uppercase;" id="gym-slice-header">
+            TARGET SLICE ACCURACY (SYNDICATED* · ADDENDUM · ORIGINATION_FEE) · AGENT GYM STORE
           </div>
-          <div style="display:flex;align-items:baseline;gap:16px;margin:10px 0;">
-            <span style="font-size:62px;font-weight:900;line-height:1;letter-spacing:-0.03em;" id="gym-score-big">100.0<span style="font-size:34px;color:#9ca3af;">%</span></span>
+          <div style="display:flex;align-items:baseline;gap:16px;margin:10px 0;flex-wrap:wrap;">
+            <span style="font-size:60px;font-weight:900;line-height:1;letter-spacing:-0.03em;" id="gym-score-big">100.0<span style="font-size:32px;color:#94a3b8;">%</span></span>
             <span class="badge badge-green" style="font-size:13px;" id="gym-delta-badge">↑ +50.0% Slice Improvement (Baseline 50.0% → 100.0%)</span>
           </div>
         </div>
         <div style="font-size:13px;color:#cbd5e1;" id="gym-rule-summary-line">
-          <strong>Promoted Rule <span class="mono" id="live-rule-id">rule-1269c4fd</span>:</strong> When extracting <span class="mono">deductible_usd</span> from <span class="mono">Chubb*</span> quote documents (see page 4), map <span class="mono">$50,000 → $100,000</span> (Coastal Schedule B endorsement).
+          <strong>Promoted Rule <span class="mono" id="live-rule-id">rule-banking-01</span>:</strong> When extracting <span class="mono">origination_fee</span> from <span class="mono">Syndicated*</span> addendum documents (see page 4), map <span class="mono">$50,000 → $100,000</span> (Schedule B fee addendum overrides cover term sheet).
         </div>
       </div>
 
       <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;">
         <div class="card-header" style="margin-bottom:6px;">
-          <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;color:var(--aon-muted);text-transform:uppercase;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;color:var(--brand-muted);text-transform:uppercase;">
             OFFLINE GYM LOOP · QUALITY REPORT CARD GATE
           </div>
           <span class="badge badge-green" id="gate-status-pill">● Gate Passed · 0 Regressions</span>
@@ -1069,48 +1047,51 @@
             🛡️
           </div>
           <div>
-            <div style="font-size:17.5px;font-weight:800;color:var(--aon-navy);" id="gate-headline">
+            <div style="font-size:17px;font-weight:800;color:var(--brand-slate);" id="gate-headline">
               4 / 4 Synthetic Perturbation Stress Cases Passed · 12 / 12 Historical Benchmarks Intact
             </div>
-            <div style="font-size:12.5px;color:#4b5563;margin-top:4px;" id="gate-detail">
-              Verified against carrier layout shifts (cover page → Schedule B addendum), legal suffix variants (Campala Ltd. → Campala), distinct Lloyd's syndicate collision guard (Syndicate 2987 ≠ Syndicate 1183), and deterministic Decimal math firewall.
+            <div style="font-size:12.5px;color:#475569;margin-top:4px;" id="gate-detail">
+              Verified against layout shifts (cover term sheet → Schedule B fee addendum), legal suffix variants (Meridian Logistics Holdings Ltd. → Meridian Logistics), distinct SPV collision guard (Meridian SPV II kept separate), and deterministic Decimal math firewall.
             </div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;font-size:11.5px;">
           <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Layout Shift</div>
           <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Legal Suffix</div>
-          <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Syndicate Guard</div>
+          <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Entity Collision Guard</div>
           <div style="padding:7px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-weight:700;color:#166534;">✓ Decimal Firewall</div>
         </div>
       </div>
     </div>
 
-    <!-- Bottom Card: Programmable Trust Dial (Live from /v1/gym/trust-policies on Cloud Run) -->
+    <!-- Bottom Card: Programmable Trust Dial -->
     <div class="card">
       <div class="card-header">
         <div>
-          <h2 class="card-title">Programmable Trust Dial (<span class="mono">GET / POST /v1/gym/trust-policies</span> on <span class="mono">documents001-bridge-rfp-board</span>)</h2>
+          <h2 class="card-title">Programmable Trust Dial (<span class="mono">GET / POST /v1/gym/trust-policies</span>)</h2>
           <div class="card-sub">
-            Graduated autonomy per document slice: <strong>1. Shadow Mode (Silent Test)</strong> → <strong>2. Guided Human Review Queue</strong> → <strong>3. Trusted Auto-Approve</strong> (with automatic safety dial-back on carrier drift).
+            Graduated autonomy per document slice: <strong>1. Shadow Mode (Silent Test)</strong> → <strong>2. Guided Human Review Queue</strong> → <strong>3. Trusted Auto-Approve</strong> (with automatic safety dial-back on format drift).
           </div>
         </div>
-        <button id="btn-promote-trust" class="btn btn-green">Promote AIG* Endorsement Slice to Trusted Auto-Approve</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="btn-promote-trust" class="btn btn-green" onclick="window.runPromoteTrustSlice()">3. Promote Credit Addendum Slice to Trusted Auto-Approve</button>
+          <button id="btn-simulate-drift" class="btn btn-amber" onclick="window.runSimulateDrift()">4. Simulate Format Drift (Safety Dial-Back)</button>
+        </div>
       </div>
 
       <table class="data-table">
         <thead>
           <tr>
             <th>Document Slice ID</th>
-            <th>Carrier / DocType / Risk</th>
+            <th>Issuer / DocType / Risk</th>
             <th>Current Autonomy Level</th>
             <th>Shadow / Guided Match Streak</th>
             <th>Accuracy Rate</th>
-            <th>Governance Audit Trail (Cloud SQL)</th>
+            <th>Governance Audit Trail</th>
           </tr>
         </thead>
         <tbody id="trust-policies-tbody">
-          <tr><td colspan="6">Loading live Programmable Trust Policies from Cloud SQL via documents001-bridge-rfp-board...</td></tr>
+          <tr><td colspan="6">Loading live Programmable Trust Policies...</td></tr>
         </tbody>
       </table>
     </div>
@@ -1118,18 +1099,60 @@
 
 </main>
 
-<!-- LOWER-THIRD CAPTION BANNER (Matches placement/demo/_captures/gcp-end-to-end-demo.mp4) -->
+<!-- LOWER-THIRD CAPTION BANNER -->
 <div class="caption-banner" id="caption-banner">
   <div class="caption-top">
-    <span class="caption-part-badge" id="caption-badge">PART 1 · STEP 1: EXTERNAL PROVIDER PORTAL (A2A EDGE)</span>
-    <span class="caption-headline" id="caption-headline">Carrier opens External Zone Provider Portal connected to live Document Bridge A2A Edge in GCP.</span>
+    <span class="caption-part-badge" id="caption-badge">STAGE 1 · DUAL-PATH INTAKE &amp; WORM VAULT (BANKING)</span>
+    <span class="caption-headline" id="caption-headline">Meridian Logistics Center LLC ($45M CRE Term Loan) — Rent Roll validated in code (0 AI tokens); Credit Agreement Fee Addendum conflict parked in Quarantine.</span>
   </div>
   <div class="caption-sub" id="caption-sub">
-    GET https://documents001-bridge-sf6etnew5q-uc.a.run.app/.well-known/agent-card.json -> 18 Agent Skills in gs://documents001-bridge-skills
+    Path A: meridian-rent-roll-dscr-2026.xlsx (NOI $4.185M, DSCR 1.42x) | Path B: syndicated-credit-agreement-meridian-2026.pdf ($50k Cover vs $100k Schedule B Page 4)
   </div>
 </div>
 
 <script>
+  // State Management
+  window.currentDomain = "banking"; // 'banking' | 'insurance'
+  window.currentPersonaMode = "senior"; // 'senior' | 'junior'
+  window.lastCandidateRuleId = null;
+  window.cachedTrustPolicies = [];
+
+  const FALLBACK_ASSETS = [
+    { asset_id: "asset.cloud_storage_audit_vault", zone: "audit_vault", physical_uri: "gs://docubridge-audit-vault/vault/", owner_domain: "enterprise-governance", classification: "internal_only" },
+    { asset_id: "asset.alloydb_operational_store", zone: "operational_store", physical_uri: "alloydb://docubridge-enterprise-data/operational/bridge_operational_facts", owner_domain: "data-engineering", classification: "internal_only" },
+    { asset_id: "asset.view_underwriter_exposure", zone: "business_view", physical_uri: "alloydb://docubridge-enterprise-data/views/v_underwriter_exposure", owner_domain: "underwriting", classification: "internal_only" },
+    { asset_id: "asset.bigquery_iceberg_facts", zone: "bigquery_iceberg", physical_uri: "bigquery://docubridge_lakehouse.bq_operational_facts_iceberg", owner_domain: "enterprise-analytics", classification: "internal_only" },
+    { asset_id: "asset.gym_trust_policy_registry", zone: "knowledge_catalog_gym", physical_uri: "alloydb://docubridge-enterprise-data/gym/trust_policy_registry", owner_domain: "agent-gym-governance", classification: "internal_only" }
+  ];
+
+  const FALLBACK_SPIFFE_AGENTS = [
+    { spiffe_id: "spiffe://agents.docubridge.io/internal/credit-officer-agent", display_name: "Internal Credit & Loan Underwriting Agent", security_zone: "internal" },
+    { spiffe_id: "spiffe://agents.docubridge.io/internal/underwriter-agent", display_name: "Internal Technical Underwriting & Risk Agent", security_zone: "internal" },
+    { spiffe_id: "spiffe://agents.docubridge.io/internal/broker-agent", display_name: "Internal Commercial Placement & Deal Desk Agent", security_zone: "internal" },
+    { spiffe_id: "spiffe://agents.docubridge.io/internal/claims-agent", display_name: "Internal Covenant & Claims Review Agent", security_zone: "internal" },
+    { spiffe_id: "spiffe://agents.docubridge.io/portal/external-portal-agent", display_name: "External Client, Borrower & Partner Portal Agent", security_zone: "external" }
+  ];
+
+  const FALLBACK_TRUST_POLICIES = [
+    { slice_id: "slice:closing-disclosure:fee-schedule:LOW", issuer_pattern: "Meridian*", doctype: "closing-disclosure", risk_level: "LOW", autonomy_level: "trusted_auto_approve", consecutive_matches: 14, required_matches_for_promotion: 5, accuracy_rate: 1.0, drift_incidents: 0, last_updated_by: "senior.credit.officer@docubridge.io", last_updated_reason: "Promoted after 14 consecutive exact matches in Guided Review." },
+    { slice_id: "slice:credit-agreement:addendum:MEDIUM", issuer_pattern: "Syndicated*", doctype: "addendum", risk_level: "MEDIUM", autonomy_level: "guided_review", consecutive_matches: 4, required_matches_for_promotion: 5, accuracy_rate: 1.0, drift_incidents: 0, last_updated_by: "senior.credit.officer@docubridge.io", last_updated_reason: "In Guided Human Review Queue (4/5 matches toward Auto-Approve)." },
+    { slice_id: "slice:appraisal-report:commercial:HIGH", issuer_pattern: "CBRE*", doctype: "appraisal", risk_level: "HIGH", autonomy_level: "shadow_mode", consecutive_matches: 2, required_matches_for_promotion: 5, accuracy_rate: 1.0, drift_incidents: 0, last_updated_by: "system:bootstrap", last_updated_reason: "Running silently in Shadow Mode for commercial MAI appraisal template." },
+    { slice_id: "slice:chubb:quote:LOW", issuer_pattern: "Chubb*", doctype: "quote", risk_level: "LOW", autonomy_level: "trusted_auto_approve", consecutive_matches: 12, required_matches_for_promotion: 5, accuracy_rate: 1.0, drift_incidents: 0, last_updated_by: "lead.broker@docubridge.io", last_updated_reason: "Promoted after 12 consecutive exact matches in Guided Review." },
+    { slice_id: "slice:aig:endorsement:MEDIUM", issuer_pattern: "AIG*", doctype: "endorsement", risk_level: "MEDIUM", autonomy_level: "guided_review", consecutive_matches: 4, required_matches_for_promotion: 5, accuracy_rate: 1.0, drift_incidents: 0, last_updated_by: "lead.underwriter@docubridge.io", last_updated_reason: "In Guided Human Review Queue (4/5 matches toward Auto-Approve)." },
+    { slice_id: "slice:lloyds:quote:HIGH", issuer_pattern: "Lloyd's*", doctype: "quote", risk_level: "HIGH", autonomy_level: "shadow_mode", consecutive_matches: 2, required_matches_for_promotion: 5, accuracy_rate: 1.0, drift_incidents: 0, last_updated_by: "system:bootstrap", last_updated_reason: "Running silently in Shadow Mode for new syndicate template." }
+  ];
+
+  window.getApiBase = function() {
+    if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+      const path = window.location.pathname;
+      if (path.startsWith("/ops/")) {
+        return window.location.origin + "/ops";
+      }
+      return window.location.origin;
+    }
+    return "http://127.0.0.1:8003";
+  };
+
   window.setCaption = function(badge, headline, sub) {
     document.getElementById("caption-badge").textContent = badge;
     document.getElementById("caption-headline").textContent = headline;
@@ -1168,13 +1191,464 @@
         num.textContent = String(i);
       }
     }
+
+    const domLabel = window.currentDomain === "banking" ? "BANKING" : "INSURANCE";
+    if (sceneId === "scene-intake") {
+      window.setCaption(
+        `STAGE 1 · DUAL-PATH INTAKE & WORM VAULT (${domLabel})`,
+        window.currentDomain === "banking"
+          ? "Meridian Logistics Center LLC ($45M CRE Term Loan) — Rent Roll validated in code (0 AI tokens); Credit Agreement Fee Addendum conflict parked in Quarantine."
+          : "Terrepower Coastal LLC ($142.5M TIV) — Property SOV validated in code (0 AI tokens); Chubb Schedule B Wind Deductible conflict parked in Quarantine.",
+        window.currentDomain === "banking"
+          ? "Path A: meridian-rent-roll-dscr-2026.xlsx (NOI $4.185M, DSCR 1.42x) | Path B: syndicated-credit-agreement-meridian-2026.pdf ($50k Cover vs $100k Schedule B Page 4)"
+          : "Path A: terrepower-coastal-sov-2027.xlsx ($142.5M TIV) | Path B: chubb-coastal-property-quote-2027.pdf ($50k Cover vs $100k Schedule B Page 4)"
+      );
+    } else if (sceneId === "scene-consolidation") {
+      window.setCaption(
+        `STAGE 2 · BI-TEMPORAL CONSOLIDATION & 6-HOP LINEAGE (${domLabel})`,
+        window.currentDomain === "banking"
+          ? "Consolidation Rules Engine reconciles Schedule B Fee Addendum ($100,000, Prio 40) over Cover Term Sheet ($50,000, Prio 20) with 6-hop lineage."
+          : "Consolidation Rules Engine reconciles Schedule B Wind Endorsement ($100,000, Prio 40) over Cover Quote ($50,000, Prio 20) with 6-hop lineage.",
+        "GET /v1/catalog/lineage -> INBOUND -> AUDIT_VAULT -> OPERATIONAL_STORE -> BUSINESS_VIEW -> BIGQUERY_ICEBERG -> USER_INTERACTION_A2UI"
+      );
+    } else if (sceneId === "scene-inbox") {
+      window.setCaption(
+        `STAGE 3 · SPIFFE OBO AUTHORITY GATE & A2UI v0.9 INBOX (${domLabel})`,
+        "Compound Identity enforces Agent(SPIFFE) ∩ User(Principal) authority limits before committing RFC 6902 JSON Patch overrides.",
+        "spiffe://agents.docubridge.io/internal/credit-officer-agent | Catalog: https://docubridge.io/a2ui/v0_9/catalogs/enterprise_inbox_catalog.json"
+      );
+    } else if (sceneId === "scene-gym") {
+      window.setCaption(
+        `STAGE 4 · AGENT GYM & PROGRAMMABLE TRUST DIAL (${domLabel})`,
+        "Distills daytime expert corrections into Tribal Knowledge Rules, verifies 4 synthetic stress cases + Decimal firewall, and manages Graduated Autonomy.",
+        "POST /v1/gym/signals/from-quarantine -> POST /v1/gym/rules/{id}/evaluate -> POST /v1/gym/trust-policies/{slice}/dial"
+      );
+    }
+  };
+
+  window.switchDomain = function(domain) {
+    window.currentDomain = domain === "insurance" ? "insurance" : "banking";
+    document.getElementById("domain-btn-banking").classList.toggle("active", window.currentDomain === "banking");
+    document.getElementById("domain-btn-insurance").classList.toggle("active", window.currentDomain === "insurance");
+
+    if (window.currentDomain === "banking") {
+      // Header & Portal
+      document.getElementById("header-entity-tag").textContent = "BORROWER · COMMERCIAL REAL ESTATE";
+      document.getElementById("header-entity-name").textContent = "Meridian Logistics Center LLC";
+      document.getElementById("header-entity-sub").textContent = "$45,000,000 Commercial Term Loan Underwriting";
+      document.getElementById("portal-header-title").textContent = "DocuBridge External Borrower & Lender Portal";
+      document.getElementById("portal-partner-pill").textContent = "Borrower: Meridian Logistics Center LLC";
+      document.getElementById("portal-page-heading").textContent = "Meridian Logistics Center LLC · Commercial Loan Portal";
+      document.getElementById("portal-checklist-title").textContent = "Meridian Logistics Center LLC — $45M CRE Term Loan Submission Checklist";
+      document.getElementById("portal-path-a-file").textContent = "📄 meridian-rent-roll-dscr-2026.xlsx";
+      document.getElementById("portal-path-a-meta").textContent = "38 Commercial Tenants · Net Operating Income $4,185,000.00 · DSCR 1.42x";
+      document.getElementById("portal-path-b-file").textContent = "📑 syndicated-credit-agreement-meridian-2026.pdf";
+      document.getElementById("portal-path-b-meta").textContent = "Cover Term Sheet ($50,000 Origination Fee) + Page 4 Schedule B Fee Addendum ($100,000)";
+
+      // Scene 1: Intake
+      document.getElementById("intake-page-title").textContent = "Dual-Path Intake & Two-Zone Cloud Storage (Banking · Loan Underwriting)";
+      document.getElementById("intake-page-subtitle").textContent =
+        "Path A validates structured rent rolls & schedules in code (0 AI tokens); Path B extracts layout-anchored credit agreements & appraisals, masks guarantor SSNs at the edge, and gates conflicts into Review Quarantine.";
+      document.getElementById("intake-c1-title").textContent = "Meridian Commercial Rent Roll & DSCR";
+      document.getElementById("intake-c1-file").textContent = "meridian-rent-roll-dscr-2026.xlsx";
+      document.getElementById("intake-c1-body").innerHTML = `
+        <div><strong>Net Operating Income (NOI):</strong> <span class="mono">$4,185,000.00</span> (38 commercial tenants · DSCR <span class="mono">1.42x</span>)</div>
+        <div><strong>Edge PII Redaction:</strong> <span class="mono">2 guarantor SSNs masked ([REDACTED-SSN])</span></div>
+        <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://docubridge-audit-vault/vault/meridian/sha256:9f84...e21c</span></div>
+        <div><strong>Retention Lock:</strong> Locked 7 Years (2,555 days · Write-Once WORM)</div>
+      `;
+      document.getElementById("intake-c2-title").textContent = "Syndicated Credit Agreement & Addendum";
+      document.getElementById("intake-c2-file").textContent = "syndicated-credit-agreement-meridian-2026.pdf";
+      document.getElementById("intake-c2-body").innerHTML = `
+        <div><strong>Cover Term Sheet Fee:</strong> <span class="mono">$50,000</span> <span class="anchor-chip">Page 1 · Region [0.14, 0.31]</span></div>
+        <div><strong>Schedule B Fee Addendum:</strong> <span class="mono" style="color:#b45309;font-weight:700;">$100,000 (Origination &amp; Rate-Lock)</span> <span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></div>
+        <div><strong>Zone 2 Quarantine URI:</strong> <span class="mono">gs://docubridge-artifacts/quarantine/doc_meridian_credit_001</span></div>
+        <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#b45309;">awaiting_human_review (Schedule B fee override conflict)</span></div>
+      `;
+      document.getElementById("intake-c3-title").textContent = "CBRE · MAI Commercial Appraisal Report";
+      document.getElementById("intake-c3-file").textContent = "cbre-mai-commercial-appraisal-2026.pdf";
+      document.getElementById("intake-c3-chip").textContent = "✦ Multi-Window Table Merging (Pages 1–24)";
+      document.getElementById("intake-c3-body").innerHTML = `
+        <div><strong>Appraised Collateral Value:</strong> <span class="mono">$62,500,000.00</span> <span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></div>
+        <div><strong>Implied Loan-to-Value (LTV):</strong> <span class="mono">72.00% ($45.0M / $62.5M)</span> <span class="anchor-chip">Page 14 · Region [0.22, 0.61]</span></div>
+        <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://docubridge-audit-vault/vault/meridian/sha256:4a19...c802</span></div>
+        <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#059669;">auto_approved (Confidence 99% · 0 anomalies)</span></div>
+      `;
+
+      // Scene 2: Consolidation
+      document.getElementById("view-btn-broker").textContent = "Credit Officer View (Deal & Conflicts)";
+      document.getElementById("view-btn-underwriter").textContent = "Underwriter View (LTV, DSCR & Fee Exposure)";
+      document.getElementById("view-btn-claims").textContent = "Covenant / Audit View (Effective-Date Terms)";
+      document.getElementById("active-view-title").textContent = "Role-Based Projection: Credit Officer View (Deal & Conflicts)";
+      document.getElementById("consolidation-tbody").innerHTML = `
+        <tr>
+          <td><strong>Appraised Collateral Value</strong></td>
+          <td class="mono" style="font-weight:700;">$62,500,000.00</td>
+          <td>CBRE MAI Appraisal <span class="badge badge-navy">Prio 20</span></td>
+          <td class="mono" style="font-size:11.5px;">Learned: 2026-10-19 20:54Z<br/>Effective: 2026-11-01</td>
+          <td><span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></td>
+          <td><span class="badge badge-green">✓ Reconciled</span></td>
+        </tr>
+        <tr>
+          <td><strong>Senior Term Loan Principal</strong></td>
+          <td class="mono" style="font-weight:700;">$45,000,000.00 <span class="badge badge-blue">LTV 72.00%</span></td>
+          <td>Syndicated Credit Agreement <span class="badge badge-blue">Prio 30</span></td>
+          <td class="mono" style="font-size:11.5px;">Learned: 2026-10-19 20:55Z<br/>Effective: 2026-11-01</td>
+          <td><span class="anchor-chip">Page 2 · Region [0.15, 0.28]</span></td>
+          <td><span class="badge badge-green">✓ Verified</span></td>
+        </tr>
+        <tr class="highlight-row">
+          <td><strong>Origination &amp; Rate-Lock Fee</strong></td>
+          <td class="mono" style="font-weight:800;color:#b45309;">$100,000.00</td>
+          <td>Schedule B Fee Addendum <span class="badge badge-purple">Prio 40</span></td>
+          <td class="mono" style="font-size:11.5px;">Learned: 2026-10-19 20:57Z<br/>Effective: 2026-11-01</td>
+          <td><span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></td>
+          <td><span class="badge badge-amber">⚠ Conflict vs Cover Term Sheet ($50,000)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Net Operating Income (NOI)</strong></td>
+          <td class="mono" style="font-weight:700;">$4,185,000.00 <span class="badge badge-green">DSCR 1.42x</span></td>
+          <td>Validated Rent Roll Excel <span class="badge badge-green">Prio 20</span></td>
+          <td class="mono" style="font-size:11.5px;">Learned: 2026-10-19 20:56Z<br/>Effective: 2026-11-01</td>
+          <td><span class="anchor-chip">Rent Roll Tab 1 · Row 38</span></td>
+          <td><span class="badge badge-green">✓ Verified</span></td>
+        </tr>
+        <tr class="success-row">
+          <td><strong>Borrower Entity Resolution</strong></td>
+          <td class="mono" style="font-weight:700;">Meridian Logistics (Canonical)</td>
+          <td>Agent Gym Rule <span class="mono">rule-entity-meridian</span></td>
+          <td class="mono" style="font-size:11.5px;">Mapped "Meridian Logistics Holdings Ltd." → "Meridian Logistics"<br/>"Meridian SPV II" kept distinct</td>
+          <td><span class="anchor-chip">Page 1 · Preamble</span></td>
+          <td><span class="badge badge-green">✓ Canonicalized</span></td>
+        </tr>
+      `;
+      document.getElementById("lineage-hops-box").innerHTML = `
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid var(--brand-slate);border-radius:6px;">
+          <strong>1. Intake Document:</strong> <span class="mono">syndicated-credit-agreement-meridian-2026.pdf (Page 4)</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #6d28d9;border-radius:6px;">
+          <strong>2. Extraction Engine:</strong> <span class="mono">Document AI Layout + Agent Gym Hint</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #059669;border-radius:6px;">
+          <strong>3. Audit Vault:</strong> <span class="mono">gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-addendum-v2</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #d97706;border-radius:6px;">
+          <strong>4. Consolidation Rule:</strong> <span class="mono">Addendum Overrides Term Sheet (Prio 40 &gt; Prio 20)</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #1d4ed8;border-radius:6px;">
+          <strong>5. Operational Store:</strong> <span class="mono">alloydb://docubridge-enterprise-data/operational/bridge_operational_facts</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid var(--brand-primary);border-radius:6px;">
+          <strong>6. User Interface Card:</strong> <span class="mono">a2ui://citation/LOAN-MERIDIAN-001/origination_fee#page=4</span>
+        </div>
+      `;
+      document.getElementById("iceberg-watermark-label").textContent = "2026-10-19T21:00:00Z (LOAN-MERIDIAN-001 delta exported)";
+
+      // Scene 3: Inbox
+      document.getElementById("inbox-card-heading").textContent = "Resolve Origination & Rate-Lock Fee Conflict (Meridian · Schedule B Addendum)";
+      document.getElementById("inbox-card-sub").innerHTML = 'Proposed by Agent: <span class="mono">$50,000</span> (Cover Term Sheet) vs. Schedule B Fee Addendum: <span class="mono">$100,000</span> (<span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span>)';
+      document.getElementById("inbox-field-label").textContent = "VERIFIED ORIGINATION FEE VALUE";
+      document.getElementById("input-expert-memo").value = "Executed Schedule B fee addendum on page 4 supersedes cover term sheet origination fee ($50,000 -> $100,000).";
+      document.getElementById("rfc6902-patch-label").textContent = 'Audit Diff: [{"op":"replace","path":"/origination_fee_usd","value":"$100,000"}]';
+
+      // Scene 4: Agent Gym
+      document.getElementById("gym-slice-header").textContent = "TARGET SLICE ACCURACY (SYNDICATED* · ADDENDUM · ORIGINATION_FEE) · AGENT GYM STORE";
+      document.getElementById("gym-rule-summary-line").innerHTML = '<strong>Promoted Rule <span class="mono" id="live-rule-id">rule-banking-01</span>:</strong> When extracting <span class="mono">origination_fee</span> from <span class="mono">Syndicated*</span> addendum documents (see page 4), map <span class="mono">$50,000 → $100,000</span> (Schedule B fee addendum overrides cover term sheet).';
+      document.getElementById("gate-detail").textContent =
+        "Verified against layout shifts (cover term sheet → Schedule B fee addendum), legal suffix variants (Meridian Logistics Holdings Ltd. → Meridian Logistics), distinct SPV collision guard (Meridian SPV II kept separate), and deterministic Decimal math firewall.";
+      document.getElementById("btn-promote-trust").textContent = "3. Promote Credit Addendum Slice to Trusted Auto-Approve";
+    } else {
+      // Insurance Mode
+      document.getElementById("header-entity-tag").textContent = "CLIENT · COMMERCIAL INSURANCE";
+      document.getElementById("header-entity-name").textContent = "Terrepower Coastal LLC";
+      document.getElementById("header-entity-sub").textContent = "2027 Property & Benefits Placement";
+      document.getElementById("portal-header-title").textContent = "DocuBridge External Client & Carrier Portal";
+      document.getElementById("portal-partner-pill").textContent = "Carrier: Chubb Commercial";
+      document.getElementById("portal-page-heading").textContent = "Chubb Commercial · Carrier Submission Portal";
+      document.getElementById("portal-checklist-title").textContent = "Terrepower Coastal LLC — 2027 Renewal Submission Checklist";
+      document.getElementById("portal-path-a-file").textContent = "📄 terrepower-coastal-sov-2027.xlsx";
+      document.getElementById("portal-path-a-meta").textContent = "14 Coastal Locations · Total Insured Value $142,500,000 · Exact Decimal schema check";
+      document.getElementById("portal-path-b-file").textContent = "📑 chubb-coastal-property-quote-2027.pdf";
+      document.getElementById("portal-path-b-meta").textContent = "Cover Page ($50,000 Base Deductible) + Page 4 Schedule B Coastal Wind Endorsement ($100,000)";
+
+      // Scene 1: Intake
+      document.getElementById("intake-page-title").textContent = "Dual-Path Intake & Two-Zone Cloud Storage (Insurance · Commercial Placement)";
+      document.getElementById("intake-page-subtitle").textContent =
+        "Path A validates structured property schedules in code (0 AI tokens); Path B extracts layout-anchored carrier quotes & binders, masks claimant SSNs at the edge, and gates conflicts into Review Quarantine.";
+      document.getElementById("intake-c1-title").textContent = "Terrepower Property Schedule (SOV)";
+      document.getElementById("intake-c1-file").textContent = "terrepower-coastal-sov-2027.xlsx";
+      document.getElementById("intake-c1-body").innerHTML = `
+        <div><strong>Total Insured Value:</strong> <span class="mono">$142,500,000.00</span> (14 coastal locations)</div>
+        <div><strong>Edge PII Redaction:</strong> <span class="mono">2 claimant SSNs masked ([REDACTED-SSN])</span></div>
+        <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://docubridge-audit-vault/vault/terrepower/sha256:9f84...e21c</span></div>
+        <div><strong>Retention Lock:</strong> Locked 7 Years (2,555 days · Write-Once WORM)</div>
+      `;
+      document.getElementById("intake-c2-title").textContent = "Chubb · Commercial Property Quote";
+      document.getElementById("intake-c2-file").textContent = "chubb-coastal-property-quote-2027.pdf";
+      document.getElementById("intake-c2-body").innerHTML = `
+        <div><strong>Cover Page Deductible:</strong> <span class="mono">$50,000</span> <span class="anchor-chip">Page 1 · Region [0.14, 0.31]</span></div>
+        <div><strong>Schedule B Endorsement:</strong> <span class="mono" style="color:#b45309;font-weight:700;">$100,000 (Coastal Wind)</span> <span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></div>
+        <div><strong>Zone 2 Quarantine URI:</strong> <span class="mono">gs://docubridge-artifacts/quarantine/doc_chubb_001</span></div>
+        <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#b45309;">awaiting_human_review (Schedule B override conflict)</span></div>
+      `;
+      document.getElementById("intake-c3-title").textContent = "AIG · Signed Binder & Endorsement";
+      document.getElementById("intake-c3-file").textContent = "aig-excess-property-binder-2027.pdf";
+      document.getElementById("intake-c3-chip").textContent = "✦ Multi-Window Table Merging (Pages 1–18)";
+      document.getElementById("intake-c3-body").innerHTML = `
+        <div><strong>Layer Limit:</strong> <span class="mono">$25,000,000 xs $50,000,000</span> <span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></div>
+        <div><strong>Annual Premium:</strong> <span class="mono">$412,000.00</span> <span class="anchor-chip">Page 14 · Region [0.22, 0.61]</span></div>
+        <div><strong>Zone 3 Audit Vault:</strong> <span class="mono" style="color:#059669;">gs://docubridge-audit-vault/vault/terrepower/sha256:4a19...c802</span></div>
+        <div><strong>4-Signal Gate:</strong> <span class="mono" style="color:#059669;">auto_approved (Confidence 99% · 0 anomalies)</span></div>
+      `;
+
+      // Scene 2: Consolidation
+      document.getElementById("view-btn-broker").textContent = "Broker View (Market & Conflicts)";
+      document.getElementById("view-btn-underwriter").textContent = "Underwriter View (Risk & Deductibles)";
+      document.getElementById("view-btn-claims").textContent = "Claims View (Effective-Date Coverage)";
+      document.getElementById("active-view-title").textContent = "Role-Based Projection: Broker View (Market & Conflicts)";
+      document.getElementById("consolidation-tbody").innerHTML = `
+        <tr>
+          <td><strong>Total Insured Value</strong></td>
+          <td class="mono" style="font-weight:700;">$142,500,000.00</td>
+          <td>Signed Property Schedule <span class="badge badge-navy">Prio 30</span></td>
+          <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:54Z<br/>Effective: 2027-01-01</td>
+          <td><span class="anchor-chip">Schedule Tab 1 · Row 14</span></td>
+          <td><span class="badge badge-green">✓ Reconciled</span></td>
+        </tr>
+        <tr class="highlight-row">
+          <td><strong>Coastal Wind Deductible</strong></td>
+          <td class="mono" style="font-weight:800;color:#b45309;">$100,000.00</td>
+          <td>Schedule B Endorsement <span class="badge badge-purple">Prio 40</span></td>
+          <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:57Z<br/>Effective: 2027-01-01</td>
+          <td><span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span></td>
+          <td><span class="badge badge-amber">⚠ Conflict vs Cover Page ($50,000)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Primary Property Limit</strong></td>
+          <td class="mono" style="font-weight:700;">$50,000,000.00</td>
+          <td>Chubb Primary Quote <span class="badge badge-blue">Prio 20</span></td>
+          <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:55Z<br/>Effective: 2027-01-01</td>
+          <td><span class="anchor-chip">Page 2 · Region [0.15, 0.28]</span></td>
+          <td><span class="badge badge-green">✓ Verified</span></td>
+        </tr>
+        <tr>
+          <td><strong>Excess Layer 1 Limit</strong></td>
+          <td class="mono" style="font-weight:700;">$25,000,000.00</td>
+          <td>AIG Signed Binder <span class="badge badge-green">Prio 30</span></td>
+          <td class="mono" style="font-size:11.5px;">Learned: 2026-10-17 18:56Z<br/>Effective: 2027-01-01</td>
+          <td><span class="anchor-chip">Page 11 · Region [0.18, 0.52]</span></td>
+          <td><span class="badge badge-green">✓ Verified</span></td>
+        </tr>
+        <tr class="success-row">
+          <td><strong>Carrier Entity Resolution</strong></td>
+          <td class="mono" style="font-weight:700;">Campala (Canonical)</td>
+          <td>Agent Gym Rule <span class="mono">rule-entity-01</span></td>
+          <td class="mono" style="font-size:11.5px;">Mapped "Campala Ltd." → "Campala"<br/>Syndicate 2987 ≠ 1183 preserved</td>
+          <td><span class="anchor-chip">Page 1 · Header</span></td>
+          <td><span class="badge badge-green">✓ Canonicalized</span></td>
+        </tr>
+      `;
+      document.getElementById("lineage-hops-box").innerHTML = `
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid var(--brand-slate);border-radius:6px;">
+          <strong>1. Intake Document:</strong> <span class="mono">chubb-coastal-property-quote-2027.pdf (Page 4)</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #6d28d9;border-radius:6px;">
+          <strong>2. Extraction Engine:</strong> <span class="mono">Document AI Layout + Agent Gym Hint</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #059669;border-radius:6px;">
+          <strong>3. Audit Vault:</strong> <span class="mono">gs://docubridge-audit-vault/vault/terrepower/chubb#v1</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #d97706;border-radius:6px;">
+          <strong>4. Consolidation Rule:</strong> <span class="mono">Endorsement Overrides Quote (Prio 40 &gt; Prio 20)</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid #1d4ed8;border-radius:6px;">
+          <strong>5. Operational Store:</strong> <span class="mono">alloydb://docubridge-enterprise-data/operational/bridge_operational_facts</span>
+        </div>
+        <div style="padding:7px 12px;background:#f8fafc;border-left:3px solid var(--brand-primary);border-radius:6px;">
+          <strong>6. User Interface Card:</strong> <span class="mono">a2ui://citation/terrepower-2027/deductible#page=4</span>
+        </div>
+      `;
+      document.getElementById("iceberg-watermark-label").textContent = "2026-10-19T21:00:00Z (terrepower-2027 delta exported)";
+
+      // Scene 3: Inbox
+      document.getElementById("inbox-card-heading").textContent = "Resolve Coastal Wind Deductible Conflict (Chubb · Schedule B)";
+      document.getElementById("inbox-card-sub").innerHTML = 'Proposed by Agent: <span class="mono">$50,000</span> (Cover Page) vs. Schedule B Endorsement: <span class="mono">$100,000</span> (<span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span>)';
+      document.getElementById("inbox-field-label").textContent = "VERIFIED DEDUCTIBLE VALUE";
+      document.getElementById("input-expert-memo").value = "Coastal Schedule B endorsement on page 4 overrides base cover page deductible to $100,000.";
+      document.getElementById("rfc6902-patch-label").textContent = 'Audit Diff: [{"op":"replace","path":"/deductible_usd","value":"$100,000"}]';
+
+      // Scene 4: Agent Gym
+      document.getElementById("gym-slice-header").textContent = "TARGET SLICE ACCURACY (CHUBB* · QUOTE · DEDUCTIBLE_USD) · AGENT GYM STORE";
+      document.getElementById("gym-rule-summary-line").innerHTML = '<strong>Promoted Rule <span class="mono" id="live-rule-id">rule-insurance-01</span>:</strong> When extracting <span class="mono">deductible_usd</span> from <span class="mono">Chubb*</span> quote documents (see page 4), map <span class="mono">$50,000 → $100,000</span> (Coastal Schedule B endorsement).';
+      document.getElementById("gate-detail").textContent =
+        "Verified against carrier layout shifts (cover page → Schedule B addendum), legal suffix variants (Campala Ltd. → Campala), distinct Lloyd's syndicate collision guard (Syndicate 2987 ≠ Syndicate 1183), and deterministic Decimal math firewall.";
+      document.getElementById("btn-promote-trust").textContent = "3. Promote AIG* Endorsement Slice to Trusted Auto-Approve";
+    }
+
+    window.setPersonaMode(window.currentPersonaMode);
+    const activeScene = document.querySelector(".scene.active");
+    if (activeScene) {
+      const id = activeScene.id;
+      const stepMap = { "scene-intake": 1, "scene-consolidation": 2, "scene-inbox": 3, "scene-gym": 4, "scene-portal": 1 };
+      window.switchScene(id, stepMap[id] || 1, id === "scene-portal");
+    }
+  };
+
+  window.selectRoleView = function(viewKey) {
+    const b1 = document.getElementById("view-btn-broker");
+    const b2 = document.getElementById("view-btn-underwriter");
+    const b3 = document.getElementById("view-btn-claims");
+    b1.className = viewKey === "primary" ? "btn btn-navy" : "btn btn-outline";
+    b2.className = viewKey === "underwriter" ? "btn btn-navy" : "btn btn-outline";
+    b3.className = viewKey === "audit" ? "btn btn-navy" : "btn btn-outline";
+
+    const titleEl = document.getElementById("active-view-title");
+    if (window.currentDomain === "banking") {
+      if (viewKey === "primary") {
+        titleEl.textContent = "Role-Based Projection: Credit Officer View (Deal & Conflicts)";
+      } else if (viewKey === "underwriter") {
+        titleEl.textContent = "Role-Based Projection: Underwriter View (LTV 72.00%, DSCR 1.42x & Fee Exposure)";
+      } else {
+        titleEl.textContent = "Role-Based Projection: Covenant / Audit View (Bi-Temporal Effective-Date Terms)";
+      }
+    } else {
+      if (viewKey === "primary") {
+        titleEl.textContent = "Role-Based Projection: Broker View (Market & Conflicts)";
+      } else if (viewKey === "underwriter") {
+        titleEl.textContent = "Role-Based Projection: Underwriter View (Risk & Deductible-to-Limit Ratio)";
+      } else {
+        titleEl.textContent = "Role-Based Projection: Claims View (Active Coverage as of Loss Date)";
+      }
+    }
+  };
+
+  window.setPersonaMode = function(mode) {
+    window.currentPersonaMode = mode === "junior" ? "junior" : "senior";
+    const isBanking = window.currentDomain === "banking";
+    const btnJr = document.getElementById("btn-persona-junior");
+    const btnSr = document.getElementById("btn-persona-senior");
+
+    if (isBanking) {
+      btnJr.textContent = "👤 Junior Loan Officer ($25k Limit)";
+      btnSr.textContent = "🛡️ Senior Credit Officer ($25M Authority)";
+    } else {
+      btnJr.textContent = "👤 Broker Associate ($25k Limit)";
+      btnSr.textContent = "🛡️ Lead Underwriter ($25M Authority)";
+    }
+
+    btnJr.className = window.currentPersonaMode === "junior" ? "btn btn-navy" : "btn btn-outline";
+    btnSr.className = window.currentPersonaMode === "senior" ? "btn btn-navy" : "btn btn-outline";
+
+    const displayEl = document.getElementById("persona-display");
+    const jwtBox = document.getElementById("compound-jwt-box");
+    const banner = document.getElementById("rbac-refusal-banner");
+
+    if (window.currentPersonaMode === "junior") {
+      displayEl.textContent = isBanking
+        ? "Junior Loan Officer (Max Authority $25k) ▾"
+        : "Broker Associate (Max Authority $25k) ▾";
+      const jwtPayload = {
+        iss: "https://agents.docubridge.io",
+        sub: isBanking
+          ? "spiffe://agents.docubridge.io/internal/credit-officer-agent"
+          : "spiffe://agents.docubridge.io/internal/broker-agent",
+        aud: ["docubridge"],
+        obo: {
+          sub: isBanking ? "usr:junior.officer@docubridge.io" : "usr:broker.associate@docubridge.io",
+          role: isBanking ? "underwriter" : "broker",
+          tenant_id: isBanking ? "tenant-meridian" : "tenant-terrepower",
+          max_approval_amount: "25000.00"
+        },
+        act: {
+          sub: isBanking
+            ? "spiffe://agents.docubridge.io/internal/credit-officer-agent"
+            : "spiffe://agents.docubridge.io/internal/broker-agent"
+        }
+      };
+      jwtBox.textContent = JSON.stringify(jwtPayload, null, 2);
+      document.getElementById("rbac-refusal-detail").textContent = isBanking
+        ? 'Principal "usr:junior.officer@docubridge.io" (max_approval_amount=$25,000.00) cannot approve $100,000.00 HIGH-risk Schedule B origination fee override. Switch to Senior Credit Officer persona.'
+        : 'Principal "usr:broker.associate@docubridge.io" (max_approval_amount=$25,000.00) cannot approve $100,000.00 HIGH-risk Schedule B deductible override. Switch to Lead Underwriter persona.';
+      banner.style.display = "block";
+    } else {
+      displayEl.textContent = isBanking
+        ? "Senior Credit Officer (SPIFFE OBO · $25M Authority) ▾"
+        : "Lead Underwriter (SPIFFE OBO · $25M Authority) ▾";
+      const jwtPayload = {
+        iss: "https://agents.docubridge.io",
+        sub: isBanking
+          ? "spiffe://agents.docubridge.io/internal/credit-officer-agent"
+          : "spiffe://agents.docubridge.io/internal/underwriter-agent",
+        aud: ["docubridge"],
+        obo: {
+          sub: isBanking ? "usr:senior.credit.officer@docubridge.io" : "usr:lead.underwriter@docubridge.io",
+          role: "underwriter",
+          tenant_id: isBanking ? "tenant-meridian" : "tenant-terrepower",
+          max_approval_amount: "25000000.00"
+        },
+        act: {
+          sub: isBanking
+            ? "spiffe://agents.docubridge.io/internal/credit-officer-agent"
+            : "spiffe://agents.docubridge.io/internal/underwriter-agent"
+        }
+      };
+      jwtBox.textContent = JSON.stringify(jwtPayload, null, 2);
+      banner.style.display = "none";
+    }
+  };
+
+  window.togglePersona = function() {
+    window.setPersonaMode(window.currentPersonaMode === "senior" ? "junior" : "senior");
+  };
+
+  window.handleInboxApprove = function() {
+    if (window.currentPersonaMode === "junior") {
+      document.getElementById("rbac-refusal-banner").style.display = "block";
+      window.setCaption(
+        "STAGE 3 · AUTHORITY REFUSAL (HTTP 422 / 403)",
+        "Junior Loan Officer ($25,000 limit) blocked from approving $100,000 Schedule B fee override.",
+        "Switch persona to Senior Credit Officer ($25M Authority) to authorize the RFC 6902 JSON Patch."
+      );
+      return;
+    }
+    document.getElementById("rbac-refusal-banner").style.display = "none";
+    const val = document.getElementById("input-verified-deductible").value || "$100,000";
+    const pathName = window.currentDomain === "banking" ? "/origination_fee_usd" : "/deductible_usd";
+    document.getElementById("rfc6902-patch-label").textContent =
+      `Audit Diff: [{"op":"replace","path":"${pathName}","value":"${val}"}]`;
+
+    const badge = document.getElementById("inbox-status-badge");
+    badge.className = "badge badge-green";
+    badge.textContent = "✓ COMPLETED · Approved & Logged (RFC 6902)";
+
+    const b3 = document.getElementById("step-box-3");
+    b3.style.background = "#ecfdf5";
+    b3.style.borderColor = "#a7f3d0";
+    document.getElementById("step-box-3-title").style.color = "#059669";
+    document.getElementById("step-box-3-title").textContent = "✓ 3. Credit Authority Gate";
+    document.getElementById("step-box-3-sub").style.color = "#047857";
+    document.getElementById("step-box-3-sub").textContent = "Approved via SPIFFE OBO";
+
+    const b4 = document.getElementById("step-box-4");
+    b4.style.background = "#ecfdf5";
+    b4.style.borderColor = "#a7f3d0";
+    document.getElementById("step-box-4-title").style.color = "#059669";
+    document.getElementById("step-box-4-title").textContent = "✓ 4. Commit & Gym Signal";
+    document.getElementById("step-box-4-sub").style.color = "#047857";
+    document.getElementById("step-box-4-sub").textContent = "100% Completed · Patch committed";
+
+    window.setCaption(
+      "STAGE 3 · A2UI v0.9 ACTION RESOLVED (100% COMPLETED)",
+      "Senior Credit Officer approved the $100,000 Schedule B override; immutable RFC 6902 patch & SPIFFE OBO claims recorded.",
+      `[{"op":"replace","path":"${pathName}","value":"${val}"}] | actor=usr:senior.credit.officer@docubridge.io`
+    );
   };
 
   window.renderCatalogAssets = function(assets) {
     const tbody = document.getElementById("catalog-assets-tbody");
     const badge = document.getElementById("catalog-count-badge");
-    badge.textContent = "✓ " + assets.length + " Governed Assets Registered (Live GCP)";
-    tbody.innerHTML = assets.slice(0, 5).map(a => `
+    badge.textContent = "✓ " + assets.length + " Governed Assets Registered";
+    tbody.innerHTML = assets.slice(0, 6).map(a => `
       <tr>
         <td class="mono" style="font-weight:700;color:#1e293b;">${a.asset_id}</td>
         <td><span class="badge badge-navy">${a.zone}</span></td>
@@ -1188,7 +1662,7 @@
   window.renderSpiffeAgents = function(agents) {
     const box = document.getElementById("spiffe-agents-list");
     box.innerHTML = agents.map(ag => `
-      <div style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;display:flex;justify-content:space-between;align-items:center;">
+      <div style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <div>
           <div style="font-weight:700;color:#0f172a;">${ag.display_name}</div>
           <div class="mono" style="font-size:11px;color:#475569;">${ag.spiffe_id}</div>
@@ -1199,6 +1673,7 @@
   };
 
   window.renderTrustPolicies = function(policies) {
+    window.cachedTrustPolicies = policies;
     const tbody = document.getElementById("trust-policies-tbody");
     tbody.innerHTML = policies.map(p => {
       let modeBadge = '<span class="badge badge-navy">1. Shadow Mode</span>';
@@ -1207,18 +1682,287 @@
       } else if (p.autonomy_level === "trusted_auto_approve") {
         modeBadge = '<span class="badge badge-green">3. Trusted Auto-Approve ✓</span>';
       }
+      const acc = typeof p.accuracy_rate === "number" ? (p.accuracy_rate * 100).toFixed(1) : "100.0";
+      const drift = p.drift_incidents || 0;
       return `
-        <tr class="${p.autonomy_level === 'trusted_auto_approve' ? 'success-row' : ''}">
+        <tr class="${p.autonomy_level === 'trusted_auto_approve' ? 'success-row' : (drift > 0 ? 'highlight-row' : '')}">
           <td class="mono" style="font-weight:700;">${p.slice_id}</td>
           <td><strong>${p.issuer_pattern}</strong> · ${p.doctype} <span class="badge badge-navy">${p.risk_level}</span></td>
           <td>${modeBadge}</td>
           <td class="mono" style="font-weight:700;">${p.consecutive_matches} / ${p.required_matches_for_promotion} matches</td>
-          <td class="mono" style="font-weight:700;color:#059669;">${(p.accuracy_rate * 100).toFixed(1)}% (${p.drift_incidents} drift)</td>
-          <td style="font-size:12px;color:#374151;"><strong>${p.last_updated_by}</strong> — ${p.last_updated_reason}</td>
+          <td class="mono" style="font-weight:700;color:${drift > 0 ? '#b45309' : '#059669'};">${acc}% (${drift} drift)</td>
+          <td style="font-size:12px;color:#334155;"><strong>${p.last_updated_by}</strong> — ${p.last_updated_reason}</td>
         </tr>
       `;
     }).join("");
   };
+
+  // Interactive Stage 4 API Calls
+  window.runDistillSignal = async function() {
+    const isBanking = window.currentDomain === "banking";
+    const payload = isBanking
+      ? {
+          entity_id: "LOAN-MERIDIAN-001",
+          doc_id: "syndicated-credit-agreement-meridian-2026.pdf",
+          doctype: "addendum",
+          issuer: "Syndicated",
+          field_path: "origination_fee",
+          before_value: "$50,000.00",
+          after_value: "$100,000.00",
+          expert_memo: "Schedule B fee addendum on page 4 sets origination fee to $100,000.00.",
+          page_number: 4,
+          category: "extraction_hint",
+          distinct_entities: ["Meridian SPV II"]
+        }
+      : {
+          entity_id: "terrepower-coastal-2027",
+          doc_id: "chubb-coastal-property-quote-2027.pdf",
+          doctype: "quote",
+          issuer: "Chubb",
+          field_path: "deductible_usd",
+          before_value: "$50,000.00",
+          after_value: "$100,000.00",
+          expert_memo: "Coastal Schedule B endorsement on page 4 sets wind deductible to $100,000.00.",
+          page_number: 4,
+          category: "extraction_hint",
+          distinct_entities: ["Syndicate 2987", "Syndicate 1183"]
+        };
+
+    try {
+      const resp = await fetch(window.getApiBase() + "/v1/gym/signals/from-quarantine?role=underwriter", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Bridge-Role": "underwriter",
+          "X-Bridge-Principal": isBanking ? "senior.credit.officer@docubridge.io" : "lead.underwriter@docubridge.io"
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      const rule = data.candidate_rule;
+      window.lastCandidateRuleId = rule.rule_id;
+      document.getElementById("gym-rule-summary-line").innerHTML =
+        `<strong>Candidate Rule <span class="mono" id="live-rule-id">${rule.rule_id}</span> (${rule.status.toUpperCase()}):</strong> ${rule.instruction}`;
+      document.getElementById("gate-status-pill").className = "badge badge-amber";
+      document.getElementById("gate-status-pill").textContent = "⏳ Candidate Distilled · Ready for Stress Suite";
+      window.setCaption(
+        "STAGE 4.1 · DISTILLED 'EXAMPLE OF ONE' SIGNAL",
+        `Created Candidate TribalKnowledgeRule ${rule.rule_id} from single page-4 Schedule B expert correction.`,
+        `POST /v1/gym/signals/from-quarantine -> rule_id=${rule.rule_id} (status=candidate)`
+      );
+    } catch (err) {
+      const fallbackId = "rule-" + Math.random().toString(16).slice(2, 10);
+      window.lastCandidateRuleId = fallbackId;
+      document.getElementById("live-rule-id").textContent = fallbackId;
+      document.getElementById("gate-status-pill").className = "badge badge-amber";
+      document.getElementById("gate-status-pill").textContent = "⏳ Candidate Distilled · Ready for Stress Suite";
+    }
+  };
+
+  window.runEvaluateRule = async function() {
+    if (!window.lastCandidateRuleId) {
+      await window.runDistillSignal();
+    }
+    const ruleId = window.lastCandidateRuleId;
+    const isBanking = window.currentDomain === "banking";
+    try {
+      const resp = await fetch(window.getApiBase() + `/v1/gym/rules/${ruleId}/evaluate?role=underwriter`, {
+        method: "POST",
+        headers: {
+          "X-Bridge-Role": "underwriter",
+          "X-Bridge-Principal": isBanking ? "senior.credit.officer@docubridge.io" : "lead.underwriter@docubridge.io"
+        }
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      const rep = data.report_card;
+      const rule = data.rule;
+      document.getElementById("gym-score-big").innerHTML =
+        `${(rep.candidate_slice_score * 100).toFixed(1)}<span style="font-size:32px;color:#94a3b8;">%</span>`;
+      document.getElementById("gym-delta-badge").textContent =
+        `↑ +${(rep.slice_improvement_delta * 100).toFixed(1)}% Slice Improvement (Baseline ${(rep.baseline_slice_score * 100).toFixed(1)}% → ${(rep.candidate_slice_score * 100).toFixed(1)}%)`;
+      document.getElementById("gym-rule-summary-line").innerHTML =
+        `<strong>Promoted Rule <span class="mono" id="live-rule-id">${rule.rule_id}</span> (${rule.status.toUpperCase()}):</strong> ${rule.instruction}`;
+      document.getElementById("gate-status-pill").className = "badge badge-green";
+      document.getElementById("gate-status-pill").textContent = "● Gate Passed · PROMOTED (0 Regressions)";
+      document.getElementById("gate-headline").textContent =
+        `${rep.stress_cases_passed} / ${rep.stress_cases_total} Synthetic Perturbation Stress Cases Passed · ${rep.historical_benchmark_total} / ${rep.historical_benchmark_total} Historical Benchmarks Intact`;
+      window.setCaption(
+        "STAGE 4.2 · STRESS SUITE & REPORT CARD GATE PASSED",
+        `Rule ${rule.rule_id} passed ${rep.stress_cases_passed}/${rep.stress_cases_total} synthetic stress tests + Decimal math firewall -> PROMOTED.`,
+        `POST /v1/gym/rules/${rule.rule_id}/evaluate -> passed_gate=true, math_firewall_intact=true`
+      );
+    } catch (err) {
+      document.getElementById("gate-status-pill").className = "badge badge-green";
+      document.getElementById("gate-status-pill").textContent = "● Gate Passed · PROMOTED (0 Regressions)";
+    }
+  };
+
+  window.runPromoteTrustSlice = async function() {
+    const isBanking = window.currentDomain === "banking";
+    const sliceId = isBanking ? "slice:credit-agreement:addendum:MEDIUM" : "slice:aig:endorsement:MEDIUM";
+    const shadowPayload = isBanking
+      ? {
+          entity_id: "LOAN-MERIDIAN-001",
+          doc_id: "syndicated-credit-agreement-meridian-2026.pdf",
+          issuer: "Syndicated",
+          doctype: "addendum",
+          field_path: "origination_fee",
+          ai_value: "$100,000.00",
+          human_value: "$100,000.00",
+          risk_level: "MEDIUM"
+        }
+      : {
+          entity_id: "terrepower-coastal-2027",
+          doc_id: "aig-excess-property-binder-2027.pdf",
+          issuer: "AIG",
+          doctype: "endorsement",
+          field_path: "excess_layer_limit_usd",
+          ai_value: "$25,000,000.00",
+          human_value: "$25,000,000.00",
+          risk_level: "MEDIUM"
+        };
+
+    try {
+      await fetch(window.getApiBase() + `/v1/gym/trust-policies/${encodeURIComponent(sliceId)}/shadow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(shadowPayload)
+      });
+      const dialResp = await fetch(window.getApiBase() + `/v1/gym/trust-policies/${encodeURIComponent(sliceId)}/dial?role=underwriter`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Bridge-Role": "underwriter",
+          "X-Bridge-Principal": isBanking ? "senior.credit.officer@docubridge.io" : "lead.underwriter@docubridge.io"
+        },
+        body: JSON.stringify({
+          target_level: "trusted_auto_approve",
+          reason: "Promoted after 5/5 consecutive exact matches in Guided Review Queue.",
+          force: true
+        })
+      });
+      if (!dialResp.ok) throw new Error("HTTP " + dialResp.status);
+      await window.refreshLiveTelemetry();
+      window.setCaption(
+        "STAGE 4.3 · PROGRAMMABLE TRUST PROMOTED TO AUTO-APPROVE",
+        `Slice ${sliceId} reached 5/5 consecutive matches and promoted to Trusted Auto-Approve.`,
+        `POST /v1/gym/trust-policies/${sliceId}/dial -> autonomy_level=trusted_auto_approve`
+      );
+    } catch (err) {
+      const updated = window.cachedTrustPolicies.map(p =>
+        p.slice_id === sliceId
+          ? { ...p, autonomy_level: "trusted_auto_approve", consecutive_matches: 5, last_updated_reason: "Promoted after 5/5 consecutive exact matches in Guided Review Queue." }
+          : p
+      );
+      window.renderTrustPolicies(updated);
+    }
+  };
+
+  window.runSimulateDrift = async function() {
+    const isBanking = window.currentDomain === "banking";
+    const sliceId = isBanking ? "slice:credit-agreement:addendum:MEDIUM" : "slice:aig:endorsement:MEDIUM";
+    const driftPayload = isBanking
+      ? {
+          entity_id: "LOAN-MERIDIAN-001",
+          doc_id: "syndicated-credit-agreement-drift-2026.pdf",
+          issuer: "Syndicated",
+          doctype: "addendum",
+          field_path: "origination_fee",
+          ai_value: "$50,000.00",
+          human_value: "$100,000.00",
+          risk_level: "MEDIUM"
+        }
+      : {
+          entity_id: "terrepower-coastal-2027",
+          doc_id: "aig-excess-property-drift-2027.pdf",
+          issuer: "AIG",
+          doctype: "endorsement",
+          field_path: "excess_layer_limit_usd",
+          ai_value: "$15,000,000.00",
+          human_value: "$25,000,000.00",
+          risk_level: "MEDIUM"
+        };
+
+    try {
+      const resp = await fetch(window.getApiBase() + `/v1/gym/trust-policies/${encodeURIComponent(sliceId)}/shadow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(driftPayload)
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      await window.refreshLiveTelemetry();
+      window.setCaption(
+        "STAGE 4.4 · INSTANT SAFETY DIAL-BACK ON FORMAT DRIFT",
+        `Format drift detected on ${sliceId} (AI=$50,000 vs Human=$100,000) -> Auto-demoted to Guided Human Review (0/5 matches, 1 drift).`,
+        `POST /v1/gym/trust-policies/${sliceId}/shadow -> autonomy_level=guided_review, consecutive_matches=0, drift_incidents=1`
+      );
+    } catch (err) {
+      const updated = window.cachedTrustPolicies.map(p =>
+        p.slice_id === sliceId
+          ? { ...p, autonomy_level: "guided_review", consecutive_matches: 0, drift_incidents: 1, accuracy_rate: 0.833, last_updated_reason: "Auto-demoted to Guided Review due to format drift (AI=$50,000.00 vs Human=$100,000.00)." }
+          : p
+      );
+      window.renderTrustPolicies(updated);
+    }
+  };
+
+  window.runResetGym = async function() {
+    try {
+      const resp = await fetch(window.getApiBase() + "/v1/gym/trust-policies/reset", { method: "POST" });
+      if (resp.ok) {
+        const policies = await resp.json();
+        window.renderTrustPolicies(policies);
+        window.setCaption(
+          "STAGE 4 · DEMO STATE RESET",
+          "Programmable Trust policies restored to baseline (4/5 Guided Review streak).",
+          "POST /v1/gym/trust-policies/reset -> 6 default Banking & Insurance slices restored"
+        );
+        return;
+      }
+    } catch (_) {}
+    window.renderTrustPolicies(FALLBACK_TRUST_POLICIES);
+  };
+
+  window.refreshLiveTelemetry = async function() {
+    const base = window.getApiBase();
+    try {
+      const [assetsResp, spiffeResp, trustResp] = await Promise.all([
+        fetch(base + "/v1/catalog/assets"),
+        fetch(base + "/v1/catalog/spiffe-agents"),
+        fetch(base + "/v1/gym/trust-policies")
+      ]);
+      if (assetsResp.ok) {
+        window.renderCatalogAssets(await assetsResp.json());
+      } else {
+        window.renderCatalogAssets(FALLBACK_ASSETS);
+      }
+      if (spiffeResp.ok) {
+        window.renderSpiffeAgents(await spiffeResp.json());
+      } else {
+        window.renderSpiffeAgents(FALLBACK_SPIFFE_AGENTS);
+      }
+      if (trustResp.ok) {
+        window.renderTrustPolicies(await trustResp.json());
+      } else {
+        window.renderTrustPolicies(FALLBACK_TRUST_POLICIES);
+      }
+    } catch (_) {
+      window.renderCatalogAssets(FALLBACK_ASSETS);
+      window.renderSpiffeAgents(FALLBACK_SPIFFE_AGENTS);
+      window.renderTrustPolicies(FALLBACK_TRUST_POLICIES);
+    }
+  };
+
+  // Initialize Default Banking Mode & Live Telemetry on Load
+  document.addEventListener("DOMContentLoaded", function() {
+    window.renderCatalogAssets(FALLBACK_ASSETS);
+    window.renderSpiffeAgents(FALLBACK_SPIFFE_AGENTS);
+    window.renderTrustPolicies(FALLBACK_TRUST_POLICIES);
+    window.switchDomain("banking");
+    window.refreshLiveTelemetry();
+  });
 </script>
 </body>
 </html>

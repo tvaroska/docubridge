@@ -60,6 +60,7 @@ from bridge.a2ui_inbox import (
     RiskTier,
 )
 from bridge.knowledge_catalog import CatalogRole
+from bridge.telemetry import trace_step
 from contract.extraction import SourceAnchor
 
 
@@ -268,6 +269,45 @@ class ProgrammableTrustPolicy(BaseModel):
 
 DEFAULT_TRUST_POLICIES: tuple[ProgrammableTrustPolicy, ...] = (
     ProgrammableTrustPolicy(
+        slice_id="slice:closing-disclosure:fee-schedule:LOW",
+        issuer_pattern="Meridian*",
+        doctype="closing-disclosure",
+        risk_level="LOW",
+        autonomy_level=TrustAutonomyLevel.TRUSTED_AUTO_APPROVE,
+        consecutive_matches=14,
+        required_matches_for_promotion=5,
+        total_evaluated=14,
+        total_exact_matches=14,
+        last_updated_by="senior.credit.officer@docubridge.io",
+        last_updated_reason="Promoted after 14 consecutive exact matches in Guided Review.",
+    ),
+    ProgrammableTrustPolicy(
+        slice_id="slice:credit-agreement:addendum:MEDIUM",
+        issuer_pattern="Syndicated*",
+        doctype="addendum",
+        risk_level="MEDIUM",
+        autonomy_level=TrustAutonomyLevel.GUIDED_REVIEW,
+        consecutive_matches=4,
+        required_matches_for_promotion=5,
+        total_evaluated=4,
+        total_exact_matches=4,
+        last_updated_by="senior.credit.officer@docubridge.io",
+        last_updated_reason="In Guided Human Review Queue (4/5 matches toward Auto-Approve).",
+    ),
+    ProgrammableTrustPolicy(
+        slice_id="slice:appraisal-report:commercial:HIGH",
+        issuer_pattern="CBRE*",
+        doctype="appraisal",
+        risk_level="HIGH",
+        autonomy_level=TrustAutonomyLevel.SHADOW_MODE,
+        consecutive_matches=2,
+        required_matches_for_promotion=5,
+        total_evaluated=2,
+        total_exact_matches=2,
+        last_updated_by="system:bootstrap",
+        last_updated_reason="Running silently in Shadow Mode for commercial MAI appraisal template.",
+    ),
+    ProgrammableTrustPolicy(
         slice_id="slice:chubb:quote:LOW",
         issuer_pattern="Chubb*",
         doctype="quote",
@@ -277,7 +317,7 @@ DEFAULT_TRUST_POLICIES: tuple[ProgrammableTrustPolicy, ...] = (
         required_matches_for_promotion=5,
         total_evaluated=12,
         total_exact_matches=12,
-        last_updated_by="lead.broker@aon.com",
+        last_updated_by="lead.broker@docubridge.io",
         last_updated_reason="Promoted after 12 consecutive exact matches in Guided Review.",
     ),
     ProgrammableTrustPolicy(
@@ -290,7 +330,7 @@ DEFAULT_TRUST_POLICIES: tuple[ProgrammableTrustPolicy, ...] = (
         required_matches_for_promotion=5,
         total_evaluated=4,
         total_exact_matches=4,
-        last_updated_by="lead.underwriter@aon.com",
+        last_updated_by="lead.underwriter@docubridge.io",
         last_updated_reason="In Guided Human Review Queue (4/5 matches toward Auto-Approve).",
     ),
     ProgrammableTrustPolicy(
@@ -648,36 +688,53 @@ class AgentGymEngine(abc.ABC):
         distinct_entities: tuple[str, ...] = (),
     ) -> tuple[ExpertFeedbackSignal, TribalKnowledgeRule]:
         """Capture a Zone 2 Review Quarantine fix and distill a candidate Tribal Rule."""
-        signal = ExpertFeedbackSignal(
-            signal_id=f"sig-q-{uuid.uuid4().hex[:8]}",
-            source_zone=SignalSourceZone.REVIEW_QUARANTINE,
-            entity_id=entity_id,
-            doc_id=doc_id,
-            doctype=doctype,
-            issuer=issuer,
-            field_path=field_path,
-            before_value=before_value,
-            after_value=after_value,
-            expert_memo=expert_memo,
-            actor_principal=actor_principal,
-            actor_role=actor_role,
-            agent_spiffe_id=agent_spiffe_id,
-            source_anchor=source_anchor,
-            patches=(
-                Rfc6902PatchOp(
-                    op="replace",
-                    path=f"/{field_path.lstrip('/')}",
-                    value=after_value,
+        with trace_step(
+            "docubridge.agent_gym.distill_signal",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.source_zone": SignalSourceZone.REVIEW_QUARANTINE.value,
+                "docubridge.entity_id": entity_id,
+                "docubridge.doc_id": doc_id,
+                "docubridge.doctype": doctype,
+                "docubridge.issuer": issuer,
+                "docubridge.field_path": field_path,
+                "docubridge.actor_principal": actor_principal,
+                "docubridge.actor_role": actor_role,
+            },
+        ) as span:
+            signal = ExpertFeedbackSignal(
+                signal_id=f"sig-q-{uuid.uuid4().hex[:8]}",
+                source_zone=SignalSourceZone.REVIEW_QUARANTINE,
+                entity_id=entity_id,
+                doc_id=doc_id,
+                doctype=doctype,
+                issuer=issuer,
+                field_path=field_path,
+                before_value=before_value,
+                after_value=after_value,
+                expert_memo=expert_memo,
+                actor_principal=actor_principal,
+                actor_role=actor_role,
+                agent_spiffe_id=agent_spiffe_id,
+                source_anchor=source_anchor,
+                patches=(
+                    Rfc6902PatchOp(
+                        op="replace",
+                        path=f"/{field_path.lstrip('/')}",
+                        value=after_value,
+                    ),
                 ),
-            ),
-        )
-        self._save_signal(signal)
-        rule = self._distill_rule_from_signal(
-            signal,
-            category=category,
-            distinct_entities=distinct_entities,
-        )
-        return signal, rule
+            )
+            self._save_signal(signal)
+            rule = self._distill_rule_from_signal(
+                signal,
+                category=category,
+                distinct_entities=distinct_entities,
+            )
+            span.set_attribute("docubridge.signal_id", signal.signal_id)
+            span.set_attribute("docubridge.rule_id", rule.rule_id)
+            span.set_attribute("docubridge.rule_category", rule.category.value)
+            return signal, rule
 
     def distill_from_inbox_audit(
         self,
@@ -691,50 +748,68 @@ class AgentGymEngine(abc.ABC):
         distinct_entities: tuple[str, ...] = (),
     ) -> tuple[ExpertFeedbackSignal, TribalKnowledgeRule]:
         """Distill a candidate Tribal Knowledge Rule from a single Zone 5 A2UI Inbox edit."""
-        if audit_record.patches:
-            first_patch = audit_record.patches[0]
-            resolved_path = field_path or first_patch.path.lstrip("/")
-            after_val = str(first_patch.value)
-        else:
-            resolved_path = field_path or "resolution/selectedValue"
-            after_val = str(
-                audit_record.resolved_data_model.get("resolution", {}).get(
-                    "selectedValue", "approved"
+        with trace_step(
+            "docubridge.agent_gym.distill_signal",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.source_zone": SignalSourceZone.GEMINI_APP_INBOX.value,
+                "docubridge.entity_id": audit_record.entity_id,
+                "docubridge.item_id": audit_record.item_id,
+                "docubridge.audit_id": audit_record.audit_id,
+                "docubridge.doc_id": doc_id,
+                "docubridge.doctype": doctype,
+                "docubridge.issuer": issuer,
+                "docubridge.actor_principal": audit_record.actor_principal,
+                "docubridge.actor_role": audit_record.actor_role,
+            },
+        ) as span:
+            if audit_record.patches:
+                first_patch = audit_record.patches[0]
+                resolved_path = field_path or first_patch.path.lstrip("/")
+                after_val = str(first_patch.value)
+            else:
+                resolved_path = field_path or "resolution/selectedValue"
+                after_val = str(
+                    audit_record.resolved_data_model.get("resolution", {}).get(
+                        "selectedValue", "approved"
+                    )
+                )
+
+            before_val = str(
+                audit_record.initial_data_model.get("resolution", {}).get(
+                    "selectedValue", "initial"
                 )
             )
-
-        before_val = str(
-            audit_record.initial_data_model.get("resolution", {}).get(
-                "selectedValue", "initial"
+            memo = (
+                audit_record.notes.strip()
+                or f"Expert {audit_record.decision} override on {resolved_path}"
             )
-        )
-        memo = (
-            audit_record.notes.strip()
-            or f"Expert {audit_record.decision} override on {resolved_path}"
-        )
-        signal = ExpertFeedbackSignal(
-            signal_id=f"sig-inb-{uuid.uuid4().hex[:8]}",
-            source_zone=SignalSourceZone.GEMINI_APP_INBOX,
-            entity_id=audit_record.entity_id,
-            doc_id=doc_id,
-            doctype=doctype,
-            issuer=issuer,
-            field_path=resolved_path,
-            before_value=before_val,
-            after_value=after_val,
-            expert_memo=memo,
-            actor_principal=audit_record.actor_principal,
-            actor_role=audit_record.actor_role,
-            agent_spiffe_id=audit_record.agent_spiffe_id,
-            patches=tuple(audit_record.patches),
-        )
-        self._save_signal(signal)
-        rule = self._distill_rule_from_signal(
-            signal,
-            category=category,
-            distinct_entities=distinct_entities,
-        )
-        return signal, rule
+            signal = ExpertFeedbackSignal(
+                signal_id=f"sig-inb-{uuid.uuid4().hex[:8]}",
+                source_zone=SignalSourceZone.GEMINI_APP_INBOX,
+                entity_id=audit_record.entity_id,
+                doc_id=doc_id,
+                doctype=doctype,
+                issuer=issuer,
+                field_path=resolved_path,
+                before_value=before_val,
+                after_value=after_val,
+                expert_memo=memo,
+                actor_principal=audit_record.actor_principal,
+                actor_role=audit_record.actor_role,
+                agent_spiffe_id=audit_record.agent_spiffe_id,
+                patches=tuple(audit_record.patches),
+            )
+            self._save_signal(signal)
+            rule = self._distill_rule_from_signal(
+                signal,
+                category=category,
+                distinct_entities=distinct_entities,
+            )
+            span.set_attribute("docubridge.signal_id", signal.signal_id)
+            span.set_attribute("docubridge.rule_id", rule.rule_id)
+            span.set_attribute("docubridge.rule_category", rule.category.value)
+            return signal, rule
 
     def _distill_rule_from_signal(
         self,
@@ -834,107 +909,120 @@ class AgentGymEngine(abc.ABC):
         auto_promote: bool = True,
     ) -> GymReportCard:
         """Run Synthetic Stress Testing and Quality Report Card Gate on a candidate rule."""
-        rule = self._get_rule(rule_id)
-        if rule is None:
-            raise KeyError(f"TribalKnowledgeRule '{rule_id}' not found.")
-        signal = self._get_signal(rule.source_signal_id)
-        if signal is None:
-            signal = ExpertFeedbackSignal(
-                signal_id=rule.source_signal_id,
-                source_zone=SignalSourceZone.REVIEW_QUARANTINE,
-                entity_id="ent-seed",
-                doc_id="doc-seed",
-                doctype=rule.doctype,
-                issuer=rule.issuer_pattern.rstrip("*"),
-                field_path=rule.field_path,
-                before_value="raw",
-                after_value=rule.canonical_target or "resolved",
-                expert_memo=rule.instruction,
-                actor_principal=rule.authored_by,
-                actor_role=rule.preferred_role or "broker",
-            )
-
-        # Hallucination Firewall check: block any rule attempting to alter Decimal math code
-        lowered_inst = rule.instruction.lower()
-        math_firewall_intact = not any(
-            tok in lowered_inst for tok in _FORBIDDEN_MATH_TOKENS
-        )
-
-        # Check for collisions with existing promoted rules on the same slice
-        regressions: list[str] = []
-        for existing in self._list_all_rules():
-            if (
-                existing.rule_id != rule.rule_id
-                and existing.status == TribalRuleStatus.PROMOTED
-                and existing.category == rule.category
-                and existing.issuer_pattern == rule.issuer_pattern
-                and existing.field_path == rule.field_path
-                and existing.canonical_target != rule.canonical_target
-            ):
-                regressions.append(
-                    f"conflict_with_promoted_rule:{existing.rule_id}"
+        with trace_step(
+            "docubridge.agent_gym.evaluate_rule",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.rule_id": rule_id,
+                "docubridge.auto_promote": auto_promote,
+            },
+        ) as span:
+            rule = self._get_rule(rule_id)
+            if rule is None:
+                raise KeyError(f"TribalKnowledgeRule '{rule_id}' not found.")
+            signal = self._get_signal(rule.source_signal_id)
+            if signal is None:
+                signal = ExpertFeedbackSignal(
+                    signal_id=rule.source_signal_id,
+                    source_zone=SignalSourceZone.REVIEW_QUARANTINE,
+                    entity_id="ent-seed",
+                    doc_id="doc-seed",
+                    doctype=rule.doctype,
+                    issuer=rule.issuer_pattern.rstrip("*"),
+                    field_path=rule.field_path,
+                    before_value="raw",
+                    after_value=rule.canonical_target or "resolved",
+                    expert_memo=rule.instruction,
+                    actor_principal=rule.authored_by,
+                    actor_role=rule.preferred_role or "broker",
                 )
 
-        if not math_firewall_intact:
-            regressions.append("hallucination_firewall_violation:math_override_blocked")
-
-        stress_cases = generate_synthetic_stress_suite(signal, rule)
-        baseline_passed = sum(1 for c in stress_cases if c.baseline_passed)
-        candidate_passed = (
-            sum(1 for c in stress_cases if c.candidate_passed)
-            if math_firewall_intact
-            else 0
-        )
-        total_cases = len(stress_cases)
-        baseline_score = round(baseline_passed / total_cases, 4)
-        candidate_score = round(candidate_passed / total_cases, 4)
-        delta = round(candidate_score - baseline_score, 4)
-
-        passed_gate = (
-            delta > 0
-            and len(regressions) == 0
-            and math_firewall_intact
-        )
-        if passed_gate:
-            rule.status = (
-                TribalRuleStatus.PROMOTED
-                if auto_promote
-                else TribalRuleStatus.VERIFIED
-            )
-            if auto_promote:
-                rule.promoted_at = datetime.now(UTC)
-            summary = (
-                f"PASSED Quality Report Card Gate (+{int(delta * 100)}% on target slice "
-                f"'{rule.issuer_pattern}:{rule.doctype}', 0 historical regressions, "
-                "deterministic Decimal math firewall intact)."
-            )
-        else:
-            rule.status = TribalRuleStatus.REJECTED
-            summary = (
-                f"BLOCKED by Quality Report Card Gate: regressions={regressions}, "
-                f"math_firewall_intact={math_firewall_intact}."
+            # Hallucination Firewall check: block any rule attempting to alter Decimal math code
+            lowered_inst = rule.instruction.lower()
+            math_firewall_intact = not any(
+                tok in lowered_inst for tok in _FORBIDDEN_MATH_TOKENS
             )
 
-        self._save_rule(rule)
+            # Check for collisions with existing promoted rules on the same slice
+            regressions: list[str] = []
+            for existing in self._list_all_rules():
+                if (
+                    existing.rule_id != rule.rule_id
+                    and existing.status == TribalRuleStatus.PROMOTED
+                    and existing.category == rule.category
+                    and existing.issuer_pattern == rule.issuer_pattern
+                    and existing.field_path == rule.field_path
+                    and existing.canonical_target != rule.canonical_target
+                ):
+                    regressions.append(
+                        f"conflict_with_promoted_rule:{existing.rule_id}"
+                    )
 
-        report = GymReportCard(
-            report_id=f"rep-{uuid.uuid4().hex[:8]}",
-            rule_id=rule.rule_id,
-            target_slice=f"{rule.issuer_pattern}:{rule.doctype}:{rule.field_path}",
-            baseline_slice_score=baseline_score,
-            candidate_slice_score=candidate_score,
-            slice_improvement_delta=delta,
-            stress_cases=stress_cases,
-            stress_cases_passed=candidate_passed,
-            stress_cases_total=total_cases,
-            historical_benchmark_total=12,
-            historical_regressions=tuple(regressions),
-            math_firewall_intact=math_firewall_intact,
-            passed_gate=passed_gate,
-            gate_summary=summary,
-        )
-        self._save_report(report)
-        return report
+            if not math_firewall_intact:
+                regressions.append("hallucination_firewall_violation:math_override_blocked")
+
+            stress_cases = generate_synthetic_stress_suite(signal, rule)
+            baseline_passed = sum(1 for c in stress_cases if c.baseline_passed)
+            candidate_passed = (
+                sum(1 for c in stress_cases if c.candidate_passed)
+                if math_firewall_intact
+                else 0
+            )
+            total_cases = len(stress_cases)
+            baseline_score = round(baseline_passed / total_cases, 4)
+            candidate_score = round(candidate_passed / total_cases, 4)
+            delta = round(candidate_score - baseline_score, 4)
+
+            passed_gate = (
+                delta > 0
+                and len(regressions) == 0
+                and math_firewall_intact
+            )
+            if passed_gate:
+                rule.status = (
+                    TribalRuleStatus.PROMOTED
+                    if auto_promote
+                    else TribalRuleStatus.VERIFIED
+                )
+                if auto_promote:
+                    rule.promoted_at = datetime.now(UTC)
+                summary = (
+                    f"PASSED Quality Report Card Gate (+{int(delta * 100)}% on target slice "
+                    f"'{rule.issuer_pattern}:{rule.doctype}', 0 historical regressions, "
+                    "deterministic Decimal math firewall intact)."
+                )
+            else:
+                rule.status = TribalRuleStatus.REJECTED
+                summary = (
+                    f"BLOCKED by Quality Report Card Gate: regressions={regressions}, "
+                    f"math_firewall_intact={math_firewall_intact}."
+                )
+
+            self._save_rule(rule)
+
+            report = GymReportCard(
+                report_id=f"rep-{uuid.uuid4().hex[:8]}",
+                rule_id=rule.rule_id,
+                target_slice=f"{rule.issuer_pattern}:{rule.doctype}:{rule.field_path}",
+                baseline_slice_score=baseline_score,
+                candidate_slice_score=candidate_score,
+                slice_improvement_delta=delta,
+                stress_cases=stress_cases,
+                stress_cases_passed=candidate_passed,
+                stress_cases_total=total_cases,
+                historical_benchmark_total=12,
+                historical_regressions=tuple(regressions),
+                math_firewall_intact=math_firewall_intact,
+                passed_gate=passed_gate,
+                gate_summary=summary,
+            )
+            self._save_report(report)
+            span.set_attribute("docubridge.passed_gate", passed_gate)
+            span.set_attribute("docubridge.math_firewall_intact", math_firewall_intact)
+            span.set_attribute("docubridge.stress_cases_passed", candidate_passed)
+            span.set_attribute("docubridge.stress_cases_total", total_cases)
+            span.set_attribute("docubridge.rule_status", rule.status.value)
+            return report
 
     # ------------------------------------------------------------------ #
     # 3. Production Layer Helpers (Extraction, Consolidation, A2UI)      #
@@ -1048,60 +1136,75 @@ class AgentGymEngine(abc.ABC):
         risk_level: RiskTier = "MEDIUM",
     ) -> tuple[ShadowComparisonRecord, ProgrammableTrustPolicy]:
         """Compare AI output vs. human ground truth; track consecutive matches or auto-demote on drift."""
-        policy = self._get_trust_policy(slice_id)
-        if policy is None:
-            policy = ProgrammableTrustPolicy(
-                slice_id=slice_id,
-                issuer_pattern=f"{_strip_legal_suffix(issuer)}*",
-                doctype=doctype,
-                risk_level=risk_level,
-                autonomy_level=TrustAutonomyLevel.SHADOW_MODE,
-            )
+        with trace_step(
+            "docubridge.agent_gym.shadow_comparison",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.slice_id": slice_id,
+                "docubridge.entity_id": entity_id,
+                "docubridge.doc_id": doc_id,
+                "docubridge.issuer": issuer,
+                "docubridge.doctype": doctype,
+                "docubridge.field_path": field_path,
+            },
+        ) as span:
+            policy = self._get_trust_policy(slice_id)
+            if policy is None:
+                policy = ProgrammableTrustPolicy(
+                    slice_id=slice_id,
+                    issuer_pattern=f"{_strip_legal_suffix(issuer)}*",
+                    doctype=doctype,
+                    risk_level=risk_level,
+                    autonomy_level=TrustAutonomyLevel.SHADOW_MODE,
+                )
 
-        exact_match = ai_value.strip() == human_value.strip()
-        policy.total_evaluated += 1
-        drift_reason: str | None = None
+            exact_match = ai_value.strip() == human_value.strip()
+            policy.total_evaluated += 1
+            drift_reason: str | None = None
 
-        if exact_match:
-            policy.total_exact_matches += 1
-            policy.consecutive_matches += 1
-            policy.last_updated_reason = (
-                f"Shadow/Review exact match #{policy.consecutive_matches} on '{field_path}'."
-            )
-        else:
-            policy.consecutive_matches = 0
-            policy.drift_incidents += 1
-            drift_reason = (
-                f"Format/value drift detected on '{field_path}': "
-                f"AI='{ai_value}' vs Human='{human_value}'."
-            )
-            # Instant Safety Dial-Back on drift!
-            if policy.autonomy_level == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE:
-                policy.autonomy_level = TrustAutonomyLevel.GUIDED_REVIEW
+            if exact_match:
+                policy.total_exact_matches += 1
+                policy.consecutive_matches += 1
                 policy.last_updated_reason = (
-                    f"Auto-demoted to Guided Review due to carrier drift ({drift_reason})"
+                    f"Shadow/Review exact match #{policy.consecutive_matches} on '{field_path}'."
                 )
             else:
-                policy.last_updated_reason = drift_reason
+                policy.consecutive_matches = 0
+                policy.drift_incidents += 1
+                drift_reason = (
+                    f"Format/value drift detected on '{field_path}': "
+                    f"AI='{ai_value}' vs Human='{human_value}'."
+                )
+                # Instant Safety Dial-Back on drift!
+                if policy.autonomy_level == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE:
+                    policy.autonomy_level = TrustAutonomyLevel.GUIDED_REVIEW
+                    policy.last_updated_reason = (
+                        f"Auto-demoted to Guided Review due to carrier drift ({drift_reason})"
+                    )
+                else:
+                    policy.last_updated_reason = drift_reason
 
-        policy.updated_at = datetime.now(UTC)
-        self._save_trust_policy(policy)
+            policy.updated_at = datetime.now(UTC)
+            self._save_trust_policy(policy)
 
-        record = ShadowComparisonRecord(
-            comparison_id=f"shd-{uuid.uuid4().hex[:8]}",
-            slice_id=slice_id,
-            entity_id=entity_id,
-            doc_id=doc_id,
-            issuer=issuer,
-            doctype=doctype,
-            field_path=field_path,
-            ai_value=ai_value,
-            human_value=human_value,
-            exact_match=exact_match,
-            drift_reason=drift_reason,
-        )
-        self._append_shadow_record(record)
-        return record, policy
+            record = ShadowComparisonRecord(
+                comparison_id=f"shd-{uuid.uuid4().hex[:8]}",
+                slice_id=slice_id,
+                entity_id=entity_id,
+                doc_id=doc_id,
+                issuer=issuer,
+                doctype=doctype,
+                field_path=field_path,
+                ai_value=ai_value,
+                human_value=human_value,
+                exact_match=exact_match,
+                drift_reason=drift_reason,
+            )
+            self._append_shadow_record(record)
+            span.set_attribute("docubridge.exact_match", exact_match)
+            span.set_attribute("docubridge.consecutive_matches", policy.consecutive_matches)
+            span.set_attribute("docubridge.autonomy_level", policy.autonomy_level.value)
+            return record, policy
 
     def dial_trust_policy(
         self,
@@ -1115,32 +1218,64 @@ class AgentGymEngine(abc.ABC):
         force: bool = False,
     ) -> ProgrammableTrustPolicy:
         """Promote or dial back a slice's autonomy level (enforcing internal lead role)."""
-        if actor_role in ("client", "carrier"):
-            raise PermissionError(
-                f"External role '{actor_role}' is not permitted to modify Programmable Trust policies."
-            )
-        policy = self._get_trust_policy(slice_id)
-        if policy is None:
-            raise KeyError(f"ProgrammableTrustPolicy '{slice_id}' not found.")
+        with trace_step(
+            "docubridge.agent_gym.dial_trust_policy",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.slice_id": slice_id,
+                "docubridge.target_level": target_level.value,
+                "docubridge.actor_principal": actor_principal,
+                "docubridge.actor_role": actor_role,
+                "docubridge.agent_spiffe_id": agent_spiffe_id,
+            },
+        ) as span:
+            if actor_role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{actor_role}' is not permitted to modify Programmable Trust policies."
+                )
+            policy = self._get_trust_policy(slice_id)
+            if policy is None:
+                raise KeyError(f"ProgrammableTrustPolicy '{slice_id}' not found.")
 
-        if (
-            target_level == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE
-            and not force
-            and policy.consecutive_matches < policy.required_matches_for_promotion
+            if (
+                target_level == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE
+                and not force
+                and policy.consecutive_matches < policy.required_matches_for_promotion
+            ):
+                raise ValueError(
+                    f"Cannot promote '{slice_id}' to trusted_auto_approve: only "
+                    f"{policy.consecutive_matches}/{policy.required_matches_for_promotion} "
+                    "consecutive matches recorded."
+                )
+
+            policy.autonomy_level = target_level
+            policy.last_updated_by = actor_principal
+            policy.last_updated_reason = reason
+            policy.agent_spiffe_id = agent_spiffe_id
+            policy.updated_at = datetime.now(UTC)
+            self._save_trust_policy(policy)
+            span.set_attribute("docubridge.autonomy_level", policy.autonomy_level.value)
+            return policy
+
+    def reset_trust_policies(
+        self,
+        *,
+        policies: tuple[ProgrammableTrustPolicy, ...] = DEFAULT_TRUST_POLICIES,
+    ) -> list[ProgrammableTrustPolicy]:
+        """Reset default Programmable Trust policies to baseline state (for interactive demo runs)."""
+        with trace_step(
+            "docubridge.agent_gym.reset_trust_policies",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.policy_count": len(policies),
+            },
         ):
-            raise ValueError(
-                f"Cannot promote '{slice_id}' to trusted_auto_approve: only "
-                f"{policy.consecutive_matches}/{policy.required_matches_for_promotion} "
-                "consecutive matches recorded."
-            )
-
-        policy.autonomy_level = target_level
-        policy.last_updated_by = actor_principal
-        policy.last_updated_reason = reason
-        policy.agent_spiffe_id = agent_spiffe_id
-        policy.updated_at = datetime.now(UTC)
-        self._save_trust_policy(policy)
-        return policy
+            reset_list: list[ProgrammableTrustPolicy] = []
+            for p in policies:
+                copied = p.model_copy(deep=True)
+                self._save_trust_policy(copied)
+                reset_list.append(copied)
+            return reset_list
 
 
 class InMemoryAgentGymEngine(AgentGymEngine):
@@ -1295,18 +1430,34 @@ class SqlAgentGymEngine(AgentGymEngine):
             seed_policies = self._initial_trust_policies
 
             async def _create_and_seed() -> None:
+                from sqlalchemy import update
+
                 async with engine.begin() as conn:
                     await conn.run_sync(meta.create_all)
-                    existing_res = await conn.execute(select(trust_table.c.slice_id))
-                    existing_ids = {r[0] for r in existing_res}
+                    existing_res = await conn.execute(
+                        select(trust_table.c.slice_id, trust_table.c.payload_json)
+                    )
+                    existing_rows = {r[0]: r[1] for r in existing_res}
                     for p in seed_policies:
-                        if p.slice_id not in existing_ids:
+                        raw_json = existing_rows.get(p.slice_id)
+                        if raw_json is None:
                             await conn.execute(
                                 trust_table.insert().values(
                                     slice_id=p.slice_id,
                                     autonomy_level=p.autonomy_level.value,
                                     payload_json=p.model_dump_json(),
                                 )
+                            )
+                        elif "lead.broker@aon.com" in raw_json or "lead.underwriter@aon.com" in raw_json:
+                            updated_json = raw_json.replace(
+                                "lead.broker@aon.com", "lead.broker@docubridge.io"
+                            ).replace(
+                                "lead.underwriter@aon.com", "lead.underwriter@docubridge.io"
+                            )
+                            await conn.execute(
+                                update(trust_table)
+                                .where(trust_table.c.slice_id == p.slice_id)
+                                .values(payload_json=updated_json)
                             )
 
             fut = asyncio.run_coroutine_threadsafe(_create_and_seed(), loop)

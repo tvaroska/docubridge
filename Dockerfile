@@ -36,6 +36,7 @@ COPY contract/ ./contract/
 COPY bridge/ ./bridge/
 COPY skills/ ./skills/
 COPY wiki/ ./wiki/
+COPY demo/ ./demo/
 
 # Put the synced venv first on PATH so `python` is the project interpreter (no `uv
 # run` re-resolution at container start; runtime needs no network).

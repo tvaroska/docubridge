@@ -5,7 +5,7 @@ Connects Zone 4 (Role-Based Business Views & BigQuery Analytics) and Zone 6
 (`Agent-to-UI`) components streamed to two isolated delivery channels:
 
 1. **Gemini App (Internal)** (`channel="gemini_app"`):
-   Conversational workspace for internal Aon `broker`, `claims`,
+   Conversational workspace for internal enterprise `broker`, `claims`,
    `underwriter`, and `executive` roles with interactive charts, side-by-side
    comparisons, cross-document conflict alerts, bi-temporal time-travel, and
    direct source PDF page highlights (`Click value -> source PDF`).
@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from bridge.a2ui_inbox import (
@@ -102,13 +103,22 @@ from bridge.operational_store import (
     UnderwriterView,
     operational_store_from_env,
 )
+from bridge.telemetry import (
+    OtelAsgiMiddleware,
+    clear_recorded_spans,
+    compute_trace_analytics,
+    get_recorded_spans,
+    trace_step,
+)
 from bridge.vault import (
     AuditVaultStore,
     VaultRecord,
     promote_accepted_to_vault,
+    redact_personal_data,
     vault_from_env,
 )
-from contract.extraction import SourceAnchor
+from contract.enums import Disposition, Gate
+from contract.extraction import ExtractionFields, ExtractionResult, SourceAnchor
 from contract.wire import LedgerEntry
 
 
@@ -247,11 +257,16 @@ def resolve_caller_role(
                 verified_role = cast(CatalogRole, candidate)
         if verified_role is None and iap_email:
             lowered = iap_email.lower()
-            for r in ("underwriter", "claims", "broker", "carrier", "client"):
-                if r in lowered:
-                    verified_role = cast(CatalogRole, r)
-                    break
-            if verified_role is None and lowered.endswith("@aon.com"):
+            if "credit" in lowered:
+                verified_role = "underwriter"
+            else:
+                for r in ("underwriter", "claims", "broker", "carrier", "client"):
+                    if r in lowered:
+                        verified_role = cast(CatalogRole, r)
+                        break
+            if verified_role is None and lowered.endswith(
+                ("@docubridge.io", "@aon.com")
+            ):
                 verified_role = "broker"
 
     if verified_role is not None:
@@ -600,135 +615,149 @@ def render_domain_agent_a2ui(
     svid_verified: bool = False,
 ) -> A2uiDeliveryEnvelope:
     """Execute a governed Domain Agent query and return an A2UI delivery envelope."""
-    store = operational_store or operational_store_from_env()
-    catalog = knowledge_catalog or knowledge_catalog_from_env(operational_store=store)
-    gym = agent_gym_from_env(agent_gym)
-    if hasattr(catalog, "bind_operational_store"):
-        catalog.bind_operational_store(store)
     resolved_view = target_view or _DEFAULT_VIEW_BY_ROLE[role]
+    with trace_step(
+        "docubridge.a2ui.render_surface",
+        {
+            "docubridge.zone": "5_user_interaction_a2ui",
+            "docubridge.entity_id": entity_id,
+            "docubridge.role": role,
+            "docubridge.channel": channel,
+            "docubridge.target_view": resolved_view,
+            "docubridge.agent_spiffe_id": agent_spiffe_id,
+            "docubridge.svid_verified": svid_verified,
+        },
+    ) as span:
+        store = operational_store or operational_store_from_env()
+        catalog = knowledge_catalog or knowledge_catalog_from_env(operational_store=store)
+        gym = agent_gym_from_env(agent_gym)
+        if hasattr(catalog, "bind_operational_store"):
+            catalog.bind_operational_store(store)
 
-    if principal is not None:
-        authorize_entity_access(principal, entity_id)
+        if principal is not None:
+            authorize_entity_access(principal, entity_id)
 
-    agent_ctx = catalog.build_agent_context(
-        role=role,
-        channel=channel,
-        target_view=resolved_view,
-        agent_spiffe_id=agent_spiffe_id,
-        svid_verified=svid_verified,
-    )
-    if not agent_ctx.access_decision.allowed:
-        raise PermissionError(agent_ctx.access_decision.reason)
-
-    allow_raw_vault_uri = agent_ctx.access_decision.allow_raw_vault_uri
-    allow_competitor_quotes = agent_ctx.access_decision.allow_competitor_quotes
-
-    if resolved_view == "v_broker_placement":
-        b_view = store.broker_view(entity_id, learned_as_of=as_of_learned)
-        widgets = _build_broker_widgets(
-            b_view,
-            allow_raw_vault_uri=allow_raw_vault_uri,
-            allow_competitor_quotes=allow_competitor_quotes,
-            principal=principal,
+        agent_ctx = catalog.build_agent_context(
+            role=role,
+            channel=channel,
+            target_view=resolved_view,
+            agent_spiffe_id=agent_spiffe_id,
+            svid_verified=svid_verified,
         )
-        headline = f"Placement view for {entity_id} ({len(b_view.quotes)} submission(s))"
-    elif resolved_view == "v_claims_coverage":
-        loss_dt = effective_on or as_of_learned or datetime.now(UTC)
-        c_view = store.claims_view(
-            entity_id,
-            loss_date=loss_dt,
-            learned_as_of=as_of_learned,
-        )
-        widgets = _build_claims_widgets(
-            c_view, allow_raw_vault_uri=allow_raw_vault_uri
-        )
-        headline = (
-            f"Claims coverage view for {entity_id} "
-            f"as of {c_view.loss_date.isoformat()}"
-        )
-    elif resolved_view == "v_underwriter_exposure":
-        u_view = store.underwriter_view(entity_id, learned_as_of=as_of_learned)
-        widgets = _build_underwriter_widgets(
-            u_view, allow_raw_vault_uri=allow_raw_vault_uri
-        )
-        headline = f"Underwriter exposure view for {entity_id}"
-    else:
-        raise ValueError(f"Unsupported business view '{resolved_view}'.")
+        if not agent_ctx.access_decision.allowed:
+            raise PermissionError(agent_ctx.access_decision.reason)
 
-    # Apply Stage 3 Agent Gym presentation preferences for internal Gemini App roles
-    if channel == "gemini_app" and widgets:
-        prefs = gym.get_presentation_preferences(role=role)
-        if prefs:
-            primary_data = dict(widgets[0].data)
-            primary_data["applied_tribal_rules"] = [
-                {
-                    "rule_id": r.rule_id,
-                    "title": r.title,
-                    "field_path": r.field_path,
-                    "instruction": r.instruction,
-                }
-                for r in prefs
-            ]
-            widgets[0] = widgets[0].model_copy(update={"data": primary_data})
+        allow_raw_vault_uri = agent_ctx.access_decision.allow_raw_vault_uri
+        allow_competitor_quotes = agent_ctx.access_decision.allow_competitor_quotes
 
-    # Attach bi-temporal history timeline widget when multiple versions exist
-    all_history = store.list_facts(entity_id)
-    distinct_recordings = sorted({f.recorded_at for f in all_history})
-    if len(distinct_recordings) > 1:
-        widgets.append(
-            A2uiWidget(
-                widget_id=f"timeline:{entity_id}",
-                widget_type="time_travel_timeline",
-                title="Bi-Temporal Version History (Point-in-Time Audit)",
-                subtitle=f"{len(distinct_recordings)} recorded states available",
-                data={
-                    "recorded_timestamps": [ts.isoformat() for ts in distinct_recordings],
-                    "total_fact_versions": len(all_history),
-                },
+        if resolved_view == "v_broker_placement":
+            b_view = store.broker_view(entity_id, learned_as_of=as_of_learned)
+            widgets = _build_broker_widgets(
+                b_view,
+                allow_raw_vault_uri=allow_raw_vault_uri,
+                allow_competitor_quotes=allow_competitor_quotes,
+                principal=principal,
             )
-        )
+            headline = f"Placement view for {entity_id} ({len(b_view.quotes)} submission(s))"
+        elif resolved_view == "v_claims_coverage":
+            loss_dt = effective_on or as_of_learned or datetime.now(UTC)
+            c_view = store.claims_view(
+                entity_id,
+                loss_date=loss_dt,
+                learned_as_of=as_of_learned,
+            )
+            widgets = _build_claims_widgets(
+                c_view, allow_raw_vault_uri=allow_raw_vault_uri
+            )
+            headline = (
+                f"Claims coverage view for {entity_id} "
+                f"as of {c_view.loss_date.isoformat()}"
+            )
+        elif resolved_view == "v_underwriter_exposure":
+            u_view = store.underwriter_view(entity_id, learned_as_of=as_of_learned)
+            widgets = _build_underwriter_widgets(
+                u_view, allow_raw_vault_uri=allow_raw_vault_uri
+            )
+            headline = f"Underwriter exposure view for {entity_id}"
+        else:
+            raise ValueError(f"Unsupported business view '{resolved_view}'.")
 
-    # Attach internal conflict alerts ONLY if permitted by Knowledge Catalog policy
-    if agent_ctx.access_decision.allow_internal_conflict_notes:
-        _, conflicts = store.query_as_of(
-            entity_id, learned_as_of=as_of_learned, effective_on=effective_on
-        )
-        if conflicts:
+        # Apply Stage 3 Agent Gym presentation preferences for internal Gemini App roles
+        if channel == "gemini_app" and widgets:
+            prefs = gym.get_presentation_preferences(role=role)
+            if prefs:
+                primary_data = dict(widgets[0].data)
+                primary_data["applied_tribal_rules"] = [
+                    {
+                        "rule_id": r.rule_id,
+                        "title": r.title,
+                        "field_path": r.field_path,
+                        "instruction": r.instruction,
+                    }
+                    for r in prefs
+                ]
+                widgets[0] = widgets[0].model_copy(update={"data": primary_data})
+
+        # Attach bi-temporal history timeline widget when multiple versions exist
+        all_history = store.list_facts(entity_id)
+        distinct_recordings = sorted({f.recorded_at for f in all_history})
+        if len(distinct_recordings) > 1:
             widgets.append(
                 A2uiWidget(
-                    widget_id=f"conflicts:{entity_id}",
-                    widget_type="conflict_alert",
-                    title="Cross-Document Discrepancy Alerts",
-                    subtitle=f"{len(conflicts)} discrepancy flag(s) detected",
+                    widget_id=f"timeline:{entity_id}",
+                    widget_type="time_travel_timeline",
+                    title="Bi-Temporal Version History (Point-in-Time Audit)",
+                    subtitle=f"{len(distinct_recordings)} recorded states available",
                     data={
-                        "conflicts": [
-                            {
-                                "field_path": c.field_path,
-                                "winning_doc_id": c.winning_doc_id,
-                                "winning_value": c.winning_value,
-                                "conflicting_doc_id": c.conflicting_doc_id,
-                                "conflicting_value": c.conflicting_value,
-                                "reason": c.reason,
-                            }
-                            for c in conflicts
-                        ]
+                        "recorded_timestamps": [ts.isoformat() for ts in distinct_recordings],
+                        "total_fact_versions": len(all_history),
                     },
                 )
             )
 
-    lineage_records = catalog.list_lineage_for_entity(entity_id)
-    return A2uiDeliveryEnvelope(
-        channel=channel,
-        role=role,
-        target_view=resolved_view,
-        entity_id=entity_id,
-        as_of_learned=as_of_learned,
-        effective_on=effective_on,
-        governance=agent_ctx.access_decision,
-        summary_headline=headline,
-        widgets=widgets,
-        lineage_count=len(lineage_records),
-    )
+        # Attach internal conflict alerts ONLY if permitted by Knowledge Catalog policy
+        if agent_ctx.access_decision.allow_internal_conflict_notes:
+            _, conflicts = store.query_as_of(
+                entity_id, learned_as_of=as_of_learned, effective_on=effective_on
+            )
+            if conflicts:
+                widgets.append(
+                    A2uiWidget(
+                        widget_id=f"conflicts:{entity_id}",
+                        widget_type="conflict_alert",
+                        title="Cross-Document Discrepancy Alerts",
+                        subtitle=f"{len(conflicts)} discrepancy flag(s) detected",
+                        data={
+                            "conflicts": [
+                                {
+                                    "field_path": c.field_path,
+                                    "winning_doc_id": c.winning_doc_id,
+                                    "winning_value": c.winning_value,
+                                    "conflicting_doc_id": c.conflicting_doc_id,
+                                    "conflicting_value": c.conflicting_value,
+                                    "reason": c.reason,
+                                }
+                                for c in conflicts
+                            ]
+                        },
+                    )
+                )
+
+        lineage_records = catalog.list_lineage_for_entity(entity_id)
+        span.set_attribute("docubridge.widget_count", len(widgets))
+        span.set_attribute("docubridge.lineage_count", len(lineage_records))
+        return A2uiDeliveryEnvelope(
+            channel=channel,
+            role=role,
+            target_view=resolved_view,
+            entity_id=entity_id,
+            as_of_learned=as_of_learned,
+            effective_on=effective_on,
+            governance=agent_ctx.access_decision,
+            summary_headline=headline,
+            widgets=widgets,
+            lineage_count=len(lineage_records),
+        )
 
 
 class EnterpriseIngestionResult(BaseModel):
@@ -759,54 +788,113 @@ def ingest_accepted_submission(
     effective_from: datetime | None = None,
 ) -> EnterpriseIngestionResult:
     """Promote an accepted entry through Vault (WORM), Operational Store, and Catalog."""
-    vault = vault_store or vault_from_env()
-    store = operational_store or operational_store_from_env()
-    catalog = knowledge_catalog or knowledge_catalog_from_env()
-    gym = agent_gym_from_env(agent_gym)
+    with trace_step(
+        "docubridge.intake.ingest_accepted_submission",
+        {
+            "docubridge.zone": "2_3_6_enterprise_ingestion",
+            "docubridge.entity_id": entity_id,
+            "docubridge.context_id": context_id,
+            "docubridge.doc_id": entry.doc_id,
+            "docubridge.doctype": entry.doctype,
+            "docubridge.version": version,
+        },
+    ) as span:
+        vault = vault_store or vault_from_env()
+        store = operational_store or operational_store_from_env()
+        catalog = knowledge_catalog or knowledge_catalog_from_env()
+        gym = agent_gym_from_env(agent_gym)
 
-    # Apply Stage 2 Agent Gym Entity/Carrier Alias normalization before consolidation
-    # while keeping 100% of financial math deterministic in OperationalStore.
-    normalized_entry = entry
-    if entry.issuer:
-        norm_issuer = gym.normalize_entity_or_issuer(entry.issuer)
-        if norm_issuer and norm_issuer != entry.issuer:
-            new_key_fields = dict(entry.key_fields)
-            if "issuer" in new_key_fields:
-                new_key_fields["issuer"] = norm_issuer
-            normalized_entry = entry.model_copy(
-                update={
-                    "issuer": norm_issuer,
-                    "key_fields": new_key_fields,
-                }
+        # Apply Stage 1 Edge PII Redaction + Stage 2 Agent Gym Entity/Carrier Alias
+        # normalization before consolidation while keeping 100% of financial math
+        # deterministic in OperationalStore.
+        sanitized_extraction, _ = redact_personal_data(
+            ExtractionResult(
+                fields=ExtractionFields(
+                    doctype=entry.doctype,
+                    issuer=entry.issuer,
+                    key_fields=dict(entry.key_fields),
+                    tables=dict(entry.tables),
+                    source_anchors=dict(entry.source_anchors),
+                ),
+                overall_confidence=(
+                    entry.overall_confidence
+                    if entry.overall_confidence is not None
+                    else 1.0
+                ),
+                legible=True,
             )
+        )
+        normalized_entry = entry.model_copy(
+            update={
+                "key_fields": dict(sanitized_extraction.fields.key_fields),
+                "tables": dict(sanitized_extraction.fields.tables),
+                "source_anchors": dict(sanitized_extraction.fields.source_anchors),
+            }
+        )
+        if normalized_entry.issuer:
+            norm_issuer = gym.normalize_entity_or_issuer(normalized_entry.issuer)
+            if norm_issuer and norm_issuer != normalized_entry.issuer:
+                new_key_fields = dict(normalized_entry.key_fields)
+                if "issuer" in new_key_fields:
+                    new_key_fields["issuer"] = norm_issuer
+                normalized_entry = normalized_entry.model_copy(
+                    update={
+                        "issuer": norm_issuer,
+                        "key_fields": new_key_fields,
+                    }
+                )
 
-    promoted_entry, vault_record = promote_accepted_to_vault(
-        vault,
-        context_id=context_id,
-        entry=normalized_entry,
-        data=raw_document_bytes,
-        filename=filename,
-        version=version,
-        recorded_at=recorded_at,
-        effective_from=effective_from,
-    )
-    facts = store.ingest_entry(
-        promoted_entry,
-        entity_id=entity_id,
-        context_id=context_id,
-        recorded_at=promoted_entry.recorded_at,
-        effective_from=promoted_entry.effective_from,
-        version=version,
-    )
-    _, conflicts = store.query_as_of(entity_id)
-    lineage_traces = catalog.register_submission_lineage(promoted_entry, facts)
-    return EnterpriseIngestionResult(
-        entry=promoted_entry,
-        vault_record=vault_record,
-        facts=tuple(facts),
-        conflicts=tuple(conflicts),
-        lineage_traces=tuple(lineage_traces),
-    )
+        promoted_entry, vault_record = promote_accepted_to_vault(
+            vault,
+            context_id=context_id,
+            entry=normalized_entry,
+            data=raw_document_bytes,
+            filename=filename,
+            version=version,
+            recorded_at=recorded_at,
+            effective_from=effective_from,
+        )
+        facts = store.ingest_entry(
+            promoted_entry,
+            entity_id=entity_id,
+            context_id=context_id,
+            recorded_at=promoted_entry.recorded_at,
+            effective_from=promoted_entry.effective_from,
+            version=version,
+        )
+        _, conflicts = store.query_as_of(entity_id)
+        lineage_traces = catalog.register_submission_lineage(promoted_entry, facts)
+        span.set_attribute("docubridge.fact_count", len(facts))
+        span.set_attribute("docubridge.conflict_count", len(conflicts))
+        span.set_attribute("docubridge.lineage_trace_count", len(lineage_traces))
+        return EnterpriseIngestionResult(
+            entry=promoted_entry,
+            vault_record=vault_record,
+            facts=tuple(facts),
+            conflicts=tuple(conflicts),
+            lineage_traces=tuple(lineage_traces),
+        )
+
+
+class IngestSubmissionRequest(BaseModel):
+    """Request body to promote an accepted submission across Vault, Operational Store & Catalog."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_id: str
+    context_id: str = "ctx-enterprise-intake"
+    doc_id: str
+    doctype: str
+    issuer: str | None = None
+    status: Literal["accepted", "parked", "rejected"] = "accepted"
+    confidence: float = Field(default=0.98, ge=0.0, le=1.0)
+    summary: str = "Accepted enterprise document submission"
+    key_fields: dict[str, Any] = Field(default_factory=dict)
+    source_anchors: dict[str, SourceAnchor] = Field(default_factory=dict)
+    filename: str | None = None
+    version: int = 1
+    recorded_at: datetime | None = None
+    effective_from: datetime | None = None
 
 
 class CreateActionProgressRequest(BaseModel):
@@ -914,6 +1002,71 @@ def build_user_interaction_router(
     inbox = action_inbox_store_from_env(inbox_store)
     gym = agent_gym_from_env(agent_gym)
     router = APIRouter()
+
+    @router.post("/v1/intake/ingest")
+    def ingest_submission_endpoint(
+        request: Request,
+        body: IngestSubmissionRequest,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role or "underwriter",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            authorize_entity_access(compound.user, body.entity_id)
+            rec_at = body.recorded_at or datetime.now(UTC)
+            eff_from = body.effective_from or rec_at
+            entry = LedgerEntry(
+                doc_id=body.doc_id,
+                doctype=body.doctype,
+                issuer=body.issuer,
+                disposition=Disposition(body.status),
+                gate=Gate.auto_approve,
+                overall_confidence=body.confidence,
+                message=body.summary,
+                key_fields={k: str(v) for k, v in body.key_fields.items()},
+                source_anchors=body.source_anchors,
+                recorded_at=rec_at,
+                effective_from=eff_from,
+            )
+            res = ingest_accepted_submission(
+                entry,
+                entity_id=body.entity_id,
+                context_id=body.context_id,
+                raw_document_bytes=f"%PDF-1.7 {body.doc_id} {body.doctype}".encode(),
+                filename=body.filename or f"{body.doc_id}.pdf",
+                version=body.version,
+                operational_store=store,
+                knowledge_catalog=catalog,
+                agent_gym=gym,
+                recorded_at=rec_at,
+                effective_from=eff_from,
+            )
+            return {
+                "entry": res.entry.model_dump(mode="json"),
+                "vault_record": res.vault_record.model_dump(mode="json"),
+                "facts": [f.model_dump(mode="json") for f in res.facts],
+                "conflicts": [c.model_dump(mode="json") for c in res.conflicts],
+                "lineage_traces": [t.model_dump(mode="json") for t in res.lineage_traces],
+            }
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.get("/v1/bigquery/sync")
+    def get_bigquery_iceberg_sync_endpoint(
+        entity_id: str | None = None,
+        since_recorded_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        batch = store.export_bigquery_sync_batch(
+            entity_id=entity_id,
+            since_recorded_at=since_recorded_at,
+        )
+        return batch.model_dump(mode="json")
 
     @router.get("/v1/a2ui/catalogs/{catalog_name}")
     def get_a2ui_catalog_schema(catalog_name: str) -> dict[str, Any]:
@@ -1507,6 +1660,31 @@ def build_user_interaction_router(
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
+    @router.post("/v1/gym/trust-policies/reset")
+    def reset_gym_trust_policies_endpoint() -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for p in gym.reset_trust_policies():
+            dumped = p.model_dump(mode="json")
+            dumped["accuracy_rate"] = p.accuracy_rate
+            dumped["ready_for_promotion"] = p.ready_for_promotion
+            dumped["recommended_next_level"] = p.recommended_next_level.value
+            dumped["a2ui_messages"] = build_a2ui_trust_readiness_surface(p)
+            results.append(dumped)
+        return results
+
+    @router.get("/demo", response_class=HTMLResponse)
+    @router.get("/console", response_class=HTMLResponse)
+    def get_interactive_enterprise_console() -> HTMLResponse:
+        demo_path = (
+            Path(__file__).resolve().parents[1] / "demo" / "enterprise-demo.html"
+        )
+        if not demo_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="Interactive console (demo/enterprise-demo.html) not found.",
+            )
+        return HTMLResponse(content=demo_path.read_text(encoding="utf-8"))
+
     @router.get("/v1/catalog/spiffe-agents")
     def get_catalog_spiffe_agents(
         security_zone: Literal["internal", "external"] | None = None,
@@ -1550,6 +1728,41 @@ def build_user_interaction_router(
             )
         return trace.model_dump(mode="json")
 
+    @router.get("/v1/telemetry/spans")
+    def list_telemetry_spans_endpoint(
+        trace_id: str | None = None,
+        name_prefix: str | None = None,
+        entity_id: str | None = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        spans = get_recorded_spans(
+            trace_id=trace_id,
+            name_prefix=name_prefix,
+            entity_id=entity_id,
+            limit=limit,
+        )
+        return {
+            "count": len(spans),
+            "spans": spans,
+        }
+
+    @router.post("/v1/telemetry/spans/clear")
+    def clear_telemetry_spans_endpoint() -> dict[str, str]:
+        clear_recorded_spans()
+        return {"status": "cleared"}
+
+    @router.get("/v1/telemetry/analytics")
+    def get_telemetry_analytics_endpoint(
+        trace_id: str | None = None,
+        entity_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        return compute_trace_analytics(
+            trace_id=trace_id,
+            entity_id=entity_id,
+            limit=limit,
+        )
+
     return router
 
 
@@ -1567,6 +1780,7 @@ def build_user_interaction_app(
         title="DocuBridge Enterprise Data & A2UI Delivery Service",
         version="1.5.0",
     )
+    app.add_middleware(OtelAsgiMiddleware, service_component="user_interaction")
     app.include_router(
         build_user_interaction_router(
             operational_store=operational_store,

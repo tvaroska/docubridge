@@ -58,6 +58,11 @@ from bridge.edge.pushguard import guarded_push_config_store
 from bridge.edge.rfp_open import rfp_board_from_env
 from bridge.satisfaction import SatisfactionAssessor, resolve_assessor
 from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.telemetry import (
+    format_outgoing_trace_headers,
+    parent_trace_context_from_headers,
+    trace_step,
+)
 
 if TYPE_CHECKING:
     import httpx
@@ -533,7 +538,27 @@ class BridgeA2aAgentEngine:
                 if not message.get("more_body", False):
                     disconnect_event.set()
 
-        await self._app(scope, _receive, _send)
+        rpc_method_attr: str | None = None
+        if body:
+            try:
+                parsed_rpc = json.loads(body.decode("utf-8"))
+                if isinstance(parsed_rpc, dict) and isinstance(parsed_rpc.get("method"), str):
+                    rpc_method_attr = parsed_rpc["method"]
+            except Exception:
+                pass
+
+        with parent_trace_context_from_headers(headers), trace_step(
+            "docubridge.agent_engine.a2a_dispatch",
+            {
+                "docubridge.zone": "2_intake_validation",
+                "http.method": method,
+                "http.target": path,
+                "a2a.rpc_method": rpc_method_attr,
+                "docubridge.caller": user,
+            },
+        ) as span:
+            await self._app(scope, _receive, _send)
+            span.set_attribute("http.status_code", status_code)
         return status_code, resp_headers, b"".join(chunks)
 
     async def async_get_agent_card(
@@ -919,12 +944,20 @@ async def _invoke_engine_jsonrpc_stream(
 
 
 def _forwarded_a2a_headers(request: Request) -> dict[str, str]:
-    """Extract A2A protocol headers (`a2a-version`, `x-a2a-extensions`) from `request`."""
+    """Extract A2A protocol and OpenTelemetry trace headers from `request`."""
     out: dict[str, str] = {}
-    for key in ("a2a-version", "x-a2a-extensions"):
+    for key in (
+        "a2a-version",
+        "x-a2a-extensions",
+        "traceparent",
+        "x-cloud-trace-context",
+    ):
         val = request.headers.get(key)
         if val:
             out[key] = val
+    # Ensure active span context from OtelAsgiMiddleware propagates into Agent Engine
+    for k, v in format_outgoing_trace_headers().items():
+        out.setdefault(k, v)
     return out
 
 

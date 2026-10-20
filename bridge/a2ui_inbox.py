@@ -1,6 +1,6 @@
 """A2UI v0.9 Action Progress & Agent Inbox with Google ADK (Zone 5 Extension).
 
-Unites three open-source layers so internal Aon teams (in Gemini App / Ops Inbox) and
+Unites three open-source layers so internal enterprise teams (in Gemini App / Ops Inbox) and
 external clients/carriers (in Custom Web Portal) can both **monitor real-time progress
 of multi-step actions** (`submitted` -> `working` -> `input-required` -> `completed`)
 and **resolve human-in-the-loop (HITL) interrupts** via native declarative widgets:
@@ -43,16 +43,17 @@ from bridge.knowledge_catalog import (
      authorize_access,
 )
 from bridge.operational_store import FactConflict
+from bridge.telemetry import trace_step
 from contract.extraction import SourceAnchor
 
 A2UI_V09_VERSION = "v0.9"
 A2UI_V09_MIME_TYPE = "application/a2ui+json"
 
 INBOX_CATALOG_ID = (
-    "https://aon.com/a2ui/v0_9/catalogs/enterprise_inbox_catalog.json"
+    "https://docubridge.io/a2ui/v0_9/catalogs/enterprise_inbox_catalog.json"
 )
 PORTAL_CATALOG_ID = (
-    "https://aon.com/a2ui/v0_9/catalogs/portal_customer_catalog.json"
+    "https://docubridge.io/a2ui/v0_9/catalogs/portal_customer_catalog.json"
 )
 
 TaskLifecycleState = Literal[
@@ -979,97 +980,111 @@ class InMemoryActionInboxStore(ActionInboxStore):
         pause_for_review: bool = False,
         max_approval_amount: float | None = None,
     ) -> ActionInboxItem:
-        item_id = f"act_{uuid.uuid4().hex[:10]}"
-        surface_id = f"surface_{item_id}"
-        resolved_steps = (
-            copy.deepcopy(steps)
-            if steps is not None
-            else default_submission_progress_steps()
-        )
+        with trace_step(
+            "docubridge.a2ui.create_action_item",
+            {
+                "docubridge.zone": "5_user_interaction_a2ui",
+                "docubridge.entity_id": entity_id,
+                "docubridge.assigned_role": assigned_role,
+                "docubridge.target_view": target_view,
+                "docubridge.risk_level": risk_level,
+                "docubridge.pause_for_review": pause_for_review,
+            },
+        ) as span:
+            item_id = f"act_{uuid.uuid4().hex[:10]}"
+            surface_id = f"surface_{item_id}"
+            resolved_steps = (
+                copy.deepcopy(steps)
+                if steps is not None
+                else default_submission_progress_steps()
+            )
 
-        initial_model: dict[str, Any] = copy.deepcopy(data_model) if data_model else {}
-        initial_model.setdefault("resolution", {"selectedValue": ""})
-        initial_model.setdefault("review", {"memo": ""})
+            initial_model: dict[str, Any] = copy.deepcopy(data_model) if data_model else {}
+            initial_model.setdefault("resolution", {"selectedValue": ""})
+            initial_model.setdefault("review", {"memo": ""})
 
-        if conflicts:
-            rows = []
-            options = []
-            for c in conflicts:
-                field_short = c.field_path.split(".")[-1]
-                rows.append(
-                    {
-                        "field": field_short,
-                        "sourceA": {
-                            "label": f"{c.winning_value} ({c.winning_doc_id})",
-                            "docId": c.winning_doc_id,
-                            "pageNumber": 1,
-                        },
-                        "sourceB": {
-                            "label": f"{c.conflicting_value} ({c.conflicting_doc_id})",
-                            "docId": c.conflicting_doc_id,
-                            "pageNumber": 1,
-                        },
-                    }
-                )
-                options.extend(
-                    [
+            if conflicts:
+                rows = []
+                options = []
+                for c in conflicts:
+                    field_short = c.field_path.split(".")[-1]
+                    rows.append(
                         {
-                            "value": c.winning_value,
-                            "label": f"Keep {c.winning_doc_id}: {c.winning_value}",
-                        },
-                        {
-                            "value": c.conflicting_value,
-                            "label": f"Use {c.conflicting_doc_id}: {c.conflicting_value}",
-                        },
-                    ]
-                )
-            initial_model["discrepancy"] = {"rows": rows}
-            initial_model["resolutionOptions"] = options
-            if options and not initial_model["resolution"].get("selectedValue"):
-                initial_model["resolution"]["selectedValue"] = options[0]["value"]
+                            "field": field_short,
+                            "sourceA": {
+                                "label": f"{c.winning_value} ({c.winning_doc_id})",
+                                "docId": c.winning_doc_id,
+                                "pageNumber": 1,
+                            },
+                            "sourceB": {
+                                "label": f"{c.conflicting_value} ({c.conflicting_doc_id})",
+                                "docId": c.conflicting_doc_id,
+                                "pageNumber": 1,
+                            },
+                        }
+                    )
+                    options.extend(
+                        [
+                            {
+                                "value": c.winning_value,
+                                "label": f"Keep {c.winning_doc_id}: {c.winning_value}",
+                            },
+                            {
+                                "value": c.conflicting_value,
+                                "label": f"Use {c.conflicting_doc_id}: {c.conflicting_value}",
+                            },
+                        ]
+                    )
+                initial_model["discrepancy"] = {"rows": rows}
+                initial_model["resolutionOptions"] = options
+                if options and not initial_model["resolution"].get("selectedValue"):
+                    initial_model["resolution"]["selectedValue"] = options[0]["value"]
 
-        task_state: TaskLifecycleState = (
-            "input-required" if (pause_for_review or bool(conflicts)) else "working"
-        )
-        if task_state == "input-required":
-            for s in resolved_steps:
-                if s.status == "working":
-                    s.status = "input-required"
-                    break
+            task_state: TaskLifecycleState = (
+                "input-required" if (pause_for_review or bool(conflicts)) else "working"
+            )
+            if task_state == "input-required":
+                for s in resolved_steps:
+                    if s.status == "working":
+                        s.status = "input-required"
+                        break
 
-        item = ActionInboxItem(
-            item_id=item_id,
-            surface_id=surface_id,
-            entity_id=entity_id,
-            context_id=context_id or entity_id,
-            session_id=session_id or f"sess_{uuid.uuid4().hex[:8]}",
-            invocation_id=invocation_id or f"inv_{uuid.uuid4().hex[:8]}",
-            confirmation_call_id=confirmation_call_id or f"call_{uuid.uuid4().hex[:8]}",
-            title=title,
-            external_title=external_title or title,
-            hint=hint,
-            external_hint=external_hint or "Your submission is being processed.",
-            task_state=task_state,
-            risk_level=risk_level,
-            confidence_score=confidence_score,
-            assigned_role=assigned_role,
-            target_view=target_view,
-            steps=resolved_steps,
-            initial_data_model=copy.deepcopy(initial_model),
-            current_data_model=copy.deepcopy(initial_model),
-            max_approval_amount=max_approval_amount,
-        )
-        # Seed initial progress delta
-        initial_delta = build_update_data_model_delta(
-            surface_id,
-            path="/progress",
-            value=_sanitize_data_model_for_channel(
-                item, channel="gemini_app", allow_raw_vault_uri=False
-            )["progress"],
-        )
-        item.delta_history.append(initial_delta)
-        self._items[item_id] = item
-        return item
+            item = ActionInboxItem(
+                item_id=item_id,
+                surface_id=surface_id,
+                entity_id=entity_id,
+                context_id=context_id or entity_id,
+                session_id=session_id or f"sess_{uuid.uuid4().hex[:8]}",
+                invocation_id=invocation_id or f"inv_{uuid.uuid4().hex[:8]}",
+                confirmation_call_id=confirmation_call_id or f"call_{uuid.uuid4().hex[:8]}",
+                title=title,
+                external_title=external_title or title,
+                hint=hint,
+                external_hint=external_hint or "Your submission is being processed.",
+                task_state=task_state,
+                risk_level=risk_level,
+                confidence_score=confidence_score,
+                assigned_role=assigned_role,
+                target_view=target_view,
+                steps=resolved_steps,
+                initial_data_model=copy.deepcopy(initial_model),
+                current_data_model=copy.deepcopy(initial_model),
+                max_approval_amount=max_approval_amount,
+            )
+            # Seed initial progress delta
+            initial_delta = build_update_data_model_delta(
+                surface_id,
+                path="/progress",
+                value=_sanitize_data_model_for_channel(
+                    item, channel="gemini_app", allow_raw_vault_uri=False
+                )["progress"],
+            )
+            item.delta_history.append(initial_delta)
+            self._items[item_id] = item
+            span.set_attribute("docubridge.item_id", item_id)
+            span.set_attribute("docubridge.surface_id", surface_id)
+            span.set_attribute("docubridge.task_state", task_state)
+            return item
 
     def get_item(self, item_id: str) -> ActionInboxItem | None:
         return self._items.get(item_id)
@@ -1150,92 +1165,187 @@ class InMemoryActionInboxStore(ActionInboxStore):
         agent_spiffe_id: str | None = None,
         principal_max_approval_amount: float | None = None,
     ) -> dict[str, Any]:
-        item = self._items.get(item_id)
-        if item is None:
-            raise KeyError(f"Unknown action inbox item '{item_id}'.")
+        with trace_step(
+            "docubridge.a2ui.resolve_inbox_action",
+            {
+                "docubridge.zone": "5_user_interaction_a2ui",
+                "docubridge.item_id": item_id,
+                "docubridge.actor_principal": actor_principal,
+                "docubridge.actor_role": actor_role,
+                "docubridge.channel": channel,
+                "docubridge.agent_spiffe_id": agent_spiffe_id,
+            },
+        ) as span:
+            item = self._items.get(item_id)
+            if item is None:
+                raise KeyError(f"Unknown action inbox item '{item_id}'.")
+            span.set_attribute("docubridge.entity_id", item.entity_id)
 
-        # Verify caller (and optional SPIFFE agent) has access to the item's view & channel
-        access = authorize_access(
-            role=actor_role,
-            channel=channel,
-            target_view=item.target_view,
-            agent_spiffe_id=agent_spiffe_id,
-        )
-        if not access.allowed:
-            raise PermissionError(access.reason)
-
-        action_obj = action_request.action
-        action_name = str(action_obj.get("name", "accept"))
-        action_ctx = action_obj.get("context", {}) or {}
-        raw_decision = str(action_ctx.get("decision", action_name)).lower()
-
-        if raw_decision in ("approve", "edit_and_approve", "edit"):
-            decision: GovernanceDecision = (
-                "edit" if action_name == "edit_and_approve" else "accept"
+            # Verify caller (and optional SPIFFE agent) has access to the item's view & channel
+            access = authorize_access(
+                role=actor_role,
+                channel=channel,
+                target_view=item.target_view,
+                agent_spiffe_id=agent_spiffe_id,
             )
-        elif raw_decision in ("accept", "respond", "reject", "escalate"):
-            decision = raw_decision  # type: ignore[assignment]
-        else:
-            raise ValueError(f"Unsupported governance decision '{raw_decision}'.")
+            if not access.allowed:
+                raise PermissionError(access.reason)
 
-        # Apply client-submitted edits into a candidate data model
-        candidate_model = copy.deepcopy(item.current_data_model)
-        if isinstance(action_ctx.get("resolution"), dict):
-            candidate_model.setdefault("resolution", {}).update(
-                action_ctx["resolution"]
-            )
-        if isinstance(action_ctx.get("transfer"), dict):
-            candidate_model.setdefault("transfer", {}).update(action_ctx["transfer"])
-        if isinstance(action_ctx.get("review"), dict):
-            candidate_model.setdefault("review", {}).update(action_ctx["review"])
+            action_obj = action_request.action
+            action_name = str(action_obj.get("name", "accept"))
+            action_ctx = action_obj.get("context", {}) or {}
+            raw_decision = str(action_ctx.get("decision", action_name)).lower()
 
-        # Server-side numeric bounds verification (Section 6.1 + Principal Authority)
-        effective_max_limit = item.max_approval_amount
-        if principal_max_approval_amount is not None:
-            effective_max_limit = (
-                min(effective_max_limit, principal_max_approval_amount)
-                if effective_max_limit is not None
-                else principal_max_approval_amount
-            )
-        if "transfer" in candidate_model and effective_max_limit is not None:
-            approved_amt = float(
-                candidate_model["transfer"].get("approvedAmount", 0.0)
-            )
-            if approved_amt > effective_max_limit:
-                raise ValueError(
-                    f"Approved amount ({approved_amt}) exceeds maximum authority limit "
-                    f"({effective_max_limit})."
+            if raw_decision in ("approve", "edit_and_approve", "edit"):
+                decision: GovernanceDecision = (
+                    "edit" if action_name == "edit_and_approve" else "accept"
                 )
-            if approved_amt < 0:
-                raise ValueError("Approved amount cannot be negative.")
+            elif raw_decision in ("accept", "respond", "reject", "escalate"):
+                decision = raw_decision  # type: ignore[assignment]
+            else:
+                raise ValueError(f"Unsupported governance decision '{raw_decision}'.")
 
-        patches = compute_rfc6902_patches(item.initial_data_model, candidate_model)
-        if decision == "edit" and not patches:
-            decision = "accept"
-        elif decision == "accept" and patches:
-            decision = "edit"
+            # Apply client-submitted edits into a candidate data model
+            candidate_model = copy.deepcopy(item.current_data_model)
+            if isinstance(action_ctx.get("resolution"), dict):
+                candidate_model.setdefault("resolution", {}).update(
+                    action_ctx["resolution"]
+                )
+            if isinstance(action_ctx.get("transfer"), dict):
+                candidate_model.setdefault("transfer", {}).update(action_ctx["transfer"])
+            if isinstance(action_ctx.get("review"), dict):
+                candidate_model.setdefault("review", {}).update(action_ctx["review"])
 
-        notes = str(candidate_model.get("review", {}).get("memo", ""))
-        item.current_data_model = candidate_model
-        item.updated_at = datetime.now(UTC)
+            # Server-side numeric bounds verification (Section 6.1 + Principal Authority)
+            effective_max_limit = item.max_approval_amount
+            if principal_max_approval_amount is not None:
+                effective_max_limit = (
+                    min(effective_max_limit, principal_max_approval_amount)
+                    if effective_max_limit is not None
+                    else principal_max_approval_amount
+                )
+            if "transfer" in candidate_model and effective_max_limit is not None:
+                approved_amt = float(
+                    candidate_model["transfer"].get("approvedAmount", 0.0)
+                )
+                if approved_amt > effective_max_limit:
+                    raise ValueError(
+                        f"Approved amount ({approved_amt}) exceeds maximum authority limit "
+                        f"({effective_max_limit})."
+                    )
+                if approved_amt < 0:
+                    raise ValueError("Approved amount cannot be negative.")
 
-        # Handle 5th Enterprise Verb: Escalate (keeps ADK session paused in input-required)
-        if decision == "escalate":
-            target_role = str(action_ctx.get("targetRole", "underwriter"))
-            if target_role in (
-                "broker",
-                "claims",
-                "underwriter",
-                "executive",
-            ):
-                item.assigned_role = target_role  # type: ignore[assignment]
+            patches = compute_rfc6902_patches(item.initial_data_model, candidate_model)
+            if decision == "edit" and not patches:
+                decision = "accept"
+            elif decision == "accept" and patches:
+                decision = "edit"
+
+            notes = str(candidate_model.get("review", {}).get("memo", ""))
+            item.current_data_model = candidate_model
+            item.updated_at = datetime.now(UTC)
+            span.set_attribute("docubridge.decision", decision)
+            span.set_attribute("docubridge.patch_count", len(patches))
+
+            # Handle 5th Enterprise Verb: Escalate (keeps ADK session paused in input-required)
+            if decision == "escalate":
+                target_role = str(action_ctx.get("targetRole", "underwriter"))
+                if target_role in (
+                    "broker",
+                    "claims",
+                    "underwriter",
+                    "executive",
+                ):
+                    item.assigned_role = target_role  # type: ignore[assignment]
+                audit = InboxAuditRecord(
+                    audit_id=f"aud_{uuid.uuid4().hex[:10]}",
+                    item_id=item.item_id,
+                    entity_id=item.entity_id,
+                    session_id=item.session_id,
+                    invocation_id=item.invocation_id,
+                    decision="escalate",
+                    actor_principal=actor_principal,
+                    actor_role=actor_role,
+                    agent_spiffe_id=agent_spiffe_id,
+                    channel=channel,
+                    initial_data_model=item.initial_data_model,
+                    resolved_data_model=candidate_model,
+                    patches=patches,
+                    notes=notes,
+                    escalated_to=item.assigned_role,
+                )
+                self._audits.append(audit)
+                span.set_attribute("docubridge.audit_id", audit.audit_id)
+                span.set_attribute("docubridge.task_state", "input-required")
+                return {
+                    "item_id": item.item_id,
+                    "task_state": "input-required",
+                    "decision": "escalate",
+                    "escalated_to": item.assigned_role,
+                    "agent_spiffe_id": agent_spiffe_id,
+                    "patches": [p.model_dump(mode="json") for p in patches],
+                    "audit_id": audit.audit_id,
+                }
+
+            # Handle Respond / Steer: keeps workflow active for agent replanning
+            if decision == "respond":
+                for s in item.steps:
+                    if s.status == "input-required":
+                        s.status = "working"
+                        s.detail = f"Agent replanning with reviewer steering: {notes}"
+                item.task_state = "working"
+                adk_resume = build_adk_confirmation_response(
+                    item,
+                    confirmed=False,
+                    payload={"decision": "respond", "notes": notes, **action_ctx},
+                )
+            elif decision == "reject":
+                for s in item.steps:
+                    if s.status in ("input-required", "working"):
+                        s.status = "failed"
+                        s.detail = f"Rejected by {actor_role}: {notes or 'Rejected'}"
+                item.task_state = "failed"
+                adk_resume = build_adk_confirmation_response(
+                    item,
+                    confirmed=False,
+                    payload={"decision": "reject", "notes": notes, **action_ctx},
+                )
+            else:
+                # Accept or Edit & Approve -> complete remaining steps
+                for s in item.steps:
+                    if s.status in ("input-required", "working", "pending"):
+                        s.status = "completed"
+                        s.updated_at = datetime.now(UTC)
+                item.task_state = "completed"
+                adk_resume = build_adk_confirmation_response(
+                    item,
+                    confirmed=True,
+                    payload={
+                        "decision": decision,
+                        "data": candidate_model,
+                        "patches": [p.model_dump(mode="json") for p in patches],
+                    },
+                )
+
+            delta = build_update_data_model_delta(
+                item.surface_id,
+                path="/progress",
+                value=_sanitize_data_model_for_channel(
+                    item,
+                    channel=channel,
+                    allow_raw_vault_uri=access.allow_raw_vault_uri,
+                )["progress"],
+            )
+            item.delta_history.append(delta)
+
             audit = InboxAuditRecord(
                 audit_id=f"aud_{uuid.uuid4().hex[:10]}",
                 item_id=item.item_id,
                 entity_id=item.entity_id,
                 session_id=item.session_id,
                 invocation_id=item.invocation_id,
-                decision="escalate",
+                decision=decision,
                 actor_principal=actor_principal,
                 actor_role=actor_role,
                 agent_spiffe_id=agent_spiffe_id,
@@ -1244,106 +1354,29 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 resolved_data_model=candidate_model,
                 patches=patches,
                 notes=notes,
-                escalated_to=item.assigned_role,
             )
             self._audits.append(audit)
+            span.set_attribute("docubridge.audit_id", audit.audit_id)
+            span.set_attribute("docubridge.task_state", item.task_state)
+
+            fn_resp = adk_resume.parts[0].function_response
             return {
                 "item_id": item.item_id,
-                "task_state": "input-required",
-                "decision": "escalate",
-                "escalated_to": item.assigned_role,
+                "task_state": item.task_state,
+                "decision": decision,
                 "agent_spiffe_id": agent_spiffe_id,
                 "patches": [p.model_dump(mode="json") for p in patches],
                 "audit_id": audit.audit_id,
-            }
-
-        # Handle Respond / Steer: keeps workflow active for agent replanning
-        if decision == "respond":
-            for s in item.steps:
-                if s.status == "input-required":
-                    s.status = "working"
-                    s.detail = f"Agent replanning with reviewer steering: {notes}"
-            item.task_state = "working"
-            adk_resume = build_adk_confirmation_response(
-                item,
-                confirmed=False,
-                payload={"decision": "respond", "notes": notes, **action_ctx},
-            )
-        elif decision == "reject":
-            for s in item.steps:
-                if s.status in ("input-required", "working"):
-                    s.status = "failed"
-                    s.detail = f"Rejected by {actor_role}: {notes or 'Rejected'}"
-            item.task_state = "failed"
-            adk_resume = build_adk_confirmation_response(
-                item,
-                confirmed=False,
-                payload={"decision": "reject", "notes": notes, **action_ctx},
-            )
-        else:
-            # Accept or Edit & Approve -> complete remaining steps
-            for s in item.steps:
-                if s.status in ("input-required", "working", "pending"):
-                    s.status = "completed"
-                    s.updated_at = datetime.now(UTC)
-            item.task_state = "completed"
-            adk_resume = build_adk_confirmation_response(
-                item,
-                confirmed=True,
-                payload={
-                    "decision": decision,
-                    "data": candidate_model,
-                    "patches": [p.model_dump(mode="json") for p in patches],
+                "adk_function_response": {
+                    "id": fn_resp.id if fn_resp else item.confirmation_call_id,
+                    "name": fn_resp.name if fn_resp else REQUEST_CONFIRMATION_FUNCTION_CALL_NAME,
+                    "response": fn_resp.response if fn_resp else {},
                 },
-            )
-
-        delta = build_update_data_model_delta(
-            item.surface_id,
-            path="/progress",
-            value=_sanitize_data_model_for_channel(
-                item,
-                channel=channel,
-                allow_raw_vault_uri=access.allow_raw_vault_uri,
-            )["progress"],
-        )
-        item.delta_history.append(delta)
-
-        audit = InboxAuditRecord(
-            audit_id=f"aud_{uuid.uuid4().hex[:10]}",
-            item_id=item.item_id,
-            entity_id=item.entity_id,
-            session_id=item.session_id,
-            invocation_id=item.invocation_id,
-            decision=decision,
-            actor_principal=actor_principal,
-            actor_role=actor_role,
-            agent_spiffe_id=agent_spiffe_id,
-            channel=channel,
-            initial_data_model=item.initial_data_model,
-            resolved_data_model=candidate_model,
-            patches=patches,
-            notes=notes,
-        )
-        self._audits.append(audit)
-
-        fn_resp = adk_resume.parts[0].function_response
-        return {
-            "item_id": item.item_id,
-            "task_state": item.task_state,
-            "decision": decision,
-            "agent_spiffe_id": agent_spiffe_id,
-            "patches": [p.model_dump(mode="json") for p in patches],
-            "audit_id": audit.audit_id,
-            "adk_function_response": {
-                "id": fn_resp.id if fn_resp else item.confirmation_call_id,
-                "name": fn_resp.name if fn_resp else REQUEST_CONFIRMATION_FUNCTION_CALL_NAME,
-                "response": fn_resp.response if fn_resp else {},
-            },
-            "progress_delta_msg": delta,
-            "resolved_surface_msg": build_delete_surface_msg(item.surface_id)
-            if item.task_state in ("completed", "failed")
-            else None,
-        }
+                "progress_delta_msg": delta,
+                "resolved_surface_msg": build_delete_surface_msg(item.surface_id)
+                if item.task_state in ("completed", "failed")
+                else None,
+            }
 
     def list_audit_records(self, item_id: str | None = None) -> list[InboxAuditRecord]:
         if item_id is None:

@@ -183,3 +183,29 @@ output "email_drain_job" {
   description = "The Cloud Scheduler job driving POST /email/drain on the RFP board (\"\" when disabled)."
   value       = module.runtime.email_drain_job
 }
+
+output "telemetry_bq_dataset_id" {
+  description = "BigQuery dataset id for OpenTelemetry trace analytics (\"\" when disabled)."
+  value       = module.telemetry.dataset_id
+}
+
+output "telemetry_bq_spans_table" {
+  description = "Fully qualified BigQuery table (project.dataset.otel_spans) for OpenTelemetry trace spans (\"\" when disabled)."
+  value       = module.telemetry.spans_table_fqn
+}
+
+output "telemetry_bq_step_latency_view" {
+  description = "Fully qualified BigQuery view for step p50/p95/p99 latency analytics (\"\" when disabled)."
+  value       = module.telemetry.step_latency_view_fqn
+}
+
+output "telemetry_bq_trace_waterfall_view" {
+  description = "Fully qualified BigQuery view for chronological trace waterfall (\"\" when disabled)."
+  value       = module.telemetry.trace_waterfall_view_fqn
+}
+
+output "telemetry_bq_entity_summary_view" {
+  description = "Fully qualified BigQuery view for per-entity pipeline trace summary (\"\" when disabled)."
+  value       = module.telemetry.entity_summary_view_fqn
+}
+

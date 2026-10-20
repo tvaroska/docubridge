@@ -68,6 +68,7 @@ locals {
     BRIDGE_DOCAI_PROCESSOR      = var.docai_processor
     BRIDGE_AGENT_ENGINE_ID      = var.agent_engine_id
     BRIDGE_AGENT_ENGINE_REMOTE  = var.agent_engine_remote
+    BRIDGE_TELEMETRY_BQ_TABLE   = var.telemetry_bq_table
     GOOGLE_GENAI_USE_VERTEXAI   = var.seam_mode == "gcp" ? "TRUE" : ""
     GOOGLE_CLOUD_PROJECT        = var.seam_mode == "gcp" ? var.project_id : ""
     GOOGLE_CLOUD_LOCATION       = var.seam_mode == "gcp" ? var.region : ""
@@ -259,6 +260,14 @@ resource "google_cloud_run_v2_service" "bridge" {
         content {
           name  = "BRIDGE_AGENT_ENGINE_A2A"
           value = var.agent_engine_a2a
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.telemetry_bq_table != "" ? [1] : []
+        content {
+          name  = "BRIDGE_TELEMETRY_BQ_TABLE"
+          value = var.telemetry_bq_table
         }
       }
 

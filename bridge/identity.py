@@ -38,6 +38,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from bridge.telemetry import trace_step
+
 CatalogRoleLiteral = Literal[
     "broker",
     "claims",
@@ -48,12 +50,12 @@ CatalogRoleLiteral = Literal[
 ]
 DeliveryChannelLiteral = Literal["gemini_app", "custom_web"]
 
-DEFAULT_SPIFFE_TRUST_DOMAIN = "agents.global.aon.net"
+DEFAULT_SPIFFE_TRUST_DOMAIN = "agents.docubridge.io"
 SPIFFE_TRUST_DOMAIN_ENV = "BRIDGE_SPIFFE_TRUST_DOMAIN"
 SPIFFE_REQUIRE_SVID_ENV = "BRIDGE_SPIFFE_REQUIRE_SVID"
 SPIFFE_SVID_SECRET_ENV = "BRIDGE_SPIFFE_SVID_SECRET"
 USER_JWT_SECRET_ENV = "BRIDGE_USER_JWT_SECRET"
-DEFAULT_DEV_SVID_SECRET = "aon-docubridge-spiffe-svid-signing-key-v1"
+DEFAULT_DEV_SVID_SECRET = "docubridge-spiffe-svid-signing-key-v1"
 
 SPIFFE_SVID_HEADER = "x-bridge-spiffe-svid"
 SPIFFE_ID_HEADER = "x-bridge-spiffe-id"
@@ -124,31 +126,9 @@ class SpiffeAgentPolicy(BaseModel):
 
 
 DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
-    "spiffe://agents.global.aon.net/internal/broker-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.global.aon.net/internal/broker-agent",
-        display_name="Aon Internal Placement Broker Agent",
-        security_zone="internal",
-        allowed_channels=("gemini_app",),
-        allowed_roles=("broker", "executive"),
-        allowed_views=(
-            "v_broker_placement",
-            "v_claims_coverage",
-            "v_underwriter_exposure",
-        ),
-        allow_vault_promotion=True,
-    ),
-    "spiffe://agents.global.aon.net/internal/claims-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.global.aon.net/internal/claims-agent",
-        display_name="Aon Internal Claims Coverage Agent",
-        security_zone="internal",
-        allowed_channels=("gemini_app",),
-        allowed_roles=("claims", "broker", "executive"),
-        allowed_views=("v_claims_coverage", "v_broker_placement"),
-        allow_vault_promotion=False,
-    ),
-    "spiffe://agents.global.aon.net/internal/underwriter-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.global.aon.net/internal/underwriter-agent",
-        display_name="Aon Internal Technical Underwriting Agent",
+    "spiffe://agents.docubridge.io/internal/credit-officer-agent": SpiffeAgentPolicy(
+        spiffe_id="spiffe://agents.docubridge.io/internal/credit-officer-agent",
+        display_name="Internal Credit & Loan Underwriting Agent",
         security_zone="internal",
         allowed_channels=("gemini_app",),
         allowed_roles=("underwriter", "broker", "executive"),
@@ -159,17 +139,52 @@ DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
         ),
         allow_vault_promotion=True,
     ),
-    "spiffe://agents.global.aon.net/portal/external-portal-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.global.aon.net/portal/external-portal-agent",
-        display_name="Aon External Client & Carrier Portal Agent",
+    "spiffe://agents.docubridge.io/internal/broker-agent": SpiffeAgentPolicy(
+        spiffe_id="spiffe://agents.docubridge.io/internal/broker-agent",
+        display_name="Internal Commercial Placement & Deal Desk Agent",
+        security_zone="internal",
+        allowed_channels=("gemini_app",),
+        allowed_roles=("broker", "executive"),
+        allowed_views=(
+            "v_broker_placement",
+            "v_claims_coverage",
+            "v_underwriter_exposure",
+        ),
+        allow_vault_promotion=True,
+    ),
+    "spiffe://agents.docubridge.io/internal/claims-agent": SpiffeAgentPolicy(
+        spiffe_id="spiffe://agents.docubridge.io/internal/claims-agent",
+        display_name="Internal Covenant & Claims Review Agent",
+        security_zone="internal",
+        allowed_channels=("gemini_app",),
+        allowed_roles=("claims", "broker", "executive"),
+        allowed_views=("v_claims_coverage", "v_broker_placement"),
+        allow_vault_promotion=False,
+    ),
+    "spiffe://agents.docubridge.io/internal/underwriter-agent": SpiffeAgentPolicy(
+        spiffe_id="spiffe://agents.docubridge.io/internal/underwriter-agent",
+        display_name="Internal Technical Underwriting & Risk Agent",
+        security_zone="internal",
+        allowed_channels=("gemini_app",),
+        allowed_roles=("underwriter", "broker", "executive"),
+        allowed_views=(
+            "v_underwriter_exposure",
+            "v_broker_placement",
+            "v_claims_coverage",
+        ),
+        allow_vault_promotion=True,
+    ),
+    "spiffe://agents.docubridge.io/portal/external-portal-agent": SpiffeAgentPolicy(
+        spiffe_id="spiffe://agents.docubridge.io/portal/external-portal-agent",
+        display_name="External Client, Borrower & Partner Portal Agent",
         security_zone="external",
         allowed_channels=("custom_web",),
         allowed_roles=("client", "carrier"),
         allowed_views=("v_broker_placement", "v_claims_coverage"),
         allow_vault_promotion=False,
     ),
-    "spiffe://agents.global.aon.net/ingest/docubridge-collector": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.global.aon.net/ingest/docubridge-collector",
+    "spiffe://agents.docubridge.io/ingest/docubridge-collector": SpiffeAgentPolicy(
+        spiffe_id="spiffe://agents.docubridge.io/ingest/docubridge-collector",
         display_name="DocuBridge Intake & Consolidation Collector",
         security_zone="internal",
         allowed_channels=("gemini_app",),
@@ -239,7 +254,7 @@ def _b64url_decode(segment: str) -> bytes:
 def mint_jwt_svid(
     spiffe_id: str,
     *,
-    audience: str = "aon-docubridge",
+    audience: str = "docubridge",
     obo_subject: str | None = None,
     obo_role: CatalogRoleLiteral | None = None,
     tenant_id: str | None = None,
@@ -296,73 +311,89 @@ def verify_jwt_svid(
     token: str,
     *,
     expected_trust_domain: str | None = None,
-    expected_audience: str | None = "aon-docubridge",
+    expected_audience: str | None = "docubridge",
     secret: str | None = None,
     now_epoch: int | None = None,
 ) -> dict[str, Any]:
     """Cryptographically verify a SPIFFE JWT-SVID and return its verified claims."""
-    raw = token.strip()
-    if raw.lower().startswith("bearer "):
-        raw = raw[7:].strip()
-    parts = raw.split(".")
-    if len(parts) != 3:
-        raise SpiffeAuthenticationError("Malformed JWT-SVID: expected 3 segments.")
+    with trace_step(
+        "docubridge.identity.verify_jwt_svid",
+        {
+            "docubridge.zone": "6_spiffe_workload_identity",
+            "docubridge.expected_audience": expected_audience,
+        },
+    ) as span:
+        raw = token.strip()
+        if raw.lower().startswith("bearer "):
+            raw = raw[7:].strip()
+        parts = raw.split(".")
+        if len(parts) != 3:
+            raise SpiffeAuthenticationError("Malformed JWT-SVID: expected 3 segments.")
 
-    h_b64, p_b64, s_b64 = parts
-    signing_secret = (
-        secret
-        or os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip()
-        or DEFAULT_DEV_SVID_SECRET
-    )
-    signing_input = f"{h_b64}.{p_b64}".encode("ascii")
-    expected_sig = hmac.new(
-        signing_secret.encode("utf-8"), signing_input, hashlib.sha256
-    ).digest()
-    actual_sig = _b64url_decode(s_b64)
-    if not hmac.compare_digest(expected_sig, actual_sig):
-        raise SpiffeAuthenticationError("Invalid JWT-SVID cryptographic signature.")
-
-    try:
-        header = json.loads(_b64url_decode(h_b64).decode("utf-8"))
-        claims = json.loads(_b64url_decode(p_b64).decode("utf-8"))
-    except Exception as exc:
-        raise SpiffeAuthenticationError("Invalid JWT-SVID JSON payload.") from exc
-
-    if header.get("alg") != "HS256":
-        raise SpiffeAuthenticationError(
-            f"Unsupported JWT-SVID algorithm '{header.get('alg')}'."
+        h_b64, p_b64, s_b64 = parts
+        signing_secret = (
+            secret
+            or os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip()
+            or DEFAULT_DEV_SVID_SECRET
         )
+        signing_input = f"{h_b64}.{p_b64}".encode("ascii")
+        expected_sig = hmac.new(
+            signing_secret.encode("utf-8"), signing_input, hashlib.sha256
+        ).digest()
+        actual_sig = _b64url_decode(s_b64)
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            raise SpiffeAuthenticationError("Invalid JWT-SVID cryptographic signature.")
 
-    sub = claims.get("sub")
-    if not isinstance(sub, str):
-        raise SpiffeAuthenticationError("JWT-SVID missing 'sub' SPIFFE ID claim.")
-    parsed_id = SpiffeId.parse(sub)
+        try:
+            header = json.loads(_b64url_decode(h_b64).decode("utf-8"))
+            claims = json.loads(_b64url_decode(p_b64).decode("utf-8"))
+        except Exception as exc:
+            raise SpiffeAuthenticationError("Invalid JWT-SVID JSON payload.") from exc
 
-    trust_domain = (
-        expected_trust_domain
-        or os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
-        or DEFAULT_SPIFFE_TRUST_DOMAIN
-    )
-    if parsed_id.trust_domain != trust_domain:
-        raise ShadowAgentError(
-            f"Untrusted SPIFFE trust domain '{parsed_id.trust_domain}' "
-            f"(expected '{trust_domain}')."
-        )
-
-    now = int(now_epoch if now_epoch is not None else time.time())
-    exp = claims.get("exp")
-    if not isinstance(exp, int) or now > exp + 30:
-        raise SpiffeAuthenticationError("JWT-SVID has expired.")
-
-    if expected_audience is not None:
-        aud = claims.get("aud")
-        aud_list = [aud] if isinstance(aud, str) else (aud if isinstance(aud, list) else [])
-        if expected_audience not in aud_list:
+        if header.get("alg") != "HS256":
             raise SpiffeAuthenticationError(
-                f"JWT-SVID audience mismatch (expected '{expected_audience}')."
+                f"Unsupported JWT-SVID algorithm '{header.get('alg')}'."
             )
 
-    return claims
+        sub = claims.get("sub")
+        if not isinstance(sub, str):
+            raise SpiffeAuthenticationError("JWT-SVID missing 'sub' SPIFFE ID claim.")
+        parsed_id = SpiffeId.parse(sub)
+        span.set_attribute("docubridge.agent_spiffe_id", parsed_id.uri)
+        span.set_attribute("docubridge.trust_domain", parsed_id.trust_domain)
+
+        trust_domain = (
+            expected_trust_domain
+            or os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
+            or DEFAULT_SPIFFE_TRUST_DOMAIN
+        )
+        if parsed_id.trust_domain != trust_domain:
+            raise ShadowAgentError(
+                f"Untrusted SPIFFE trust domain '{parsed_id.trust_domain}' "
+                f"(expected '{trust_domain}')."
+            )
+
+        now = int(now_epoch if now_epoch is not None else time.time())
+        exp = claims.get("exp")
+        if not isinstance(exp, int) or now > exp + 30:
+            raise SpiffeAuthenticationError("JWT-SVID has expired.")
+
+        if expected_audience is not None:
+            aud = claims.get("aud")
+            aud_list = [aud] if isinstance(aud, str) else (aud if isinstance(aud, list) else [])
+            if expected_audience not in aud_list:
+                raise SpiffeAuthenticationError(
+                    f"JWT-SVID audience mismatch (expected '{expected_audience}')."
+                )
+
+        obo = claims.get("obo")
+        if isinstance(obo, dict):
+            if obo.get("sub"):
+                span.set_attribute("docubridge.obo_subject", str(obo["sub"]))
+            if obo.get("role"):
+                span.set_attribute("docubridge.obo_role", str(obo["role"]))
+        span.set_attribute("docubridge.svid_verified", True)
+        return claims
 
 
 def authorize_spiffe_agent(
@@ -375,46 +406,58 @@ def authorize_spiffe_agent(
     expected_trust_domain: str | None = None,
 ) -> SpiffeAgentPolicy:
     """Verify that a SPIFFE workload identity is registered and authorized for the request."""
-    parsed = SpiffeId.parse(spiffe_id)
-    trust_domain = (
-        expected_trust_domain
-        or os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
-        or DEFAULT_SPIFFE_TRUST_DOMAIN
-    )
-    if parsed.trust_domain != trust_domain:
-        raise ShadowAgentError(
-            f"SPIFFE ID '{spiffe_id}' belongs to untrusted domain '{parsed.trust_domain}' "
-            f"(expected '{trust_domain}')."
+    with trace_step(
+        "docubridge.identity.authorize_spiffe_agent",
+        {
+            "docubridge.zone": "6_spiffe_workload_identity",
+            "docubridge.agent_spiffe_id": spiffe_id,
+            "docubridge.channel": channel,
+            "docubridge.role": role,
+            "docubridge.target_view": target_view,
+        },
+    ) as span:
+        parsed = SpiffeId.parse(spiffe_id)
+        trust_domain = (
+            expected_trust_domain
+            or os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
+            or DEFAULT_SPIFFE_TRUST_DOMAIN
         )
+        if parsed.trust_domain != trust_domain:
+            raise ShadowAgentError(
+                f"SPIFFE ID '{spiffe_id}' belongs to untrusted domain '{parsed.trust_domain}' "
+                f"(expected '{trust_domain}')."
+            )
 
-    registry = (
-        agent_policies
-        if agent_policies is not None
-        else DEFAULT_SPIFFE_AGENT_POLICIES
-    )
-    policy = registry.get(parsed.uri)
-    if policy is None:
-        raise ShadowAgentError(
-            f"Unregistered SPIFFE agent identity '{parsed.uri}' blocked by Knowledge Catalog "
-            "(Shadow AI protection)."
+        registry = (
+            agent_policies
+            if agent_policies is not None
+            else DEFAULT_SPIFFE_AGENT_POLICIES
         )
+        policy = registry.get(parsed.uri)
+        if policy is None:
+            raise ShadowAgentError(
+                f"Unregistered SPIFFE agent identity '{parsed.uri}' blocked by Knowledge Catalog "
+                "(Shadow AI protection)."
+            )
 
-    if channel not in policy.allowed_channels:
-        raise PermissionError(
-            f"SPIFFE agent '{parsed.uri}' (zone={policy.security_zone}) is not permitted "
-            f"on channel '{channel}' (allowed: {', '.join(policy.allowed_channels)})."
-        )
-    if role not in policy.allowed_roles:
-        raise PermissionError(
-            f"SPIFFE agent '{parsed.uri}' is not authorized to act on behalf of role "
-            f"'{role}' (allowed: {', '.join(policy.allowed_roles)})."
-        )
-    if target_view not in policy.allowed_views:
-        raise PermissionError(
-            f"SPIFFE agent '{parsed.uri}' is not authorized to query view '{target_view}' "
-            f"(allowed: {', '.join(policy.allowed_views)})."
-        )
-    return policy
+        if channel not in policy.allowed_channels:
+            raise PermissionError(
+                f"SPIFFE agent '{parsed.uri}' (zone={policy.security_zone}) is not permitted "
+                f"on channel '{channel}' (allowed: {', '.join(policy.allowed_channels)})."
+            )
+        if role not in policy.allowed_roles:
+            raise PermissionError(
+                f"SPIFFE agent '{parsed.uri}' is not authorized to act on behalf of role "
+                f"'{role}' (allowed: {', '.join(policy.allowed_roles)})."
+            )
+        if target_view not in policy.allowed_views:
+            raise PermissionError(
+                f"SPIFFE agent '{parsed.uri}' is not authorized to query view '{target_view}' "
+                f"(allowed: {', '.join(policy.allowed_views)})."
+            )
+        span.set_attribute("docubridge.security_zone", policy.security_zone)
+        span.set_attribute("docubridge.authorized", True)
+        return policy
 
 
 def authorize_entity_access(
@@ -422,26 +465,37 @@ def authorize_entity_access(
     entity_id: str,
 ) -> None:
     """Enforce row-level tenant isolation on ``entity_id`` for external principals."""
-    if principal.role == "client":
-        if principal.allowed_entities and entity_id not in principal.allowed_entities:
+    with trace_step(
+        "docubridge.identity.authorize_entity_access",
+        {
+            "docubridge.zone": "6_spiffe_workload_identity",
+            "docubridge.subject": principal.subject,
+            "docubridge.role": principal.role,
+            "docubridge.tenant_id": principal.tenant_id,
+            "docubridge.entity_id": entity_id,
+        },
+    ) as span:
+        if principal.role == "client":
+            if principal.allowed_entities and entity_id not in principal.allowed_entities:
+                raise TenantIsolationError(
+                    f"Tenant isolation violation: client principal '{principal.subject}' "
+                    f"(tenant='{principal.tenant_id or 'restricted'}') is not authorized "
+                    f"to access entity '{entity_id}'."
+                )
+            if (
+                not principal.allowed_entities
+                and principal.tenant_id
+                and principal.tenant_id.lower() not in entity_id.lower()
+            ):
+                raise TenantIsolationError(
+                    f"Tenant isolation violation: entity '{entity_id}' does not belong to "
+                    f"client tenant '{principal.tenant_id}'."
+                )
+        elif principal.allowed_entities and entity_id not in principal.allowed_entities:
             raise TenantIsolationError(
-                f"Tenant isolation violation: client principal '{principal.subject}' "
-                f"(tenant='{principal.tenant_id or 'restricted'}') is not authorized "
-                f"to access entity '{entity_id}'."
+                f"Principal '{principal.subject}' is not authorized to access entity '{entity_id}'."
             )
-        if (
-            not principal.allowed_entities
-            and principal.tenant_id
-            and principal.tenant_id.lower() not in entity_id.lower()
-        ):
-            raise TenantIsolationError(
-                f"Tenant isolation violation: entity '{entity_id}' does not belong to "
-                f"client tenant '{principal.tenant_id}'."
-            )
-    elif principal.allowed_entities and entity_id not in principal.allowed_entities:
-        raise TenantIsolationError(
-            f"Principal '{principal.subject}' is not authorized to access entity '{entity_id}'."
-        )
+        span.set_attribute("docubridge.tenant_access_allowed", True)
 
 
 def filter_quotes_for_principal(

@@ -46,6 +46,7 @@ from bridge.exchange_store import StaleExchangeWrite
 from bridge.portal import session as portal_session
 from bridge.portal.session import NoActivePark
 from bridge.portal.store import InMemoryPortalStore, PortalSessionRecord, PortalStore
+from bridge.telemetry import OtelAsgiMiddleware
 from bridge.user_interaction import build_user_interaction_router
 from contract.enums import Disposition
 
@@ -165,6 +166,7 @@ def build_dashboard_app(
 
     app = FastAPI(title="Ops Dashboard (Bridge-side read-model, SSE)", lifespan=lifespan)
     app.add_exception_handler(StaleExchangeWrite, _stale_exchange_write_409)
+    app.add_middleware(OtelAsgiMiddleware, service_component="dashboard")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=VITE_DEV_ORIGINS,

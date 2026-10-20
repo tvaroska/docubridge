@@ -75,6 +75,7 @@ module "iam" {
 
   project_id   = var.project_id
   service_name = var.service_name
+  extra_roles  = var.extra_roles
   # The docai extraction engine's cross-project grant: roles/documentai.apiUser
   # on the CLIENT's processor project (design/docai-prepass.md). Empty = no grant.
   docai_processor    = var.docai_processor
@@ -155,6 +156,18 @@ module "tasks" {
   labels     = var.labels
 }
 
+module "telemetry" {
+  source = "./modules/telemetry"
+
+  project_id             = var.project_id
+  region                 = var.region
+  enable_telemetry_bq    = var.enable_telemetry_bq
+  dataset_id             = var.telemetry_bq_dataset_id
+  service_account_member = module.iam.bridge_runtime_member
+  deletion_protection    = var.deletion_protection
+  labels                 = var.labels
+}
+
 module "runtime" {
   source = "./modules/runtime"
 
@@ -227,6 +240,7 @@ module "runtime" {
   agent_engine_id     = var.agent_engine_id
   agent_engine_remote = var.agent_engine_remote
   agent_engine_a2a    = var.agent_engine_a2a
+  telemetry_bq_table  = module.telemetry.spans_table_fqn
   deletion_protection = var.deletion_protection
   labels              = var.labels
 }

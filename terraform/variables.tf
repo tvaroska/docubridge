@@ -309,3 +309,24 @@ variable "agent_engine_a2a" {
   description = "Set \"1\" to delegate A2A discovery (/.well-known/agent-card.json) and JSON-RPC POST / to BridgeA2aAgentEngine on Vertex AI Agent Engine (BRIDGE_AGENT_ENGINE_A2A). Empty = no env (in-process default)."
   default     = ""
 }
+
+variable "extra_roles" {
+  type        = set(string)
+  description = "Additional project-level IAM roles to bind to the bridge runtime service account beyond the base roles (e.g. roles/cloudtrace.agent)."
+  default     = []
+}
+
+# OpenTelemetry Trace Analytics in BigQuery (Zone 6 / Observability).
+variable "enable_telemetry_bq" {
+  type        = bool
+  description = "Provision the BigQuery OpenTelemetry trace analytics dataset (docubridge_telemetry), partitioned otel_spans table, SQL views, and Cloud Logging sink."
+  default     = false
+}
+
+variable "telemetry_bq_dataset_id" {
+  type        = string
+  description = "BigQuery dataset id for OpenTelemetry trace analytics."
+  default     = "docubridge_telemetry"
+}
+
+

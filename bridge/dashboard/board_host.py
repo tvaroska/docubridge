@@ -60,6 +60,7 @@ from bridge.exchange_store import (
     exchange_store_from_env,
 )
 from bridge.rfp import RFP_PROCESS_ENV, load_rfp_policy
+from bridge.telemetry import OtelAsgiMiddleware
 
 if TYPE_CHECKING:
     from bridge.outbound import A2AClient
@@ -144,6 +145,7 @@ def build_rfp_board_app(
         title="RFP board host (internal zone): RFP read API + email drain",
         lifespan=lifespan,
     )
+    app.add_middleware(OtelAsgiMiddleware, service_component="rfp_board")
     app.mount("", dashboard)  # routes stay at /rfps, /email/drain, /exchanges, …
     app.state.rfps = board
     app.state.email_processor = processor

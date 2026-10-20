@@ -42,6 +42,7 @@ from bridge.operational_store import (
     OperationalStore,
     operational_store_from_env,
 )
+from bridge.telemetry import trace_step
 from contract.extraction import SourceAnchor
 from contract.wire import LedgerEntry
 
@@ -289,6 +290,31 @@ DEFAULT_GLOSSARY_TERMS: tuple[BusinessGlossaryTerm, ...] = (
         canonical_fields=("field_path", "winning_value", "conflicting_value"),
         confidential=True,
     ),
+    BusinessGlossaryTerm(
+        term_id="term.loan_to_value_ratio",
+        display_name="Commercial Loan-to-Value (LTV) & Fee Exposure",
+        domain="underwriting",
+        definition=(
+            "Percentage ratio of commercial loan principal to appraised collateral "
+            "value alongside origination and rate-lock fee exposure."
+        ),
+        canonical_fields=("loan_amount", "appraised_value", "origination_fee"),
+        calculation_formula="(loan_amount / appraised_value) * 100",
+    ),
+    BusinessGlossaryTerm(
+        term_id="term.addendum_priority_hierarchy",
+        display_name="Credit Addendum & Closing Disclosure Authority",
+        domain="governance",
+        definition=(
+            "Deterministic banking authority hierarchy ensuring executed addenda "
+            "and closing disclosures supersede base credit agreements and term sheets."
+        ),
+        canonical_fields=("origination_fee", "loan_amount"),
+        calculation_formula=(
+            "Signed Addendum / Closing Disclosure (40) > Credit Agreement (30) "
+            "> Term Sheet / Appraisal (20) > Application (10)"
+        ),
+    ),
 )
 
 DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
@@ -297,7 +323,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="Cloud Storage Audit Vault",
         asset_type="vault_archive",
         zone=AssetLocationZone.AUDIT_VAULT,
-        physical_uri="gs://aon-docubridge-audit-vault/vault/",
+        physical_uri="gs://docubridge-audit-vault/vault/",
         owner_domain="enterprise-governance",
         classification="internal_only",
         schema_fields=("context_id", "doc_id", "version", "sha256", "vault_uri", "locked_at"),
@@ -307,7 +333,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="AlloyDB Bi-Temporal Operational Store",
         asset_type="operational_table",
         zone=AssetLocationZone.OPERATIONAL_STORE,
-        physical_uri="alloydb://aon-enterprise-data/operational/bridge_operational_facts",
+        physical_uri="alloydb://docubridge-enterprise-data/operational/bridge_operational_facts",
         owner_domain="data-engineering",
         classification="internal_only",
         schema_fields=(
@@ -328,7 +354,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="Broker View (v_broker_placement)",
         asset_type="business_view",
         zone=AssetLocationZone.BUSINESS_VIEW,
-        physical_uri="alloydb://aon-enterprise-data/views/v_broker_placement",
+        physical_uri="alloydb://docubridge-enterprise-data/views/v_broker_placement",
         owner_domain="placement",
         classification="client_shared",
         schema_fields=(
@@ -343,7 +369,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="Claims View (v_claims_coverage)",
         asset_type="business_view",
         zone=AssetLocationZone.BUSINESS_VIEW,
-        physical_uri="alloydb://aon-enterprise-data/views/v_claims_coverage",
+        physical_uri="alloydb://docubridge-enterprise-data/views/v_claims_coverage",
         owner_domain="claims",
         classification="client_shared",
         schema_fields=(
@@ -359,7 +385,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="Underwriter View (v_underwriter_exposure)",
         asset_type="business_view",
         zone=AssetLocationZone.BUSINESS_VIEW,
-        physical_uri="alloydb://aon-enterprise-data/views/v_underwriter_exposure",
+        physical_uri="alloydb://docubridge-enterprise-data/views/v_underwriter_exposure",
         owner_domain="underwriting",
         classification="internal_only",
         schema_fields=(
@@ -374,7 +400,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="BigQuery Analytics Sync (Open Iceberg)",
         asset_type="bigquery_iceberg_table",
         zone=AssetLocationZone.BIGQUERY_ICEBERG,
-        physical_uri="bigquery://aon_lakehouse.bq_policy_facts_iceberg",
+        physical_uri="bigquery://docubridge_lakehouse.bq_operational_facts_iceberg",
         owner_domain="enterprise-analytics",
         classification="internal_only",
         schema_fields=(
@@ -412,7 +438,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="Agent Gym Feedback & Diff Log",
         asset_type="operational_table",
         zone=AssetLocationZone.KNOWLEDGE_CATALOG_GYM,
-        physical_uri="alloydb://aon-enterprise-data/gym/feedback_diff_log",
+        physical_uri="alloydb://docubridge-enterprise-data/gym/feedback_diff_log",
         owner_domain="agent-gym-governance",
         classification="internal_only",
         schema_fields=("signal_id", "source_zone", "issuer", "doctype", "field_path", "patches"),
@@ -422,7 +448,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="Agent Gym Benchmark & Synthetic Test Suite",
         asset_type="operational_table",
         zone=AssetLocationZone.KNOWLEDGE_CATALOG_GYM,
-        physical_uri="alloydb://aon-enterprise-data/gym/benchmark_test_suite",
+        physical_uri="alloydb://docubridge-enterprise-data/gym/benchmark_test_suite",
         owner_domain="agent-gym-governance",
         classification="internal_only",
         schema_fields=("case_id", "perturbation_type", "baseline_passed", "candidate_passed"),
@@ -432,7 +458,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="Active Tribal Rulebook & Entity Alias Map",
         asset_type="operational_table",
         zone=AssetLocationZone.KNOWLEDGE_CATALOG_GYM,
-        physical_uri="alloydb://aon-enterprise-data/gym/active_tribal_rulebook",
+        physical_uri="alloydb://docubridge-enterprise-data/gym/active_tribal_rulebook",
         owner_domain="agent-gym-governance",
         classification="internal_only",
         schema_fields=("rule_id", "category", "issuer_pattern", "doctype", "instruction", "status"),
@@ -442,7 +468,7 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         name="Programmable Trust Policy Registry",
         asset_type="operational_table",
         zone=AssetLocationZone.KNOWLEDGE_CATALOG_GYM,
-        physical_uri="alloydb://aon-enterprise-data/gym/trust_policy_registry",
+        physical_uri="alloydb://docubridge-enterprise-data/gym/trust_policy_registry",
         owner_domain="agent-gym-governance",
         classification="internal_only",
         schema_fields=("slice_id", "issuer_pattern", "autonomy_level", "consecutive_matches"),
@@ -518,77 +544,93 @@ def authorize_access(
     spiffe_policies: dict[str, SpiffeAgentPolicy] | None = None,
 ) -> AccessDecision:
     """Evaluate whether ``role`` (and optional ``agent_spiffe_id``) on ``channel`` may query ``target_view``."""
-    if agent_spiffe_id is not None:
-        try:
-            authorize_spiffe_agent(
-                agent_spiffe_id,
-                channel=channel,
-                role=role,
-                target_view=target_view,
-                agent_policies=spiffe_policies,
-            )
-        except (ShadowAgentError, SpiffeAuthenticationError, PermissionError) as exc:
+    with trace_step(
+        "docubridge.catalog.authorize_access",
+        {
+            "docubridge.zone": "6_knowledge_catalog_agent_gym",
+            "docubridge.role": role,
+            "docubridge.channel": channel,
+            "docubridge.target_view": target_view,
+            "docubridge.agent_spiffe_id": agent_spiffe_id,
+            "docubridge.svid_verified": svid_verified,
+        },
+    ) as span:
+        if agent_spiffe_id is not None:
+            try:
+                authorize_spiffe_agent(
+                    agent_spiffe_id,
+                    channel=channel,
+                    role=role,
+                    target_view=target_view,
+                    agent_policies=spiffe_policies,
+                )
+            except (ShadowAgentError, SpiffeAuthenticationError, PermissionError) as exc:
+                span.set_attribute("docubridge.access_allowed", False)
+                return AccessDecision(
+                    allowed=False,
+                    role=role,
+                    channel=channel,
+                    target_view=target_view,
+                    reason=str(exc),
+                    agent_spiffe_id=agent_spiffe_id,
+                    svid_verified=svid_verified,
+                )
+
+        registry = policies if policies is not None else DEFAULT_ACCESS_POLICIES
+        policy = registry.get(role)
+        if policy is None:
+            span.set_attribute("docubridge.access_allowed", False)
             return AccessDecision(
                 allowed=False,
                 role=role,
                 channel=channel,
                 target_view=target_view,
-                reason=str(exc),
+                reason=f"Unknown role '{role}'.",
                 agent_spiffe_id=agent_spiffe_id,
                 svid_verified=svid_verified,
             )
-
-    registry = policies if policies is not None else DEFAULT_ACCESS_POLICIES
-    policy = registry.get(role)
-    if policy is None:
+        if channel not in policy.allowed_channels:
+            span.set_attribute("docubridge.access_allowed", False)
+            return AccessDecision(
+                allowed=False,
+                role=role,
+                channel=channel,
+                target_view=target_view,
+                reason=(
+                    f"Role '{role}' is not permitted on delivery channel '{channel}' "
+                    f"(allowed: {', '.join(policy.allowed_channels)})."
+                ),
+                agent_spiffe_id=agent_spiffe_id,
+                svid_verified=svid_verified,
+            )
+        if target_view not in policy.allowed_views:
+            span.set_attribute("docubridge.access_allowed", False)
+            return AccessDecision(
+                allowed=False,
+                role=role,
+                channel=channel,
+                target_view=target_view,
+                reason=(
+                    f"Role '{role}' is not authorized to access view '{target_view}' "
+                    f"(allowed: {', '.join(policy.allowed_views)})."
+                ),
+                agent_spiffe_id=agent_spiffe_id,
+                svid_verified=svid_verified,
+            )
+        span.set_attribute("docubridge.access_allowed", True)
         return AccessDecision(
-            allowed=False,
+            allowed=True,
             role=role,
             channel=channel,
             target_view=target_view,
-            reason=f"Unknown role '{role}'.",
+            reason="Authorized by Knowledge Catalog governance policy.",
             agent_spiffe_id=agent_spiffe_id,
             svid_verified=svid_verified,
+            allow_internal_conflict_notes=policy.allow_internal_conflict_notes,
+            allow_competitor_quotes=policy.allow_competitor_quotes,
+            allow_raw_vault_uri=policy.allow_raw_vault_uri,
+            redacted_fields=policy.redacted_fields,
         )
-    if channel not in policy.allowed_channels:
-        return AccessDecision(
-            allowed=False,
-            role=role,
-            channel=channel,
-            target_view=target_view,
-            reason=(
-                f"Role '{role}' is not permitted on delivery channel '{channel}' "
-                f"(allowed: {', '.join(policy.allowed_channels)})."
-            ),
-            agent_spiffe_id=agent_spiffe_id,
-            svid_verified=svid_verified,
-        )
-    if target_view not in policy.allowed_views:
-        return AccessDecision(
-            allowed=False,
-            role=role,
-            channel=channel,
-            target_view=target_view,
-            reason=(
-                f"Role '{role}' is not authorized to access view '{target_view}' "
-                f"(allowed: {', '.join(policy.allowed_views)})."
-            ),
-            agent_spiffe_id=agent_spiffe_id,
-            svid_verified=svid_verified,
-        )
-    return AccessDecision(
-        allowed=True,
-        role=role,
-        channel=channel,
-        target_view=target_view,
-        reason="Authorized by Knowledge Catalog governance policy.",
-        agent_spiffe_id=agent_spiffe_id,
-        svid_verified=svid_verified,
-        allow_internal_conflict_notes=policy.allow_internal_conflict_notes,
-        allow_competitor_quotes=policy.allow_competitor_quotes,
-        allow_raw_vault_uri=policy.allow_raw_vault_uri,
-        redacted_fields=policy.redacted_fields,
-    )
 
 
 def _normalize_field_lookup_key(field_name_or_path: str) -> str:
@@ -753,7 +795,7 @@ class InMemoryKnowledgeCatalog:
             node_id=f"fact:{fact.fact_id}",
             node_type="consolidated_fact",
             label=f"AlloyDB Consolidated Fact ({fact.field_path})",
-            uri=f"alloydb://aon-enterprise-data/operational/bridge_operational_facts/{fact.fact_id}",
+            uri=f"alloydb://docubridge-enterprise-data/operational/bridge_operational_facts/{fact.fact_id}",
             zone=AssetLocationZone.OPERATIONAL_STORE,
             metadata={
                 "source_priority": fact.source_priority,
@@ -765,14 +807,14 @@ class InMemoryKnowledgeCatalog:
             node_id=f"view:v_broker_placement:{fact.entity_id}:{fact.field_path}",
             node_type="business_view",
             label="Role-Based Business Views (Broker / Claims / Underwriter)",
-            uri="alloydb://aon-enterprise-data/views/v_broker_placement",
+            uri="alloydb://docubridge-enterprise-data/views/v_broker_placement",
             zone=AssetLocationZone.BUSINESS_VIEW,
         )
         bq_node = LineageNode(
             node_id=f"bq:{fact.fact_id}",
             node_type="bigquery_table",
             label="BigQuery Analytics Sync (Open Iceberg)",
-            uri="bigquery://aon_lakehouse.bq_policy_facts_iceberg",
+            uri="bigquery://docubridge_lakehouse.bq_operational_facts_iceberg",
             zone=AssetLocationZone.BIGQUERY_ICEBERG,
         )
         a2ui_node = LineageNode(
@@ -849,41 +891,67 @@ class InMemoryKnowledgeCatalog:
         facts: list[ConsolidatedFact],
     ) -> list[LineageTrace]:
         """Record end-to-end lineage from source PDF -> Vault -> AlloyDB -> Views -> BQ -> A2UI."""
-        vault_uri = entry.vault_uri or f"vault://local/vault/{entry.doc_id}"
-        self.register_asset(
-            CatalogAsset(
-                asset_id=f"asset.vault.{entry.doc_id}",
-                name=f"Audit Vault Record ({entry.doc_id})",
-                asset_type="vault_archive",
-                zone=AssetLocationZone.AUDIT_VAULT,
-                physical_uri=vault_uri,
-                owner_domain=entry.doctype,
-                classification="internal_only",
-                schema_fields=tuple(sorted(entry.key_fields.keys())),
+        with trace_step(
+            "docubridge.catalog.register_lineage",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.doc_id": entry.doc_id,
+                "docubridge.doctype": entry.doctype,
+                "docubridge.fact_count": len(facts),
+                "docubridge.entity_id": facts[0].entity_id if facts else None,
+            },
+        ) as span:
+            vault_uri = entry.vault_uri or f"vault://local/vault/{entry.doc_id}"
+            self.register_asset(
+                CatalogAsset(
+                    asset_id=f"asset.vault.{entry.doc_id}",
+                    name=f"Audit Vault Record ({entry.doc_id})",
+                    asset_type="vault_archive",
+                    zone=AssetLocationZone.AUDIT_VAULT,
+                    physical_uri=vault_uri,
+                    owner_domain=entry.doctype,
+                    classification="internal_only",
+                    schema_fields=tuple(sorted(entry.key_fields.keys())),
+                )
             )
-        )
 
-        traces: list[LineageTrace] = []
-        for fact in facts:
-            trace = self._build_trace_from_fact(fact, fallback_vault_uri=vault_uri)
-            self._lineage.setdefault((fact.entity_id, fact.field_path), []).append(trace)
-            leaf = fact.field_path.split(".")[-1]
-            if leaf != fact.field_path:
-                self._lineage.setdefault((fact.entity_id, leaf), []).append(trace)
-            traces.append(trace)
-        return traces
+            traces: list[LineageTrace] = []
+            for fact in facts:
+                trace = self._build_trace_from_fact(fact, fallback_vault_uri=vault_uri)
+                self._lineage.setdefault((fact.entity_id, fact.field_path), []).append(trace)
+                leaf = fact.field_path.split(".")[-1]
+                if leaf != fact.field_path:
+                    self._lineage.setdefault((fact.entity_id, leaf), []).append(trace)
+                traces.append(trace)
+            span.set_attribute("docubridge.registered_trace_count", len(traces))
+            return traces
 
     def trace_lineage(
         self, entity_id: str, field_name_or_path: str
     ) -> LineageTrace | None:
-        key = _normalize_field_lookup_key(field_name_or_path)
-        history = self._lineage.get((entity_id, key))
-        if not history:
-            self._hydrate_from_store(entity_id)
+        with trace_step(
+            "docubridge.catalog.lineage_trace",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.entity_id": entity_id,
+                "docubridge.field_name": field_name_or_path,
+            },
+        ) as span:
+            key = _normalize_field_lookup_key(field_name_or_path)
             history = self._lineage.get((entity_id, key))
-        if not history:
-            return None
-        return history[-1]
+            if not history:
+                self._hydrate_from_store(entity_id)
+                history = self._lineage.get((entity_id, key))
+            if not history:
+                span.set_attribute("docubridge.lineage_found", False)
+                return None
+            result = history[-1]
+            span.set_attribute("docubridge.lineage_found", True)
+            span.set_attribute("docubridge.source_doc_id", result.source_doc_id)
+            span.set_attribute("docubridge.hop_count", len(result.nodes))
+            if result.source_anchor:
+                span.set_attribute("docubridge.page_number", result.source_anchor.page_number)
+            return result
 
     def list_lineage_for_entity(self, entity_id: str) -> list[LineageTrace]:
         results = [

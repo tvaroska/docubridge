@@ -2,7 +2,7 @@
 //
 // The four apps (portal, console, dashboard, timewarp) share the SAME theme shape
 // (borderRadius, success/warning) but each carries a DIFFERENT primary accent by design —
-// zone identity (portal #1f6feb, console #6f42c1, dashboard #d93025, timewarp #0b7285). A
+// zone identity (portal #1f6feb, console #6f42c1, dashboard #1a73e8, timewarp #0b7285). A
 // single shared `theme` constant would erase that, so this is a FACTORY, not a constant
 // (§2d): each app calls `makeTheme(<its accent>)`.
 

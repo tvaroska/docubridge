@@ -1,4 +1,4 @@
-"""Record the live GCP end-to-end demo video for Aon Document Bridge (documents001).
+"""Record the live GCP end-to-end demo video for DocuBridge Enterprise (documents001).
 
 Exercises the live deployed Cloud Run v2 services in GCP project ``documents001``:
   1. ``https://documents001-bridge-sf6etnew5q-uc.a.run.app`` (A2A Edge)
@@ -6,8 +6,7 @@ Exercises the live deployed Cloud Run v2 services in GCP project ``documents001`
      Zone 6 Knowledge Catalog, SPIFFE Registry, and Cloud SQL Agent Gym)
 
 Drives headless Chrome (1920x1080) over Chrome DevTools Protocol, captures frames at 8 fps
-across all 4 parts of the walkthrough, and encodes ``demo/_captures/gcp-end-to-end-demo.mp4``
-matching ``placement/demo/_captures/gcp-end-to-end-demo.mp4``.
+across all 4 parts of the walkthrough, and encodes ``demo/_captures/gcp-end-to-end-demo.mp4``.
 """
 
 from __future__ import annotations
@@ -98,7 +97,7 @@ async def main() -> None:
             f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial?role=underwriter",
             headers={
                 "X-Bridge-Role": "underwriter",
-                "X-Bridge-Principal": "lead.underwriter@aon.com",
+                "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
             },
             json={
                 "target_level": "guided_review",
@@ -130,7 +129,7 @@ async def main() -> None:
             f"{BOARD_URI}/v1/gym/signals/from-quarantine?role=underwriter",
             headers={
                 "X-Bridge-Role": "underwriter",
-                "X-Bridge-Principal": "lead.underwriter@aon.com",
+                "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
             },
             json={
                 "entity_id": "terrepower-coastal-2027",
@@ -155,7 +154,7 @@ async def main() -> None:
             f"{BOARD_URI}/v1/gym/rules/{rule_id}/evaluate?role=underwriter",
             headers={
                 "X-Bridge-Role": "underwriter",
-                "X-Bridge-Principal": "lead.underwriter@aon.com",
+                "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
             },
         )
         eval_resp.raise_for_status()
@@ -182,7 +181,7 @@ async def main() -> None:
             f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial?role=underwriter",
             headers={
                 "X-Bridge-Role": "underwriter",
-                "X-Bridge-Principal": "lead.underwriter@aon.com",
+                "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
             },
             json={
                 "target_level": "trusted_auto_approve",
@@ -381,14 +380,14 @@ async def main() -> None:
                 document.getElementById('persona-display').textContent = 'Broker Associate (Max Authority $25k) ▾';
                 document.getElementById('rbac-refusal-banner').style.display = 'block';
                 document.getElementById('compound-jwt-box').textContent = JSON.stringify({
-                  iss: "spiffe://agents.global.aon.net",
-                  sub: "spiffe://agents.global.aon.net/ns/internal/sa/broker-copilot",
-                  aud: ["aon-docubridge"],
+                  iss: "https://agents.docubridge.io",
+                  sub: "spiffe://agents.docubridge.io/internal/credit-officer-agent",
+                  aud: ["docubridge"],
                   obo: {
-                    sub: "broker.associate@aon.com",
-                    role: "broker",
-                    tenant_id: "tenant-terrepower",
-                    max_approval_amount: "25000"
+                    sub: "usr:junior.officer@docubridge.io",
+                    role: "underwriter",
+                    tenant_id: "tenant-meridian",
+                    max_approval_amount: "25000.00"
                   }
                 }, null, 2);
                 window.setCaption(
@@ -423,14 +422,14 @@ async def main() -> None:
                 document.getElementById('step-box-4-sub').style.color = '#047857';
                 document.getElementById('step-box-4-sub').textContent = 'RFC 6902 Patch -> Cloud SQL';
                 document.getElementById('compound-jwt-box').textContent = JSON.stringify({
-                  iss: "spiffe://agents.global.aon.net",
-                  sub: "spiffe://agents.global.aon.net/ns/internal/sa/underwriter-reviewer",
-                  aud: ["aon-docubridge"],
+                  iss: "https://agents.docubridge.io",
+                  sub: "spiffe://agents.docubridge.io/internal/credit-officer-agent",
+                  aud: ["docubridge"],
                   obo: {
-                    sub: "lead.underwriter@aon.com",
+                    sub: "usr:senior.credit.officer@docubridge.io",
                     role: "underwriter",
-                    tenant_id: "tenant-terrepower",
-                    max_approval_amount: "50000000"
+                    tenant_id: "tenant-meridian",
+                    max_approval_amount: "25000000.00"
                   }
                 }, null, 2);
                 window.setCaption(
