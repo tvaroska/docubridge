@@ -260,6 +260,12 @@ variable "rfp_board_max_instances" {
   default     = 1
 }
 
+variable "min_instances" {
+  type        = number
+  description = "Minimum warm instances for the Cloud Run runtime and RFP board services (1 eliminates cold-start latency during live demos)."
+  default     = 1
+}
+
 variable "email_drain_schedule" {
   type        = string
   description = "Cloud Scheduler cron (Etc/UTC) for the POST /email/drain tick on the RFP board service."

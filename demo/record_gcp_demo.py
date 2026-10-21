@@ -16,6 +16,7 @@ import base64
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ import websockets
 
 BRIDGE_URI = "https://documents001-bridge-sf6etnew5q-uc.a.run.app"
 BOARD_URI = "https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app"
+CACHE_PATH = Path("/tmp/docubridge_live_telemetry.json")
 
 DEMO_DIR = Path(__file__).resolve().parent
 HTML_PATH = DEMO_DIR / "enterprise-demo.html"
@@ -75,42 +77,157 @@ class CdpSession:
 
 async def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    token = get_id_token()
-    headers = {"Authorization": f"Bearer {token}"}
+    fetch_only = "--fetch-only" in sys.argv
+    from_cache = "--from-cache" in sys.argv
 
-    print("1. Fetching live telemetry & executing Agent Gym loop on GCP Cloud Run (documents001)...")
-    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        card_resp = await client.get(f"{BRIDGE_URI}/.well-known/agent-card.json")
-        card_resp.raise_for_status()
-        agent_card = card_resp.json()
+    if from_cache and CACHE_PATH.exists():
+        print(f"1. Loading cached live GCP telemetry from {CACHE_PATH}...")
+        cached = json.loads(CACHE_PATH.read_text())
+        agent_card = cached["agent_card"]
+        catalog_assets = cached["catalog_assets"]
+        spiffe_agents = cached["spiffe_agents"]
+        policies_initial = cached["policies_initial"]
+        policies_promoted = cached["policies_promoted"]
+        rule_id = cached["rule_id"]
+        evaluated = cached["evaluated"]
+    else:
+        token = get_id_token()
+        headers = {"Authorization": f"Bearer {token}"}
 
-        assets_resp = await client.get(f"{BOARD_URI}/v1/catalog/assets")
-        assets_resp.raise_for_status()
-        catalog_assets = assets_resp.json()
+        print("1. Fetching live telemetry & executing Agent Gym loop on GCP Cloud Run (documents001)...")
+        async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+            card_resp = await client.get(f"{BRIDGE_URI}/.well-known/agent-card.json")
+            card_resp.raise_for_status()
+            agent_card = card_resp.json()
 
-        spiffe_resp = await client.get(f"{BOARD_URI}/v1/catalog/spiffe-agents")
-        spiffe_resp.raise_for_status()
-        spiffe_agents = spiffe_resp.json()
+            assets_resp = await client.get(f"{BOARD_URI}/v1/catalog/assets")
+            assets_resp.raise_for_status()
+            catalog_assets = assets_resp.json()
 
-        # Ensure slice:aig:endorsement:MEDIUM starts in guided_review before the live promotion step
-        await client.post(
-            f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial?role=underwriter",
-            headers={
-                "X-Bridge-Role": "underwriter",
-                "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
-            },
-            json={
-                "target_level": "guided_review",
-                "reason": "In Guided Human Review Queue (4/5 matches toward Auto-Approve).",
-                "force": True,
-            },
-        )
-        for idx in range(4):
+            spiffe_resp = await client.get(f"{BOARD_URI}/v1/catalog/spiffe-agents")
+            spiffe_resp.raise_for_status()
+            spiffe_agents = spiffe_resp.json()
+
+            # Seed Banking, Mortgage, and Insurance demo scenarios
+            seed_resp = await client.post(
+                f"{BOARD_URI}/v1/demo/seed",
+                headers={
+                    "X-Bridge-Role": "underwriter",
+                    "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
+                },
+            )
+            seed_resp.raise_for_status()
+
+            mort_lin_resp = await client.get(
+                f"{BOARD_URI}/v1/catalog/lineage/MORTGAGE-WESTBROOK-2026/origination_fee",
+                headers={
+                    "X-Bridge-Role": "underwriter",
+                    "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
+                },
+            )
+            mort_lin_resp.raise_for_status()
+            mort_lineage = mort_lin_resp.json()
+
+            # Ensure slice:aig:endorsement:MEDIUM starts in guided_review before the live promotion step
             await client.post(
+                f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial?role=underwriter",
+                headers={
+                    "X-Bridge-Role": "underwriter",
+                    "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
+                },
+                json={
+                    "target_level": "guided_review",
+                    "reason": "In Guided Human Review Queue (4/5 matches toward Auto-Approve).",
+                    "force": True,
+                },
+            )
+            for idx in range(4):
+                await client.post(
+                    f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/shadow",
+                    json={
+                        "entity_id": "terrepower-coastal-2027",
+                        "doc_id": f"aig-excess-property-binder-{idx}.pdf",
+                        "issuer": "AIG",
+                        "doctype": "endorsement",
+                        "field_path": "excess_layer_limit_usd",
+                        "ai_value": "$25,000,000",
+                        "human_value": "$25,000,000",
+                        "risk_level": "MEDIUM",
+                    },
+                )
+
+            policies_initial_resp = await client.get(f"{BOARD_URI}/v1/gym/trust-policies")
+            policies_initial_resp.raise_for_status()
+            policies_initial = policies_initial_resp.json()
+
+            # Distill a live "Example of One" quarantine fix in Cloud SQL (Mortgage TRID CD)
+            distill_resp = await client.post(
+                f"{BOARD_URI}/v1/gym/signals/from-quarantine?role=underwriter",
+                headers={
+                    "X-Bridge-Role": "underwriter",
+                    "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
+                },
+                json={
+                    "entity_id": "MORTGAGE-WESTBROOK-2026",
+                    "doc_id": "trid-closing-disclosure-westbrook-2026.pdf",
+                    "doctype": "closing-disclosure",
+                    "issuer": "FirstNational",
+                    "field_path": "origination_fee",
+                    "before_value": "$4,250.00",
+                    "after_value": "$8,500.00",
+                    "expert_memo": "TRID Closing Disclosure Page 3 Section A rate-lock extension addendum overrides base origination fee to $8,500.00.",
+                    "page_number": 3,
+                    "bounding_box": [0.11, 0.48, 0.86, 0.56],
+                    "category": "extraction_hint",
+                },
+            )
+            distill_resp.raise_for_status()
+            distilled = distill_resp.json()
+            rule_id = distilled["candidate_rule"]["rule_id"]
+
+            # Run Synthetic Stress Suite & Report Card Gate in Cloud SQL
+            eval_resp = await client.post(
+                f"{BOARD_URI}/v1/gym/rules/{rule_id}/evaluate?role=underwriter",
+                headers={
+                    "X-Bridge-Role": "underwriter",
+                    "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
+                },
+            )
+            eval_resp.raise_for_status()
+            evaluated = eval_resp.json()
+
+            # Verify Day-2 Continuous Learning Payoff on live Cloud Run
+            day2_resp = await client.post(
+                f"{BOARD_URI}/v1/intake/ingest?role=underwriter",
+                headers={
+                    "X-Bridge-Role": "underwriter",
+                    "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
+                },
+                json={
+                    "entity_id": "MORTGAGE-WESTBROOK-2026",
+                    "context_id": "ctx-mortgage-day2-live",
+                    "doc_id": "trid-closing-disclosure-westbrook-day2.pdf",
+                    "doctype": "closing-disclosure",
+                    "issuer": "FirstNational",
+                    "status": "parked",
+                    "confidence": 0.96,
+                    "key_fields": {
+                        "currency": "USD",
+                        "loan_amount": "$1,850,000.00",
+                        "origination_fee": "$4,250.00",
+                        "appraised_value": "$2,400,000.00",
+                    },
+                },
+            )
+            day2_resp.raise_for_status()
+            day2_body = day2_resp.json()
+
+            # Record 5th consecutive shadow match on slice:aig:endorsement:MEDIUM
+            shadow_resp = await client.post(
                 f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/shadow",
                 json={
                     "entity_id": "terrepower-coastal-2027",
-                    "doc_id": f"aig-excess-property-binder-{idx}.pdf",
+                    "doc_id": "aig-excess-property-binder-2027.pdf",
                     "issuer": "AIG",
                     "doctype": "endorsement",
                     "field_path": "excess_layer_limit_usd",
@@ -119,87 +236,57 @@ async def main() -> None:
                     "risk_level": "MEDIUM",
                 },
             )
+            shadow_resp.raise_for_status()
 
-        policies_initial_resp = await client.get(f"{BOARD_URI}/v1/gym/trust-policies")
-        policies_initial_resp.raise_for_status()
-        policies_initial = policies_initial_resp.json()
+            # Dial trust on slice:aig:endorsement:MEDIUM to trusted_auto_approve in Cloud SQL
+            dial_resp = await client.post(
+                f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial?role=underwriter",
+                headers={
+                    "X-Bridge-Role": "underwriter",
+                    "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
+                },
+                json={
+                    "target_level": "trusted_auto_approve",
+                    "reason": "Promoted after 5/5 consecutive exact matches in Guided Review Queue.",
+                    "force": False,
+                },
+            )
+            dial_resp.raise_for_status()
 
-        # Distill a live "Example of One" quarantine fix in Cloud SQL
-        distill_resp = await client.post(
-            f"{BOARD_URI}/v1/gym/signals/from-quarantine?role=underwriter",
-            headers={
-                "X-Bridge-Role": "underwriter",
-                "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
-            },
-            json={
-                "entity_id": "terrepower-coastal-2027",
-                "doc_id": "chubb-coastal-property-quote-2027.pdf",
-                "doctype": "quote",
-                "issuer": "Chubb",
-                "field_path": "deductible_usd",
-                "before_value": "$50,000",
-                "after_value": "$100,000",
-                "expert_memo": "Coastal Schedule B endorsement on page 4 overrides base deductible to $100,000.",
-                "page_number": 4,
-                "category": "extraction_hint",
-                "distinct_entities": ["Syndicate 2987", "Syndicate 1183"],
-            },
+            policies_promoted_resp = await client.get(f"{BOARD_URI}/v1/gym/trust-policies")
+            policies_promoted_resp.raise_for_status()
+            policies_promoted = policies_promoted_resp.json()
+
+            analytics_resp = await client.get(f"{BOARD_URI}/v1/telemetry/analytics?limit=200")
+            analytics_resp.raise_for_status()
+            analytics = analytics_resp.json()
+
+        CACHE_PATH.write_text(
+            json.dumps(
+                {
+                    "agent_card": agent_card,
+                    "catalog_assets": catalog_assets,
+                    "spiffe_agents": spiffe_agents,
+                    "policies_initial": policies_initial,
+                    "policies_promoted": policies_promoted,
+                    "rule_id": rule_id,
+                    "evaluated": evaluated,
+                    "mort_lineage": mort_lineage,
+                    "day2_body": day2_body,
+                    "analytics": analytics,
+                }
+            )
         )
-        distill_resp.raise_for_status()
-        distilled = distill_resp.json()
-        rule_id = distilled["candidate_rule"]["rule_id"]
-
-        # Run Synthetic Stress Suite & Report Card Gate in Cloud SQL
-        eval_resp = await client.post(
-            f"{BOARD_URI}/v1/gym/rules/{rule_id}/evaluate?role=underwriter",
-            headers={
-                "X-Bridge-Role": "underwriter",
-                "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
-            },
+        print(
+            f"   Live GCP verified: card={agent_card['name']} ({len(agent_card.get('skills', []))} skills), "
+            f"assets={len(catalog_assets)}, spiffe={len(spiffe_agents)}, "
+            f"mortgage_fee={mort_lineage['current_value']} (p.{mort_lineage['source_anchor']['page_number']}), "
+            f"rule={rule_id} ({evaluated['rule']['status']}), "
+            f"day2_disposition={day2_body['disposition']} ({day2_body['redacted_fields']['origination_fee']}), "
+            f"otel_spans={analytics['total_spans_analyzed']}"
         )
-        eval_resp.raise_for_status()
-        evaluated = eval_resp.json()
-
-        # Record 5th consecutive shadow match on slice:aig:endorsement:MEDIUM
-        shadow_resp = await client.post(
-            f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/shadow",
-            json={
-                "entity_id": "terrepower-coastal-2027",
-                "doc_id": "aig-excess-property-binder-2027.pdf",
-                "issuer": "AIG",
-                "doctype": "endorsement",
-                "field_path": "excess_layer_limit_usd",
-                "ai_value": "$25,000,000",
-                "human_value": "$25,000,000",
-                "risk_level": "MEDIUM",
-            },
-        )
-        shadow_resp.raise_for_status()
-
-        # Dial trust on slice:aig:endorsement:MEDIUM to trusted_auto_approve in Cloud SQL
-        dial_resp = await client.post(
-            f"{BOARD_URI}/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial?role=underwriter",
-            headers={
-                "X-Bridge-Role": "underwriter",
-                "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
-            },
-            json={
-                "target_level": "trusted_auto_approve",
-                "reason": "Promoted after 5/5 consecutive exact matches in Guided Review Queue.",
-                "force": False,
-            },
-        )
-        dial_resp.raise_for_status()
-
-        policies_promoted_resp = await client.get(f"{BOARD_URI}/v1/gym/trust-policies")
-        policies_promoted_resp.raise_for_status()
-        policies_promoted = policies_promoted_resp.json()
-
-    print(
-        f"   Live GCP verified: card={agent_card['name']} ({len(agent_card.get('skills', []))} skills), "
-        f"assets={len(catalog_assets)}, spiffe={len(spiffe_agents)}, rule={rule_id} "
-        f"({evaluated['rule']['status']})"
-    )
+        if fetch_only:
+            return
 
     chrome_bin = "/opt/google/chrome/google-chrome"
     if not Path(chrome_bin).exists():
@@ -214,6 +301,7 @@ async def main() -> None:
             chrome_bin,
             "--headless=new",
             "--no-sandbox",
+            "--no-proxy-server",
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--hide-scrollbars",
@@ -232,7 +320,7 @@ async def main() -> None:
     try:
         # Wait for DevTools endpoint
         ws_url = None
-        async with httpx.AsyncClient() as local_http:
+        async with httpx.AsyncClient(trust_env=False) as local_http:
             for _ in range(40):
                 try:
                     r = await local_http.get(f"http://127.0.0.1:{port}/json")
@@ -365,11 +453,40 @@ async def main() -> None:
                 window.setCaption(
                   'PART 2 · STEP 2: ROLE-BASED VIEWS, 6-HOP LINEAGE & ICEBERG SYNC',
                   'Switching to Underwriter View with 6-hop click-to-page lineage and watermarked BigQuery Iceberg CDC export.',
-                  'GET /v1/catalog/lineage/terrepower-coastal-2027/deductible_usd -> Page 4 Schedule B + BigQuery Iceberg'
+                  'GET /v1/catalog/lineage/LOAN-MERIDIAN-001/origination_fee -> Page 4 Schedule B + BigQuery Iceberg'
                 );
                 """
             )
-            await hold_seconds(10.5)
+            await hold_seconds(8.0)
+
+            # =================================================================
+            # SCENE 2.3: Mortgage Underwriting Scenario & Click-to-Source Modal
+            # =================================================================
+            await cdp.eval_js(
+                """
+                window.switchDomain('mortgage');
+                window.setCaption(
+                  'PART 2 · STEP 3: MORTGAGE UNDERWRITING & TRID CLOSING SCENARIO',
+                  'Switching to Westbrook Family Trust ($1.85M 30-Yr Jumbo Mortgage) with TRID Closing Disclosure Page 3 fee override.',
+                  'GET /v1/catalog/lineage/MORTGAGE-WESTBROOK-2026/origination_fee -> Page 3 Section A ($8,500.00)'
+                );
+                """
+            )
+            await hold_seconds(8.5)
+
+            await cdp.eval_js(
+                """
+                window.openSourceProofModal('origination_fee');
+                window.setCaption(
+                  'PART 2 · STEP 4: INTERACTIVE CLICK-TO-SOURCE DOCUMENT PROOF MODAL',
+                  'Clicking any Page + Bounding Box chip opens the split-screen Document AI polygon overlay & 7-Year WORM Vault proof.',
+                  'Document AI Normalized Vertices [0.11, 0.48, 0.86, 0.56] · SHA-256 WORM Object Retention'
+                );
+                """
+            )
+            await hold_seconds(9.0)
+
+            await cdp.eval_js("window.closeSourceProofModal();")
 
             # =================================================================
             # SCENE 3.1: SPIFFE JWT-SVID & RBAC 403 Refusal (Broker Associate)
@@ -484,12 +601,44 @@ async def main() -> None:
                 window.renderTrustPolicies({json.dumps(policies_promoted)});
                 window.setCaption(
                   'PART 4 · STEP 3: PROGRAMMABLE TRUST DIAL (GRADUATED AUTONOMY)',
-                  'AIG* endorsement slice hits 5/5 exact matches (100% accuracy) and promotes from Guided Review to Trusted Auto-Approve.',
+                  'Slice hits 5/5 exact matches (100% accuracy) and promotes from Guided Review to Trusted Auto-Approve.',
                   'POST https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial'
                 );
                 """
             )
-            await hold_seconds(12.5)
+            await hold_seconds(9.5)
+
+            # =================================================================
+            # SCENE 4.4: Agent Gym — Day-2 Continuous Learning Payoff
+            # =================================================================
+            await cdp.eval_js(
+                """
+                document.getElementById('btn-promote-trust').classList.remove('btn-active-ring');
+                document.getElementById('btn-verify-day2-payoff').classList.add('btn-active-ring');
+                window.runVerifyDay2Payoff();
+                window.setCaption(
+                  'PART 4 · STEP 4: DAY-2 CONTINUOUS LEARNING PAYOFF (ZERO HUMAN TOUCH)',
+                  'Re-ingesting the next Mortgage TRID Closing Disclosure automatically applies promoted rule and auto-approves.',
+                  'POST /v1/intake/ingest -> Day-1 Parked ($4,250) becomes Day-2 Auto-Approved ($8,500) in 0 human touches'
+                );
+                """
+            )
+            await hold_seconds(10.0)
+
+            # =================================================================
+            # SCENE 5.1: Live OpenTelemetry & BigQuery Waterfall X-Ray
+            # =================================================================
+            await cdp.eval_js(
+                """
+                window.switchScene('scene-telemetry', 5, false);
+                window.setCaption(
+                  'PART 5 · LIVE OPENTELEMETRY & BIGQUERY WATERFALL X-RAY',
+                  'Every browser click propagates W3C traceparent across all 22 spans into Cloud Trace v2 & BigQuery otel_spans.',
+                  'GET /v1/telemetry/analytics -> v_step_latency_analytics + v_trace_waterfall + v_entity_pipeline_summary'
+                );
+                """
+            )
+            await hold_seconds(11.0)
 
     finally:
         proc.terminate()

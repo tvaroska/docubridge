@@ -95,7 +95,7 @@ to the same ``expected_disposition``/``expected_gate``, not float-equality.
 import asyncio
 import json
 import logging
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -269,18 +269,36 @@ class _Truncated(Exception):
         self.label = label
 
 
-def build_extraction_prompt(schemas: dict[str, dict]) -> str:
+def build_extraction_prompt(
+    schemas: dict[str, dict],
+    *,
+    extraction_hints: Sequence[Any] = (),
+) -> str:
     """``PROMPT_HEADER`` + the installed-doctype field catalog + ``PROMPT_FOOTER``.
 
     Pure — ``schemas`` is (doctype skill name -> parsed ``bridge-schema`` document),
     normally read through the registry seam by ``bridge.doctypes.doctype_schemas``.
     Doctypes render sorted by name for determinism. A doctype whose schema declares
     no fields (an installed-but-asset-less skill) renders name-only, so it still
-    reaches the model's label space.
+    reaches the model's label space. Optional promoted Agent Gym ``extraction_hints``
+    are appended only when non-empty.
     """
+    hints_section = ""
+    if extraction_hints:
+        hint_lines = ["Active Agent Gym extraction hints (apply when matching issuer/doctype):"]
+        for hint in extraction_hints:
+            rid = getattr(hint, "rule_id", "")
+            issuer_pat = getattr(hint, "issuer_pattern", "*")
+            dtype = getattr(hint, "doctype", "*")
+            fpath = getattr(hint, "field_path", "")
+            instr = getattr(hint, "instruction", str(hint))
+            prefix = f"{rid} · " if rid else ""
+            hint_lines.append(f"- [{prefix}{issuer_pat}:{dtype}:{fpath}] {instr}")
+        hints_section = "\n\n" + "\n".join(hint_lines)
+
     if not schemas:
         # No installed doctypes → no catalog section (never an empty header).
-        return f"{PROMPT_HEADER}\n\n{PROMPT_FOOTER}"
+        return f"{PROMPT_HEADER}{hints_section}\n\n{PROMPT_FOOTER}"
 
     lines = ["Installed document types and the fields each declares:"]
     for doctype in sorted(schemas):
@@ -304,7 +322,7 @@ def build_extraction_prompt(schemas: dict[str, dict]) -> str:
             )
             lines.append(f"  - table {table} (one row each): {cols}")
     catalog = "\n".join(lines)
-    return f"{PROMPT_HEADER}\n\n{catalog}\n\n{PROMPT_FOOTER}"
+    return f"{PROMPT_HEADER}\n\n{catalog}{hints_section}\n\n{PROMPT_FOOTER}"
 
 
 def build_response_schema(schemas: dict[str, dict]) -> dict | None:
@@ -650,6 +668,7 @@ class GeminiExtractor:
         chunk_pages: int | None = None,
         chunk_concurrency: int | None = None,
         max_windows: int = DEFAULT_MAX_WINDOWS,
+        agent_gym: Any = None,
         log=_LOG,
     ) -> None:
         import os
@@ -676,10 +695,12 @@ class GeminiExtractor:
         self._model = model or os.environ.get("BRIDGE_MODEL", DEFAULT_MODEL)
         self._max_attempts = max_attempts
         self._prepass = prepass
+        self._agent_gym = agent_gym
         self._log = log
         # Injected catalog wins; else the registry is read per extract (see _catalog).
         self._schemas_fixed = schemas
         self._schemas: dict[str, dict] | None = None
+        self._hint_ids: tuple[str, ...] = ()
         self._prompt: str | None = None
         self._response_schema: dict | None = None
 
@@ -695,9 +716,16 @@ class GeminiExtractor:
         injected ``schemas`` catalog is fixed and never re-read.
         """
         schemas = self._schemas_fixed if self._schemas_fixed is not None else doctype_schemas()
-        if self._prompt is None or schemas != self._schemas:
+        hints: list[Any] = (
+            list(self._agent_gym.get_extraction_hints())
+            if self._agent_gym is not None
+            else []
+        )
+        hint_ids = tuple(getattr(h, "rule_id", str(h)) for h in hints)
+        if self._prompt is None or schemas != self._schemas or hint_ids != self._hint_ids:
             self._schemas = schemas
-            self._prompt = build_extraction_prompt(schemas)
+            self._hint_ids = hint_ids
+            self._prompt = build_extraction_prompt(schemas, extraction_hints=hints)
             self._response_schema = build_response_schema(schemas)
         return self._prompt, self._response_schema
 

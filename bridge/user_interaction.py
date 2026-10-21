@@ -202,6 +202,7 @@ def resolve_caller_role(
     request: Request,
     *,
     query_role: CatalogRole | None = None,
+    default_role: CatalogRole | None = None,
     principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
 ) -> CatalogRole:
@@ -285,6 +286,8 @@ def resolve_caller_role(
 
     if query_role is not None:
         return query_role
+    if default_role is not None:
+        return default_role
 
     raise PermissionError(
         "Missing caller role: supply an authenticated principal, X-Bridge-Role header, or role parameter."
@@ -361,7 +364,8 @@ def resolve_compound_identity(
         if obo_role is not None
         else resolve_caller_role(
             request,
-            query_role=query_role or default_role,
+            query_role=query_role,
+            default_role=default_role,
             principal_roles=principal_roles,
             require_auth=require_auth,
         )
@@ -770,6 +774,302 @@ class EnterpriseIngestionResult(BaseModel):
     facts: tuple[ConsolidatedFact, ...]
     conflicts: tuple[FactConflict, ...]
     lineage_traces: tuple[LineageTrace, ...]
+    applied_extraction_hints: tuple[str, ...] = ()
+
+
+def seed_demo_scenarios(
+    *,
+    vault_store: AuditVaultStore | None = None,
+    operational_store: OperationalStore | None = None,
+    knowledge_catalog: KnowledgeCatalog | None = None,
+    agent_gym: AgentGymEngine | None = None,
+) -> dict[str, Any]:
+    """Seed baseline bi-temporal facts and 6-hop lineage across Banking, Mortgage, and Insurance."""
+    vault = vault_store or vault_from_env()
+    store = operational_store or operational_store_from_env()
+    catalog = knowledge_catalog or knowledge_catalog_from_env(operational_store=store)
+    gym = agent_gym_from_env(agent_gym)
+
+    t0 = datetime(2026, 10, 19, 18, 0, 0, tzinfo=UTC)
+    t1 = datetime(2026, 10, 19, 20, 0, 0, tzinfo=UTC)
+    eff_date = datetime(2026, 11, 1, 0, 0, 0, tzinfo=UTC)
+    seeded_entities: list[str] = []
+
+    # 1. Banking: Commercial Real Estate Loan (LOAN-MERIDIAN-001)
+    if not store.list_facts("LOAN-MERIDIAN-001"):
+        ts_entry = LedgerEntry(
+            doc_id="doc-meridian-ts-v1",
+            doctype="term-sheet",
+            issuer="Syndicated Lenders Group",
+            disposition=Disposition.accepted,
+            gate=Gate.auto_approve,
+            overall_confidence=0.99,
+            message="Accepted CRE Term Sheet & MAI Appraisal",
+            key_fields={
+                "currency": "USD",
+                "loan_amount": "$45,000,000.00",
+                "appraised_value": "$62,500,000.00",
+                "origination_fee": "$50,000.00",
+                "net_operating_income": "$4,185,000.00",
+            },
+            source_anchors={
+                "origination_fee": SourceAnchor(
+                    page_number=1,
+                    bounding_box=(0.14, 0.31, 0.48, 0.36),
+                    snippet="Base Origination Fee: $50,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-ts-v1/v1/ts.pdf",
+                ),
+                "loan_amount": SourceAnchor(
+                    page_number=2,
+                    bounding_box=(0.15, 0.28, 0.52, 0.33),
+                    snippet="Senior Term Loan Facility: $45,000,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-ts-v1/v1/ts.pdf",
+                ),
+                "appraised_value": SourceAnchor(
+                    page_number=11,
+                    bounding_box=(0.18, 0.52, 0.60, 0.58),
+                    snippet="As-Stabilized Appraised Collateral Value: $62,500,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-ts-v1/v1/ts.pdf",
+                ),
+            },
+            recorded_at=t0,
+            effective_from=eff_date,
+        )
+        ingest_accepted_submission(
+            ts_entry,
+            entity_id="LOAN-MERIDIAN-001",
+            context_id="ctx-meridian-001",
+            raw_document_bytes=b"%PDF-1.7 meridian-term-sheet",
+            vault_store=vault,
+            operational_store=store,
+            knowledge_catalog=catalog,
+            agent_gym=gym,
+            recorded_at=t0,
+            effective_from=eff_date,
+        )
+        add_entry = LedgerEntry(
+            doc_id="doc-meridian-addendum-v2",
+            doctype="closing-disclosure",
+            issuer="Syndicated Lenders Group",
+            disposition=Disposition.accepted,
+            gate=Gate.auto_approve,
+            overall_confidence=0.99,
+            message="Accepted Schedule B Fee Addendum",
+            key_fields={
+                "currency": "USD",
+                "origination_fee": "$100,000.00",
+            },
+            source_anchors={
+                "origination_fee": SourceAnchor(
+                    page_number=4,
+                    bounding_box=(0.12, 0.44, 0.58, 0.51),
+                    snippet="Schedule B Origination & Rate-Lock Fee: $100,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-addendum-v2/v1/addendum.pdf",
+                ),
+            },
+            recorded_at=t1,
+            effective_from=eff_date,
+        )
+        ingest_accepted_submission(
+            add_entry,
+            entity_id="LOAN-MERIDIAN-001",
+            context_id="ctx-meridian-001",
+            raw_document_bytes=b"%PDF-1.7 meridian-schedule-b-addendum",
+            vault_store=vault,
+            operational_store=store,
+            knowledge_catalog=catalog,
+            agent_gym=gym,
+            recorded_at=t1,
+            effective_from=eff_date,
+        )
+        seeded_entities.append("LOAN-MERIDIAN-001")
+
+    # 2. Mortgage: Residential Jumbo Mortgage & TRID Closing (MORTGAGE-WESTBROOK-2026)
+    if not store.list_facts("MORTGAGE-WESTBROOK-2026"):
+        le_entry = LedgerEntry(
+            doc_id="doc-westbrook-le-v1",
+            doctype="term-sheet",
+            issuer="FirstNational Home Loans",
+            disposition=Disposition.accepted,
+            gate=Gate.auto_approve,
+            overall_confidence=0.99,
+            message="Accepted Initial TRID Loan Estimate & Form 1004 Appraisal",
+            key_fields={
+                "currency": "USD",
+                "loan_amount": "$1,850,000.00",
+                "appraised_value": "$2,400,000.00",
+                "origination_fee": "$4,250.00",
+                "annual_debt_service": "$138,400.00",
+            },
+            source_anchors={
+                "origination_fee": SourceAnchor(
+                    page_number=2,
+                    bounding_box=(0.11, 0.24, 0.49, 0.29),
+                    snippet="Section A. Origination Charges (0.23% Points): $4,250.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-le-v1/v1/le.pdf",
+                ),
+                "loan_amount": SourceAnchor(
+                    page_number=1,
+                    bounding_box=(0.14, 0.19, 0.51, 0.24),
+                    snippet="30-Year Fixed Jumbo Loan Amount: $1,850,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-le-v1/v1/le.pdf",
+                ),
+                "appraised_value": SourceAnchor(
+                    page_number=6,
+                    bounding_box=(0.16, 0.61, 0.62, 0.67),
+                    snippet="Form 1004 Uniform Residential Appraisal Market Value: $2,400,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-le-v1/v1/le.pdf",
+                ),
+            },
+            recorded_at=t0,
+            effective_from=eff_date,
+        )
+        ingest_accepted_submission(
+            le_entry,
+            entity_id="MORTGAGE-WESTBROOK-2026",
+            context_id="ctx-westbrook-2026",
+            raw_document_bytes=b"%PDF-1.7 westbrook-trid-loan-estimate",
+            vault_store=vault,
+            operational_store=store,
+            knowledge_catalog=catalog,
+            agent_gym=gym,
+            recorded_at=t0,
+            effective_from=eff_date,
+        )
+        cd_entry = LedgerEntry(
+            doc_id="doc-westbrook-cd-v2",
+            doctype="closing-disclosure",
+            issuer="FirstNational Home Loans",
+            disposition=Disposition.accepted,
+            gate=Gate.auto_approve,
+            overall_confidence=0.99,
+            message="Accepted Final TRID Closing Disclosure & Rate-Lock Extension Addendum",
+            key_fields={
+                "currency": "USD",
+                "origination_fee": "$8,500.00",
+            },
+            source_anchors={
+                "origination_fee": SourceAnchor(
+                    page_number=3,
+                    bounding_box=(0.11, 0.48, 0.59, 0.54),
+                    snippet="Closing Cost Details — Section A Origination + 45-Day Rate-Lock Extension: $8,500.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-cd-v2/v1/cd.pdf",
+                ),
+            },
+            recorded_at=t1,
+            effective_from=eff_date,
+        )
+        ingest_accepted_submission(
+            cd_entry,
+            entity_id="MORTGAGE-WESTBROOK-2026",
+            context_id="ctx-westbrook-2026",
+            raw_document_bytes=b"%PDF-1.7 westbrook-trid-closing-disclosure",
+            vault_store=vault,
+            operational_store=store,
+            knowledge_catalog=catalog,
+            agent_gym=gym,
+            recorded_at=t1,
+            effective_from=eff_date,
+        )
+        seeded_entities.append("MORTGAGE-WESTBROOK-2026")
+
+    # 3. Insurance: Commercial Property Placement (terrepower-coastal-2027)
+    if not store.list_facts("terrepower-coastal-2027"):
+        quote_entry = LedgerEntry(
+            doc_id="doc-terrepower-quote-v1",
+            doctype="quote",
+            issuer="Chubb Syndicate 2987",
+            disposition=Disposition.accepted,
+            gate=Gate.auto_approve,
+            overall_confidence=0.99,
+            message="Accepted Chubb Primary Property Quote & SOV",
+            key_fields={
+                "currency": "USD",
+                "coverage_limit": "$50,000,000.00",
+                "total_insured_value": "$142,500,000.00",
+                "deductible": "$50,000.00",
+                "premium": "$418,500.00",
+            },
+            source_anchors={
+                "deductible": SourceAnchor(
+                    page_number=1,
+                    bounding_box=(0.14, 0.31, 0.48, 0.36),
+                    snippet="All Other Perils Base Deductible: $50,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-quote-v1/v1/quote.pdf",
+                ),
+                "coverage_limit": SourceAnchor(
+                    page_number=2,
+                    bounding_box=(0.15, 0.28, 0.52, 0.33),
+                    snippet="Primary Layer Property Coverage Limit: $50,000,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-quote-v1/v1/quote.pdf",
+                ),
+                "total_insured_value": SourceAnchor(
+                    page_number=11,
+                    bounding_box=(0.18, 0.52, 0.60, 0.58),
+                    snippet="Schedule of Values (SOV) Total Insured Value: $142,500,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-quote-v1/v1/quote.pdf",
+                ),
+            },
+            recorded_at=t0,
+            effective_from=eff_date,
+        )
+        ingest_accepted_submission(
+            quote_entry,
+            entity_id="terrepower-coastal-2027",
+            context_id="ctx-terrepower-2027",
+            raw_document_bytes=b"%PDF-1.7 terrepower-chubb-quote",
+            vault_store=vault,
+            operational_store=store,
+            knowledge_catalog=catalog,
+            agent_gym=gym,
+            recorded_at=t0,
+            effective_from=eff_date,
+        )
+        end_entry = LedgerEntry(
+            doc_id="doc-terrepower-endorsement-v2",
+            doctype="endorsement",
+            issuer="Chubb Syndicate 2987",
+            disposition=Disposition.accepted,
+            gate=Gate.auto_approve,
+            overall_confidence=0.99,
+            message="Accepted Schedule B Coastal Wind Endorsement",
+            key_fields={
+                "currency": "USD",
+                "deductible": "$100,000.00",
+            },
+            source_anchors={
+                "deductible": SourceAnchor(
+                    page_number=4,
+                    bounding_box=(0.12, 0.44, 0.58, 0.51),
+                    snippet="Schedule B Named Windstorm Deductible Override: $100,000.00",
+                    artifact_uri="gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-endorsement-v2/v1/endorsement.pdf",
+                ),
+            },
+            recorded_at=t1,
+            effective_from=eff_date,
+        )
+        ingest_accepted_submission(
+            end_entry,
+            entity_id="terrepower-coastal-2027",
+            context_id="ctx-terrepower-2027",
+            raw_document_bytes=b"%PDF-1.7 terrepower-wind-endorsement",
+            vault_store=vault,
+            operational_store=store,
+            knowledge_catalog=catalog,
+            agent_gym=gym,
+            recorded_at=t1,
+            effective_from=eff_date,
+        )
+        seeded_entities.append("terrepower-coastal-2027")
+
+    return {
+        "seeded_entities": seeded_entities,
+        "available_scenarios": [
+            "LOAN-MERIDIAN-001",
+            "MORTGAGE-WESTBROOK-2026",
+            "terrepower-coastal-2027",
+        ],
+    }
 
 
 def ingest_accepted_submission(
@@ -844,6 +1144,32 @@ def ingest_accepted_submission(
                     }
                 )
 
+        # Apply promoted Stage 1 Agent Gym EXTRACTION_HINT rules on matching (issuer, doctype)
+        applied_hint_ids: list[str] = []
+        hints = gym.get_extraction_hints(
+            issuer=normalized_entry.issuer or "*",
+            doctype=normalized_entry.doctype,
+        )
+        if hints:
+            updated_fields = dict(normalized_entry.key_fields)
+            for hint in hints:
+                if hint.field_path and hint.canonical_target:
+                    current_val = updated_fields.get(hint.field_path)
+                    if current_val != hint.canonical_target:
+                        updated_fields[hint.field_path] = hint.canonical_target
+                        applied_hint_ids.append(hint.rule_id)
+                    elif hint.rule_id not in applied_hint_ids:
+                        applied_hint_ids.append(hint.rule_id)
+            if applied_hint_ids:
+                update_payload: dict[str, Any] = {"key_fields": updated_fields}
+                if normalized_entry.disposition == Disposition.pending:
+                    update_payload["disposition"] = Disposition.accepted
+                    update_payload["gate"] = Gate.auto_approve
+                normalized_entry = normalized_entry.model_copy(update=update_payload)
+        span.set_attribute(
+            "docubridge.applied_extraction_hints", ",".join(applied_hint_ids)
+        )
+
         promoted_entry, vault_record = promote_accepted_to_vault(
             vault,
             context_id=context_id,
@@ -873,6 +1199,7 @@ def ingest_accepted_submission(
             facts=tuple(facts),
             conflicts=tuple(conflicts),
             lineage_traces=tuple(lineage_traces),
+            applied_extraction_hints=tuple(applied_hint_ids),
         )
 
 
@@ -886,7 +1213,7 @@ class IngestSubmissionRequest(BaseModel):
     doc_id: str
     doctype: str
     issuer: str | None = None
-    status: Literal["accepted", "parked", "rejected"] = "accepted"
+    status: Literal["accepted", "parked", "pending", "rejected"] = "accepted"
     confidence: float = Field(default=0.98, ge=0.0, le=1.0)
     summary: str = "Accepted enterprise document submission"
     key_fields: dict[str, Any] = Field(default_factory=dict)
@@ -942,6 +1269,7 @@ class DistillQuarantineFixRequest(BaseModel):
     after_value: str
     expert_memo: str
     page_number: int | None = None
+    bounding_box: tuple[float, float, float, float] | None = None
     category: TribalRuleCategory | None = None
     distinct_entities: list[str] = Field(default_factory=list)
 
@@ -1019,12 +1347,22 @@ def build_user_interaction_router(
             authorize_entity_access(compound.user, body.entity_id)
             rec_at = body.recorded_at or datetime.now(UTC)
             eff_from = body.effective_from or rec_at
+            initial_disp = (
+                Disposition.pending
+                if body.status in ("parked", "pending")
+                else Disposition(body.status)
+            )
+            initial_gate = (
+                Gate.hitl_review
+                if initial_disp == Disposition.pending
+                else Gate.auto_approve
+            )
             entry = LedgerEntry(
                 doc_id=body.doc_id,
                 doctype=body.doctype,
                 issuer=body.issuer,
-                disposition=Disposition(body.status),
-                gate=Gate.auto_approve,
+                disposition=initial_disp,
+                gate=initial_gate,
                 overall_confidence=body.confidence,
                 message=body.summary,
                 key_fields={k: str(v) for k, v in body.key_fields.items()},
@@ -1046,6 +1384,9 @@ def build_user_interaction_router(
                 effective_from=eff_from,
             )
             return {
+                "disposition": res.entry.disposition.value,
+                "redacted_fields": dict(res.entry.key_fields),
+                "applied_extraction_hints": list(res.applied_extraction_hints),
                 "entry": res.entry.model_dump(mode="json"),
                 "vault_record": res.vault_record.model_dump(mode="json"),
                 "facts": [f.model_dump(mode="json") for f in res.facts],
@@ -1451,7 +1792,10 @@ def build_user_interaction_router(
                     f"External role '{compound.user.role}' cannot submit Agent Gym quarantine rules."
                 )
             anchor = (
-                SourceAnchor(page_number=body.page_number)
+                SourceAnchor(
+                    page_number=body.page_number,
+                    bounding_box=body.bounding_box,
+                )
                 if body.page_number is not None
                 else None
             )
@@ -1661,9 +2005,18 @@ def build_user_interaction_router(
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     @router.post("/v1/gym/trust-policies/reset")
-    def reset_gym_trust_policies_endpoint() -> list[dict[str, Any]]:
+    def reset_gym_trust_policies_endpoint(
+        clear_rules: bool = False,
+        reseed_demo: bool = False,
+    ) -> list[dict[str, Any]]:
+        if reseed_demo:
+            seed_demo_scenarios(
+                operational_store=store,
+                knowledge_catalog=catalog,
+                agent_gym=gym,
+            )
         results: list[dict[str, Any]] = []
-        for p in gym.reset_trust_policies():
+        for p in gym.reset_trust_policies(clear_rules=clear_rules):
             dumped = p.model_dump(mode="json")
             dumped["accuracy_rate"] = p.accuracy_rate
             dumped["ready_for_promotion"] = p.ready_for_promotion
@@ -1671,6 +2024,14 @@ def build_user_interaction_router(
             dumped["a2ui_messages"] = build_a2ui_trust_readiness_surface(p)
             results.append(dumped)
         return results
+
+    @router.post("/v1/demo/seed")
+    def seed_demo_scenarios_endpoint() -> dict[str, Any]:
+        return seed_demo_scenarios(
+            operational_store=store,
+            knowledge_catalog=catalog,
+            agent_gym=gym,
+        )
 
     @router.get("/demo", response_class=HTMLResponse)
     @router.get("/console", response_class=HTMLResponse)
@@ -1837,5 +2198,6 @@ __all__ = [
     "render_domain_agent_a2ui",
     "request_a2ui_inbox_confirmation",
     "resolve_caller_role",
+    "seed_demo_scenarios",
     "wrap_a2ui_in_a2a_data_part",
 ]

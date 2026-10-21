@@ -59,6 +59,7 @@ Then open:
 
 | Surface | URL | Who |
 |---|---|---|
+| Enterprise Showcase Console (`/demo`) | http://localhost:8003/demo | 5-scene interactive walkthrough (Banking, Mortgage & Insurance) |
 | Provider portal | http://localhost:5173 | the human party (A2UI) |
 | Agent console | http://localhost:5174 | the servicer's agent |
 | Ops dashboard | http://localhost:5175 | the operator |
@@ -111,6 +112,9 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 | Start here | Why |
 |---|---|
 | [design/bridge.md](design/bridge.md) | the product, in one page |
+| [BANKING.md](BANKING.md) | 5-scene Enterprise Showcase (Banking, Mortgage & Insurance), Agent Gym & Telemetry X-Ray |
+| [design/agent-gym.md](design/agent-gym.md) | Agent Gym continuous learning, Day-2 payoff & Programmable Trust |
+| [design/harness-evolve.md](design/harness-evolve.md) | Agent Gym × Harness Evolve & multi-tier Document AI uptraining |
 | [spec/cujs.md](spec/cujs.md) | the journeys the Bridge must support |
 | [spec/demos/address-demo.md](spec/demos/address-demo.md) | Address, beat by beat |
 | [design/architecture.md](design/architecture.md) | the as-built repo and module map |

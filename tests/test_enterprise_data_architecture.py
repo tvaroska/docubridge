@@ -2423,6 +2423,162 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
     assert "attributes_json" in bq_row["json"]
 
 
+def test_mortgage_underwriting_day2_payoff_and_telemetry_xray() -> None:
+    """Verify Mortgage scenario (MORTGAGE-WESTBROOK-2026), POST /v1/demo/seed,
+    GeminiExtractor Agent Gym hint injection, Day-2 Continuous Learning Payoff
+    auto-promoting parked submissions, clear_rules reset, and /demo showcase console UI."""
+    from bridge.a2ui_inbox import InMemoryActionInboxStore
+    from bridge.agent_gym import InMemoryAgentGymEngine
+    from bridge.doctypes import doctype_schemas
+    from bridge.extraction.gemini import GeminiExtractor, build_extraction_prompt
+
+    store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=store)
+    inbox_store = InMemoryActionInboxStore()
+    gym = InMemoryAgentGymEngine()
+
+    app = build_user_interaction_app(
+        operational_store=store,
+        knowledge_catalog=catalog,
+        inbox_store=inbox_store,
+        agent_gym=gym,
+    )
+    client = TestClient(app)
+
+    sr_headers = {
+        "X-Bridge-Role": "underwriter",
+        "X-Bridge-Principal": "senior.credit.officer@docubridge.io",
+    }
+
+    # 1. Seed all 3 demo scenarios (Banking, Mortgage, Insurance)
+    seed_resp = client.post("/v1/demo/seed", headers=sr_headers)
+    assert seed_resp.status_code == 200
+    assert set(seed_resp.json()["seeded_entities"]) == {
+        "LOAN-MERIDIAN-001",
+        "MORTGAGE-WESTBROOK-2026",
+        "terrepower-coastal-2027",
+    }
+
+    # Verify 6-hop lineage for Mortgage origination_fee ($8,500.00 on Page 3 of TRID CD)
+    mort_lin = client.get(
+        "/v1/catalog/lineage/MORTGAGE-WESTBROOK-2026/origination_fee",
+        headers=sr_headers,
+    )
+    assert mort_lin.status_code == 200
+    mort_trace = mort_lin.json()
+    assert mort_trace["current_value"] == "$8,500.00"
+    assert mort_trace["source_anchor"]["page_number"] == 3
+    assert mort_trace["source_doc_id"] == "doc-westbrook-cd-v2"
+    assert len(mort_trace["nodes"]) == 6
+
+    # Verify BigQuery Iceberg CDC sync for Mortgage scenario
+    mort_bq = client.get(
+        "/v1/bigquery/sync?entity_id=MORTGAGE-WESTBROOK-2026",
+        headers=sr_headers,
+    )
+    assert mort_bq.status_code == 200
+    assert mort_bq.json()["row_count"] >= 4
+
+    # 2. Distill & promote a Mortgage TRID Closing Disclosure tribal rule ($4,250 -> $8,500)
+    distill_resp = client.post(
+        "/v1/gym/signals/from-quarantine",
+        headers=sr_headers,
+        json={
+            "entity_id": "MORTGAGE-WESTBROOK-2026",
+            "doc_id": "trid-closing-disclosure-westbrook-2026.pdf",
+            "doctype": "closing-disclosure",
+            "issuer": "FirstNational",
+            "field_path": "origination_fee",
+            "before_value": "$4,250.00",
+            "after_value": "$8,500.00",
+            "expert_memo": "TRID Closing Disclosure Page 3 Section A rate-lock extension addendum overrides base origination fee to $8,500.00.",
+            "page_number": 3,
+            "bounding_box": [0.11, 0.48, 0.86, 0.56],
+        },
+    )
+    assert distill_resp.status_code == 200
+    mort_rule_id = distill_resp.json()["candidate_rule"]["rule_id"]
+
+    eval_resp = client.post(
+        f"/v1/gym/rules/{mort_rule_id}/evaluate",
+        headers=sr_headers,
+    )
+    assert eval_resp.status_code == 200
+    assert eval_resp.json()["report_card"]["passed_gate"] is True
+    assert eval_resp.json()["rule"]["status"] == "promoted"
+
+    # 3. Verify GeminiExtractor dynamically injects promoted Agent Gym hints into prompt
+    schemas = doctype_schemas()
+    prompt_with_hints = build_extraction_prompt(
+        schemas, extraction_hints=gym.get_extraction_hints()
+    )
+    assert "Active Agent Gym extraction hints" in prompt_with_hints
+    assert mort_rule_id in prompt_with_hints
+
+    class _NoopGenAiClient:
+        pass
+
+    extractor = GeminiExtractor(
+        schemas=schemas, client=_NoopGenAiClient(), agent_gym=gym
+    )
+    assert mort_rule_id in extractor._catalog()[0]
+
+    # 4. Day-2 Continuous Learning Payoff: re-ingesting a parked Mortgage CD with $4,250.00
+    #    automatically applies the promoted rule ($4,250.00 -> $8,500.00) and auto-approves!
+    day2_resp = client.post(
+        "/v1/intake/ingest",
+        headers=sr_headers,
+        json={
+            "entity_id": "MORTGAGE-WESTBROOK-2026",
+            "context_id": "ctx-mortgage-day2",
+            "doc_id": "trid-closing-disclosure-westbrook-day2.pdf",
+            "doctype": "closing-disclosure",
+            "issuer": "FirstNational",
+            "status": "parked",
+            "confidence": 0.96,
+            "key_fields": {
+                "currency": "USD",
+                "loan_amount": "$1,850,000.00",
+                "origination_fee": "$4,250.00",
+                "appraised_value": "$2,400,000.00",
+            },
+            "source_anchors": {
+                "origination_fee": {
+                    "page_number": 3,
+                    "bounding_box": [0.11, 0.48, 0.86, 0.56],
+                    "snippet": "Section A. Origination Charges — Rate-Lock Extension Fee: $8,500.00",
+                }
+            },
+        },
+    )
+    assert day2_resp.status_code == 200
+    day2_body = day2_resp.json()
+    assert day2_body["disposition"] == "accepted"
+    assert day2_body["redacted_fields"]["origination_fee"] == "$8,500.00"
+    assert mort_rule_id in day2_body["applied_extraction_hints"]
+
+    # 5. Reset with clear_rules=true and reseed_demo=true clears promoted rules and restores 7 slices
+    reset_resp = client.post(
+        "/v1/gym/trust-policies/reset?clear_rules=true&reseed_demo=true",
+        headers=sr_headers,
+    )
+    assert reset_resp.status_code == 200
+    slice_ids = {p["slice_id"] for p in reset_resp.json()}
+    assert "slice:mortgage-trid:closing-disclosure:MEDIUM" in slice_ids
+    assert len(gym.list_rules()) == 0
+
+    # 6. Verify /demo HTML includes Mortgage scenario, Trace & BQ X-Ray, Click-to-Source Modal, and Day-2 Payoff
+    demo_resp = client.get("/demo")
+    assert demo_resp.status_code == 200
+    html = demo_resp.text
+    assert "domain-btn-mortgage" in html
+    assert "MORTGAGE-WESTBROOK-2026" in html
+    assert "scene-telemetry" in html
+    assert "source-proof-modal" in html
+    assert "btn-verify-day2-payoff" in html
+
+
+
 
 
 

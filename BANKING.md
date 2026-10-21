@@ -1,9 +1,9 @@
-# DocuBridge Neutralization & Banking Use Case Specification (`BANKING.md`)
+# DocuBridge Neutralization, Banking, Mortgage & Insurance Showcase Specification (`BANKING.md`)
 
-**Status:** Ready for Implementation  
+**Status:** Implemented & Deployed Live (`v1.12.0-showcase` in `documents001`)  
 **Target Repository:** `/usr/local/google/home/tvaroska/projects/docubridge`  
-**Baseline Commit:** `v1.8.0-agent-engine-a2a` (`e39e4e4`)  
-**Primary Goal:** Transition `docubridge` from its Aon-branded visual theme and insurance-only defaults to a **vendor-neutral Enterprise / Google Cloud Blue-Slate design**, and add an interactive **Commercial & Mortgage Loan Underwriting (Banking)** use case alongside the existing **Commercial Insurance Placement** use case—with full **Observability, Tracing, Governance, and Evaluation (Agent Gym)** test coverage.
+**Deployed Revisions:** `documents001-bridge-00011-p85` & `documents001-bridge-rfp-board-00011-n9l` (`min_instances = 1`)  
+**Primary Goal:** Transition `docubridge` from its Aon-branded visual theme and insurance-only defaults to a **vendor-neutral Enterprise / Google Cloud Blue-Slate design**, and provide an interactive **3-Domain Showcase Console** (`GET /demo` and `GET /console`) covering **Commercial Loan Underwriting (`LOAN-MERIDIAN-001`)**, **Residential Mortgage Underwriting & TRID Closing (`MORTGAGE-WESTBROOK-2026`)**, and **Commercial Insurance Placement (`terrepower-coastal-2027`)**—with full **OpenTelemetry + BigQuery Trace X-Ray, Click-to-Source Document Proof Modal, Governance, and Day-2 Continuous Learning Payoff (Agent Gym)**.
 
 ---
 
@@ -337,11 +337,14 @@ Once `http://127.0.0.1:8003/demo` (or the Cloud Run URL `https://documents001-br
 
 When the implementation is ready for review, we will evaluate completeness against these 8 criteria:
 
-- [ ] **C1. Zero Aon Branding in UI & Default Metadata:** No `AON` wordmark, `#e11b22` red header, `agents.global.aon.net`, `gs://aon-docubridge-audit-vault`, or `aon_lakehouse` in default responses from `/v1/catalog/*`, `/v1/a2ui/*`, or `/v1/gym/*`.
-- [ ] **C2. Interactive Console Served on FastAPI (`/demo` & `/console`):** Opening `GET /demo` or `GET /console` returns the neutral Blue-Slate 4-stage console with both Banking and Insurance modes.
-- [ ] **C3. Banking Default + Live 1-Click Toggle:** Defaults to `Banking · Loan Underwriting` (`Meridian Logistics Center LLC`) and cleanly toggles all 4 stages between Banking and Insurance.
-- [ ] **C4. Banking Consolidation & Lineage Math:** `_MONEY_KEYS` and `source_priority_for_doctype` in `bridge/operational_store.py` deterministically handle banking fields (`loan_amount`, `appraised_value`, `origination_fee`, `net_operating_income`) and banking doctypes (`addendum` / `closing-disclosure` `[40]` > `credit-agreement` `[30]` > `term-sheet` / `appraisal` `[20]`).
-- [ ] **C5. Banking Programmable Trust Slices:** `GET /v1/gym/trust-policies` returns the 3 banking slices (`slice:closing-disclosure:fee-schedule:LOW`, `slice:credit-agreement:addendum:MEDIUM`, `slice:appraisal-report:commercial:HIGH`) alongside the 3 insurance slices.
-- [ ] **C6. Interactive Agent Gym Buttons Work Live:** Clicking Distill, Evaluate, Promote, and Simulate Drift in Scene 4 executes real `POST /v1/gym/*` requests and updates the DOM from the live JSON responses.
-- [ ] **C7. Isolation & Calibration Guards Green:** `uv run pytest tests/test_isolation_guard.py` and `uv run python -m bridge.calibration` exit `0`.
-- [ ] **C8. Full Test & Lint Suite Green:** `uv run ruff check .`, `uv run pytest`, and `pnpm --dir frontend test -- --run` pass with 100% green results, including `test_banking_loan_underwriting_observability_lineage_and_evaluation`.
+- [x] **C1. Zero Aon Branding in UI & Default Metadata:** No `AON` wordmark, `#e11b22` red header, `agents.global.aon.net`, `gs://aon-docubridge-audit-vault`, or `aon_lakehouse` in default responses from `/v1/catalog/*`, `/v1/a2ui/*`, or `/v1/gym/*`.
+- [x] **C2. Interactive Console Served on FastAPI (`/demo` & `/console`):** Opening `GET /demo` or `GET /console` returns the neutral Blue-Slate 5-scene console with Banking, Mortgage, and Insurance modes.
+- [x] **C3. Banking Default + Live 3-Domain Switcher (Banking, Mortgage & Insurance):** Defaults to `🏦 Banking · Loan Underwriting` (`Meridian Logistics Center LLC`, `LOAN-MERIDIAN-001`) and cleanly switches all 5 scenes across `🏦 Banking`, `🏠 Mortgage · TRID Closing` (`Westbrook Family Trust — $1.85M 30-Year Jumbo Mortgage`, `MORTGAGE-WESTBROOK-2026`), and `🛡️ Insurance · Commercial Placement` (`Terrepower Coastal LLC`, `terrepower-coastal-2027`).
+- [x] **C4. Banking & Mortgage Consolidation & Lineage Math:** `_MONEY_KEYS` and `source_priority_for_doctype` in `bridge/operational_store.py` deterministically handle banking and mortgage fields (`loan_amount`, `appraised_value`, `origination_fee`, `net_operating_income`) and doctypes (`addendum` / `closing-disclosure` `[40]` > `credit-agreement` `[30]` > `term-sheet` / `appraisal` `[20]`), seeded on demand via `POST /v1/demo/seed`.
+- [x] **C5. Banking, Mortgage & Insurance Programmable Trust Slices:** `GET /v1/gym/trust-policies` returns all 7 default slices (3 Banking + 1 Mortgage `slice:mortgage-trid:closing-disclosure:MEDIUM` + 3 Insurance).
+- [x] **C6. Interactive Agent Gym, Click-to-Source Modal, Day-2 Payoff & Telemetry X-Ray Work Live:**
+  - Clicking any `.anchor-chip` badge opens the split-screen **Document AI Bounding-Box & WORM Audit Vault Proof Modal** (`#source-proof-modal`).
+  - Clicking Distill, Evaluate, Promote, Simulate Drift, and **`⚡ 5. Verify Day-2 Payoff (Re-Ingest Next Deal)`** in Scene 4 executes live `POST /v1/gym/*` and `POST /v1/intake/ingest` calls, demonstrating a Day-1 parked deal (`$4,250` Mortgage TRID CD / `$50,000` Banking Term Sheet) auto-approving on Day-2 (`$8,500` / `$100,000`) with zero human touches.
+  - Clicking **`🔭 5. Trace & BQ X-Ray`** (`#scene-telemetry`) renders the live W3C trace waterfall, p50/p95/p99 step latency table, and BigQuery `documents001.docubridge_telemetry.otel_spans` summary from `GET /v1/telemetry/analytics`.
+- [x] **C7. Isolation & Calibration Guards Green:** `uv run pytest tests/test_isolation_guard.py` and `uv run python -m bridge.calibration` exit `0`.
+- [x] **C8. Full Test & Lint Suite Green:** `uv run ruff check .`, `uv run pytest`, and `terraform test` pass with 100% green results, including `test_banking_loan_underwriting_observability_lineage_and_evaluation` and `test_mortgage_underwriting_day2_payoff_and_telemetry_xray`.

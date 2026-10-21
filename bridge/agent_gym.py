@@ -308,6 +308,19 @@ DEFAULT_TRUST_POLICIES: tuple[ProgrammableTrustPolicy, ...] = (
         last_updated_reason="Running silently in Shadow Mode for commercial MAI appraisal template.",
     ),
     ProgrammableTrustPolicy(
+        slice_id="slice:mortgage-trid:closing-disclosure:MEDIUM",
+        issuer_pattern="FirstNational*",
+        doctype="closing-disclosure",
+        risk_level="MEDIUM",
+        autonomy_level=TrustAutonomyLevel.GUIDED_REVIEW,
+        consecutive_matches=4,
+        required_matches_for_promotion=5,
+        total_evaluated=4,
+        total_exact_matches=4,
+        last_updated_by="senior.credit.officer@docubridge.io",
+        last_updated_reason="In Guided Human Review Queue (4/5 matches on TRID Closing Disclosure rate-lock addenda).",
+    ),
+    ProgrammableTrustPolicy(
         slice_id="slice:chubb:quote:LOW",
         issuer_pattern="Chubb*",
         doctype="quote",
@@ -1058,14 +1071,14 @@ class AgentGymEngine(abc.ABC):
         return results
 
     def get_extraction_hints(
-        self, *, issuer: str, doctype: str
+        self, *, issuer: str | None = None, doctype: str | None = None
     ) -> list[TribalKnowledgeRule]:
         """Return promoted Stage 1 extraction hints for `(issuer, doctype)`."""
         return self.list_rules(
             category=TribalRuleCategory.EXTRACTION_HINT,
             status=TribalRuleStatus.PROMOTED,
-            issuer=issuer,
-            doctype=doctype,
+            issuer=None if issuer in (None, "*") else issuer,
+            doctype=None if doctype in (None, "*") else doctype,
         )
 
     def normalize_entity_or_issuer(self, raw_name: str | None) -> str | None:
@@ -1261,6 +1274,7 @@ class AgentGymEngine(abc.ABC):
         self,
         *,
         policies: tuple[ProgrammableTrustPolicy, ...] = DEFAULT_TRUST_POLICIES,
+        clear_rules: bool = False,
     ) -> list[ProgrammableTrustPolicy]:
         """Reset default Programmable Trust policies to baseline state (for interactive demo runs)."""
         with trace_step(
@@ -1268,14 +1282,20 @@ class AgentGymEngine(abc.ABC):
             {
                 "docubridge.zone": "6_knowledge_catalog_agent_gym",
                 "docubridge.policy_count": len(policies),
+                "docubridge.clear_rules": clear_rules,
             },
         ):
+            if clear_rules:
+                self._clear_rules_and_signals()
             reset_list: list[ProgrammableTrustPolicy] = []
             for p in policies:
                 copied = p.model_copy(deep=True)
                 self._save_trust_policy(copied)
                 reset_list.append(copied)
             return reset_list
+
+    def _clear_rules_and_signals(self) -> None:  # noqa: B027
+        """Clear accumulated demo signals, candidate/promoted rules, and report cards."""
 
 
 class InMemoryAgentGymEngine(AgentGymEngine):
@@ -1293,6 +1313,12 @@ class InMemoryAgentGymEngine(AgentGymEngine):
         self._trust_policies: dict[str, ProgrammableTrustPolicy] = {
             p.slice_id: p.model_copy(deep=True) for p in initial_trust_policies
         }
+
+    def _clear_rules_and_signals(self) -> None:
+        self._signals.clear()
+        self._rules.clear()
+        self._reports.clear()
+        self._shadow_records.clear()
 
     def _save_signal(self, signal: ExpertFeedbackSignal) -> None:
         self._signals[signal.signal_id] = signal
@@ -1671,6 +1697,25 @@ class SqlAgentGymEngine(AgentGymEngine):
                         payload_json=record.model_dump_json(),
                     )
                 )
+
+        self._run(_op())
+
+    def _clear_rules_and_signals(self) -> None:
+        self._ensure_ready()
+        signals_table = self._signals_table
+        rules_table = self._rules_table
+        reports_table = self._reports_table
+        shadow_table = self._shadow_table
+        engine = self._engine
+
+        async def _op() -> None:
+            from sqlalchemy import delete
+
+            async with engine.begin() as conn:
+                await conn.execute(delete(reports_table))
+                await conn.execute(delete(rules_table))
+                await conn.execute(delete(signals_table))
+                await conn.execute(delete(shadow_table))
 
         self._run(_op())
 

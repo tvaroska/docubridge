@@ -11,6 +11,7 @@ down:
   - "gcp-substrate.md"
   - "outbound.md"
   - "agent-gym.md"
+  - "harness-evolve.md"
   - "../spec/demos/demo-suite.md"
   - "../spec/cujs.md"
   - "architecture.md"
@@ -50,6 +51,7 @@ tags: [bridge]
 - [skills](skills.md) — demos as configuration
 - [GCP substrate](gcp-substrate.md) — seams, network zones, deploy, proactive engine
 - [Agent Gym & Programmable Trust](agent-gym.md) — continuous learning, graduated autonomy, and two-sided human-oversight calibration literature
+- [Agent Gym × Harness Evolve & Multi-Tier Extraction](harness-evolve.md) — combining daytime SME capture with nightly `SKILL.md` compilation and Document AI Standard/Custom Extractor evolution
 
 **Context**
 - [demo implementations](../spec/demos/demo-suite.md) — the three demos on one deployed core

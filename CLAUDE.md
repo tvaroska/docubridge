@@ -108,3 +108,20 @@ it during `/implement`.
 - **Synthetic data only, no real PII.** The eval party "Jordan Lee" is synthetic.
 - The Address eval corpus (`wiki/evals/address/`) is the oracle — no Address behavior
   is "done" until it reproduces `expected.json` (+ `timeline.json` where relevant).
+
+## Hard-Won Lessons & Gotchas (Enterprise Data Architecture, Agent Gym & GCP Deploy)
+
+1. **Skill-Name Literal Guard (`tests/test_isolation_guard.py::test_core_names_no_skill`):**
+   - `test_core_names_no_skill` scans every Python AST string literal in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring literal matches an installed folder name in `skills/` (`address-proof`, `gov-id`, `utility-bill`, `benefits-procurement`, `benefits-quote`, `benefits-rfp`). Never hardcode an installed skill name in `bridge/` core modules.
+2. **Explicit Demo Seeding (`POST /v1/demo/seed`) vs. Router Init:**
+   - Never call `seed_demo_scenarios()` unconditionally inside `build_user_interaction_router()` or `build_user_interaction_app()`, because unit tests construct fresh `InMemoryOperationalStore` / `SqlOperationalStore` instances and assert exact fact counts or empty initial state. Keep seeding explicit via `POST /v1/demo/seed` and `POST /v1/gym/trust-policies/reset?reseed_demo=true`.
+3. **Role Resolution (`query_role` vs. `default_role` in `resolve_caller_role`):**
+   - Never pass `query_role=role or default_role` into `resolve_caller_role()`. If a request carries `X-Bridge-Role: underwriter` (or an IAP email) without a `?role=` query param, passing `default_role="broker"` as `query_role` triggers the anti-spoofing guard (`PermissionError: cannot impersonate role 'broker'`). Always pass `query_role=role, default_role="broker"` separately so `default_role` only applies when no authenticated role and no `query_role` are present.
+4. **Wire `Disposition` Enum vs. `"parked"` Intake Status:**
+   - `contract.enums.Disposition` only defines `accepted`, `rejected`, and `pending` (there is no `Disposition.parked`). Endpoints accepting `status="parked"` (`IngestSubmissionRequest`) must map `"parked"` to `Disposition.pending` (`Gate.hitl_review`), and Day-2 Agent Gym auto-promotion upgrades `Disposition.pending` → `Disposition.accepted` (`Gate.auto_approve`).
+5. **Cloud Build `uv.lock` Index & Headless Chrome DevTools Proxy Bypass:**
+   - If regenerating `uv.lock` before `gcloud builds submit`, always pass `--default-index https://pypi.org/simple` so external Cloud Build workers resolve wheels from `https://files.pythonhosted.org` rather than internal `airlock-proxy.uplink.goog:999`.
+   - In `demo/record_gcp_demo.py`, always pass `--no-proxy-server` to headless Chrome and `trust_env=False` to `httpx.AsyncClient(trust_env=False)` when polling `http://127.0.0.1:<port>/json`, otherwise environment proxy variables intercept localhost DevTools connections.
+6. **Cloud Run Warm Instances & Terraform Auth:**
+   - Both `documents001-bridge` and `documents001-bridge-rfp-board` run with `min_instances = 1` (`terraform/modules/runtime/main.tf`) so live `/demo` showcase sessions have zero cold-start latency.
+   - When running `/usr/local/google/home/tvaroska/.local/bin/terraform` outside GCE metadata environments, export `GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` or update Cloud Run services directly via `gcloud run services update`.

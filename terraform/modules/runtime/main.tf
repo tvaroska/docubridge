@@ -91,6 +91,10 @@ resource "google_cloud_run_v2_service" "bridge" {
   template {
     service_account = var.service_account_email
 
+    scaling {
+      min_instance_count = var.min_instances
+    }
+
     containers {
       image = var.container_image
 
@@ -445,6 +449,7 @@ resource "google_cloud_run_v2_service" "rfp_board" {
     # 1 serializes drains on the in-process lock; more replicas are safe (CAS retry +
     # re-file guard in the processor) and only cost duplicate extraction.
     scaling {
+      min_instance_count = min(var.min_instances, var.rfp_board_max_instances)
       max_instance_count = var.rfp_board_max_instances
     }
 

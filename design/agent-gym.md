@@ -5,6 +5,7 @@ related:
   - "a2ui-edge.md"
   - "disposition.md"
   - "architecture.md"
+  - "harness-evolve.md"
 tags: [bridge, agent-gym, hitl, governance]
 ---
 
@@ -19,8 +20,11 @@ tags: [bridge, agent-gym, hitl, governance]
    - **Tribal Knowledge Distiller:** Converts a single expert fix into a versioned `TribalKnowledgeRule` (`extraction_hint`, `entity_alias`, `consolidation_priority`, or `presentation_preference`) without touching deterministic financial math code.
    - **Synthetic Stress Testing (`generate_synthetic_stress_suite`):** Synthesizes 4 corner-case perturbations per rule (`carrier_layout_shift`, `legal_entity_suffix_variant`, `distinct_syndicate_guard`, `model_upgrade_parity`).
    - **Quality Report Card Gate (`evaluate_candidate_rule`):** Enforces positive target-slice gain, zero historical regression, and an intact deterministic `Decimal` math firewall (`_FORBIDDEN_MATH_TOKENS`) before promoting a rule.
-3. **Production Layer Application:** Applies promoted rules across Stage 1 Extraction (`get_extraction_hints`), Stage 2 Consolidation (`normalize_entity_or_issuer`, preserving distinct syndicates), and Stage 3 A2UI Presentation (`get_presentation_preferences`).
-4. **Programmable Trust (`ProgrammableTrustPolicy`):** Per-slice `(issuer_pattern, doctype, risk_level)` autonomy dial progressing through `shadow_mode` → `guided_review` → `trusted_auto_approve` once `consecutive_matches >= required_matches_for_promotion`, with interactive A2UI v0.9 controls (`build_a2ui_trust_readiness_surface`) and automatic dial-back to `guided_review` on carrier drift.
+3. **Production Layer Application & Day-2 Continuous Learning Payoff:** Applies promoted rules across:
+   - **Stage 1 Extraction (`get_extraction_hints` → `GeminiExtractor` & `ingest_accepted_submission`):** Promoted `EXTRACTION_HINT` rules are dynamically injected into `build_extraction_prompt(schemas, extraction_hints=...)` (`bridge/extraction/gemini.py`) whenever the promoted rule set changes, and are deterministically applied in `ingest_accepted_submission()` (`bridge/user_interaction.py`) to map overridden fields (`canonical_target`), automatically promoting parked/pending Day-2 submissions (`Disposition.pending` → `Disposition.accepted` with `Gate.auto_approve`) and recording `docubridge.applied_extraction_hints` on the OpenTelemetry span.
+   - **Stage 2 Consolidation (`normalize_entity_or_issuer`):** Normalizes legal entity suffixes (e.g., `"Meridian Logistics Holdings Ltd."` → `"Meridian Logistics"`, `"Campala Ltd."` → `"Campala"`) while preserving distinct syndicates/SPVs (`distinct_entities`).
+   - **Stage 3 A2UI Presentation (`get_presentation_preferences`):** Customizes governed A2UI v0.9 surface layouts per role and domain.
+4. **Programmable Trust (`ProgrammableTrustPolicy`):** Per-slice `(issuer_pattern, doctype, risk_level)` autonomy dial progressing through `shadow_mode` → `guided_review` → `trusted_auto_approve` once `consecutive_matches >= required_matches_for_promotion`, with interactive A2UI v0.9 controls (`build_a2ui_trust_readiness_surface`), automatic dial-back to `guided_review` on format drift, and 1-click rehearsal reset (`reset_trust_policies(clear_rules=True)`). Pre-seeded with **7 default slices** across **Commercial Banking** (`slice:closing-disclosure:fee-schedule:LOW`, `slice:credit-agreement:addendum:MEDIUM`, `slice:appraisal-report:commercial:HIGH`), **Residential Mortgage TRID Closing** (`slice:mortgage-trid:closing-disclosure:MEDIUM`), and **Commercial Insurance** (`slice:chubb:quote:LOW`, `slice:aig:endorsement:MEDIUM`, `slice:lloyds:quote:HIGH`).
 5. **Durable Multi-Replica Store (`SqlAgentGymEngine`):** Persists signals, rules, report cards, trust policies, and shadow records in shared Cloud SQL / AlloyDB / SQLite tables (`gym_feedback_signals`, `gym_tribal_rules`, `gym_report_cards`, `gym_trust_policies`, `gym_shadow_comparisons`), refusing in-memory fallback when `BRIDGE_SEAM_MODE=gcp`.
 
 ---
@@ -86,4 +90,4 @@ tags: [bridge, agent-gym, hitl, governance]
 | **4. Continuous Spot-Checks & Seeded Honeypots** | Bainbridge (1983); Endsley (2023); Dawid & Skene (1979) | Once a slice reaches `TRUSTED_AUTO_APPROVE` (`bridge/agent_gym.py:98`), humans see 0% of traffic until `drift_incidents` (`bridge/agent_gym.py:1079-1083`) forces an abrupt emergency dial-back. | Route a configurable `spot_check_sample_rate` (e.g., 5% of `trusted_auto_approve` items) plus periodic seeded perturbations from `generate_synthetic_stress_suite` (`bridge/agent_gym.py:352-427`) into `guided_review` to prevent skill atrophy and continuously calibrate reviewer $\text{RSR}$. |
 
 ## Related
-- [the Bridge](bridge.md) · [A2UI edge](a2ui-edge.md) · [disposition](disposition.md) · [project layout](architecture.md)
+- [Agent Gym × Harness Evolve & Multi-Tier Extraction](harness-evolve.md) · [the Bridge](bridge.md) · [A2UI edge](a2ui-edge.md) · [disposition](disposition.md) · [project layout](architecture.md)

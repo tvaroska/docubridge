@@ -246,6 +246,17 @@ variable "rfp_board_max_instances" {
   }
 }
 
+variable "min_instances" {
+  type        = number
+  description = "Minimum warm instances for the Cloud Run runtime and RFP board services (1 eliminates cold-start latency)."
+  default     = 1
+
+  validation {
+    condition     = var.min_instances >= 0
+    error_message = "min_instances must be >= 0."
+  }
+}
+
 variable "email_drain_schedule" {
   type        = string
   description = "Cloud Scheduler cron for the POST /email/drain tick on the RFP board service (Etc/UTC)."
