@@ -54,7 +54,10 @@
 4. Click **`🧬 6. Compile to SKILL.md (gemini-4-argon)`** to mint `SkillRevision` `v1.1.0` (`rev-v1-1-...`, with 1-click **`⏪ Rollback to v1.0.0`**).
 5. Click **`⚡ 5. Verify Day-2 Payoff (Re-Ingest Next Deal)`** and inspect the **Process-Instance Skill Lineage Card** showing Turn 1 (`addendum@v1.0.0`) vs. Turn 2 (`addendum@v1.1.0`) in the same deal.
 
-### Minute 4:15–5:00 — Scene 5: OpenTelemetry `gen_ai.*` Waterfall & Multi-Model FinOps X-Ray
+### Minute 4:15–5:00 — Scene 5: OpenTelemetry `gen_ai.*` Waterfall, Multi-Model FinOps & BigQuery SQL Trace Evaluation
 1. Click **`🔭 5. Trace & BQ X-Ray`**.
 2. Show the **Multi-Model FinOps Split Cards** (`gemini-3.8-flash` workhorse vs. `gemini-4-argon` reasoning/eval) and the **Live W3C OpenTelemetry Waterfall** streaming to Cloud Trace and BigQuery (`docubridge-showcase.docubridge_telemetry.otel_spans`).
-3. Click **`↺ Reset Demo`** in the top-right header to restore a clean baseline.
+3. Click **`🧮 Run BQ SQL Trace Eval`** in the header and walk through the **BigQuery SQL Trace Evaluation (`v_trace_sql_evaluation` + `AI.GENERATE_TABLE`)** panel:
+   - **5-Gate Deterministic SQL Trajectory Scorecard (`Rule 0`)**: Evaluates 100% of traces in SQL at **`$0` LLM token cost** (`Gate 1: PII & WORM Lock Before Extract`, `Gate 2: SPIFFE JWT-SVID Verified`, `Gate 3: Decimal Math & Bi-Temporal Ledger`, `Gate 4: Two-Sided Oversight RSR >= 0.80`, `Gate 5: FinOps Model Right-Sizing`).
+   - **3-Tab Interactive BigQuery Standard SQL Query Inspector**: Click through **`1. Rule 0 Trajectory SQL`** (`v_trace_sql_evaluation` pre-filtering `needs_llm_judge_sampling`), **`2. AI.GENERATE_TABLE Judge`** (invoking `gemini-4-argon` only on anomalous/escalated/canary traces for `95%` judge token savings), and **`3. Rogan-Gladen & SME SQL`** (joining SME annotations to compute bias-corrected pass rate $\hat{\theta} = 99.1\%$).
+4. Click **`↺ Reset Demo`** in the top-right header to restore a clean baseline.
