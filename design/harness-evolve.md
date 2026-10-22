@@ -12,7 +12,7 @@ tags: [bridge, agent-gym, harness-evolve, extraction, docai, optimization]
 
 # Agent Gym × Harness Evolve — Continual Learning & Multi-Tier Extraction Evolution
 
-> **Post-demo design architecture (next phase):** Unifies **OCTO Agent Gym** (online, SME-in-the-loop "Example of One" tacit knowledge capture) with **OCTO Harness Evolve (`HaE`)** (offline, programmatic evolutionary optimization and token compression) across all three extraction tiers: **Gemini**, **Document AI Standard Extractors**, and **Document AI Custom Extractors**.
+> **Architecture & As-Built Status (`v1.14.0-agent-gateway`):** Unifies **OCTO Agent Gym** (online, SME-in-the-loop "Example of One" tacit knowledge capture with Two-Sided Oversight `RSR`) with **OCTO Harness Evolve (`HaE`)** (`compile_rules_to_skill()` / `POST /v1/gym/compile-skill` folding promoted rules into immutable `SkillRevision` packages in the Gemini platform Skill Registry with 1-click rollback and Bi-Temporal Process-Instance Skill Lineage) across all three extraction tiers: **Gemini (`gemini-3.8-flash` workhorse + `gemini-4-argon` teacher/judge)**, **Document AI Standard Extractors**, and **Document AI Custom Extractors**.
 
 ---
 

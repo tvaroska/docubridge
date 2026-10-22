@@ -29,9 +29,9 @@ tags: [bridge, agent-gym, hitl, governance]
 
 ---
 
-## 2. Two-Sided Calibration & Human-Oversight Literature Note (Future Design Direction)
+## 2. Two-Sided Calibration & Human-Oversight Literature Note
 
-> **Design note (not yet wired into runtime code):** While the current Agent Gym rigorously tests and gates the **agent** before promoting rules or autonomy, it currently treats the **human reviewer's signal** as uncorrupted ground truth. Academic literature on human-AI interaction, cognitive engineering, and automation oversight shows that passive human-in-the-loop (HITL) designs degrade human judgment over time, turning raw agreement counts into a measure of *rubber-stamping* rather than genuine verification.
+> **Status (`v1.14.0-agent-gateway`):** Two-Sided Oversight (`oversight_rsr_score` computed from `citation_verified` and `review_dwell_ms`, rejecting rubber-stamps with `RSR < 0.50`), the 3-Tier Evaluation Gate (Tier 1 `Rule 0` deterministic `dispose` + `Decimal` math firewall, Tier 2 `gemini-4-argon` pointwise judge, and Tier 3 `threshold_corridor()` `FA=0` check), `compile_rules_to_skill()` (`SkillRevision` `v1.0.0 -> v1.1.0` + 1-click rollback), and Bi-Temporal Process-Instance Skill Lineage (`ProcessSkillLineageRecord`) are now implemented in `bridge/agent_gym.py` and `bridge/user_interaction.py`. The academic literature below grounds why naive human-in-the-loop (HITL) designs degrade human judgment over time without two-sided verification.
 
 ### 2.1 The Empirical Consensus: Why Naive HITL Fails
 

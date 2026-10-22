@@ -115,6 +115,7 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 |---|---|
 | [design/bridge.md](design/bridge.md) | the product, in one page |
 | [BANKING.md](BANKING.md) | 5-scene Enterprise Showcase (Banking, Mortgage & Insurance), Agent Gym & Telemetry X-Ray |
+| [docs/demo-click-path.md](docs/demo-click-path.md) | 5-minute live demo click-path, Agent Registry & Gateway walkthrough, and Google Slides link |
 | [design/agent-gym.md](design/agent-gym.md) | Agent Gym continuous learning, Day-2 payoff & Programmable Trust |
 | [design/harness-evolve.md](design/harness-evolve.md) | Agent Gym × Harness Evolve & multi-tier Document AI uptraining |
 | [spec/cujs.md](spec/cujs.md) | the journeys the Bridge must support |
