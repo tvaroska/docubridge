@@ -289,7 +289,9 @@ def build_extraction_prompt(
     """
     hints_section = ""
     if extraction_hints:
-        hint_lines = ["Active Agent Gym extraction hints (apply when matching issuer/doctype):"]
+        hint_lines = [
+            "Active Agent Gym extraction hints (apply when matching issuer/doctype):"
+        ]
         for hint in extraction_hints:
             rid = getattr(hint, "rule_id", "")
             issuer_pat = getattr(hint, "issuer_pattern", "*")
@@ -368,9 +370,11 @@ def build_response_schema(schemas: dict[str, dict]) -> dict | None:
     for doctype in sorted(schemas):
         for name, spec in key_field_properties(schemas[doctype]).items():
             enum = spec.get("enum") if isinstance(spec, dict) else None
-            enum = enum if isinstance(enum, list) and all(
-                isinstance(v, str) for v in enum
-            ) else None
+            enum = (
+                enum
+                if isinstance(enum, list) and all(isinstance(v, str) for v in enum)
+                else None
+            )
             enums[name] = enum if name not in enums or enums[name] == enum else None
     for name, enum in enums.items():
         if enum and name in key_fields:
@@ -378,8 +382,7 @@ def build_response_schema(schemas: dict[str, dict]) -> dict | None:
     # issuer is a top-level field, not a key_field, but the corpus reports a
     # confidence for it — keep it in the field_confidence union.
     confidences = {
-        name: {"type": "number", "nullable": True}
-        for name in [*union, "issuer"]
+        name: {"type": "number", "nullable": True} for name in [*union, "issuer"]
     }
     tables = _tables_union(schemas)
     installed = ", ".join(sorted(schemas))
@@ -387,8 +390,7 @@ def build_response_schema(schemas: dict[str, dict]) -> dict | None:
         "doctype": {
             "type": "string",
             "description": (
-                "the document type you observe; installed types: "
-                f"{installed}"
+                f"the document type you observe; installed types: {installed}"
             ),
         },
         "issuer": {
@@ -460,7 +462,9 @@ def _tables_union(schemas: dict[str, dict]) -> dict:
             desc = str(table_spec(schemas[doctype], table).get("description", "") or "")
             labelled = f"{doctype}: {desc}" if desc else doctype
             descriptions[table] = (
-                f"{descriptions[table]} | {labelled}" if table in descriptions else labelled
+                f"{descriptions[table]} | {labelled}"
+                if table in descriptions
+                else labelled
             )
             cols = union.setdefault(table, {})
             for col, col_spec in columns.items():
@@ -590,9 +594,12 @@ def _prune_nulls(payload):
             fields["tables"] = {
                 name: [
                     {c: v for c, v in row.items() if v is not None}
-                    if isinstance(row, dict) else row
+                    if isinstance(row, dict)
+                    else row
                     for row in rows
-                ] if isinstance(rows, list) else rows
+                ]
+                if isinstance(rows, list)
+                else rows
                 for name, rows in tables.items()
                 if rows is not None
             }
@@ -680,16 +687,28 @@ class GeminiExtractor:
         if max_attempts < 1:
             raise ValueError(f"max_attempts must be >= 1; got {max_attempts}")
         self._max_output_tokens = _int_setting(
-            "max_output_tokens", max_output_tokens, MAX_OUTPUT_TOKENS_ENV,
-            os.environ.get(MAX_OUTPUT_TOKENS_ENV), DEFAULT_MAX_OUTPUT_TOKENS, 1,
+            "max_output_tokens",
+            max_output_tokens,
+            MAX_OUTPUT_TOKENS_ENV,
+            os.environ.get(MAX_OUTPUT_TOKENS_ENV),
+            DEFAULT_MAX_OUTPUT_TOKENS,
+            1,
         )
         self._chunk_pages = _int_setting(
-            "chunk_pages", chunk_pages, CHUNK_PAGES_ENV,
-            os.environ.get(CHUNK_PAGES_ENV), DEFAULT_CHUNK_PAGES, 0,
+            "chunk_pages",
+            chunk_pages,
+            CHUNK_PAGES_ENV,
+            os.environ.get(CHUNK_PAGES_ENV),
+            DEFAULT_CHUNK_PAGES,
+            0,
         )
         self._chunk_concurrency = _int_setting(
-            "chunk_concurrency", chunk_concurrency, CHUNK_CONCURRENCY_ENV,
-            os.environ.get(CHUNK_CONCURRENCY_ENV), DEFAULT_CHUNK_CONCURRENCY, 1,
+            "chunk_concurrency",
+            chunk_concurrency,
+            CHUNK_CONCURRENCY_ENV,
+            os.environ.get(CHUNK_CONCURRENCY_ENV),
+            DEFAULT_CHUNK_CONCURRENCY,
+            1,
         )
         self._max_windows = _int_setting(
             "max_windows", max_windows, "max_windows", None, DEFAULT_MAX_WINDOWS, 1
@@ -719,14 +738,22 @@ class GeminiExtractor:
         rebuilt only when the catalog content differs from the last one seen. An
         injected ``schemas`` catalog is fixed and never re-read.
         """
-        schemas = self._schemas_fixed if self._schemas_fixed is not None else doctype_schemas()
+        schemas = (
+            self._schemas_fixed
+            if self._schemas_fixed is not None
+            else doctype_schemas()
+        )
         hints: list[Any] = (
             list(self._agent_gym.get_extraction_hints())
             if self._agent_gym is not None
             else []
         )
         hint_ids = tuple(getattr(h, "rule_id", str(h)) for h in hints)
-        if self._prompt is None or schemas != self._schemas or hint_ids != self._hint_ids:
+        if (
+            self._prompt is None
+            or schemas != self._schemas
+            or hint_ids != self._hint_ids
+        ):
             self._schemas = schemas
             self._hint_ids = hint_ids
             self._prompt = build_extraction_prompt(schemas, extraction_hints=hints)
@@ -858,7 +885,10 @@ class GeminiExtractor:
             windows = plan_windows(pages, self._chunk_pages)
             self._log.info(
                 "extraction of %s: %d pages -> %d page windows of %d",
-                artifact_name, pages, len(windows), self._chunk_pages,
+                artifact_name,
+                pages,
+                len(windows),
+                self._chunk_pages,
             )
             return await self._extract_windows(
                 client, base, config, windows, total=pages, label=artifact_name
@@ -884,13 +914,21 @@ class GeminiExtractor:
                 if pages is None
                 else "the document has a single page"
             )
-            raise self._truncated(artifact_name, f"{what}; it cannot be chunked smaller")
+            raise self._truncated(
+                artifact_name, f"{what}; it cannot be chunked smaller"
+            )
         self._log.warning(
             "extraction of %s truncated at max_output_tokens=%d; bisecting its %d pages",
-            artifact_name, self._max_output_tokens, pages,
+            artifact_name,
+            self._max_output_tokens,
+            pages,
         )
         return await self._extract_windows(
-            client, base, config, list(bisect_window(1, pages)), total=pages,
+            client,
+            base,
+            config,
+            list(bisect_window(1, pages)),
+            total=pages,
             label=artifact_name,
         )
 
@@ -1084,7 +1122,9 @@ class GeminiExtractor:
                 left, right = bisect_window(first, last)
                 self._log.warning(
                     "extraction of %s truncated; bisecting into pages %d-%d and %d-%d",
-                    window_label, *left, *right,
+                    window_label,
+                    *left,
+                    *right,
                 )
                 halves = await _gather_ordered(
                     [run(*left), run(*right)], [left, right], label

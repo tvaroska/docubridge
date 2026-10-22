@@ -25,8 +25,8 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import { DispositionBadge } from "@docbride/shared";
-import type { Disposition } from "@docbride/shared";
+import { DispositionBadge } from "@docubridge/shared";
+import type { Disposition } from "@docubridge/shared";
 import type { Snapshot } from "../domain/console";
 
 export function TurnViewer({ snapshot }: { snapshot: Snapshot }) {

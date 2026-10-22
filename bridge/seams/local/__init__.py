@@ -65,6 +65,7 @@ class LocalSessions(SessionsSeam):
     """
 
     def build_session_service(self, db_url: str | None = None):
+        """Construct an in-memory ADK session service for local execution."""
         dsn = db_url or os.environ.get("BRIDGE_SESSION_DB_URL", "").strip()
         if not dsn:
             from google.adk.sessions import InMemorySessionService
@@ -85,6 +86,7 @@ class LocalTaskStore(TaskStoreSeam):
     """
 
     def build_task_store(self, db_url: str | None = None):
+        """Construct an in-memory A2A task store for local execution."""
         dsn = db_url or os.environ.get("BRIDGE_TASK_DB_URL", "").strip()
         if not dsn:
             from a2a.server.tasks import InMemoryTaskStore
@@ -126,6 +128,7 @@ class LocalExchangeStore(ExchangeStoreSeam):
     """
 
     def build_exchange_store(self, db_url: str | None = None):
+        """Construct an in-memory or SQLite-backed exchange store for local execution."""
         from bridge.exchange_store import InMemoryExchangeStore, SqlExchangeStore
 
         dsn = db_url or os.environ.get(EXCHANGE_DB_URL_ENV, "").strip()
@@ -157,6 +160,7 @@ class LocalSkillRegistry(SkillRegistrySeam):
         return Path(os.environ.get("BRIDGE_SKILLS_DIR", "").strip() or SKILLS_DIR)
 
     def list_skills(self):
+        """List all skill packages discovered in the local filesystem skills directory."""
         from bridge.edge.skills import listed_skill_meta
 
         root = self._root()
@@ -170,6 +174,7 @@ class LocalSkillRegistry(SkillRegistrySeam):
         return skills
 
     def get_skill(self, name: str):
+        """Load a single skill package definition from the local filesystem by name."""
         from bridge.edge.skills import skill_meta_from_dir
 
         skill_dir = self._root() / name
@@ -178,6 +183,7 @@ class LocalSkillRegistry(SkillRegistrySeam):
         return skill_meta_from_dir(skill_dir)
 
     def install_skill(self, name, skill_md, assets=None):
+        """Copy and register a skill package directory into the local skills root."""
         import re
 
         from bridge.edge.skills import skill_meta_from_dir, validate_skill_upload
@@ -210,6 +216,7 @@ class LocalSkillRegistry(SkillRegistrySeam):
         return skill_meta_from_dir(skill_dir)
 
     def read_asset(self, name: str, rel: str) -> str:
+        """Read a raw asset file from a locally installed skill directory."""
         import re
 
         # The same S0-sec-1 traversal defense as install_skill, applied on the read
@@ -238,6 +245,7 @@ class LocalMemoryBank(MemoryBankSeam):
     """
 
     def build_memory_service(self, db_path: str | None = None):
+        """Construct an in-memory ADK memory service for local execution."""
         path = (db_path or os.environ.get(MEMORY_DB_PATH_ENV, "")).strip()
         if not path:
             from google.adk.memory import InMemoryMemoryService
@@ -252,6 +260,7 @@ class LocalScheduler(SchedulerSeam):
     """Local scheduler adapter (SEAM-6): an in-process VirtualClock."""
 
     def build_scheduler(self):
+        """Construct a deterministic virtual-clock scheduler for local execution."""
         from bridge.scheduler import VirtualClock
 
         return VirtualClock()
@@ -261,6 +270,7 @@ class LocalA2AClient(A2AClientSeam):
     """Local a2a_client adapter (SEAM-7, OUT-1): outbound client over an injected fake transport."""
 
     def build_client(self, transport=None):
+        """Construct an in-memory outbound A2A client and transport for local execution."""
         from bridge.outbound import OutboundClient
 
         return OutboundClient(transport)
@@ -273,6 +283,7 @@ class LocalExtraction(ExtractionSeam):
         self._engine = FixtureExtractor()
 
     async def extract(self, artifact_name: str):
+        """Run deterministic local document extraction over bytes and filename."""
         return await self._engine.extract(artifact_name)
 
 
@@ -334,10 +345,12 @@ class LocalEmailIngress(EmailIngressSeam):
             os.unlink(tmp)
 
     def land(self, key: str, raw: bytes) -> bool:
+        """Store an inbound raw MIME email message in the local ingress directory."""
         validate_landing_key(key)
         return self._create_only(self._contained("inbox", f"{key}.eml"), raw)
 
     def pending(self) -> list[str]:
+        """List pending message IDs in the local email ingress queue."""
         import logging
         import re
 
@@ -363,6 +376,7 @@ class LocalEmailIngress(EmailIngressSeam):
         return [key for _, key in sorted(rows)]
 
     def read(self, key: str) -> bytes:
+        """Read the raw MIME bytes for a message ID from the local ingress store."""
         validate_landing_key(key)
         path = self._contained("inbox", f"{key}.eml")
         if not path.exists():
@@ -370,6 +384,7 @@ class LocalEmailIngress(EmailIngressSeam):
         return path.read_bytes()
 
     def put_attachment(self, key, index, filename, data, mime_type) -> str:
+        """Store an extracted MIME attachment in the local ingress attachment store."""
         validate_landing_key(key)
         validate_attachment_slot(index, filename)
         path = self._contained("attachments", key, str(index), filename)
@@ -379,6 +394,7 @@ class LocalEmailIngress(EmailIngressSeam):
         return f"file://{path.as_posix()}"
 
     def mark_processed(self, key: str, outcome: dict) -> bool:
+        """Mark an inbound email message ID as processed in the local ingress store."""
         import json
 
         validate_landing_key(key)
@@ -386,6 +402,7 @@ class LocalEmailIngress(EmailIngressSeam):
         return self._create_only(self._contained("processed", f"{key}.json"), body)
 
     def processed(self, key: str) -> dict | None:
+        """List all processed message IDs in the local email ingress store."""
         import json
 
         validate_landing_key(key)

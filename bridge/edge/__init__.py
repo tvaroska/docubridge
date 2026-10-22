@@ -18,6 +18,7 @@ Two load-bearing decisions (see module docstrings for detail):
 ``agents/`` (``tests/test_isolation_guard.py``). It imports only ``contract/``,
 ``bridge.*``, ``a2a.*``, and their proto/Starlette deps.
 """
+
 from bridge.edge.a2ui import (
     A2uiAction,
     A2uiItem,

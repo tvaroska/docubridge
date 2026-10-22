@@ -45,6 +45,7 @@ Module posture: this module is imported by ``bridge/extraction/gemini.py`` and b
 ``tests/test_gemini_extraction.py``'s AST guard). ``httpx`` is imported lazily
 inside the fetch, the repo's idiom for an already-present transitive dependency.
 """
+
 from __future__ import annotations
 
 import inspect

@@ -22,6 +22,7 @@ Not a seam (the model resolves like the ``document_bridge`` agent's, ``BRIDGE_MO
 ADK-free: imports ``contract`` + stdlib + pydantic only; the model-backed assessor
 lives in :mod:`bridge.satisfaction_llm` and is imported lazily.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -69,7 +70,9 @@ class SatisfactionAssessor(Protocol):
         rule: str,
         entries: Sequence[LedgerEntry],
         candidate_doctypes: Sequence[str],
-    ) -> list[ProposedItem]: ...
+    ) -> list[ProposedItem]:
+        """Evaluate whether extracted document signals satisfy the requested collection spec."""
+        ...
 
 
 async def propose_outstanding(

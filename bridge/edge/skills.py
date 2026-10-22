@@ -22,6 +22,7 @@ advertised skills.
   process none of whose candidates is installed is not loaded at all (never advertised,
   never dispositioned against another process's label space — S0-arch-18).
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -58,14 +59,20 @@ class SkillMeta(BaseModel):
     Mirrors the Agent Skills spec shape plus Bridge-specific metadata keys
     (``bridge-kind``, ``bridge-candidate-doctypes``, ``bridge-schema``).
     """
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str  # Lowercase-hyphen, matches skill dir + AgentSkill.id
     description: str  # Discovery surface: what + when to use (≤1024 chars)
     kind: Literal["process", "doctype"]  # mirrors metadata.bridge-kind (SKILL_KINDS)
-    candidate_doctypes: tuple[str, ...] = ()  # Process skills only (bridge-candidate-doctypes)
+    candidate_doctypes: tuple[
+        str, ...
+    ] = ()  # Process skills only (bridge-candidate-doctypes)
     tags: tuple[str, ...] = ()
-    input_modes: tuple[str, ...] = ("application/json", "text/plain")  # WIRE-5 dual-mode intake
+    input_modes: tuple[str, ...] = (
+        "application/json",
+        "text/plain",
+    )  # WIRE-5 dual-mode intake
     # Skill-relative pointer to the doctype's field schema (metadata.bridge-schema);
     # read through the registry seam's ``read_asset``. NOT named ``schema`` — that
     # shadows ``BaseModel.schema`` and pydantic v2 warns on it.
@@ -175,12 +182,16 @@ def skill_meta_from_dir(skill_dir: Path) -> SkillMeta:
             try:
                 json.loads(schema.read_text())
             except json.JSONDecodeError as exc:
-                raise ValueError(f"{md}: schema {rel} is not valid JSON ({exc})") from exc
+                raise ValueError(
+                    f"{md}: schema {rel} is not valid JSON ({exc})"
+                ) from exc
     return SkillMeta(
         name=fm["name"],
         description=fm["description"],
         kind=kind,
-        candidate_doctypes=tuple(str(meta.get("bridge-candidate-doctypes", "")).split()),
+        candidate_doctypes=tuple(
+            str(meta.get("bridge-candidate-doctypes", "")).split()
+        ),
         tags=tuple(str(meta.get("bridge-tags", "")).split()),
         schema_asset=schema_asset,
         satisfaction=str(meta.get("bridge-satisfaction", "") or "").strip(),

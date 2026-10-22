@@ -8,6 +8,7 @@ download-to-temp + reuse-``skill_meta_from_dir`` list/get/install logic against 
 in-memory fake bucket. The live GCS roundtrip is gated on ``BRIDGE_TEST_GCP`` +
 ``BRIDGE_SKILLS_BUCKET`` in ``test_skill_registry_seam.py`` (P7-9).
 """
+
 from __future__ import annotations
 
 import logging
@@ -126,7 +127,9 @@ def test_read_asset_roundtrip_and_traversal_defense(monkeypatch):
     for bad_name in ("../evil", "with/slash", "Upper", ""):
         with pytest.raises(ValueError):
             reg.read_asset(bad_name, "assets/schema.json")
-    assert fake.built == 0  # defense fired before _bucket() — no client for a bad request
+    assert (
+        fake.built == 0
+    )  # defense fired before _bucket() — no client for a bad request
     assert built_after_install  # sanity: the good path DOES build a bucket
 
 
@@ -150,15 +153,19 @@ def test_list_skills_skips_malformed_with_a_logged_reason(monkeypatch, caplog):
     ``bridge.edge.skills`` naming it), the good ones are still listed."""
     reg, fake = _reg_with_fake(monkeypatch)
     fake.objects["bad/SKILL.md"] = b"Extract the fields (the frontmatter was lost).\n"
-    fake.objects["odd/SKILL.md"] = _SKILL_MD.replace("pay-stub", "odd").replace(
-        "bridge-kind: doctype", "bridge-kind: doc-type"
-    ).encode()
+    fake.objects["odd/SKILL.md"] = (
+        _SKILL_MD.replace("pay-stub", "odd")
+        .replace("bridge-kind: doctype", "bridge-kind: doc-type")
+        .encode()
+    )
     reg.install_skill("real-one", _SKILL_MD.replace("pay-stub", "real-one"))
 
     with caplog.at_level(logging.WARNING, logger="bridge.edge.skills"):
         assert {s.name for s in reg.list_skills()} == {"real-one"}
 
-    messages = [r.getMessage() for r in caplog.records if r.name == "bridge.edge.skills"]
+    messages = [
+        r.getMessage() for r in caplog.records if r.name == "bridge.edge.skills"
+    ]
     assert any("'bad'" in m and "frontmatter" in m for m in messages), messages
     assert any("'odd'" in m and "bridge-kind" in m for m in messages), messages
     with pytest.raises(ValueError):

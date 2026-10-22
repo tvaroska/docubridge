@@ -4,6 +4,7 @@ Small, dependency-light parser mirroring the _corpus.py idiom. Provides:
 - parse_skill_md: split frontmatter from body
 - load_skill: load a skill folder with frontmatter, body, and assets
 """
+
 import json
 from pathlib import Path
 
@@ -21,7 +22,9 @@ def parse_skill_md(md_path: Path) -> dict:
 
     # Require frontmatter fence
     if not text.startswith("---\n"):
-        raise ValueError(f"{md_path.name}: SKILL.md must start with '---' frontmatter fence")
+        raise ValueError(
+            f"{md_path.name}: SKILL.md must start with '---' frontmatter fence"
+        )
 
     # Find the closing fence
     rest = text[4:]  # Skip opening "---\n"
@@ -30,7 +33,7 @@ def parse_skill_md(md_path: Path) -> dict:
         raise ValueError(f"{md_path.name}: SKILL.md missing closing '---' fence")
 
     frontmatter_block = rest[:closing_fence]
-    body = rest[closing_fence + 5:].strip()  # Skip "\n---\n"
+    body = rest[closing_fence + 5 :].strip()  # Skip "\n---\n"
 
     frontmatter = yaml.safe_load(frontmatter_block)
     if frontmatter is None:

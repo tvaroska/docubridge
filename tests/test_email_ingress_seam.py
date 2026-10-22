@@ -102,8 +102,18 @@ def test_bad_key_refused_before_io(tmp_path, bad):
 
 @pytest.mark.parametrize(
     ("index", "filename"),
-    [(0, "../x.pdf"), (0, "a/b.pdf"), (0, "a\\b.pdf"), (0, ".hidden"), (0, ""),
-     (0, "q?.pdf"), (0, "q#.pdf"), (0, "x" * 129), (-1, "q.pdf"), (True, "q.pdf")],
+    [
+        (0, "../x.pdf"),
+        (0, "a/b.pdf"),
+        (0, "a\\b.pdf"),
+        (0, ".hidden"),
+        (0, ""),
+        (0, "q?.pdf"),
+        (0, "q#.pdf"),
+        (0, "x" * 129),
+        (-1, "q.pdf"),
+        (True, "q.pdf"),
+    ],
 )
 def test_bad_attachment_slot_refused_before_io(tmp_path, index, filename):
     for seam in _validating_adapters(tmp_path):

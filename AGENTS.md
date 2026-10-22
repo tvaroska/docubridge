@@ -1,6 +1,6 @@
 # AGENTS.md — A2A Document Bridge Agent Guide & Lessons Learned
 
-This file mirrors [`CLAUDE.md`](CLAUDE.md) and captures the repository invariants, architecture boundaries, verification gates, and operational lessons learned across the 6-Zone Enterprise Data Architecture, Agent Gym, Vertex AI Agent Engine, and GCP (`documents001`) deployments.
+This file mirrors [`CLAUDE.md`](CLAUDE.md) and captures the repository invariants, architecture boundaries, verification gates, and operational lessons learned across the 6-Zone Enterprise Data Architecture, Agent Gym, Vertex AI Agent Engine, and GCP (`docubridge-showcase`) deployments.
 
 ## 1. Repository Map & Core Invariants
 
@@ -25,7 +25,7 @@ tests/      the shared seam suite (local + gcp adapters) + enterprise architectu
 
 - **Lint:** `uv run ruff check .` (must pass with 0 errors).
 - **Unit & Enterprise Suite:** `uv run pytest` (including `tests/test_enterprise_data_architecture.py`, `tests/test_isolation_guard.py`, `tests/test_service_wiring_guard.py`, `tests/test_gemini_extraction.py`).
-- **Terraform Plan-Time Tests:** `/usr/local/google/home/tvaroska/.local/bin/terraform -chdir=terraform test` (42 assertions across 13 `.tftest.hcl` files, credential-free).
+- **Terraform Plan-Time Tests:** `terraform -chdir=terraform test` (42 assertions across 13 `.tftest.hcl` files, credential-free).
 
 ## 3. Hard-Won Lessons Learned & Gotchas
 
@@ -36,13 +36,13 @@ tests/      the shared seam suite (local + gcp adapters) + enterprise architectu
 3. **Wire `Disposition` Enum vs. `"parked"` Intake Status:**
    - `contract.enums.Disposition` only defines `accepted`, `rejected`, and `pending` (there is no `Disposition.parked`). Endpoints accepting `status="parked"` (`IngestSubmissionRequest`) must map `"parked"` to `Disposition.pending` (`Gate.hitl_review`), and Day-2 Agent Gym auto-promotion upgrades `Disposition.pending` → `Disposition.accepted` (`Gate.auto_approve`).
 4. **End-to-End Agent Gym Day-2 Payoff Wiring:**
-   - Promoted `EXTRACTION_HINT` rules in `AgentGymEngine` are wired in two places: (a) `GeminiExtractor._catalog()` / `build_extraction_prompt(schemas, extraction_hints=...)` (`bridge/extraction/gemini.py`) dynamically rebuilds the extraction prompt when promoted rule IDs change, and (b) `ingest_accepted_submission()` (`bridge/user_interaction.py`) applies matching hints to `key_fields`, auto-promotes `Disposition.pending` → `Disposition.accepted`, and records `docubridge.applied_extraction_hints` on the OpenTelemetry span.
+   - Promoted `EXTRACTION_HINT` rules in `AgentGymEngine` (`bridge/agent_gym/`) are wired in two places: (a) `GeminiExtractor._catalog()` / `build_extraction_prompt(schemas, extraction_hints=...)` (`bridge/extraction/gemini.py`) dynamically rebuilds the extraction prompt when promoted rule IDs change, and (b) `ingest_accepted_submission()` (`bridge/user_interaction/surfaces.py`) applies matching hints to `key_fields`, auto-promotes `Disposition.pending` → `Disposition.accepted`, and records `docubridge.applied_extraction_hints` on the OpenTelemetry span.
 5. **Vertex AI Agent Engine (`BridgeA2aAgentEngine`) Gotchas:**
    - `vertexai.preview.reasoning_engines.A2aAgent` in `google-cloud-aiplatform==1.165.1` targets `a2a-sdk 0.3.x` and rejects `capabilities.streaming=True`; `BridgeA2aAgentEngine` (`bridge/edge/agent_engine_a2a.py`) implements `OperationRegistrable` + `Cloneable` directly on `a2a-sdk==1.1.2` and strips C-extension protobuf descriptors in `__getstate__`/`clone()` for `cloudpickle`.
    - `resolve_a2a_engine()` must explicitly `import vertexai.agent_engines` (not just `import vertexai`).
 6. **Cloud Build `uv.lock` Index & Headless Chrome DevTools Proxy Bypass:**
-   - When regenerating `uv.lock` before `gcloud builds submit`, always run `uv lock --default-index https://pypi.org/simple` so remote Cloud Build workers resolve packages from `https://files.pythonhosted.org` instead of internal `airlock-proxy.uplink.goog:999`.
+   - When regenerating `uv.lock` before `gcloud builds submit`, always run `uv lock --default-index https://pypi.org/simple` so remote Cloud Build workers resolve packages from `https://files.pythonhosted.org` rather than a local workstation mirror.
    - In `demo/record_gcp_demo.py`, always pass `--no-proxy-server` to headless Chrome and `trust_env=False` to `httpx.AsyncClient(trust_env=False)` when polling `http://127.0.0.1:<port>/json`, otherwise proxy environment variables intercept localhost DevTools connections.
 7. **Cloud Run Warm Instances & Terraform Auth:**
-   - Both `documents001-bridge` and `documents001-bridge-rfp-board` are configured with `min_instances = 1` (`terraform/modules/runtime/main.tf`) to prevent cold starts during live demos.
-   - When running `/usr/local/google/home/tvaroska/.local/bin/terraform` outside GCE metadata environments, either export `GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` or update Cloud Run services via `gcloud run services update`.
+   - Both `docubridge-showcase-bridge` and `docubridge-showcase-bridge-rfp-board` are configured with `min_instances = 1` (`terraform/modules/runtime/main.tf`) to prevent cold starts during live demos.
+   - When running `terraform` outside GCE metadata environments, either export `GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` or update Cloud Run services via `gcloud run services update`.

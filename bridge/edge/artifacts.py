@@ -54,6 +54,7 @@ executor orchestrates around ``collect``.
 imports only ``contract/``, ``bridge.*``, ``google.adk.artifacts``,
 ``google.genai.types``, ``fastapi``/``starlette``, and stdlib.
 """
+
 from __future__ import annotations
 
 import logging
@@ -193,9 +194,7 @@ async def persist_submission(
     )
 
 
-def scoped_uri(
-    base_url: str, *, context_id: str, filename: str, version: int
-) -> str:
+def scoped_uri(base_url: str, *, context_id: str, filename: str, version: int) -> str:
     """Build the absolute scoped fetch URI (Decision 6).
 
     ``{base}/artifacts/{context_id}/{filename}?v={version}`` with ``context_id``
@@ -252,8 +251,10 @@ def gcs_signer(bucket_name: str) -> Signer:
     def _sign(context_id: str, filename: str, user_id: str, version: int | None) -> str:
         from google.cloud.storage import Client
 
-        blob = Client().bucket(bucket_name).blob(
-            _adk_gcs_blob_path(user_id, context_id, filename, version or 0)
+        blob = (
+            Client()
+            .bucket(bucket_name)
+            .blob(_adk_gcs_blob_path(user_id, context_id, filename, version or 0))
         )
         return blob.generate_signed_url(
             expiration=timedelta(minutes=SIGNED_URL_TTL_MIN), version="v4"

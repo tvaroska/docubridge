@@ -96,7 +96,9 @@ def _drain(url: str, timeout: float, *, client: httpx.Client | None = None) -> i
         print(f"drain failed: {type(exc).__name__}: {exc} ({target})", file=sys.stderr)
         return 1
     if not resp.is_success:
-        print(f"drain failed: HTTP {resp.status_code} {resp.text[:200]}", file=sys.stderr)
+        print(
+            f"drain failed: HTTP {resp.status_code} {resp.text[:200]}", file=sys.stderr
+        )
         return 1
     try:
         outcomes = resp.json()
@@ -113,6 +115,7 @@ def _drain(url: str, timeout: float, *, client: httpx.Client | None = None) -> i
 
 
 def main(argv: list[str] | None = None, *, client: httpx.Client | None = None) -> int:
+    """Run the standalone email ingress polling worker loop from CLI arguments."""
     parser = argparse.ArgumentParser(
         prog="python -m bridge.email_ingress", description=__doc__.splitlines()[0]
     )

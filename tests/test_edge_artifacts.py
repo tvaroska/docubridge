@@ -7,6 +7,7 @@ Drives the edge in-process over ``httpx.ASGITransport`` (like
 a GET fetches the bytes on demand and every fetch is leg-scoped (a foreign
 ``context_id``/filename → 404). Bytes never ride an A2A message.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -274,9 +275,7 @@ async def test_shared_store_writer_equals_reader():
 
 
 def test_scoped_uri_encodes_and_is_absolute():
-    uri = scoped_uri(
-        "http://test/", context_id="ab/cd", filename="a b.svg", version=2
-    )
+    uri = scoped_uri("http://test/", context_id="ab/cd", filename="a b.svg", version=2)
     assert uri == "http://test/artifacts/ab%2Fcd/a%20b.svg?v=2"
 
 
@@ -330,7 +329,9 @@ async def test_signed_url_redirect_for_present_artifact():
     async with _fetch_client(app) as hc:
         resp = await hc.get(f"/{ctx}/gov-id-clean.svg?v=0")
         assert resp.status_code == 307
-        assert resp.headers["location"] == _fake_signer(ctx, "gov-id-clean.svg", _UNSCOPED, 0)
+        assert resp.headers["location"] == _fake_signer(
+            ctx, "gov-id-clean.svg", _UNSCOPED, 0
+        )
         # No bytes on the wire — the client must fetch GCS directly via the URL.
         assert resp.content == b""
 

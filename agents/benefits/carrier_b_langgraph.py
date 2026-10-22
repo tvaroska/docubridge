@@ -83,10 +83,11 @@ class CarrierBExecutor(AgentExecutor):
     def __init__(self, graph=None) -> None:
         self._graph = graph if graph is not None else CARRIER_B_GRAPH
 
-    async def execute(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
-        turn = classify_turn(context.message) if context.message is not None else "quote"
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Execute an inbound benefits RFP quote turn on the LangGraph Carrier B agent."""
+        turn = (
+            classify_turn(context.message) if context.message is not None else "quote"
+        )
         # graph.invoke is synchronous + CPU-only — safe inside the async executor.
         result = self._graph.invoke({"turn": turn})
         quote = load_quote(result["doc_id"])
@@ -108,14 +109,15 @@ class CarrierBExecutor(AgentExecutor):
         )
         await updater.complete(
             message=ph.new_message(
-                parts=[ph.new_text_part(f"benefits-quote from {_CARRIER_PARTY} ({turn})")],
+                parts=[
+                    ph.new_text_part(f"benefits-quote from {_CARRIER_PARTY} ({turn})")
+                ],
                 context_id=context.context_id,
             )
         )
 
-    async def cancel(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Cancel an in-flight RFP quote task on the LangGraph Carrier B agent."""
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
 

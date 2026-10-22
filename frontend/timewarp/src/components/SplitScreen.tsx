@@ -8,7 +8,7 @@
 // between the four apps is out of scope.
 
 import { Box, Typography } from "@mui/material";
-import { Panel } from "@docbride/shared";
+import { Panel } from "@docubridge/shared";
 
 const PORTAL_URL = import.meta.env.VITE_PORTAL_APP_URL;
 const CONSOLE_URL = import.meta.env.VITE_CONSOLE_APP_URL;

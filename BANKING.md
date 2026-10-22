@@ -1,354 +1,84 @@
-# DocuBridge Neutralization, Banking, Mortgage & Insurance Showcase Specification (`BANKING.md`)
+# Financial Services & Regulated Industry Showcase Guide
 
-**Status:** Implemented & Deployed Live (`v1.12.0-showcase` in `documents001`)  
-**Target Repository:** `/usr/local/google/home/tvaroska/projects/docubridge`  
-**Deployed Revisions:** `documents001-bridge-00011-p85` & `documents001-bridge-rfp-board-00011-n9l` (`min_instances = 1`)  
-**Primary Goal:** Transition `docubridge` from its Aon-branded visual theme and insurance-only defaults to a **vendor-neutral Enterprise / Google Cloud Blue-Slate design**, and provide an interactive **3-Domain Showcase Console** (`GET /demo` and `GET /console`) covering **Commercial Loan Underwriting (`LOAN-MERIDIAN-001`)**, **Residential Mortgage Underwriting & TRID Closing (`MORTGAGE-WESTBROOK-2026`)**, and **Commercial Insurance Placement (`terrepower-coastal-2027`)**—with full **OpenTelemetry + BigQuery Trace X-Ray, Click-to-Source Document Proof Modal, Governance, and Day-2 Continuous Learning Payoff (Agent Gym)**.
+**DocuBridge** ships with three pre-seeded, multi-document enterprise workflows spanning **Institutional Banking (KYC/AML)**, **Residential Mortgage Origination (TRID / Fannie Mae)**, and **Commercial & Employee Benefits Insurance (RFP Placement)**.
 
----
-
-## 1. Architectural Objectives & Guardrails
-
-1. **Vendor & Customer Neutrality:**
-   - Remove all Aon-specific visual branding (`--aon-red: #e11b22`, `--aon-navy: #1b1c27`, `AON` header wordmark, `Aon Document Bridge`, `Aon Provider Portal`) and replace with a neutral **Enterprise / Google Cloud Blue-Slate** palette (`#0f172a` slate header, `#2563eb` / `#1a73e8` primary blue accent, `DOCUBRIDGE` wordmark).
-   - Replace Aon-specific default URIs and trust domains (`agents.global.aon.net`, `https://aon.com/a2ui/...`, `gs://aon-docubridge-audit-vault`, `alloydb://aon-enterprise-data/...`, `aon_lakehouse.bq_policy_facts_iceberg`, `@aon.com`) with neutral `docubridge.io` / `docubridge-audit-vault` / `docubridge_lakehouse` identifiers.
-   - Keep all demo entities 100% synthetic (`Meridian Logistics Center LLC` for Banking; `Terrepower Coastal LLC` for Insurance). Never include real customer names, logos, or PII/MNPI.
-2. **Three-Domain Interactive Experience & Multi-Model Split (`gemini-3.8-flash` + `gemini-4-argon`):**
-   - Make **Banking: Commercial Loan Underwriting (`LOAN-MERIDIAN-001`)** the default scenario in the 5-stage interactive walkthrough console (`demo/enterprise-demo.html`, served live at `GET /demo` and `GET /console`), with a **1-click domain toggle** in the top navigation bar across all 3 enterprise verticals:
-     - `🏦 Banking · Commercial Loan` *(Default — `Meridian Logistics Center LLC`)*
-     - `🏠 Mortgage · TRID Closing` *(`Westbrook Family Trust`)*
-     - `🛡️ Insurance · Commercial Placement` *(`Terrepower Coastal LLC`)*
-   - Showcase the **Gemini Platform Multi-Model Split**:
-     - **Workhorse Model (`gemini-3.8-flash`):** High-throughput layout extraction (`production_inference`) on Path B PDFs.
-     - **Reasoning / Teacher / Judge Model (`gemini-4-argon`):** Day-1 cross-document conflict escalation (`conflict_escalation`), offline Agent Gym signal distillation, 3-Tier Evaluation Judge, and `SKILL.md` Harness Evolve compiler (`agent_gym_eval`). Once an Agent Gym rule is promoted, Day-2 submissions are resolved 100% by `gemini-3.8-flash` + deterministic code with **0 `gemini-4-argon` escalation tokens**.
-   - Switching the toggle dynamically updates all 5 stages (Dual-Path Intake & Vault, Consolidation & Bi-Temporal Views, SPIFFE OBO & A2UI v0.9 Inbox with Two-Sided Oversight `RSR`, Agent Gym 3-Tier Gate & `Compile to SKILL.md`, and OpenTelemetry `gen_ai.*` Waterfall & FinOps X-Ray) and executes live API calls against the FastAPI backend.
-3. **Zero Regression on Core Isolation & Conformance Guards:**
-   - **CRITICAL (`tests/test_isolation_guard.py`):**
-     - `bridge/` must NEVER import `agents/`, and `agents/` must NEVER import `bridge/`.
-     - `test_core_names_no_skill` scans every Python file in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring string literal equals an installed folder name in `skills/`. Do **not** hardcode `skills/` folder names inside `bridge/` core modules.
-   - All existing unit, conformance, and frontend tests (`uv run pytest`, `uv run ruff check`, `pnpm test`) must pass with zero warnings or regressions.
+Each domain exercises the full 6-zone architecture:
+1. **Zone 1 — A2A v0.3 Edge & Intake:** Multi-channel document ingestion (A2A wire turns, provider upload portal, and correlated MIME email ingress).
+2. **Zone 2 — Hybrid Extraction & Disposition Gate:** Document AI layout pre-pass + `gemini-3.8-flash` structured extraction with bounding-box provenance and deterministic rule checks.
+3. **Zone 3 — Dual-Write Audit Vault & Operational Fact Store:** WORM SHA-256 evidence locking (`bridge/vault.py`) paired with relational entity and fact normalization (`bridge/operational_store.py`).
+4. **Zone 4 — Enterprise Knowledge Catalog & W3C PROV-O Lineage:** Business glossary mapping, sensitivity tagging (`CONFIDENTIAL`, `RESTRICTED_PII`), and end-to-end lineage graphs (`bridge/knowledge_catalog.py`).
+5. **Zone 5 — Declarative A2UI v0.9 Action Inbox:** Role-aware human-in-the-loop review surfaces with compound SPIFFE + human authority enforcement and cryptographic `HMAC-SHA256` resolution signatures (`bridge/a2ui_inbox.py`).
+6. **Zone 6 — Agent Gym & Closed-Loop Skill Evolution:** Golden and adversarial stress testing (`gemini-4-argon` judge), candidate skill mutation, and shadow-traffic promotion (`bridge/agent_gym/`).
 
 ---
 
-## 2. File-by-File Implementation Specification
+## 1. Institutional Banking — Corporate KYC & Beneficial Ownership (`banking`)
 
-### 2.1 Backend Identity & SPIFFE Registry (`bridge/identity.py`)
+### Regulatory Context
+- **Frameworks:** FinCEN CDD Rule (31 CFR 1010.230), FATF Recommendation 24 (Beneficial Ownership Transparency), and BSA/AML Customer Due Diligence.
+- **Collection Process:** Multi-slot corroboration across Government ID (`gov-id`), Proof of Residential Address (`address-proof`), and Corporate Utility / Operating Address (`utility-bill`).
 
-Update default constants and registered SPIFFE agent policies (lines 51–185, 239–302):
+### Seeded Showcase Entities
+| Entity ID | Legal Name | Jurisdiction | Scenario Highlights |
+| :--- | :--- | :--- | :--- |
+| `ent-bank-apex-001` | **Apex Global Trade Ltd.** | `US-DE` | Cross-document beneficial ownership verification (`28.5%` UBO stake), LEI validation, and address corroboration across passport and utility statement. |
+| `ent-bank-meridian-002` | **Meridian Treasury Services Corp.** | `GB-LON` | High-value institutional treasury onboarding requiring `kyc_analyst` / `compliance_officer` sign-off in the A2UI Action Inbox. |
 
-1. **Trust Domain, Signing Secret & Audience:**
-   - `DEFAULT_SPIFFE_TRUST_DOMAIN = "agents.docubridge.io"` (was `"agents.global.aon.net"`)
-   - `DEFAULT_DEV_SVID_SECRET = "docubridge-spiffe-svid-signing-key-v1"` (was `"aon-docubridge-spiffe-svid-signing-key-v1"`)
-   - In `mint_jwt_svid()` and `verify_jwt_svid()`, set default `audience: str = "docubridge"` and `expected_audience: str | None = "docubridge"` (was `"aon-docubridge"`).
-2. **`DEFAULT_SPIFFE_AGENT_POLICIES`:**
-   - Replace the `spiffe://agents.global.aon.net/...` keys and `"Aon ..."` display names with neutral `spiffe://agents.docubridge.io/...` policies supporting both Banking and Insurance workflows:
-     - `spiffe://agents.docubridge.io/internal/credit-officer-agent` — `"Internal Credit & Loan Underwriting Agent"` (`security_zone="internal"`, `allowed_channels=("gemini_app",)`, `allowed_roles=("underwriter", "broker", "executive")`, `allowed_views=("v_underwriter_exposure", "v_broker_placement", "v_claims_coverage")`, `allow_vault_promotion=True`)
-     - `spiffe://agents.docubridge.io/internal/broker-agent` — `"Internal Commercial Placement & Deal Desk Agent"` (`security_zone="internal"`, `allowed_channels=("gemini_app",)`, `allowed_roles=("broker", "executive")`, `allowed_views=("v_broker_placement", "v_claims_coverage", "v_underwriter_exposure")`, `allow_vault_promotion=True`)
-     - `spiffe://agents.docubridge.io/internal/claims-agent` — `"Internal Covenant & Claims Review Agent"` (`security_zone="internal"`, `allowed_channels=("gemini_app",)`, `allowed_roles=("claims", "broker", "executive")`, `allowed_views=("v_claims_coverage", "v_broker_placement")`, `allow_vault_promotion=False`)
-     - `spiffe://agents.docubridge.io/internal/underwriter-agent` — `"Internal Technical Underwriting & Risk Agent"` (`security_zone="internal"`, `allowed_channels=("gemini_app",)`, `allowed_roles=("underwriter", "broker", "executive")`, `allowed_views=("v_underwriter_exposure", "v_broker_placement", "v_claims_coverage")`, `allow_vault_promotion=True`)
-     - `spiffe://agents.docubridge.io/portal/external-portal-agent` — `"External Client, Borrower & Partner Portal Agent"` (`security_zone="external"`, `allowed_channels=("custom_web",)`, `allowed_roles=("client", "carrier")`, `allowed_views=("v_broker_placement", "v_claims_coverage")`, `allow_vault_promotion=False`)
-     - `spiffe://agents.docubridge.io/ingest/docubridge-collector` — `"DocuBridge Intake & Consolidation Collector"` (`security_zone="internal"`, `allowed_channels=("gemini_app",)`, `allowed_roles=("broker", "claims", "underwriter", "executive")`, `allowed_views=("v_broker_placement", "v_claims_coverage", "v_underwriter_exposure")`, `allow_vault_promotion=True`)
+### Key Canonical Facts & Glossary Terms
+- `ubo_ownership_pct` (`gls-bank-ubo`): Ultimate Beneficial Owner percentage stake (`>= 25%` regulatory threshold).
+- `legal_entity_identifier` (`gls-bank-lei`): 20-character ISO 17442 LEI code.
+- `kyc_risk_rating` (`gls-bank-risk`): Computed AML risk tier (`LOW`, `MEDIUM`, `HIGH`).
 
 ---
 
-### 2.2 Governed A2UI v0.9 Catalogs (`bridge/a2ui_inbox.py`)
+## 2. Residential Mortgage — TRID Closing & Underwriting (`mortgage`)
 
-Update catalog URIs and schema `$id` values (lines 51–56, 90–145):
+### Regulatory Context
+- **Frameworks:** CFPB TILA-RESPA Integrated Disclosure (TRID / Regulation Z) and Fannie Mae Selling Guide B3-3.1 (Income & Asset Assessment).
+- **Collection Process:** Corroborates borrower identity, occupancy address, debt-to-income (DTI) ratio, and Loan Estimate vs. Closing Disclosure fee tolerances.
 
-- `INBOX_CATALOG_ID = "https://docubridge.io/a2ui/v0_9/catalogs/enterprise_inbox_catalog.json"` (was `"https://aon.com/a2ui/v0_9/catalogs/enterprise_inbox_catalog.json"`)
-- `PORTAL_CATALOG_ID = "https://docubridge.io/a2ui/v0_9/catalogs/portal_customer_catalog.json"` (was `"https://aon.com/a2ui/v0_9/catalogs/portal_customer_catalog.json"`)
-- Update docstrings and comments to refer to "internal enterprise teams" instead of "internal Aon teams".
+### Seeded Showcase Entities
+| Entity ID | Borrower / File Name | Jurisdiction | Scenario Highlights |
+| :--- | :--- | :--- | :--- |
+| `ent-mort-harborview-001` | **Harborview Estates 2026-A (Elena Rostova)** | `US-CA` | Conforming residential mortgage file with DTI check (`36.4%`), appraisal LTV corroboration (`78.0%`), and TRID zero-tolerance fee verification. |
 
----
-
-### 2.3 Zone 3 & Zone 4 Operational Store & Banking Consolidation Rules (`bridge/operational_store.py`)
-
-1. **Expand `_MONEY_KEYS` (lines 68–81) for Banking Loan Underwriting:**
-   Add canonical banking monetary fields so `consolidate_entry()` and `compute_financial_summary()` deterministically parse and sum banking amounts in fixed-point `Decimal(0.01)`:
-   ```python
-   _MONEY_KEYS = frozenset(
-       {
-           # Insurance & Benefits
-           "premium",
-           "deductible",
-           "coverage_limit",
-           "coverage_limits",
-           "insured_value",
-           "total_insured_value",
-           "claim_amount",
-           "reserve_amount",
-           "sublimit",
-           "net_pay",
-           # Banking & Commercial Loan Underwriting
-           "loan_amount",
-           "principal_amount",
-           "facility_limit",
-           "appraised_value",
-           "collateral_value",
-           "origination_fee",
-           "closing_fee",
-           "rate_lock_fee",
-           "annual_debt_service",
-           "net_operating_income",
-       }
-   )
-   ```
-2. **Expand `source_priority_for_doctype()` (lines 109–126) for Banking Doctypes:**
-   Support banking document authority hierarchy alongside insurance doctypes:
-   - Priority `40` (Highest — Overrides base terms): `"endorsement"`, `"amendment"`, `"addendum"`, `"closing-disclosure"`, `"fee-override"`
-   - Priority `30` (Executed / Bound agreements): `"policy"`, `"binder"`, `"credit-agreement"`, `"commitment-letter"`, `"loan-agreement"`, `"promissory-note"`
-   - Priority `20` (Quotes, Appraisals & Term Sheets): `"quote"`, `"cert"`, `"term-sheet"`, `"appraisal"`, `"rent-roll"`
-   - Priority `10` (Applications, Statements & Default): `"application"`, `"bill"`, `"statement"`, default
-3. **Neutralize BigQuery Open Iceberg Table Name (lines 307, 330, 370–389):**
-   - Change `"aon_lakehouse.bq_policy_facts_iceberg"` $\rightarrow$ `"docubridge_lakehouse.bq_operational_facts_iceberg"` on `BigQuerySyncRecord.iceberg_table`, `BigQuerySyncBatch.iceberg_table`, and `BIGQUERY_ICEBERG_DDL`.
-4. **Financial Summary Mapping (`compute_financial_summary`, lines 556–593):**
-   - Allow banking equivalents to roll up into `FinancialSummary` when insurance fields are absent (or alongside them):
-     - `origination_fee` / `closing_fee` / `rate_lock_fee` / `annual_debt_service` $\rightarrow$ rolls up into `total_premium` (or `total_deductible` for fee/retention exposure: map `origination_fee` / `closing_fee` / `rate_lock_fee` into `total_deductible` and `annual_debt_service` into `total_premium`, `loan_amount` / `principal_amount` / `facility_limit` into `total_coverage_limit`, and `appraised_value` / `collateral_value` into `total_insured_value`).
-     - This ensures `UnderwriterView` and `BrokerView` automatically compute deterministic `Decimal` ratios for banking submissions without breaking any existing schema fields!
+### Key Canonical Facts & Glossary Terms
+- `back_end_dti_pct` (`gls-mort-dti`): Total monthly debt obligation divided by gross monthly income.
+- `loan_to_value_pct` (`gls-mort-ltv`): Loan amount relative to appraised property value.
+- `trid_apr_variance_bps` (`gls-mort-trid`): Basis-point delta between disclosed APR and recalculated actuarial APR.
 
 ---
 
-### 2.4 Zone 6 Knowledge Catalog (`bridge/knowledge_catalog.py`)
+## 3. Commercial & Benefits Insurance — Multi-Carrier RFP Placement (`insurance`)
 
-1. **Neutralize Physical URIs in `DEFAULT_SYSTEM_ASSETS` (lines 294–450) and `_build_trace_from_fact` (lines 750–780):**
-   - `gs://aon-docubridge-audit-vault/vault/` $\rightarrow$ `gs://docubridge-audit-vault/vault/`
-   - `alloydb://aon-enterprise-data/operational/bridge_operational_facts` $\rightarrow$ `alloydb://docubridge-enterprise-data/operational/bridge_operational_facts`
-   - `alloydb://aon-enterprise-data/views/v_broker_placement` $\rightarrow$ `alloydb://docubridge-enterprise-data/views/v_broker_placement`
-   - `alloydb://aon-enterprise-data/views/v_claims_coverage` $\rightarrow$ `alloydb://docubridge-enterprise-data/views/v_claims_coverage`
-   - `alloydb://aon-enterprise-data/views/v_underwriter_exposure` $\rightarrow$ `alloydb://docubridge-enterprise-data/views/v_underwriter_exposure`
-   - `bigquery://aon_lakehouse.bq_policy_facts_iceberg` $\rightarrow$ `bigquery://docubridge_lakehouse.bq_operational_facts_iceberg`
-   - `alloydb://aon-enterprise-data/gym/...` $\rightarrow$ `alloydb://docubridge-enterprise-data/gym/...`
-2. **Add Banking Business Glossary Terms to `DEFAULT_GLOSSARY_TERMS` (lines 219–292):**
-   Keep the 4 existing terms and append 2 banking underwriting terms:
-   - `term.loan_to_value_ratio` (`"Commercial Loan-to-Value (LTV) & Fee Exposure"`, `domain="underwriting"`, `canonical_fields=("loan_amount", "appraised_value", "origination_fee")`, `calculation_formula="(loan_amount / appraised_value) * 100"`)
-   - `term.addendum_priority_hierarchy` (`"Credit Addendum & Closing Disclosure Authority"`, `domain="governance"`, `canonical_fields=("origination_fee", "loan_amount")`, `calculation_formula="Signed Addendum / Closing Disclosure (40) > Credit Agreement (30) > Term Sheet / Appraisal (20) > Application (10)"`)
+### Regulatory Context
+- **Frameworks:** NAIC Model Laws, ERISA Plan Sponsor Fiduciary Disclosure, and State Department of Insurance (DOI) rate/schedule filing standards.
+- **Collection Process:** Solicits, normalizes, and compares multi-line carrier quotes (`benefits-rfp`, `benefits-quote`, `benefits-procurement`) across Life, AD&D, LTD, Dental, and Vision lines.
 
----
+### Seeded Showcase Entities
+| Entity ID | Account / Placement Name | Jurisdiction | Scenario Highlights |
+| :--- | :--- | :--- | :--- |
+| `ent-ins-northstar-001` | **Northstar Manufacturing Group RFP** | `US-IL` | Multi-carrier benefits placement comparing Carrier A (ADK agent) and Carrier B (LangGraph agent) rate tables, guarantee windows, and plan design deviations. |
 
-### 2.5 Zone 6 Agent Gym & Programmable Trust Policies (`bridge/agent_gym.py`)
-
-Update `DEFAULT_TRUST_POLICIES` (lines 269–310) to use `@docubridge.io` principals and include **both** the 3 Banking slices and the 3 Insurance slices so both modes in the interactive UI are backed by live `/v1/gym/trust-policies` state:
-
-| Slice ID | Domain | `issuer_pattern` | `doctype` | `risk_level` | Initial `autonomy_level` | `consecutive_matches` | `last_updated_by` |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `slice:closing-disclosure:fee-schedule:LOW` | Banking | `Meridian*` | `closing-disclosure` | `LOW` | `trusted_auto_approve` | `14 / 5` | `senior.credit.officer@docubridge.io` |
-| `slice:credit-agreement:addendum:MEDIUM` | Banking | `Syndicated*` | `addendum` | `MEDIUM` | `guided_review` | `4 / 5` | `senior.credit.officer@docubridge.io` |
-| `slice:appraisal-report:commercial:HIGH` | Banking | `CBRE*` | `appraisal` | `HIGH` | `shadow_mode` | `2 / 5` | `system:bootstrap` |
-| `slice:chubb:quote:LOW` | Insurance | `Chubb*` | `quote` | `LOW` | `trusted_auto_approve` | `12 / 5` | `lead.broker@docubridge.io` |
-| `slice:aig:endorsement:MEDIUM` | Insurance | `AIG*` | `endorsement` | `MEDIUM` | `guided_review` | `4 / 5` | `lead.underwriter@docubridge.io` |
-| `slice:lloyds:quote:HIGH` | Insurance | `Lloyd's*` | `quote` | `HIGH` | `shadow_mode` | `2 / 5` | `system:bootstrap` |
-
-> **Note:** Both `slice:credit-agreement:addendum:MEDIUM` (Banking) and `slice:aig:endorsement:MEDIUM` (Insurance) start at `4 / 5` consecutive matches in `guided_review`. During an interactive session or automated test, recording the 5th shadow match (`POST /v1/gym/trust-policies/{slice_id}/shadow`) makes `ready_for_promotion=True` and unlocks live promotion to `trusted_auto_approve` (`POST /v1/gym/trust-policies/{slice_id}/dial`).
+### Key Canonical Facts & Glossary Terms
+- `total_annual_premium_usd` (`gls-ins-premium`): Aggregated annual premium across quoted coverage lines.
+- `rate_guarantee_months` (`gls-ins-guarantee`): Duration of locked carrier rate guarantee (`12`, `24`, or `36` months).
+- `commission_schedule_pct` (`gls-ins-commission`): Disclosed broker commission percentage.
 
 ---
 
-### 2.6 Zone 5 User Interaction & Live Console Route (`bridge/user_interaction.py`, `bridge/dashboard/server.py`, `Dockerfile`)
-
-1. **`bridge/user_interaction.py` (line 250–256):**
-   - In `resolve_caller_role()`, support `"credit"` / `"officer"` mapping to `"underwriter"`, and recognize `@docubridge.io` (while keeping `@aon.com` as a backward-compatible fallback):
-     ```python
-     if verified_role is None and iap_email:
-         lowered = iap_email.lower()
-         if "credit" in lowered:
-             verified_role = "underwriter"
-         else:
-             for r in ("underwriter", "claims", "broker", "carrier", "client"):
-                 if r in lowered:
-                     verified_role = cast(CatalogRole, r)
-                     break
-         if verified_role is None and lowered.endswith(("@docubridge.io", "@aon.com")):
-             verified_role = "broker"
-     ```
-2. **Serve the Interactive Console (`GET /demo` and `GET /console`) directly from FastAPI:**
-   - Mount `GET /demo` and `GET /console` (returning `HTMLResponse` with `demo/enterprise-demo.html`) in `build_user_interaction_router()` (`bridge/user_interaction.py`), which is automatically included by both `build_dashboard_app()` (`bridge/dashboard/server.py`) and `build_user_interaction_app()`.
-   - In `Dockerfile`, add `COPY demo/ ./demo/` alongside `COPY contract/ bridge/ skills/ wiki/` so Cloud Run services (`documents001-bridge-rfp-board`) can serve `/demo` and `/console` directly in the browser.
-
----
-
-### 2.7 React Ops Dashboard Theme (`frontend/ops-dashboard/src/theme.ts`)
-
-- In `frontend/ops-dashboard/src/theme.ts` (line 10) and `frontend/shared/src/theme.ts` (comment on line 5):
-  - Change `export const theme = makeTheme("#d93025");` $\rightarrow$ `export const theme = makeTheme("#1a73e8");` (Google Cloud Blue, replacing the red accent).
-
----
-
-### 2.8 Interactive 4-Stage Console Redesign & Domain Toggle (`demo/enterprise-demo.html` & `demo/record_gcp_demo.py`)
-
-1. **Neutral Enterprise / Google Cloud Blue-Slate Theme (`demo/enterprise-demo.html`):**
-   - Replace CSS variables:
-     - `--brand-primary: #1a73e8` (Google Cloud Blue)
-     - `--brand-primary-dark: #1557b0`
-     - `--brand-slate: #0f172a` (Deep Slate Header)
-     - `--brand-bg: #f8fafc`
-   - Replace `<span class="aon-wordmark">AON</span>` with `<span class="brand-wordmark">DOCUBRIDGE</span>` and subtitle `Enterprise Data Architecture · Observability, Governance & Agent Gym`.
-2. **Interactive Domain Switcher (`Banking · Loan Underwriting` $\leftrightarrow$ `Insurance · Commercial Placement`):**
-   - Add a prominent domain toggle in the top header (`window.switchDomain('banking' | 'insurance')`) that defaults to `'banking'`.
-   - **Banking Scenario (`Meridian Logistics Center LLC — $45,000,000 Commercial Real Estate Term Loan`):**
-     - **Scene 1 (External Borrower/Lender Portal & Internal Dual-Path Intake):**
-       - *Path A (Structured Excel, 0 AI Tokens):* `meridian-rent-roll-dscr-2026.xlsx` (38 commercial tenants, Net Operating Income `$4,185,000.00`, DSCR `1.42x`, 2 guarantor SSNs masked at edge `[REDACTED-SSN]`, locked in 7-year WORM Audit Vault `gs://docubridge-audit-vault/...`).
-       - *Path B Card 1 (Quarantined PDF):* `syndicated-credit-agreement-meridian-2026.pdf` — Cover Term Sheet states `$50,000` Origination & Rate-Lock Fee (`Page 1 · Region [0.14, 0.31]`), whereas Schedule B Fee & Covenant Addendum specifies `$100,000` (`Page 4 · Region [0.12, 0.44]`). Parked by the **4-Signal Disposition Gate** in Review Quarantine (`awaiting_human_review`).
-       - *Path B Card 2 (Accepted PDF):* `cbre-mai-commercial-appraisal-2026.pdf` — Multi-window table merge across pages 1–24, Appraised Collateral Value `$62,500,000.00` (`Page 11`), Implied LTV `72.00%`, auto-approved (`Confidence 99%`).
-       - *Zone 6 Asset Map Table:* Dynamically populated from live `GET /v1/catalog/assets`.
-     - **Scene 2 (Consolidation Rules Engine, Bi-Temporal Store & 6-Hop Lineage):**
-       - Role-Based Views switcher: **Credit Officer View (Deal & Conflicts)**, **Underwriter View (LTV, DSCR & Fee Exposure)**, **Covenant / Audit View (Effective-Date Terms)**.
-       - Shows deterministic `Decimal` reconciliation: Schedule B Fee Addendum (`$100,000.00`, Priority 40) supersedes Cover Term Sheet (`$50,000.00`, Priority 20) while flagging the cross-document conflict (`FactConflict`).
-       - Shows Borrower Entity Resolution: Agent Gym rule normalizes `"Meridian Logistics Holdings Ltd."` $\rightarrow$ `"Meridian Logistics"` while keeping `"Meridian SPV II"` distinct.
-       - Right column displays the **6-Hop End-to-End Lineage Trace** (`GET /v1/catalog/lineage/...`) and **BigQuery Open Iceberg Watermark Sync** (`docubridge_lakehouse.bq_operational_facts_iceberg`).
-     - **Scene 3 (SPIFFE Workload Identity, OBO Authority Gate & A2UI v0.9 Action Inbox):**
-       - Interactive persona switcher between:
-         1. `Junior Loan Officer (Max Authority $25k)` (`obo.sub = "junior.officer@docubridge.io"`, `max_approval_amount = "25000"`): Clicking **Approve** triggers a live or simulated **HTTP 403 / 422 Authority Refusal Banner** because the `$100,000` Schedule B fee override exceeds the officer's `$25,000` authority limit.
-         2. `Senior Credit Officer (SPIFFE OBO · $25M Authority)` (`act.sub = "spiffe://agents.docubridge.io/internal/credit-officer-agent"`, `obo.sub = "senior.credit.officer@docubridge.io"`): Clicking **✓ Edit & Approve** resolves the A2UI v0.9 Action Card, emits the RFC 6902 JSON Patch `[{"op": "replace", "path": "/origination_fee_usd", "value": "$100,000"}]`, and advances the 4-step progress tracker to `100% Completed`.
-     - **Scene 4 (Agent Gym Continuous Learning & Programmable Trust Dial):**
-       - Interactive buttons wired to real `fetch()` calls against the backend (`window.location.origin` when served from FastAPI, with automatic fallback if opened via `file://`):
-         1. **`1. Distill "Example of One" Signal`** $\rightarrow$ `POST /v1/gym/signals/from-quarantine` (distills the single `$50,000` $\rightarrow$ `$100,000` Schedule B addendum correction into a `CANDIDATE` `TribalKnowledgeRule`).
-         2. **`2. Run Stress Suite & Report Card Gate`** $\rightarrow$ `POST /v1/gym/rules/{rule_id}/evaluate` (runs the 4 synthetic perturbation stress cases + 12 historical benchmarks + Decimal math firewall check, updating the Report Card UI to `100.0%` and status `PROMOTED`).
-         3. **`3. Promote Credit Addendum Slice to Trusted Auto-Approve`** $\rightarrow$ `POST /v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/shadow` (records 5th consecutive match) followed by `POST /v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/dial` (promotes slice to `3. Trusted Auto-Approve ✓` and refreshes the table).
-         4. **`4. Simulate Format Drift (Safety Dial-Back)`** $\rightarrow$ `POST /v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/shadow` with `ai_value != human_value` (demonstrates **Instant Safety Dial-Back** demoting the slice from `Trusted Auto-Approve` back to `Guided Human Review` with `0/5` streak and `1 drift incident`!).
-
----
-
-## 3. Observability, Tracing, Governance & Evaluation Test Specification
-
-All changes must be verified by automated tests in `tests/test_enterprise_data_architecture.py` (plus existing test suites) and interactive verification.
-
-### 3.1 Automated Test Suite Requirements (`tests/test_enterprise_data_architecture.py`)
-
-1. **Update Existing Assertions for Neutral URIs:**
-   - Update `spiffe://agents.global.aon.net/...` $\rightarrow$ `spiffe://agents.docubridge.io/...`
-   - Update `gs://aon-docubridge-audit-vault/...` $\rightarrow$ `gs://docubridge-audit-vault/...`
-   - Update `aon_lakehouse.bq_policy_facts_iceberg` $\rightarrow$ `docubridge_lakehouse.bq_operational_facts_iceberg`
-   - Keep `@docubridge.io` (and verify `@aon.com` backward compatibility) in IAP / OBO principal tests.
-2. **Add New Test: `test_banking_loan_underwriting_observability_lineage_and_evaluation()`:**
-   Must explicitly test and assert all 4 session pillars on the **Banking Loan Underwriting** scenario (`entity_id="LOAN-MERIDIAN-001"`):
-   - **Pillar 1 — Tracing, Provenance & Bi-Temporal Observability:**
-     - Ingest `term-sheet` (`doc-meridian-ts-v1`, priority `20`, `origination_fee="$50,000.00"`, `loan_amount="$45,000,000.00"`, `appraised_value="$62,500,000.00"` at `t0`) and `closing-disclosure` / `addendum` (`doc-meridian-addendum-v2`, priority `40`, `origination_fee="$100,000.00"` with `SourceAnchor(page_number=4, bounding_box=(0.12, 0.44, 0.58, 0.51))` at `t1`).
-     - Verify `catalog.trace_lineage("LOAN-MERIDIAN-001", "origination_fee")` returns all **6 lineage hops** (`INBOUND` $\rightarrow$ `AUDIT_VAULT` $\rightarrow$ `OPERATIONAL_STORE` $\rightarrow$ `BUSINESS_VIEW` $\rightarrow$ `BIGQUERY_ICEBERG` $\rightarrow$ `USER_INTERACTION_A2UI`), with `current_value == "$100,000.00"`, `source_anchor.page_number == 4`, and `consolidation_rule` reflecting `priority=40`.
-     - Verify bi-temporal point-in-time query at `learned_as_of=t0` returns `$50,000.00` while `learned_as_of=t1` returns `$100,000.00` and flags a `FactConflict` between `doc-meridian-addendum-v2` and `doc-meridian-ts-v1`.
-     - Verify watermarked BigQuery Iceberg CDC export (`store.export_bigquery_sync_batch("LOAN-MERIDIAN-001", since_recorded_at=t0)`) exports only the delta from `t1` into `docubridge_lakehouse.bq_operational_facts_iceberg`.
-   - **Pillar 2 — Runtime Governance, SPIFFE OBO & A2UI v0.9 SSE Telemetry:**
-     - Mint a SPIFFE JWT-SVID for `spiffe://agents.docubridge.io/internal/credit-officer-agent` acting on behalf of `usr:junior.officer@docubridge.io` with `max_approval_amount="25000.00"`.
-     - Create an A2UI v0.9 Inbox action for `LOAN-MERIDIAN-001` with `approvedAmount: 100000.0` and verify that the junior officer's `edit_and_approve` call is **rejected with HTTP 422** (exceeds `$25,000` principal authority limit).
-     - Mint a SPIFFE JWT-SVID for `spiffe://agents.docubridge.io/internal/credit-officer-agent` acting on behalf of `usr:senior.credit.officer@docubridge.io` (`max_approval_amount="25000000.00"`), execute `edit_and_approve`, and verify:
-       - RFC 6902 patch `/transfer/approvedAmount` and `/resolution/selectedValue` is recorded in `inbox_store.list_audit_records()`.
-       - Both `actor_principal == "usr:senior.credit.officer@docubridge.io"` and `agent_spiffe_id == "spiffe://agents.docubridge.io/internal/credit-officer-agent"` are logged in the immutable audit record.
-       - Live SSE stream `GET /v1/a2ui/inbox/items/{item_id}/events` emits `event: a2ui.surface` and `event: a2ui.delta`.
-   - **Pillar 3 — Continuous Evaluation (Agent Gym Stress Suite + Decimal Math Firewall):**
-     - Post the single Schedule B addendum correction (`$50,000.00` $\rightarrow$ `$100,000.00` on `Syndicated Credit Agreement`, page 4) to `POST /v1/gym/signals/from-quarantine`.
-     - Evaluate the candidate rule via `POST /v1/gym/rules/{rule_id}/evaluate` and assert:
-       - `passed_gate is True`
-       - `math_firewall_intact is True`
-       - `stress_cases_total == 4` and `stress_cases_passed == 4`
-       - `len(historical_regressions) == 0`
-       - `baseline_slice_score == 0.5` $\rightarrow$ `candidate_slice_score == 1.0` (`+0.5` improvement delta)
-     - Distill and evaluate a borrower entity alias rule (`"Meridian Logistics Holdings Ltd."` $\rightarrow$ `"Meridian Logistics"`, `distinct_entities=["Meridian SPV II"]`) and verify `ingest_accepted_submission()` normalizes `"Meridian Logistics Holdings Ltd."` to `"Meridian Logistics"` while preserving `"Meridian SPV II"`.
-     - Verify the **Hallucination / Math Firewall Gate** blocks a rule containing `override_decimal_math` / `llm_calculate_total` (`math_firewall_intact is False`, `status == "rejected"`).
-   - **Pillar 4 — Graduated Autonomy (Programmable Trust Dial & Instant Safety Dial-Back):**
-     - Verify `GET /v1/gym/trust-policies` includes `slice:credit-agreement:addendum:MEDIUM` at `guided_review` with `4/5` consecutive matches.
-     - Record a 5th exact match (`POST /v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/shadow` with `ai_value="$100,000.00"`, `human_value="$100,000.00"`), verify `ready_for_promotion is True`, and promote to `trusted_auto_approve` via `POST /v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/dial`.
-     - Inject a format drift mismatch (`ai_value="$50,000.00"`, `human_value="$100,000.00"`) on `POST /v1/gym/trust-policies/slice:credit-agreement:addendum:MEDIUM/shadow` and assert **Instant Safety Dial-Back**:
-       - `autonomy_level == "guided_review"`
-       - `consecutive_matches == 0`
-       - `drift_incidents == 1`
-3. **Verify Interactive Console Endpoint (`GET /demo` and `GET /console`):**
-   - Assert `client.get("/demo").status_code == 200` and `"DOCUBRIDGE"` in `client.get("/demo").text` and `"Meridian Logistics Center LLC"` in `client.get("/demo").text`.
-
----
-
-## 4. How to Run & Test in Interactive Mode
-
-### 4.1 Automated Verification Commands (Run First)
-
-From `/usr/local/google/home/tvaroska/projects/docubridge`:
+## Running the Interactive 3-Domain Showcase
 
 ```bash
-# 1. Lint & Format Check
-uv run ruff check .
+# Start the unified demo server locally
+.venv/bin/uvicorn bridge.dashboard.board:build_board_app --factory --port 8080
 
-# 2. Architectural Isolation & Skill-Name Guard
-uv run pytest tests/test_isolation_guard.py -v
-
-# 3. 6-Zone Enterprise Data Architecture, Observability, Lineage, SPIFFE & Agent Gym Suite
-uv run pytest tests/test_enterprise_data_architecture.py -v
-
-# 4. Disposition Gate Threshold Calibration Corridor (Corpus Evaluation Check)
-uv run python -m bridge.calibration
-
-# 5. Full Backend + Frontend Test Suite
-uv run pytest
-pnpm --dir frontend test -- --run
+# Open the interactive 6-Zone Enterprise Console
+open http://localhost:8080/demo
 ```
 
-### 4.2 Launching Interactive Mode Locally
-
-You can run the interactive demo in two ways depending on which surfaces you want to show live:
-
-#### Mode A: Single-Command Interactive Enterprise Console + Live APIs (Fastest for Live Demo)
-
-Starts the Ops Dashboard + Zone 5 A2UI Inbox + Zone 6 Knowledge Catalog + Agent Gym + Interactive 4-Stage Console on port `8003`:
-
-```bash
-cd /usr/local/google/home/tvaroska/projects/docubridge
-uv run uvicorn --factory bridge.dashboard.server:build_dashboard_app --host 127.0.0.1 --port 8003
-```
-
-Open in browser:
-- **Interactive 4-Stage Console (Banking + Insurance Toggle):** `http://127.0.0.1:8003/demo` (or `http://127.0.0.1:8003/console`)
-- **Live OpenAPI / Swagger UI for Direct API Inspection:** `http://127.0.0.1:8003/docs`
-
-#### Mode B: Full Unified Showcase Runner (A2A Edge + Ops Dashboard + Provider Portal + React Apps)
-
-Starts the composed ASGI host on `:8011` (`/` A2A Edge, `/ops` Ops Dashboard + `/ops/demo` Interactive Console, `/portal` Provider Portal) plus the Vite React apps on `:5173` and `:5175`:
-
-```bash
-cd /usr/local/google/home/tvaroska/projects/docubridge
-bash scripts/run-showcase.sh
-```
-
-Open in browser:
-- **Interactive 4-Stage Enterprise Console:** `http://localhost:8011/ops/demo`
-- **A2A Agent Card (Discovery & Skills):** `http://localhost:8011/.well-known/agent-card.json`
-- **Provider Portal React App (KYC Address & Document Intake):** `http://localhost:5173`
-- **Ops Dashboard React App (Live SSE Queues, HITL & Escalations):** `http://localhost:5175`
-
----
-
-### 4.3 Interactive Demo & Evaluation Walkthrough Script (Banking Use Case)
-
-Once `http://127.0.0.1:8003/demo` (or the Cloud Run URL `https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app/demo`) is open in your browser:
-
-1. **Header Domain Switcher Check:**
-   - Verify the page loads in the neutral **Blue-Slate `DOCUBRIDGE`** theme with **`🏦 Banking · Loan Underwriting`** active by default (`Meridian Logistics Center LLC · $45M CRE Term Loan`).
-   - Click **`🛡️ Insurance · Commercial Placement`** in the header to verify instant switching to the insurance scenario (`Terrepower Coastal LLC`), then click back to **`🏦 Banking · Loan Underwriting`**.
-2. **Stage 1 — Dual-Path Intake, PII Redaction & 4-Signal Gate (`1. Dual-Path Intake & Vault`):**
-   - Inspect **Path A (`meridian-rent-roll-dscr-2026.xlsx`)**: parsed deterministically in code (`0 AI tokens`), 2 guarantor SSNs masked at the edge (`[REDACTED-SSN]`), locked in the 7-year WORM Audit Vault.
-   - Inspect **Path B (`syndicated-credit-agreement-meridian-2026.pdf`)**: Document AI extracts Page 1 Cover Term Sheet (`$50,000` Origination Fee) and Page 4 Schedule B Fee Addendum (`$100,000` Origination Fee) with bounding-box coordinates `[0.12, 0.44]`, parking the conflict in **Zone 2 Review Quarantine**.
-   - Inspect the **Zone 6 Governed Asset Map** table at the bottom (populated live from `GET /v1/catalog/assets` with neutral `docubridge-audit-vault` and `docubridge_lakehouse` URIs).
-3. **Stage 2 — Bi-Temporal Consolidation & 6-Hop Traceability (`2. Consolidation & Views`):**
-   - Click between **Credit Officer View**, **Underwriter View (LTV & DSCR)**, and **Covenant / Audit View**.
-   - Inspect the **6-Hop End-to-End Field Lineage** panel showing the unbroken trace from `syndicated-credit-agreement-meridian-2026.pdf (Page 4)` $\rightarrow$ `Document AI + Agent Gym Hint` $\rightarrow$ `WORM Audit Vault` $\rightarrow$ `Consolidation Rule (Addendum Prio 40 > Term Sheet Prio 20)` $\rightarrow$ `Bi-Temporal Operational Store` $\rightarrow$ `A2UI Citation Chip`.
-4. **Stage 3 — SPIFFE Compound Identity & A2UI v0.9 Action Inbox (`3. A2UI Inbox & SPIFFE`):**
-   - Select persona **`Junior Loan Officer (Max Authority $25k)`** (`obo.sub = "junior.officer@docubridge.io"`): observe the **HTTP 403 / 422 Authority Check Failed** banner blocking approval of the `$100,000` HIGH-risk fee override.
-   - Switch persona to **`Senior Credit Officer (SPIFFE OBO · $25M Authority)`** (`spiffe://agents.docubridge.io/internal/credit-officer-agent`): click **`✓ Edit & Approve`** and observe the 4-step A2UI progress bar advance to `100%` and log the RFC 6902 JSON Patch `[{"op":"replace","path":"/origination_fee_usd","value":"$100,000"}]`.
-5. **Stage 4 — Agent Gym Continuous Evaluation & Programmable Trust Dial (`4. Agent Gym & Trust Dial`):**
-   - Click **`1. Distill "Example of One" Signal`**: triggers a live `POST /v1/gym/signals/from-quarantine` request, creating a new candidate `TribalKnowledgeRule` for the Schedule B fee addendum.
-   - Click **`2. Run Stress Suite & Report Card Gate`**: triggers a live `POST /v1/gym/rules/{rule_id}/evaluate` request, executing the 4 synthetic stress cases (`Layout Shift`, `Legal Suffix`, `Entity Collision Guard`, `Decimal Math Firewall`) and 12 historical benchmarks (`+50.0%` slice accuracy gain, `0` regressions, status `PROMOTED`).
-   - Click **`3. Promote Credit Addendum Slice to Trusted Auto-Approve`**: records the 5th consecutive exact match on `slice:credit-agreement:addendum:MEDIUM` and promotes it from `2. Guided Human Review` (`4/5`) to `3. Trusted Auto-Approve ✓` (`5/5`).
-   - Click **`4. Simulate Format Drift (Safety Dial-Back)`**: sends a mismatched shadow comparison (`ai_value="$50,000"` vs `human_value="$100,000"`) and shows **Instant Safety Dial-Back** automatically demoting `slice:credit-agreement:addendum:MEDIUM` back to `2. Guided Human Review` (`0/5 matches`, `1 drift`).
-
----
-
-## 5. Acceptance Checklist (For Post-Implementation Evaluation)
-
-When the implementation is ready for review, we will evaluate completeness against these 8 criteria:
-
-- [x] **C1. Zero Aon Branding in UI & Default Metadata:** No `AON` wordmark, `#e11b22` red header, `agents.global.aon.net`, `gs://aon-docubridge-audit-vault`, or `aon_lakehouse` in default responses from `/v1/catalog/*`, `/v1/a2ui/*`, or `/v1/gym/*`.
-- [x] **C2. Interactive Console Served on FastAPI (`/demo` & `/console`):** Opening `GET /demo` or `GET /console` returns the neutral Blue-Slate 5-scene console with Banking, Mortgage, and Insurance modes.
-- [x] **C3. Banking Default + Live 3-Domain Switcher (Banking, Mortgage & Insurance):** Defaults to `🏦 Banking · Loan Underwriting` (`Meridian Logistics Center LLC`, `LOAN-MERIDIAN-001`) and cleanly switches all 5 scenes across `🏦 Banking`, `🏠 Mortgage · TRID Closing` (`Westbrook Family Trust — $1.85M 30-Year Jumbo Mortgage`, `MORTGAGE-WESTBROOK-2026`), and `🛡️ Insurance · Commercial Placement` (`Terrepower Coastal LLC`, `terrepower-coastal-2027`).
-- [x] **C4. Banking & Mortgage Consolidation & Lineage Math:** `_MONEY_KEYS` and `source_priority_for_doctype` in `bridge/operational_store.py` deterministically handle banking and mortgage fields (`loan_amount`, `appraised_value`, `origination_fee`, `net_operating_income`) and doctypes (`addendum` / `closing-disclosure` `[40]` > `credit-agreement` `[30]` > `term-sheet` / `appraisal` `[20]`), seeded on demand via `POST /v1/demo/seed`.
-- [x] **C5. Banking, Mortgage & Insurance Programmable Trust Slices:** `GET /v1/gym/trust-policies` returns all 7 default slices (3 Banking + 1 Mortgage `slice:mortgage-trid:closing-disclosure:MEDIUM` + 3 Insurance).
-- [x] **C6. Interactive Agent Gym, Click-to-Source Modal, Day-2 Payoff & Telemetry X-Ray Work Live:**
-  - Clicking any `.anchor-chip` badge opens the split-screen **Document AI Bounding-Box & WORM Audit Vault Proof Modal** (`#source-proof-modal`).
-  - Clicking Distill, Evaluate, Promote, Simulate Drift, and **`⚡ 5. Verify Day-2 Payoff (Re-Ingest Next Deal)`** in Scene 4 executes live `POST /v1/gym/*` and `POST /v1/intake/ingest` calls, demonstrating a Day-1 parked deal (`$4,250` Mortgage TRID CD / `$50,000` Banking Term Sheet) auto-approving on Day-2 (`$8,500` / `$100,000`) with zero human touches.
-  - Clicking **`🔭 5. Trace & BQ X-Ray`** (`#scene-telemetry`) renders the live W3C trace waterfall, p50/p95/p99 step latency table, and BigQuery `documents001.docubridge_telemetry.otel_spans` summary from `GET /v1/telemetry/analytics`.
-- [x] **C7. Isolation & Calibration Guards Green:** `uv run pytest tests/test_isolation_guard.py` and `uv run python -m bridge.calibration` exit `0`.
-- [x] **C8. Full Test & Lint Suite Green:** `uv run ruff check .`, `uv run pytest`, and `terraform test` pass with 100% green results, including `test_banking_loan_underwriting_observability_lineage_and_evaluation` and `test_mortgage_underwriting_day2_payoff_and_telemetry_xray`.
+### API Endpoints for Domain Exploration
+- `GET /api/v1/catalog/summary` — Inspect registered SPIFFE agents, business glossary terms, and catalog assets across `banking`, `mortgage`, and `insurance`.
+- `GET /api/v1/operational/entities?domain=banking` — Query canonical entities, submissions, and extracted facts by industry domain.
+- `GET /api/v1/inbox/actions?domain=banking` — Retrieve pending human-in-the-loop A2UI v0.9 action items and cryptographic audit records.
+- `GET /api/v1/gym/overview` — View golden evaluation scores, adversarial stress-test results, and skill evolution candidates across all domains.

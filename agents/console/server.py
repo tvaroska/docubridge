@@ -97,7 +97,9 @@ def build_console_app(
         try:
             return active_store.get(sid)
         except KeyError as e:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid!r}") from e
+            raise HTTPException(
+                status_code=404, detail=f"unknown session {sid!r}"
+            ) from e
 
     @app.get("/prepared")
     def list_prepared() -> list[dict]:

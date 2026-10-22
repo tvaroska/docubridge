@@ -16,6 +16,7 @@ sees the persisted terminal ledger). As a documented fallback the reader also
 honours a turn a node recorded to ``ctx.state["latest_turn"]`` (the presenter /
 observability seam, and the stub tests).
 """
+
 from __future__ import annotations
 
 from agents.address.wire import extract_exchange_turn

@@ -11,7 +11,9 @@ from bridge.classification import canonicalize_issuer, is_in_label_space
 @pytest.fixture
 def corpus_records():
     """Load the corpus expected.json records."""
-    corpus_path = Path(__file__).parent.parent / "wiki" / "evals" / "address" / "expected.json"
+    corpus_path = (
+        Path(__file__).parent.parent / "wiki" / "evals" / "address" / "expected.json"
+    )
     with corpus_path.open() as f:
         data = json.load(f)
     return data["documents"]
@@ -22,7 +24,13 @@ def corpus_records():
     [
         pytest.param(r, id=r["id"])
         for r in json.loads(
-            (Path(__file__).parent.parent / "wiki" / "evals" / "address" / "expected.json").read_text()
+            (
+                Path(__file__).parent.parent
+                / "wiki"
+                / "evals"
+                / "address"
+                / "expected.json"
+            ).read_text()
         )["documents"]
     ],
 )
@@ -54,7 +62,9 @@ def test_canonicalize_issuer_idempotent(corpus_records):
     for record in corpus_records:
         issuer = record["issuer"]
         if issuer is not None:
-            assert canonicalize_issuer(canonicalize_issuer(issuer)) == canonicalize_issuer(issuer)
+            assert canonicalize_issuer(
+                canonicalize_issuer(issuer)
+            ) == canonicalize_issuer(issuer)
 
     # Unit test strings
     test_strings = ["PowerCo", "Power Co.", "AquaUtil", "Gov", "PowerCo Ltd"]

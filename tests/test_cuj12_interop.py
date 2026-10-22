@@ -268,7 +268,9 @@ async def test_no_bearer_token_on_carrier_wire():
         task = await client.get_task(GetTaskRequest(id=task_id))
 
     # Serialize the whole terminal task (message history + artifacts) and scan it.
-    blob = json.dumps(task.model_dump(mode="json") if hasattr(task, "model_dump") else {})
+    blob = json.dumps(
+        task.model_dump(mode="json") if hasattr(task, "model_dump") else {}
+    )
     # Fall back to proto MessageToDict when task is a proto (a2a 1.x).
     if blob == "{}":
         from google.protobuf.json_format import MessageToDict
@@ -276,5 +278,5 @@ async def test_no_bearer_token_on_carrier_wire():
         blob = json.dumps(MessageToDict(task)).lower()
     else:
         blob = blob.lower()
-    for forbidden in ("bearer", "authorization", "\"token\"", "credential"):
+    for forbidden in ("bearer", "authorization", '"token"', "credential"):
         assert forbidden not in blob, f"unexpected {forbidden!r} on the carrier wire"

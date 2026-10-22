@@ -1,5 +1,5 @@
 {
-  "name": "@docbride/e2e",
+  "name": "@docubridge/e2e",
   "private": true,
   "version": "0.1.0",
   "description": "Playwright e2e for the presenter stage (P6-5) — the P6 phase-gate; network-stubbed, no Python host required.",

@@ -71,8 +71,10 @@ def project_exchange(rec: PortalSessionRecord) -> dict:
     # the default ``on_track`` lifecycle and no REASON_ESCALATED entry projects byte-identically
     # to before, so the P6-4 dashboard suite does not flip.
     sla_escalated = rec.lifecycle is LifecycleStatus.escalated
-    lifecycle = rec.lifecycle if rec.lifecycle is not LifecycleStatus.on_track else (
-        LifecycleStatus.escalated if cap_escalated else LifecycleStatus.on_track
+    lifecycle = (
+        rec.lifecycle
+        if rec.lifecycle is not LifecycleStatus.on_track
+        else (LifecycleStatus.escalated if cap_escalated else LifecycleStatus.on_track)
     )
     # The escalation-queue bool unions both sources: cap-driven (ledger) + SLA-driven (ladder).
     escalated = cap_escalated or sla_escalated

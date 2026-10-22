@@ -52,7 +52,9 @@ def test_the_body_is_never_kept():
 
 
 def test_rfc2231_non_ascii_filename_round_trips_nfc():
-    raw = _mail(attachments=[("Devis-assurance-\u00e9t\u00e9.pdf", PDF, "application/pdf")])
+    raw = _mail(
+        attachments=[("Devis-assurance-\u00e9t\u00e9.pdf", PDF, "application/pdf")]
+    )
     assert b"filename*=" in raw  # really RFC 2231-encoded on the wire
     (att,) = parse_mime(raw).attachments
     assert att.filename == "Devis-assurance-\u00e9t\u00e9.pdf"
@@ -101,7 +103,9 @@ def test_every_sanitized_name_passes_the_seam_validator(raw):
 
 
 def test_byte_cap_keeps_the_suffix_and_cuts_on_a_character_boundary():
-    name = sanitize_filename("\u62a5" * 128 + ".pdf", index=0, mime_type="application/pdf")
+    name = sanitize_filename(
+        "\u62a5" * 128 + ".pdf", index=0, mime_type="application/pdf"
+    )
     assert name.endswith(".pdf") and len(name.encode()) <= 200
     assert name == "\u62a5" * ((200 - 4) // 3) + ".pdf"
 
@@ -135,7 +139,9 @@ def test_an_image_explicitly_attached_is_kept():
     ]
 
 
-def _forward(inner: bytes, *, extra: list[tuple[str, bytes, str]] | None = None) -> bytes:
+def _forward(
+    inner: bytes, *, extra: list[tuple[str, bytes, str]] | None = None
+) -> bytes:
     outer = EmailMessage()
     outer["From"] = "broker@broker.example"
     outer["To"] = "rfp-quotes+abc@broker.example"
@@ -147,7 +153,9 @@ def _forward(inner: bytes, *, extra: list[tuple[str, bytes, str]] | None = None)
     outer.add_attachment(message_from_bytes(inner, policy=policy.default))
     for filename, data, mime in extra or []:
         maintype, subtype = mime.split("/", 1)
-        outer.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
+        outer.add_attachment(
+            data, maintype=maintype, subtype=subtype, filename=filename
+        )
     return outer.as_bytes()
 
 
@@ -205,8 +213,14 @@ def test_landing_key_is_stable_across_message_id_variants():
     (key,) = keys
     assert len(key) == 32 and all(c in "0123456789abcdef" for c in key)
     # A different body under the same Message-ID is the same mail (Graph re-delivery).
-    assert landing_key(compose("x@y.example", message_id="<quote-1@carrier-a.example>",
-                               subject="other")) == key
+    assert (
+        landing_key(
+            compose(
+                "x@y.example", message_id="<quote-1@carrier-a.example>", subject="other"
+            )
+        )
+        == key
+    )
 
 
 def test_landing_key_falls_back_to_a_content_hash():

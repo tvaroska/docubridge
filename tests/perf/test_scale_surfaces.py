@@ -13,8 +13,9 @@ from tests.perf import harness
 
 
 async def test_surfaces_at_200_rows_per_entry():
-    args = harness.argparse.Namespace(rows_per_entry=200, carriers=10, products=5,
-                                      live=False)
+    args = harness.argparse.Namespace(
+        rows_per_entry=200, carriers=10, products=5, live=False
+    )
     measurements, checks = await harness.run(args)
     failed = [name for name, ok in checks if not ok]
     assert failed == []

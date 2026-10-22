@@ -1,5 +1,5 @@
 {
-  "name": "docbride-frontend",
+  "name": "docubridge-frontend",
   "private": true,
   "version": "0.1.0",
   "description": "A2A Document Bridge — pnpm workspace root for the frontend apps (P6).",
@@ -7,6 +7,6 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "test:e2e": "pnpm --filter @docbride/e2e test:e2e"
+    "test:e2e": "pnpm --filter @docubridge/e2e test:e2e"
   }
 }

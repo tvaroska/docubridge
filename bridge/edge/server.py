@@ -27,6 +27,7 @@ that home process — or of any emergent-Collect process installed live in the s
 registry afterwards (S4-usecase-4) — opens its RFP onto the same store the RFP board host
 (``bridge.dashboard.board_host``) serves and drains email onto.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Iterable
@@ -111,12 +112,14 @@ class EdgeRequestHandler(DefaultRequestHandler):
     async def on_message_send(
         self, params: SendMessageRequest, context: ServerCallContext
     ) -> Message | Task:
+        """Handle a synchronous A2A message/send request with caller identity propagation."""
         await self._admit(params, context)
         return await super().on_message_send(params, context)
 
     async def on_message_send_stream(
         self, params: SendMessageRequest, context: ServerCallContext
     ) -> AsyncGenerator[Any, None]:
+        """Handle a streaming A2A message/stream request with caller identity propagation."""
         await self._admit(params, context)
         async for event in super().on_message_send_stream(params, context):
             yield event
@@ -240,9 +243,7 @@ def build_a2a_app(
             else rfp_board_from_env()
         )
         routes = [
-            *build_remote_a2a_routes(
-                active_a2a_engine, url=url, rpc_path=RPC_PATH
-            ),
+            *build_remote_a2a_routes(active_a2a_engine, url=url, rpc_path=RPC_PATH),
             Mount(
                 ARTIFACTS_PREFIX,
                 app=build_fetch_app(store, signer=build_fetch_signer()),
@@ -250,9 +251,7 @@ def build_a2a_app(
         ]
         edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge_proxy")]
         if auth_backend is not None:
-            edge_mw.append(
-                Middleware(AuthenticationMiddleware, backend=auth_backend)
-            )
+            edge_mw.append(Middleware(AuthenticationMiddleware, backend=auth_backend))
         app = Starlette(routes=routes, middleware=edge_mw)
         app.state.rfp_board = board
         app.state.a2a_engine = active_a2a_engine
@@ -317,6 +316,7 @@ def build_a2a_app(
         push_config_store=active_push_config_store,
         push_sender=active_push_sender,
     )
+
     async def _live_card(_snapshot: AgentCard) -> AgentCard:
         # SKILL-4 no-redeploy mechanism: ignore the build-time snapshot and rebuild
         # the discovery card from the live skill registry on every GET, so a skill

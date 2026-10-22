@@ -81,8 +81,8 @@ Spec is protected: the CUJ-9 Driver line is a PROPOSAL (S4-usecase-5).
 
 ## Sprint 0 — Review findings
 
-Always-active critical lane. Last drained 2026-10-02 (the 2026-10-01 documentation review, the 2026-09-23 Aon
-extraction-capability reopen + the 2026-09-30 Aon exec-demo feedback reopen); prior closes
+Always-active critical lane. Last drained 2026-10-02 (the 2026-10-01 documentation review, the 2026-09-23 Benefits Consumer
+extraction-capability reopen + the 2026-09-30 Benefits Consumer exec-demo feedback reopen); prior closes
 2026-09-06 and 2026-08-22. Feature IDs: `sec` security · `arch` architecture · `bug`
 correctness · `debt` technical debt · `docs` documentation · `perf` · `frontend`. Tasks
 touching `spec/` are **proposal-only**; tasks touching `bridge/`, `contract/`, or `spec/`
@@ -98,10 +98,10 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Exit gate.** `pytest` green with placeholder seams; isolation-guard test passes; contract package importable by both `bridge/` and `agents/`.
 
-- [x] **P0-1** — Repo tree + workspace scaffold: create `contract/ bridge/ agents/ skills/ frontend/ terraform/ tests/` packages with `__init__.py`, wire uv (Python 3.12) deps, and add the `bridge/`-never-imports-`agents/` **isolation-guard test** (fails if any `bridge/**` module imports `agents`). [CONTRACT‑1 scaffold, load-bearing invariant] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P0-1-repo-scaffold-isolation-guard.md)_
-- [x] **P0-2** — `contract/` Pydantic wire types (Pydantic-only, no ADK / no a2a-sdk): `CollectRequest`, `ExchangeTurn`, `CollectionStatus`, `LedgerEntry`, `Requirement`, `RequirementsList`, `RequirementStatus`, and the extraction field schemas. Round-trip + validation tests. [CONTRACT‑1] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P0-2-contract-wire-types.md)_
-- [x] **P0-3** — Seam harness: `Seam` enum (the eight seam names), the seam ABCs/Protocols, the `@pytest.mark.seam` marker + `adapter` fixture parametrized over `("local","gcp")` (gcp gated on `BRIDGE_TEST_GCP`), `BRIDGE_SEAM_MODE` + per-seam overrides, and a collection-time guard rejecting invalid seam names. Empty/placeholder local adapters. [TEST‑1, seam ABCs] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P0-3-seam-harness.md)_
-- [x] **P0-4** — Pin `google-adk >= 2.7.0, < 3` and stand up the **experimental-surface register** (`RemoteA2aAgent`, `ResumabilityConfig`, …) with a test that fails if an unlisted experimental surface is used. [TEST‑4] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P0-4-adk-pin-experimental-register.md)_
+- [x] **P0-1** — Repo tree + workspace scaffold: create `contract/ bridge/ agents/ skills/ frontend/ terraform/ tests/` packages with `__init__.py`, wire uv (Python 3.12) deps, and add the `bridge/`-never-imports-`agents/` **isolation-guard test** (fails if any `bridge/**` module imports `agents`). [CONTRACT‑1 scaffold, load-bearing invariant] _(done 2026-08-18; Plan: .claude/plans/P0-1-repo-scaffold-isolation-guard.md)_
+- [x] **P0-2** — `contract/` Pydantic wire types (Pydantic-only, no ADK / no a2a-sdk): `CollectRequest`, `ExchangeTurn`, `CollectionStatus`, `LedgerEntry`, `Requirement`, `RequirementsList`, `RequirementStatus`, and the extraction field schemas. Round-trip + validation tests. [CONTRACT‑1] _(done 2026-08-18; Plan: .claude/plans/P0-2-contract-wire-types.md)_
+- [x] **P0-3** — Seam harness: `Seam` enum (the eight seam names), the seam ABCs/Protocols, the `@pytest.mark.seam` marker + `adapter` fixture parametrized over `("local","gcp")` (gcp gated on `BRIDGE_TEST_GCP`), `BRIDGE_SEAM_MODE` + per-seam overrides, and a collection-time guard rejecting invalid seam names. Empty/placeholder local adapters. [TEST‑1, seam ABCs] _(done 2026-08-18; Plan: .claude/plans/P0-3-seam-harness.md)_
+- [x] **P0-4** — Pin `google-adk >= 2.7.0, < 3` and stand up the **experimental-surface register** (`RemoteA2aAgent`, `ResumabilityConfig`, …) with a test that fails if an unlisted experimental surface is used. [TEST‑4] _(done 2026-08-18; Plan: .claude/plans/P0-4-adk-pin-experimental-register.md)_
 
 ---
 
@@ -111,12 +111,12 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Exit gate.** Every `expected.json` record disposes to its `expected_disposition`/`expected_gate` through the gate (deterministic on repeat); issuer variants canonicalize identically; the LLM cannot produce an acceptance without a gate call.
 
-- [x] **P1-1** — `document_bridge` `LlmAgent` on stock `Runner`/`App`, plus `run_disposition_gate` as a **pure deterministic `FunctionTool`** (the one inversion — the LLM cannot mint an acceptance without a gate call). [CORE‑1, CORE‑2] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P1-1-document-bridge-agent-disposition-gate.md)_
-- [x] **P1-2** — Extraction seam + **fixture adapter** loaded from the eval corpus, exposed as the `extraction_agent` `AgentTool`; `InMemoryArtifactService`. [SEAM‑8, ART‑1] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P1-2-extraction-seam-fixture-agenttool.md)_
-- [x] **P1-3** — Four-signal `SignalProvider`, classification, and `canonicalize_issuer` (e.g. `PowerCo`/`Power Co.`→`power-co`). Canonicalization tests over the corpus issuer variants. [CORE‑3, CORE‑4] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P1-3-signal-provider-classification.md)_
-- [x] **P1-4** — Classified ledger as a `CollectionStatus` projection with `reason_code`+`message` on entries/requirements; the one-turn collect path. [CORE‑5, COLL‑4] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P1-4-collection-status-ledger-projection.md)_
-- [x] **P1-5** — Off-script routing tools: `handle_deletion_request`, `reject_submission`, escalation stub. [CORE‑6, CORE‑7, CORE‑8] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P1-5-off-script-routing-tools.md)_
-- [x] **P1-6** — Eval-corpus parity tests (TEST‑2): every `expected.json` record disposes to its expected disposition/gate deterministically. [TEST‑2] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P1-6-eval-corpus-parity-tests.md)_
+- [x] **P1-1** — `document_bridge` `LlmAgent` on stock `Runner`/`App`, plus `run_disposition_gate` as a **pure deterministic `FunctionTool`** (the one inversion — the LLM cannot mint an acceptance without a gate call). [CORE‑1, CORE‑2] _(done 2026-08-18; Plan: .claude/plans/P1-1-document-bridge-agent-disposition-gate.md)_
+- [x] **P1-2** — Extraction seam + **fixture adapter** loaded from the eval corpus, exposed as the `extraction_agent` `AgentTool`; `InMemoryArtifactService`. [SEAM‑8, ART‑1] _(done 2026-08-18; Plan: .claude/plans/P1-2-extraction-seam-fixture-agenttool.md)_
+- [x] **P1-3** — Four-signal `SignalProvider`, classification, and `canonicalize_issuer` (e.g. `PowerCo`/`Power Co.`→`power-co`). Canonicalization tests over the corpus issuer variants. [CORE‑3, CORE‑4] _(done 2026-08-18; Plan: .claude/plans/P1-3-signal-provider-classification.md)_
+- [x] **P1-4** — Classified ledger as a `CollectionStatus` projection with `reason_code`+`message` on entries/requirements; the one-turn collect path. [CORE‑5, COLL‑4] _(done 2026-08-18; Plan: .claude/plans/P1-4-collection-status-ledger-projection.md)_
+- [x] **P1-5** — Off-script routing tools: `handle_deletion_request`, `reject_submission`, escalation stub. [CORE‑6, CORE‑7, CORE‑8] _(done 2026-08-18; Plan: .claude/plans/P1-5-off-script-routing-tools.md)_
+- [x] **P1-6** — Eval-corpus parity tests (TEST‑2): every `expected.json` record disposes to its expected disposition/gate deterministically. [TEST‑2] _(done 2026-08-18; Plan: .claude/plans/P1-6-eval-corpus-parity-tests.md)_
 
 ---
 
@@ -126,11 +126,11 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Exit gate.** A conformant A2A client drives every spec op; domain payloads ride in parts; no bytes in any message; the app reads only standard task status + ledger projection (never ADK events).
 
-- [x] **P2-1** — `a2a-sdk` JSON-RPC server exposing `message/send`, `message/stream` (SSE), `tasks/get`, `tasks/list`, `tasks/cancel`, `tasks/resubscribe`; domain types carried inside `Message`/`Part`/`Artifact`. [WIRE‑1, WIRE‑2, WIRE‑3] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P2-1-a2a-edge-jsonrpc-server.md)_
-- [x] **P2-2** — `_status_for` mapping (PENDING→`INPUT_REQUIRED`, else `COMPLETED`) + a **dynamic Agent Card** generated from the loaded skills' metadata. [WIRE‑4] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P2-2-status-map-dynamic-card.md)_
-- [x] **P2-3** — Dual-mode intake: `input_modes` advertising JSON + text, content-routed at the edge. [WIRE‑5] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P2-3-dual-mode-intake.md)_
-- [x] **P2-4** — FastAPI **scoped artifact-fetch endpoint** (InMemory; signed-URL path deferred to P7); `FileWithUri` by-reference on the wire, no inline bytes. [ART‑2] _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P2-4-scoped-artifact-fetch-endpoint.md)_
-- [x] **P2-5** — **Mock Bridge** contract double emitting the same `ExchangeTurn`/`CollectionStatus` shapes over the same wire, for the Address agent to build against. [WIRE‑6] _(needs P2-1)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P2-5-mock-bridge-contract-double.md)_
+- [x] **P2-1** — `a2a-sdk` JSON-RPC server exposing `message/send`, `message/stream` (SSE), `tasks/get`, `tasks/list`, `tasks/cancel`, `tasks/resubscribe`; domain types carried inside `Message`/`Part`/`Artifact`. [WIRE‑1, WIRE‑2, WIRE‑3] _(done 2026-08-18; Plan: .claude/plans/P2-1-a2a-edge-jsonrpc-server.md)_
+- [x] **P2-2** — `_status_for` mapping (PENDING→`INPUT_REQUIRED`, else `COMPLETED`) + a **dynamic Agent Card** generated from the loaded skills' metadata. [WIRE‑4] _(done 2026-08-18; Plan: .claude/plans/P2-2-status-map-dynamic-card.md)_
+- [x] **P2-3** — Dual-mode intake: `input_modes` advertising JSON + text, content-routed at the edge. [WIRE‑5] _(done 2026-08-18; Plan: .claude/plans/P2-3-dual-mode-intake.md)_
+- [x] **P2-4** — FastAPI **scoped artifact-fetch endpoint** (InMemory; signed-URL path deferred to P7); `FileWithUri` by-reference on the wire, no inline bytes. [ART‑2] _(done 2026-08-18; Plan: .claude/plans/P2-4-scoped-artifact-fetch-endpoint.md)_
+- [x] **P2-5** — **Mock Bridge** contract double emitting the same `ExchangeTurn`/`CollectionStatus` shapes over the same wire, for the Address agent to build against. [WIRE‑6] _(needs P2-1)_ _(done 2026-08-18; Plan: .claude/plans/P2-5-mock-bridge-contract-double.md)_
 
 ---
 
@@ -140,11 +140,11 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Exit gate (the demo's heart).** Golden runs pass on both fixture and Gemini adapters *and* against mock and real Bridge: Path-A instant accept (CUJ‑1), distinct-issuer accept + same-issuer reject (CUJ‑10), resubmission (CUJ‑4). The gate — not a model — mints `done`.
 
-- [x] **P3-1** — Service-agent `Workflow` conditional cycle: collect node (`build_bridge_remote_agent(card_url, rerun_on_resume=True)`), deterministic `is_satisfied` **gate node** (`ctx.route`, round ceiling), present node (code); edges `START→collect→gate`, `gate--again-->collect`, `gate--done-->present`. [AGENT‑1, AGENT‑2, AGENT‑3, AGENT‑4] _(needs P2-5)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P3-1-service-agent-workflow-cycle.md)_
-- [x] **P3-2** — Shared durable session threading the exchange `context_id`, plus the two Ring‑3 workarounds: the `RequestInterceptor` (send-path resume re-detection) and `wire.py extract_exchange_turn` decode + Bridge emitting artifact `last_chunk=True`. [AGENT‑5, AGENT‑6] _(needs P3-1)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P3-2-durable-session-interceptor-decode.md)_
-- [x] **P3-3** — Skills: `address-proof` (process skill, prose satisfaction, `policy.yaml`), `gov-id`, `utility-bill` (field names + canonicalization matched to the corpus). [SKILL‑1, SKILL‑2, SKILL‑3] _(needs P3-1)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P3-3-skills-address-proof-doctypes.md)_
-- [x] **P3-4** — CLI driver (`python -m agents.address`) — an App/Runner host, not an ADK agent. [FE‑1] _(needs P3-2, P3-3)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P3-4-cli-driver-app-runner-host.md)_
-- [x] **P3-5** — Point the agent at the mock, then swap `card_url` to the **real edge**; golden runs: Path-A instant accept (CUJ‑1), distinct-issuer accept + same-issuer reject (CUJ‑10), resubmission (CUJ‑4). Parity = terminal outcome. [AGENT‑7, TEST‑3] _(needs P3-4)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P3-5-golden-runs-mock-real-swap.md)_
+- [x] **P3-1** — Service-agent `Workflow` conditional cycle: collect node (`build_bridge_remote_agent(card_url, rerun_on_resume=True)`), deterministic `is_satisfied` **gate node** (`ctx.route`, round ceiling), present node (code); edges `START→collect→gate`, `gate--again-->collect`, `gate--done-->present`. [AGENT‑1, AGENT‑2, AGENT‑3, AGENT‑4] _(needs P2-5)_ _(done 2026-08-18; Plan: .claude/plans/P3-1-service-agent-workflow-cycle.md)_
+- [x] **P3-2** — Shared durable session threading the exchange `context_id`, plus the two Ring‑3 workarounds: the `RequestInterceptor` (send-path resume re-detection) and `wire.py extract_exchange_turn` decode + Bridge emitting artifact `last_chunk=True`. [AGENT‑5, AGENT‑6] _(needs P3-1)_ _(done 2026-08-18; Plan: .claude/plans/P3-2-durable-session-interceptor-decode.md)_
+- [x] **P3-3** — Skills: `address-proof` (process skill, prose satisfaction, `policy.yaml`), `gov-id`, `utility-bill` (field names + canonicalization matched to the corpus). [SKILL‑1, SKILL‑2, SKILL‑3] _(needs P3-1)_ _(done 2026-08-18; Plan: .claude/plans/P3-3-skills-address-proof-doctypes.md)_
+- [x] **P3-4** — CLI driver (`python -m agents.address`) — an App/Runner host, not an ADK agent. [FE‑1] _(needs P3-2, P3-3)_ _(done 2026-08-18; Plan: .claude/plans/P3-4-cli-driver-app-runner-host.md)_
+- [x] **P3-5** — Point the agent at the mock, then swap `card_url` to the **real edge**; golden runs: Path-A instant accept (CUJ‑1), distinct-issuer accept + same-issuer reject (CUJ‑10), resubmission (CUJ‑4). Parity = terminal outcome. [AGENT‑7, TEST‑3] _(needs P3-4)_ _(done 2026-08-18; Plan: .claude/plans/P3-5-golden-runs-mock-real-swap.md)_
 
 ---
 
@@ -154,11 +154,11 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Exit gate.** Park a leg, kill the process, restart, resume to the same terminal outcome (CUJ‑7); an HITL review parks with zero compute and resumes on the matched response (CUJ‑5). Verify the throwaway-child-session anti-pattern is *not* used.
 
-- [x] **P4-1** — `DatabaseSessionService` (async driver `sqlite+aiosqlite:///…`) + `DatabaseTaskStore` behind the sessions/task_store seams; `ResumabilityConfig(is_resumable=True)` on the `App`. [DUR‑1, DUR‑2] _(needs P3-5)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P4-1-durable-session-task-store-seams.md)_
-- [x] **P4-2** — Park on `input-required` → `LongRunningFunctionTool` (zero compute); resume by feeding an id-matched `FunctionResponse` to a **fresh `Runner`** on the same DB — no HTTP. [DUR‑3, DUR‑4] _(needs P4-1)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P4-2-park-resume-fresh-runner.md)_
-- [x] **P4-3** — `request_human_review` `LongRunningFunctionTool` (HITL pause). [DUR‑5] _(needs P4-2)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P4-3-request-human-review-hitl-tool.md)_
-- [x] **P4-4** — Progress surfaces: `tasks/get`, `tasks/resubscribe`, `PushNotificationConfig`, non-empty `TaskStatusUpdateEvent.status.message`. [DUR‑6] _(needs P4-2)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P4-4-progress-surfaces-push-config.md)_
-- [x] **P4-5** — No-TTL lifecycle: durable `escalated` status, `tasks/cancel`→`CANCELED`; artifact retention/versioning (ART‑3). [DUR‑7, ART‑3] _(needs P4-2)_ _(done 2026-08-18; Plan: /home/boris/docbride3/.claude/plans/P4-5-no-ttl-escalated-cancel-artifact-retention.md)_
+- [x] **P4-1** — `DatabaseSessionService` (async driver `sqlite+aiosqlite:///…`) + `DatabaseTaskStore` behind the sessions/task_store seams; `ResumabilityConfig(is_resumable=True)` on the `App`. [DUR‑1, DUR‑2] _(needs P3-5)_ _(done 2026-08-18; Plan: .claude/plans/P4-1-durable-session-task-store-seams.md)_
+- [x] **P4-2** — Park on `input-required` → `LongRunningFunctionTool` (zero compute); resume by feeding an id-matched `FunctionResponse` to a **fresh `Runner`** on the same DB — no HTTP. [DUR‑3, DUR‑4] _(needs P4-1)_ _(done 2026-08-18; Plan: .claude/plans/P4-2-park-resume-fresh-runner.md)_
+- [x] **P4-3** — `request_human_review` `LongRunningFunctionTool` (HITL pause). [DUR‑5] _(needs P4-2)_ _(done 2026-08-18; Plan: .claude/plans/P4-3-request-human-review-hitl-tool.md)_
+- [x] **P4-4** — Progress surfaces: `tasks/get`, `tasks/resubscribe`, `PushNotificationConfig`, non-empty `TaskStatusUpdateEvent.status.message`. [DUR‑6] _(needs P4-2)_ _(done 2026-08-18; Plan: .claude/plans/P4-4-progress-surfaces-push-config.md)_
+- [x] **P4-5** — No-TTL lifecycle: durable `escalated` status, `tasks/cancel`→`CANCELED`; artifact retention/versioning (ART‑3). [DUR‑7, ART‑3] _(needs P4-2)_ _(done 2026-08-18; Plan: .claude/plans/P4-5-no-ttl-escalated-cancel-artifact-retention.md)_
 
 ---
 
@@ -170,10 +170,10 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Note (silent cap):** dial-out (OUT‑3) and Deliver (OUT‑4) are designed but **not built this cycle** — Address's only send is the chase.
 
-- [x] **P5-1** — Scheduler seam: in-process `VirtualClock` (local adapter) + an SLA/policy engine that reads cadence / deadline / max-nudges / ladder from the process-skill `policy.yaml`. [SEAM‑6, PROA‑1] _(needs P3-5)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P5-1-scheduler-seam-virtualclock-sla-policy.md)_
-- [x] **P5-2** — Follow-up ladder `on_track→overdue→reminder→escalated`; each step a scheduled callback that re-arms the next (zero compute between). [PROA‑2] _(needs P5-1)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P5-2-followup-ladder-rearm.md)_
-- [x] **P5-3** — `a2a_client` seam (fake transport local) + a **real party-channel nudge** — the first concrete outbound send. [SEAM‑7, OUT‑1, OUT‑2] _(needs P5-2)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P5-3-a2a-client-seam-party-nudge.md)_
-- [x] **P5-4** — Wake path: webhook receiver + `task_id`→session index + `PushNotificationConfig`; doorbell carries only "task X changed", restore from persistent stores, then `run_async`. [PROA‑3] _(needs P5-2)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P5-4-wake-path-webhook-receiver-session-index.md)_
+- [x] **P5-1** — Scheduler seam: in-process `VirtualClock` (local adapter) + an SLA/policy engine that reads cadence / deadline / max-nudges / ladder from the process-skill `policy.yaml`. [SEAM‑6, PROA‑1] _(needs P3-5)_ _(done 2026-08-19; Plan: .claude/plans/P5-1-scheduler-seam-virtualclock-sla-policy.md)_
+- [x] **P5-2** — Follow-up ladder `on_track→overdue→reminder→escalated`; each step a scheduled callback that re-arms the next (zero compute between). [PROA‑2] _(needs P5-1)_ _(done 2026-08-19; Plan: .claude/plans/P5-2-followup-ladder-rearm.md)_
+- [x] **P5-3** — `a2a_client` seam (fake transport local) + a **real party-channel nudge** — the first concrete outbound send. [SEAM‑7, OUT‑1, OUT‑2] _(needs P5-2)_ _(done 2026-08-19; Plan: .claude/plans/P5-3-a2a-client-seam-party-nudge.md)_
+- [x] **P5-4** — Wake path: webhook receiver + `task_id`→session index + `PushNotificationConfig`; doorbell carries only "task X changed", restore from persistent stores, then `run_async`. [PROA‑3] _(needs P5-2)_ _(done 2026-08-19; Plan: .claude/plans/P5-4-wake-path-webhook-receiver-session-index.md)_
 
 ---
 
@@ -183,12 +183,12 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Exit gate.** A human upload runs the full Path-B graph end-to-end (CUJ‑2); a doctype skill added to the running core regenerates the Agent Card with no redeploy (CUJ‑8); the three surfaces render the live run; Playwright e2e + a `console_server` test green.
 
-- [x] **P6-1** — A2UI edge (Bridge → provider only): declarative content, relays agent `reason_code`+`message` uninterpreted; Path-B extraction graph (`extract→dispose→HITL`, ≤3 resubmits); Path-A validate-only. [PATH‑A, PATH‑B, A2UI‑1] _(needs P4-5, P5-4)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P6-1-a2ui-edge-path-b-graph.md)_
-- [x] **P6-2** — Provider Portal (external zone, the A2UI Path-B host). [FE‑2] _(needs P6-1)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P6-2-provider-portal-a2ui-host.md)_
-- [x] **P6-3** — Agent Console: `console_server` (builds App + Runner) + Vite/React app with new-session-from-prepared-request, session list, per-turn viewer, over SSE. [FE‑3] _(needs P6-1)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P6-3-agent-console-console-server-sse.md)_
-- [x] **P6-4** — Ops Dashboard: in-flight collections, ledger, HITL/escalation queues, over SSE. [FE‑4] _(needs P6-1)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P6-4-ops-dashboard-readmodel-sse.md)_
-- [x] **P6-5** — Time-warp (local REST) + shared UI/domain package (`theme`, `Panel`, `Badges`, `domain/contract`, snake_case→camelCase) + presentation modes (Split-Screen / Timeline / Architecture X-Ray). [FE‑5, FE‑6] _(needs P6-2, P6-3, P6-4)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P6-5-timewarp-shared-package-presentation-modes.md)_
-- [x] **P6-6** — Live doctype-add: upload a skill → registry → Agent Card regenerates with no redeploy. [SKILL‑4] _(needs P6-3)_ _(done 2026-08-19; Plan: /home/boris/docbride3/.claude/plans/P6-6-live-doctype-add-skill-registry-card-regen.md)_
+- [x] **P6-1** — A2UI edge (Bridge → provider only): declarative content, relays agent `reason_code`+`message` uninterpreted; Path-B extraction graph (`extract→dispose→HITL`, ≤3 resubmits); Path-A validate-only. [PATH‑A, PATH‑B, A2UI‑1] _(needs P4-5, P5-4)_ _(done 2026-08-19; Plan: .claude/plans/P6-1-a2ui-edge-path-b-graph.md)_
+- [x] **P6-2** — Provider Portal (external zone, the A2UI Path-B host). [FE‑2] _(needs P6-1)_ _(done 2026-08-19; Plan: .claude/plans/P6-2-provider-portal-a2ui-host.md)_
+- [x] **P6-3** — Agent Console: `console_server` (builds App + Runner) + Vite/React app with new-session-from-prepared-request, session list, per-turn viewer, over SSE. [FE‑3] _(needs P6-1)_ _(done 2026-08-19; Plan: .claude/plans/P6-3-agent-console-console-server-sse.md)_
+- [x] **P6-4** — Ops Dashboard: in-flight collections, ledger, HITL/escalation queues, over SSE. [FE‑4] _(needs P6-1)_ _(done 2026-08-19; Plan: .claude/plans/P6-4-ops-dashboard-readmodel-sse.md)_
+- [x] **P6-5** — Time-warp (local REST) + shared UI/domain package (`theme`, `Panel`, `Badges`, `domain/contract`, snake_case→camelCase) + presentation modes (Split-Screen / Timeline / Architecture X-Ray). [FE‑5, FE‑6] _(needs P6-2, P6-3, P6-4)_ _(done 2026-08-19; Plan: .claude/plans/P6-5-timewarp-shared-package-presentation-modes.md)_
+- [x] **P6-6** — Live doctype-add: upload a skill → registry → Agent Card regenerates with no redeploy. [SKILL‑4] _(needs P6-3)_ _(done 2026-08-19; Plan: .claude/plans/P6-6-live-doctype-add-skill-registry-card-regen.md)_
 
 ---
 

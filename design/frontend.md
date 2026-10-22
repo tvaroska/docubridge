@@ -53,7 +53,7 @@ A presenter control over the [virtual clock](proactive.md): **fast-forward** an 
 - Time-warp presenter control over the virtual clock (`frontend/timewarp/`, plain REST, runs locally — not deployed).
 - Terraform to deploy portal (external zone) + console/dashboard (internal zone).
 
-**Shared code and tests.** Each app maps snake_case → camelCase through `@docbride/shared`'s `domain/contract.ts`. Shared theme/Panel/Badges/`domain/rfp.ts` live in `frontend/shared/`. Each app composes its own view types. Tests: vitest component/domain units in every app and in shared; Playwright e2e (`frontend/e2e/`) stubbed at the network boundary; `tests/address/test_console.py` for `console_server`.
+**Shared code and tests.** Each app maps snake_case → camelCase through `@docubridge/shared`'s `domain/contract.ts`. Shared theme/Panel/Badges/`domain/rfp.ts` live in `frontend/shared/`. Each app composes its own view types. Tests: vitest component/domain units in every app and in shared; Playwright e2e (`frontend/e2e/`) stubbed at the network boundary; `tests/address/test_console.py` for `console_server`.
 
 ## Related
 - [A2UI edge](a2ui-edge.md), [network zones](zones.md), [demos](../spec/demos/demo-suite.md)

@@ -218,7 +218,9 @@ def rfp_policy_from_docs(
     if not rfp:
         raise ValueError(f"skill {skill_name!r} policy.yaml missing an 'rfp:' block")
     if not isinstance(rfp, dict):
-        raise ValueError(f"skill {skill_name!r} policy.yaml 'rfp:' block is not a mapping")
+        raise ValueError(
+            f"skill {skill_name!r} policy.yaml 'rfp:' block is not a mapping"
+        )
     tick_seconds = rfp.get("tick_seconds")
     if (
         not isinstance(tick_seconds, int)
@@ -309,6 +311,7 @@ class RfpCell(BaseModel):
 
     @property
     def tracked(self) -> bool:
+        """Return True if this RFP carrier/line cell is actively tracked."""
         return self.requirement in _TRACKED
 
     @property

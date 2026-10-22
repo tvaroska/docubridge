@@ -65,13 +65,18 @@ def test_raster_scanned_pdf_is_one_page():
 def _objstm_pdf(body: bytes) -> bytes:
     """A PDF 1.5 whose page tree lives ONLY inside a Flate-compressed object stream."""
     stream = zlib.compress(body)
-    return b"".join([
-        b"%PDF-1.5\n",
-        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-        b"9 0 obj\n<< /Type /ObjStm /N 4 /First 20 /Filter /FlateDecode /Length ",
-        str(len(stream)).encode(), b" >>\nstream\n", stream, b"\nendstream\nendobj\n",
-        b"%%EOF\n",
-    ])
+    return b"".join(
+        [
+            b"%PDF-1.5\n",
+            b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+            b"9 0 obj\n<< /Type /ObjStm /N 4 /First 20 /Filter /FlateDecode /Length ",
+            str(len(stream)).encode(),
+            b" >>\nstream\n",
+            stream,
+            b"\nendstream\nendobj\n",
+            b"%%EOF\n",
+        ]
+    )
 
 
 def test_compressed_object_stream_page_tree_is_counted():
@@ -157,7 +162,10 @@ def test_extraction_truncated_is_a_value_error():
 @pytest.mark.parametrize(
     "path,expected",
     [
-        ("fields.tables.rates[3].frequency", ("fields.tables.rates[43].frequency", False)),
+        (
+            "fields.tables.rates[3].frequency",
+            ("fields.tables.rates[43].frequency", False),
+        ),
         ("tables.rates[0]", ("tables.rates[40]", False)),
         ("rates[2].amount", ("rates[42].amount", False)),
         ("fields.tables.design[1].value", ("fields.tables.design[1].value", False)),
@@ -167,12 +175,15 @@ def test_extraction_truncated_is_a_value_error():
     ],
 )
 def test_rebase_path(path, expected):
-    assert rebase_path(
-        path,
-        offsets={"rates": 40},
-        window_rows={"rates": 5, "design": 2},
-        tables={"rates", "design"},
-    ) == expected
+    assert (
+        rebase_path(
+            path,
+            offsets={"rates": 40},
+            window_rows={"rates": 5, "design": 2},
+            tables={"rates", "design"},
+        )
+        == expected
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -196,19 +207,23 @@ def _result(
     flagged=(),
     reviews=(),
 ) -> ExtractionResult:
-    return ExtractionResult.model_validate({
-        "fields": {
-            "doctype": doctype,
-            "issuer": issuer,
-            "key_fields": key_fields if key_fields is not None else {"currency": "USD"},
-            "tables": tables or {},
-        },
-        "overall_confidence": overall,
-        "field_confidence": confidence or {},
-        "legible": legible,
-        "flagged_fields": list(flagged),
-        "field_reviews": list(reviews),
-    })
+    return ExtractionResult.model_validate(
+        {
+            "fields": {
+                "doctype": doctype,
+                "issuer": issuer,
+                "key_fields": key_fields
+                if key_fields is not None
+                else {"currency": "USD"},
+                "tables": tables or {},
+            },
+            "overall_confidence": overall,
+            "field_confidence": confidence or {},
+            "legible": legible,
+            "flagged_fields": list(flagged),
+            "field_reviews": list(reviews),
+        }
+    )
 
 
 def test_one_window_is_returned_unchanged():
@@ -223,11 +238,22 @@ def test_no_windows_refuses():
 
 def test_rows_concatenate_in_order_without_dedupe():
     dup = {"id": "same"}
-    merged = merge_window_results([
-        (1, 8, _result(tables={"rates": [*_rows("r", 0, 3), dup]})),
-        (9, 16, _result(tables={"rates": [dup, *_rows("r", 3, 2)], "design": _rows("d", 0, 2)})),
-        (17, 17, _result(tables={})),
-    ])
+    merged = merge_window_results(
+        [
+            (1, 8, _result(tables={"rates": [*_rows("r", 0, 3), dup]})),
+            (
+                9,
+                16,
+                _result(
+                    tables={
+                        "rates": [dup, *_rows("r", 3, 2)],
+                        "design": _rows("d", 0, 2),
+                    }
+                ),
+            ),
+            (17, 17, _result(tables={})),
+        ]
+    )
     rates = merged.fields.tables["rates"]
     assert len(rates) == 7
     assert rates.count(dup) == 2  # a duplicate is visible to review, never dropped
@@ -236,14 +262,24 @@ def test_rows_concatenate_in_order_without_dedupe():
 
 
 def test_scalars_first_wins_and_a_disagreement_is_flagged():
-    merged = merge_window_results([
-        (1, 8, _result(key_fields={"currency": "USD", "premium": "100.00"})),
-        (9, 16, _result(key_fields={"currency": "EUR", "plan_year": "2027"},
-                        issuer="Other Mutual")),
-        (17, 20, _result(key_fields={"currency": "USD"}, issuer=None)),
-    ])
+    merged = merge_window_results(
+        [
+            (1, 8, _result(key_fields={"currency": "USD", "premium": "100.00"})),
+            (
+                9,
+                16,
+                _result(
+                    key_fields={"currency": "EUR", "plan_year": "2027"},
+                    issuer="Other Mutual",
+                ),
+            ),
+            (17, 20, _result(key_fields={"currency": "USD"}, issuer=None)),
+        ]
+    )
     assert merged.fields.key_fields == {
-        "currency": "USD", "premium": "100.00", "plan_year": "2027",
+        "currency": "USD",
+        "premium": "100.00",
+        "plan_year": "2027",
     }
     assert merged.fields.issuer == "Synthetic Mutual"
     assert merged.flagged_fields[:2] == ["issuer", "currency"]
@@ -258,9 +294,12 @@ def test_scalars_first_wins_and_a_disagreement_is_flagged():
 
 
 def test_doctype_disagreement_is_flagged():
-    merged = merge_window_results([
-        (1, 2, _result()), (3, 4, _result(doctype="utility-bill")),
-    ])
+    merged = merge_window_results(
+        [
+            (1, 2, _result()),
+            (3, 4, _result(doctype="utility-bill")),
+        ]
+    )
     assert merged.fields.doctype == "benefits-quote"
     assert merged.flagged_fields == ["doctype"]
     assert "'utility-bill'" in merged.field_reviews[0].detail
@@ -273,11 +312,20 @@ def test_agreeing_windows_flag_nothing():
 
 
 def test_confidence_is_min_and_legible_is_all():
-    merged = merge_window_results([
-        (1, 8, _result(overall=0.95, confidence={"currency": 0.99, "issuer": 0.9})),
-        (9, 16, _result(overall=0.71, legible=False,
-                        confidence={"currency": 0.5, "issuer": 0.8})),
-    ])
+    merged = merge_window_results(
+        [
+            (1, 8, _result(overall=0.95, confidence={"currency": 0.99, "issuer": 0.9})),
+            (
+                9,
+                16,
+                _result(
+                    overall=0.71,
+                    legible=False,
+                    confidence={"currency": 0.5, "issuer": 0.8},
+                ),
+            ),
+        ]
+    )
     assert merged.overall_confidence == 0.71
     assert merged.legible is False
     # key field: the WINNING window's own number; anything else: the minimum
@@ -287,17 +335,35 @@ def test_confidence_is_min_and_legible_is_all():
 
 def test_row_paths_are_rebased_across_windows():
     path = "fields.tables.rates[{}].frequency"
-    merged = merge_window_results([
-        (1, 8, _result(tables={"rates": _rows("r", 0, 40)},
-                       flagged=[path.format(2)], confidence={path.format(2): 0.4})),
-        (9, 16, _result(
-            tables={"rates": _rows("r", 40, 40)},
-            flagged=[path.format(3)],
-            confidence={path.format(3): 0.41},
-            reviews=[{"path": path.format(3), "reason": "low_confidence",
-                      "confidence": 0.41}],
-        )),
-    ])
+    merged = merge_window_results(
+        [
+            (
+                1,
+                8,
+                _result(
+                    tables={"rates": _rows("r", 0, 40)},
+                    flagged=[path.format(2)],
+                    confidence={path.format(2): 0.4},
+                ),
+            ),
+            (
+                9,
+                16,
+                _result(
+                    tables={"rates": _rows("r", 40, 40)},
+                    flagged=[path.format(3)],
+                    confidence={path.format(3): 0.41},
+                    reviews=[
+                        {
+                            "path": path.format(3),
+                            "reason": "low_confidence",
+                            "confidence": 0.41,
+                        }
+                    ],
+                ),
+            ),
+        ]
+    )
     assert merged.flagged_fields == [path.format(2), path.format(43)]
     assert merged.field_confidence[path.format(43)] == 0.41
     assert merged.field_confidence[path.format(2)] == 0.4
@@ -308,23 +374,37 @@ def test_row_paths_are_rebased_across_windows():
 
 def test_an_unemitted_row_index_is_coarsened_with_a_warning(caplog):
     caplog.set_level(logging.WARNING, logger="bridge.extraction.chunking")
-    merged = merge_window_results([
-        (1, 8, _result(tables={"rates": _rows("r", 0, 4)})),
-        (9, 16, _result(tables={"rates": _rows("r", 4, 2)},
-                        flagged=["fields.tables.rates[7].amount"])),
-    ])
+    merged = merge_window_results(
+        [
+            (1, 8, _result(tables={"rates": _rows("r", 0, 4)})),
+            (
+                9,
+                16,
+                _result(
+                    tables={"rates": _rows("r", 4, 2)},
+                    flagged=["fields.tables.rates[7].amount"],
+                ),
+            ),
+        ]
+    )
     assert merged.flagged_fields == ["fields.tables.rates"]
     assert "pages 9-16" in caplog.text
     assert "coarsened to 'fields.tables.rates'" in caplog.text
 
 
 def test_reviews_dedupe_on_path_first_wins():
-    review = {"path": "fields.key_fields.premium", "reason": "low_confidence",
-              "confidence": 0.3}
+    review = {
+        "path": "fields.key_fields.premium",
+        "reason": "low_confidence",
+        "confidence": 0.3,
+    }
     later = {**review, "confidence": 0.2, "detail": "later"}
-    merged = merge_window_results([
-        (1, 1, _result(reviews=[review])), (2, 2, _result(reviews=[later])),
-    ])
+    merged = merge_window_results(
+        [
+            (1, 1, _result(reviews=[review])),
+            (2, 2, _result(reviews=[later])),
+        ]
+    )
     assert len(merged.field_reviews) == 1
     assert merged.field_reviews[0].confidence == 0.3
 
@@ -345,5 +425,10 @@ def test_chunking_imports_only_stdlib_and_contract():
     banned = ("google", "agents", "bridge.seams", "bridge.edge", "pypdf", "fitz")
     assert not [n for n in names if n.split(".")[0] in banned or n.startswith(banned)]
     assert {n.split(".")[0] for n in names} <= {
-        "__future__", "logging", "re", "zlib", "collections", "contract",
+        "__future__",
+        "logging",
+        "re",
+        "zlib",
+        "collections",
+        "contract",
     }

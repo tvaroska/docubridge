@@ -13,6 +13,7 @@ caller is refused whatever its name. The principal source on deploy is the serve
 authentication middleware (``build_a2a_app(auth_backend=...)``); the edge ships no
 header-trusting backend.
 """
+
 from __future__ import annotations
 
 import os

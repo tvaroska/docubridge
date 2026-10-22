@@ -201,7 +201,8 @@ def build_image_pdf(pixels: bytes, width: int, height: int) -> bytes:
         % (PAGE_W_PT, PAGE_H_PT),
         b"<< /Type /XObject /Subtype /Image /Width %d /Height %d "
         b"/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode "
-        b"/Length %d >>\nstream\n" % (width, height, len(image))
+        b"/Length %d >>\nstream\n"
+        % (width, height, len(image))
         + image
         + b"\nendstream",
         b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",

@@ -212,9 +212,7 @@ async def upload_quote(
             f"could not read {artifact_name!r}: {type(exc).__name__}"
         ) from exc
     verdict = dispose_signals(
-        signals_from_result(
-            result, candidate_doctypes=list(policy.candidate_doctypes)
-        )
+        signals_from_result(result, candidate_doctypes=list(policy.candidate_doctypes))
     )
     entry = project_ledger_entry(doc_id=doc_id, result=result, verdict=verdict)
 

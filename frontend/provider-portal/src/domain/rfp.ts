@@ -12,7 +12,7 @@ import {
   type RequirementStatus,
   type RfpItemStatus,
   type WireFieldReview,
-} from "@docbride/shared";
+} from "@docubridge/shared";
 import { mapAction, type A2uiAction, type WireAction } from "./a2ui";
 
 export interface WireRfpChecklistItem {

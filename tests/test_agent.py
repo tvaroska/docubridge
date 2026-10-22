@@ -77,13 +77,15 @@ def test_instruction_guardrail_present():
     instruction_lower = instruction.lower()
 
     # Check for both "gate" mention and prohibition language
-    has_prohibition = any([
-        "never" in instruction_lower and "accept" in instruction_lower,
-        "never" in instruction_lower and "approve" in instruction_lower,
-        "cannot" in instruction_lower and "accept" in instruction_lower,
-        "may not" in instruction_lower and "accept" in instruction_lower,
-        "must not" in instruction_lower and "accept" in instruction_lower,
-    ])
+    has_prohibition = any(
+        [
+            "never" in instruction_lower and "accept" in instruction_lower,
+            "never" in instruction_lower and "approve" in instruction_lower,
+            "cannot" in instruction_lower and "accept" in instruction_lower,
+            "may not" in instruction_lower and "accept" in instruction_lower,
+            "must not" in instruction_lower and "accept" in instruction_lower,
+        ]
+    )
 
     assert has_prohibition, (
         "Instruction must forbid the LLM from minting an acceptance "
@@ -91,7 +93,7 @@ def test_instruction_guardrail_present():
     )
 
     # Should describe the two-step flow (extract then gate)
-    assert ("first" in instruction_lower or "then" in instruction_lower), (
+    assert "first" in instruction_lower or "then" in instruction_lower, (
         "Instruction should describe the two-step extract→gate flow"
     )
 
@@ -164,5 +166,7 @@ def test_extract_document_declaration_hides_tool_context():
     agent = build_extraction_agent()
     (tool,) = [t for t in agent.tools if t.name == "extract_document"]
     decl = tool._get_declaration()
-    schema = decl.parameters_json_schema or decl.parameters.model_dump(exclude_none=True)
+    schema = decl.parameters_json_schema or decl.parameters.model_dump(
+        exclude_none=True
+    )
     assert set(schema["properties"]) == {"artifact_name"}

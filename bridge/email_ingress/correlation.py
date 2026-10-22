@@ -115,6 +115,7 @@ class IntakeAddressing:
         return cls(mailbox=mailbox, secret=token_secret_from_env())
 
     def token(self, rfp_id: str, party: str) -> str:
+        """Mint or extract a deterministic intake routing token for an exchange and slot."""
         return mint_token(self.secret, rfp_id, party)
 
     def reply_address(self, rfp_id: str, party: str) -> str:

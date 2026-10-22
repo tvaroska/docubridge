@@ -40,7 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from bridge.knowledge_catalog import (
     CatalogRole,
     DeliveryChannel,
-     authorize_access,
+    authorize_access,
 )
 from bridge.operational_store import FactConflict
 from bridge.telemetry import trace_step
@@ -95,9 +95,7 @@ ENTERPRISE_INBOX_CATALOG_SCHEMA: dict[str, Any] = {
         "Basic Catalog with live step progress, provenance, and governance widgets."
     ),
     "allOf": [
-        {
-            "$ref": "https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json"
-        }
+        {"$ref": "https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json"}
     ],
     "components": {
         "ActionProgressCard": {
@@ -357,13 +355,9 @@ def compute_rfc6902_patches(
             val_init = initial[key]
             val_curr = current[key]
             if isinstance(val_init, dict) and isinstance(val_curr, dict):
-                patches.extend(
-                    compute_rfc6902_patches(val_init, val_curr, prefix=path)
-                )
+                patches.extend(compute_rfc6902_patches(val_init, val_curr, prefix=path))
             elif val_init != val_curr:
-                patches.append(
-                    Rfc6902PatchOp(op="replace", path=path, value=val_curr)
-                )
+                patches.append(Rfc6902PatchOp(op="replace", path=path, value=val_curr))
     return patches
 
 
@@ -753,9 +747,7 @@ def request_a2ui_inbox_confirmation(
     """Pause an ADK tool via `tool_context.request_confirmation`, attaching the A2UI v0.9
     surface messages inside the confirmation payload."""
     item.task_state = "input-required"
-    a2ui_messages = build_action_progress_surface(
-        item, role=role, channel=channel
-    )
+    a2ui_messages = build_action_progress_surface(item, role=role, channel=channel)
     payload = {
         "item_id": item.item_id,
         "surface_id": item.surface_id,
@@ -909,9 +901,11 @@ class ActionInboxStore:
         pause_for_review: bool = False,
         max_approval_amount: float | None = None,
     ) -> ActionInboxItem:
+        """Create a new human-in-the-loop action inbox item and record its initial audit event."""
         raise NotImplementedError
 
     def get_item(self, item_id: str) -> ActionInboxItem | None:
+        """Retrieve an action inbox item by its unique action ID, or None if not found."""
         raise NotImplementedError
 
     def list_items(
@@ -920,6 +914,7 @@ class ActionInboxStore:
         entity_id: str | None = None,
         task_state: TaskLifecycleState | None = None,
     ) -> list[ActionInboxItem]:
+        """List action inbox items filtered by status, assigned role, domain, or entity ID."""
         raise NotImplementedError
 
     def advance_step(
@@ -932,6 +927,7 @@ class ActionInboxStore:
         external_detail: str | None = None,
         hint: str | None = None,
     ) -> tuple[ActionInboxItem, dict[str, Any]]:
+        """Advance the workflow step of an active action inbox item and append an audit event."""
         raise NotImplementedError
 
     def resolve_action(
@@ -945,9 +941,11 @@ class ActionInboxStore:
         agent_spiffe_id: str | None = None,
         principal_max_approval_amount: float | None = None,
     ) -> dict[str, Any]:
+        """Resolve an action inbox item with an operator decision, rationale, and signature."""
         raise NotImplementedError
 
     def list_audit_records(self, item_id: str | None = None) -> list[InboxAuditRecord]:
+        """Return immutable audit log records, optionally filtered by action ID."""
         raise NotImplementedError
 
 
@@ -980,6 +978,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         pause_for_review: bool = False,
         max_approval_amount: float | None = None,
     ) -> ActionInboxItem:
+        """Create a new human-in-the-loop action inbox item in memory and record its audit event."""
         with trace_step(
             "docubridge.a2ui.create_action_item",
             {
@@ -999,7 +998,9 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 else default_submission_progress_steps()
             )
 
-            initial_model: dict[str, Any] = copy.deepcopy(data_model) if data_model else {}
+            initial_model: dict[str, Any] = (
+                copy.deepcopy(data_model) if data_model else {}
+            )
             initial_model.setdefault("resolution", {"selectedValue": ""})
             initial_model.setdefault("review", {"memo": ""})
 
@@ -1056,7 +1057,8 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 context_id=context_id or entity_id,
                 session_id=session_id or f"sess_{uuid.uuid4().hex[:8]}",
                 invocation_id=invocation_id or f"inv_{uuid.uuid4().hex[:8]}",
-                confirmation_call_id=confirmation_call_id or f"call_{uuid.uuid4().hex[:8]}",
+                confirmation_call_id=confirmation_call_id
+                or f"call_{uuid.uuid4().hex[:8]}",
                 title=title,
                 external_title=external_title or title,
                 hint=hint,
@@ -1087,6 +1089,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
             return item
 
     def get_item(self, item_id: str) -> ActionInboxItem | None:
+        """Retrieve an action inbox item from memory by its unique action ID."""
         return self._items.get(item_id)
 
     def list_items(
@@ -1095,6 +1098,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         entity_id: str | None = None,
         task_state: TaskLifecycleState | None = None,
     ) -> list[ActionInboxItem]:
+        """List in-memory action inbox items filtered by status, assigned role, domain, or entity ID."""
         items = list(self._items.values())
         if entity_id is not None:
             items = [i for i in items if i.entity_id == entity_id]
@@ -1112,6 +1116,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         external_detail: str | None = None,
         hint: str | None = None,
     ) -> tuple[ActionInboxItem, dict[str, Any]]:
+        """Advance the workflow step of an in-memory action inbox item and append an audit event."""
         item = self._items.get(item_id)
         if item is None:
             raise KeyError(f"Unknown action inbox item '{item_id}'.")
@@ -1165,6 +1170,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         agent_spiffe_id: str | None = None,
         principal_max_approval_amount: float | None = None,
     ) -> dict[str, Any]:
+        """Resolve an in-memory action inbox item with an operator decision and signature."""
         with trace_step(
             "docubridge.a2ui.resolve_inbox_action",
             {
@@ -1212,7 +1218,9 @@ class InMemoryActionInboxStore(ActionInboxStore):
                     action_ctx["resolution"]
                 )
             if isinstance(action_ctx.get("transfer"), dict):
-                candidate_model.setdefault("transfer", {}).update(action_ctx["transfer"])
+                candidate_model.setdefault("transfer", {}).update(
+                    action_ctx["transfer"]
+                )
             if isinstance(action_ctx.get("review"), dict):
                 candidate_model.setdefault("review", {}).update(action_ctx["review"])
 
@@ -1369,7 +1377,9 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 "audit_id": audit.audit_id,
                 "adk_function_response": {
                     "id": fn_resp.id if fn_resp else item.confirmation_call_id,
-                    "name": fn_resp.name if fn_resp else REQUEST_CONFIRMATION_FUNCTION_CALL_NAME,
+                    "name": fn_resp.name
+                    if fn_resp
+                    else REQUEST_CONFIRMATION_FUNCTION_CALL_NAME,
                     "response": fn_resp.response if fn_resp else {},
                 },
                 "progress_delta_msg": delta,
@@ -1379,6 +1389,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
             }
 
     def list_audit_records(self, item_id: str | None = None) -> list[InboxAuditRecord]:
+        """Return immutable audit log records from memory, optionally filtered by action ID."""
         if item_id is None:
             return list(self._audits)
         return [a for a in self._audits if a.item_id == item_id]
@@ -1409,9 +1420,7 @@ def format_a2ui_sse_frames(
 ) -> str:
     """Render an SSE stream containing the initial A2UI v0.9 surface followed by any
     recorded `updateDataModel` progress deltas."""
-    initial_messages = build_action_progress_surface(
-        item, role=role, channel=channel
-    )
+    initial_messages = build_action_progress_surface(item, role=role, channel=channel)
     frames: list[str] = []
     initial_envelope = {
         "item_id": item.item_id,
@@ -1420,9 +1429,7 @@ def format_a2ui_sse_frames(
             mode="json"
         ),
     }
-    frames.append(
-        f"event: a2ui.surface\ndata: {json.dumps(initial_envelope)}\n\n"
-    )
+    frames.append(f"event: a2ui.surface\ndata: {json.dumps(initial_envelope)}\n\n")
     for delta in item.delta_history:
         frames.append(f"event: a2ui.delta\ndata: {json.dumps(delta)}\n\n")
     return "".join(frames)

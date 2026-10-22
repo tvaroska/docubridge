@@ -21,6 +21,7 @@ parked task the native detection misses under the ``Workflow`` event ordering, s
 the peer resumes the SAME task under the SAME exchange context. ``use_legacy=True``
 is preserved (TEST-4 pin); adding ``config=`` is independent of the legacy flag.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

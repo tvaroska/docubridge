@@ -411,7 +411,7 @@ wheels = [
 ]
 
 [[package]]
-name = "docbride"
+name = "docubridge"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

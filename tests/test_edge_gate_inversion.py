@@ -14,6 +14,7 @@ in-process extraction-sourced, and over A2A through the hybrid edge's R4 text ro
 
 Not a seam (no ``adapter`` fixture); fully model-free (``ScriptedLlm``).
 """
+
 from __future__ import annotations
 
 import copy
@@ -57,7 +58,9 @@ from tests.address._corpus import (
 RECORDS = {r["id"]: r for r in corpus_records()}
 RIDS = list(RECORDS)
 TABLE = build_extraction_table()
-AUTO_APPROVE_RIDS = [rid for rid, r in RECORDS.items() if r["expected_gate"] == "auto_approve"]
+AUTO_APPROVE_RIDS = [
+    rid for rid, r in RECORDS.items() if r["expected_gate"] == "auto_approve"
+]
 NON_AUTO_RIDS = [rid for rid in RIDS if rid not in AUTO_APPROVE_RIDS]
 
 GATE = gatepin.GATE_TOOL_NAME
@@ -100,7 +103,9 @@ def _attack(kind: str, rid: str) -> Reply:
             text=CLAIM,
         )
     assert kind == KIND_ESCALATE
-    return Reply(tool_calls=(ToolCall("escalate_submission", {"reason": "x"}),), text=CLAIM)
+    return Reply(
+        tool_calls=(ToolCall("escalate_submission", {"reason": "x"}),), text=CLAIM
+    )
 
 
 def _adversary(kind: str, rid: str, *, extract: bool) -> ScriptedLlm:
@@ -111,13 +116,19 @@ def _adversary(kind: str, rid: str, *, extract: bool) -> ScriptedLlm:
         return ScriptedLlm(on_text={"please review": _attack(kind, rid)})
     return ScriptedLlm(
         on_text={  # insertion order: the sub-agent's request text matches first
-            "extract::": Reply(tool_calls=(ToolCall("extract_document", {"artifact_name": rid}),)),
+            "extract::": Reply(
+                tool_calls=(ToolCall("extract_document", {"artifact_name": rid}),)
+            ),
             "please review": Reply(
-                tool_calls=(ToolCall("extraction_agent", {"request": f"extract::{rid}"}),)
+                tool_calls=(
+                    ToolCall("extraction_agent", {"request": f"extract::{rid}"}),
+                )
             ),
         },
         on_tool={
-            "extract_document": Reply(text="extracted"),  # forgeable sub-agent text, ignored
+            "extract_document": Reply(
+                text="extracted"
+            ),  # forgeable sub-agent text, ignored
             "extraction_agent": _attack(kind, rid),
         },
     )
@@ -143,7 +154,10 @@ async def _collector_entry(rid: str) -> LedgerEntry:
 
 def _collector_seed(rid: str) -> gatepin.RecordedSignals:
     return gatepin.recorded_from_result(
-        TABLE[rid], doc_id=rid, source="collector", candidate_doctypes=CANDIDATE_DOCTYPES
+        TABLE[rid],
+        doc_id=rid,
+        source="collector",
+        candidate_doctypes=CANDIDATE_DOCTYPES,
     )
 
 
@@ -222,18 +236,24 @@ def _assert_adversary_failed(
 def _assert_forged_call_overwritten(events, rid: str) -> None:
     """The model's gate call carried the forged args; the response is the genuine verdict."""
     calls = [
-        p.function_call for ev in events for p in (ev.content.parts if ev.content else []) or []
+        p.function_call
+        for ev in events
+        for p in (ev.content.parts if ev.content else []) or []
         if p.function_call is not None and p.function_call.name == GATE
     ]
     responses = [
-        p.function_response for ev in events for p in (ev.content.parts if ev.content else []) or []
+        p.function_response
+        for ev in events
+        for p in (ev.content.parts if ev.content else []) or []
         if p.function_response is not None and p.function_response.name == GATE
     ]
     (call,) = calls
     assert call.args["overall_confidence"] == 1.0
     assert call.args["candidate_doctypes"] == FORGED_LABEL_SPACE
     (resp,) = responses
-    assert resp.response == dispose_signals(_genuine_signals(rid)).model_dump(mode="json")
+    assert resp.response == dispose_signals(_genuine_signals(rid)).model_dump(
+        mode="json"
+    )
 
 
 async def _state(leg: LlmLeg, *, user_id: str, session_id: str) -> dict:
@@ -250,7 +270,9 @@ async def _state(leg: LlmLeg, *, user_id: str, session_id: str) -> dict:
 
 
 def _ctx(state: dict | None = None, call_id: str | None = "c1") -> SimpleNamespace:
-    return SimpleNamespace(state=state if state is not None else {}, function_call_id=call_id)
+    return SimpleNamespace(
+        state=state if state is not None else {}, function_call_id=call_id
+    )
 
 
 def _gate_tool() -> SimpleNamespace:
@@ -275,7 +297,9 @@ def test_pin_overwrites_forged_args_with_recorded_signals(rid):
     assert state[gatepin.SIGNALS_KEY][rid]["gated_by"] == "c1"
     assert state[gatepin.PINS_KEY]["c1"]["doc_id"] == rid
     # The gate then runs on the pinned args → the Collector's verdict.
-    assert run_disposition_gate(**args) == dispose_signals(genuine).model_dump(mode="json")
+    assert run_disposition_gate(**args) == dispose_signals(genuine).model_dump(
+        mode="json"
+    )
 
 
 def test_pin_refuses_without_records_and_leaves_args_untouched():
@@ -291,15 +315,21 @@ def test_pin_refuses_without_records_and_leaves_args_untouched():
 
 def test_pin_refuses_without_call_id():
     state = gatepin.seed_state_delta({}, label_space=CANDIDATE_DOCTYPES)
-    gatepin.record_extraction(state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"])
-    out = gatepin.pin_gate_args(_gate_tool(), _forged("gov-id-clean"), _ctx(state, call_id=None))
+    gatepin.record_extraction(
+        state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"]
+    )
+    out = gatepin.pin_gate_args(
+        _gate_tool(), _forged("gov-id-clean"), _ctx(state, call_id=None)
+    )
     assert out["reason_code"] == gatepin.REASON_GATE_UNPINNED
     assert gatepin.PINS_KEY not in state
 
 
 def test_pin_refuses_without_label_space():
     state: dict = {}
-    gatepin.record_extraction(state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"])
+    gatepin.record_extraction(
+        state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"]
+    )
     args = _forged("gov-id-clean")
     out = gatepin.pin_gate_args(_gate_tool(), args, _ctx(state))
     assert out == gatepin.refusal(gatepin.REASON_LABEL_SPACE_MISSING)
@@ -318,7 +348,9 @@ def test_collector_seed_carries_its_own_label_space():
 
 def test_explicit_empty_label_space_is_used_not_refused():
     state = gatepin.seed_state_delta({}, label_space=[])
-    gatepin.record_extraction(state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"])
+    gatepin.record_extraction(
+        state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"]
+    )
     args = _forged("gov-id-clean")
     assert gatepin.pin_gate_args(_gate_tool(), args, _ctx(state)) is None
     assert args["candidate_doctypes"] == []
@@ -327,19 +359,27 @@ def test_explicit_empty_label_space_is_used_not_refused():
 
 def test_pin_consumes_latest_ungated_once_and_rerecord_resets():
     state = gatepin.seed_state_delta({}, label_space=CANDIDATE_DOCTYPES)
-    gatepin.record_extraction(state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"])
-    gatepin.record_extraction(state, doc_id="gov-id-expired", result=TABLE["gov-id-expired"])
+    gatepin.record_extraction(
+        state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"]
+    )
+    gatepin.record_extraction(
+        state, doc_id="gov-id-expired", result=TABLE["gov-id-expired"]
+    )
 
     gatepin.pin_gate_args(_gate_tool(), {}, _ctx(state, "c1"))
     gatepin.pin_gate_args(_gate_tool(), {}, _ctx(state, "c2"))
-    assert state[gatepin.PINS_KEY]["c1"]["doc_id"] == "gov-id-expired"  # most recent first
+    assert (
+        state[gatepin.PINS_KEY]["c1"]["doc_id"] == "gov-id-expired"
+    )  # most recent first
     assert state[gatepin.PINS_KEY]["c2"]["doc_id"] == "gov-id-clean"
     out = gatepin.pin_gate_args(_gate_tool(), {}, _ctx(state, "c3"))
     assert out["reason_code"] == gatepin.REASON_GATE_UNPINNED  # all consumed
     assert "c3" not in state[gatepin.PINS_KEY]
 
     # A re-record (resubmission) of the same doc_id is gateable again.
-    gatepin.record_extraction(state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"])
+    gatepin.record_extraction(
+        state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"]
+    )
     assert list(state[gatepin.SIGNALS_KEY])[-1] == "gov-id-clean"
     assert state[gatepin.SIGNALS_KEY]["gov-id-clean"]["gated_by"] is None
     assert gatepin.pin_gate_args(_gate_tool(), {}, _ctx(state, "c4")) is None
@@ -348,13 +388,22 @@ def test_pin_consumes_latest_ungated_once_and_rerecord_resets():
 
 def test_pin_is_noop_for_other_tools():
     state = gatepin.seed_state_delta({}, label_space=CANDIDATE_DOCTYPES)
-    gatepin.record_extraction(state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"])
+    gatepin.record_extraction(
+        state, doc_id="gov-id-clean", result=TABLE["gov-id-clean"]
+    )
     before_state = copy.deepcopy(state)
-    for name in ("extraction_agent", "reject_submission", "escalate_submission",
-                 "handle_deletion_request", "request_human_review"):
+    for name in (
+        "extraction_agent",
+        "reject_submission",
+        "escalate_submission",
+        "handle_deletion_request",
+        "request_human_review",
+    ):
         args = {"reason": "x", "artifact_name": "gov-id-clean", "request": "r"}
         before = copy.deepcopy(args)
-        assert gatepin.pin_gate_args(SimpleNamespace(name=name), args, _ctx(state)) is None
+        assert (
+            gatepin.pin_gate_args(SimpleNamespace(name=name), args, _ctx(state)) is None
+        )
         assert args == before
     assert state == before_state
 
@@ -378,7 +427,9 @@ async def test_recorded_signals_parity_with_collector(rid):
     assert dispose_signals(signals) == dispose_signals(_genuine_signals(rid))
     entry = await _collector_entry(rid)
     assert (dispose_signals(signals).gate, dispose_signals(signals).disposition) == (
-        entry.gate, entry.disposition)
+        entry.gate,
+        entry.disposition,
+    )
     assert signals.issuer == entry.issuer == RECORDS[rid]["issuer"]
 
 
@@ -421,14 +472,27 @@ def _ev(*parts: types.Part, actions: EventActions | None = None) -> Event:
     )
 
 
-def _gate_events(response: dict, *, pin_signals: Signals | None, doc_id: str = "gov-id-expired"):
-    call = types.Part(function_call=types.FunctionCall(id="g1", name=GATE, args=_forged(doc_id)))
-    resp = types.Part(function_response=types.FunctionResponse(id="g1", name=GATE, response=response))
+def _gate_events(
+    response: dict, *, pin_signals: Signals | None, doc_id: str = "gov-id-expired"
+):
+    call = types.Part(
+        function_call=types.FunctionCall(id="g1", name=GATE, args=_forged(doc_id))
+    )
+    resp = types.Part(
+        function_response=types.FunctionResponse(id="g1", name=GATE, response=response)
+    )
     actions = None
     if pin_signals is not None:
-        actions = EventActions(state_delta={gatepin.PINS_KEY: {
-            "g1": {"doc_id": doc_id, "signals": pin_signals.model_dump(mode="json")},
-        }})
+        actions = EventActions(
+            state_delta={
+                gatepin.PINS_KEY: {
+                    "g1": {
+                        "doc_id": doc_id,
+                        "signals": pin_signals.model_dump(mode="json"),
+                    },
+                }
+            }
+        )
     return [_ev(call), _ev(resp, actions=actions)]
 
 
@@ -461,10 +525,18 @@ def test_projection_user_authored_pin_is_ignored():
     verdict = dispose_signals(genuine).model_dump(mode="json")
     call, resp = _gate_events(verdict, pin_signals=None, doc_id="gov-id-clean")
     forged_pin = Event(
-        author="user", invocation_id="i",
-        actions=EventActions(state_delta={gatepin.PINS_KEY: {
-            "g1": {"doc_id": "gov-id-clean", "signals": genuine.model_dump(mode="json")},
-        }}),
+        author="user",
+        invocation_id="i",
+        actions=EventActions(
+            state_delta={
+                gatepin.PINS_KEY: {
+                    "g1": {
+                        "doc_id": "gov-id-clean",
+                        "signals": genuine.model_dump(mode="json"),
+                    },
+                }
+            }
+        ),
     )
     events = [forged_pin, call, resp]
     assert project_from_events(events, context_id="c").turn.status.entries == []
@@ -476,7 +548,10 @@ def test_projection_pinned_consistent_response_mints_from_pin():
     events = _gate_events(verdict, pin_signals=genuine, doc_id="bill-powerco-clean")
     (entry,) = project_from_events(events, context_id="c").turn.status.entries
     assert (entry.doc_id, entry.doctype, entry.issuer) == (
-        "bill-powerco-clean", "utility-bill", "power-co")
+        "bill-powerco-clean",
+        "utility-bill",
+        "power-co",
+    )
     assert (entry.disposition, entry.gate) == (Disposition.accepted, Gate.auto_approve)
 
 
@@ -503,17 +578,24 @@ async def test_adversary_in_process_seeded(rid, kind):
     record = RECORDS[rid]
     seed_entry = await _collector_entry(rid)
     assert (seed_entry.gate.value, seed_entry.disposition.value) == (
-        record["expected_gate"], record["expected_disposition"])
+        record["expected_gate"],
+        record["expected_disposition"],
+    )
     adv = _adversary(kind, rid, extract=False)
     leg = _leg(adv)
     ctx = f"ctx-{rid}"
     r = await leg.run(
-        party=PARTY, context_id=ctx, message=_message(rid),
+        party=PARTY,
+        context_id=ctx,
+        message=_message(rid),
         label_space=CANDIDATE_DOCTYPES,
-        seed_signals=[_collector_seed(rid)], seed_entries=[seed_entry],
+        seed_signals=[_collector_seed(rid)],
+        seed_entries=[seed_entry],
     )
     state = await _state(leg, user_id=PARTY, session_id=ctx)
-    _assert_adversary_failed(r.turn, record, state=state, kind=kind, seeded=True, adv=adv)
+    _assert_adversary_failed(
+        r.turn, record, state=state, kind=kind, seeded=True, adv=adv
+    )
     (entry,) = r.turn.status.entries
     assert (entry.gate, entry.disposition) == (seed_entry.gate, seed_entry.disposition)
     if kind == KIND_FORGED:
@@ -529,11 +611,16 @@ async def test_adversary_in_process_extracted(rid, kind):
     leg = _leg(adv)
     ctx = f"ctx-{rid}"
     r = await leg.run(
-        party=PARTY, context_id=ctx, message=_message(rid), label_space=CANDIDATE_DOCTYPES
+        party=PARTY,
+        context_id=ctx,
+        message=_message(rid),
+        label_space=CANDIDATE_DOCTYPES,
     )
     state = await _state(leg, user_id=PARTY, session_id=ctx)
     assert state[gatepin.SIGNALS_KEY][rid]["source"] == "extraction"
-    _assert_adversary_failed(r.turn, record, state=state, kind=kind, seeded=False, adv=adv)
+    _assert_adversary_failed(
+        r.turn, record, state=state, kind=kind, seeded=False, adv=adv
+    )
     if kind == KIND_FORGED:
         _assert_forged_call_overwritten(r.events, rid)
     else:
@@ -602,11 +689,14 @@ async def test_adversary_a2a_hybrid(rid, kind):
     # Empty store → the party resolves to the unscoped user (D9).
     state = await _state(leg, user_id="_unscoped", session_id=task.context_id)
     assert state[gatepin.LABEL_SPACE_KEY] == CANDIDATE_DOCTYPES
-    _assert_adversary_failed(turn, record, state=state, kind=kind, seeded=False, adv=adv)
+    _assert_adversary_failed(
+        turn, record, state=state, kind=kind, seeded=False, adv=adv
+    )
 
     texts = [ph.get_message_text(task.status.message)] + [
         ph.get_message_text(e.status_update.status.message)
-        for e in events if e.HasField("status_update")
+        for e in events
+        if e.HasField("status_update")
     ]
     for text in texts:
         assert CLAIM not in text
@@ -635,10 +725,15 @@ async def test_gate_before_any_extraction_is_refused():
     """(b) as the first move with no extraction and no seed → refusal, no entry."""
     adv = _adversary(KIND_FORGED, "gov-id-expired", extract=False)
     leg = _leg(adv)
-    r = await leg.run(party=PARTY, context_id="ctx-r", message=_message("gov-id-expired"),
-                      label_space=CANDIDATE_DOCTYPES)
+    r = await leg.run(
+        party=PARTY,
+        context_id="ctx-r",
+        message=_message("gov-id-expired"),
+        label_space=CANDIDATE_DOCTYPES,
+    )
     responses = [
-        p.function_response.response for ev in r.events
+        p.function_response.response
+        for ev in r.events
         for p in (ev.content.parts if ev.content else []) or []
         if p.function_response is not None and p.function_response.name == GATE
     ]
@@ -654,7 +749,8 @@ async def test_gate_without_label_space_is_refused():
     leg = _leg(adv)
     r = await leg.run(party=PARTY, context_id="ctx-l", message=_message("gov-id-clean"))
     responses = [
-        p.function_response.response for ev in r.events
+        p.function_response.response
+        for ev in r.events
         for p in (ev.content.parts if ev.content else []) or []
         if p.function_response is not None and p.function_response.name == GATE
     ]
@@ -667,8 +763,14 @@ async def test_a2a_unresolved_process_refuses_gate():
     rid = "gov-id-clean"
     adv = ScriptedLlm(
         on_text={
-            "extract::": Reply(tool_calls=(ToolCall("extract_document", {"artifact_name": rid}),)),
-            "hello": Reply(tool_calls=(ToolCall("extraction_agent", {"request": f"extract::{rid}"}),)),
+            "extract::": Reply(
+                tool_calls=(ToolCall("extract_document", {"artifact_name": rid}),)
+            ),
+            "hello": Reply(
+                tool_calls=(
+                    ToolCall("extraction_agent", {"request": f"extract::{rid}"}),
+                )
+            ),
         },
         on_tool={"extraction_agent": _attack(KIND_FORGED, rid)},
     )
@@ -692,9 +794,17 @@ async def test_parallel_gate_calls_fail_closed():
         tool_calls=(ToolCall(GATE, _forged(rid)), ToolCall(GATE, _forged(rid)))
     )
     leg = _leg(adv)
-    r = await leg.run(party=PARTY, context_id="ctx-p", message=_message(rid),
-                      label_space=CANDIDATE_DOCTYPES)
+    r = await leg.run(
+        party=PARTY,
+        context_id="ctx-p",
+        message=_message(rid),
+        label_space=CANDIDATE_DOCTYPES,
+    )
     entries = r.turn.status.entries
     assert len(entries) <= 1
     for e in entries:
-        assert (e.doc_id, e.gate, e.disposition) == (rid, Gate.hitl_review, Disposition.pending)
+        assert (e.doc_id, e.gate, e.disposition) == (
+            rid,
+            Gate.hitl_review,
+            Disposition.pending,
+        )

@@ -1,4 +1,5 @@
 """Four-signal disposition model (CORE-4): one SignalProvider interface, pluggable impls."""
+
 import abc
 
 from pydantic import BaseModel, ConfigDict
@@ -17,6 +18,7 @@ from contract.extraction import ExtractionResult, fields_requiring_review
 
 class Signals(BaseModel):
     """The four disposition signals for one document (design/disposition.md:21-30)."""
+
     model_config = ConfigDict(extra="forbid")
     # process context (needed for the type-match signal)
     doctype: str
@@ -33,11 +35,14 @@ class Signals(BaseModel):
     failed_rules: list[str] = []
 
     @property
-    def type_match(self) -> bool:            # signal 2 — right kind?
+    def type_match(self) -> bool:  # signal 2 — right kind?
+        """Return True if the detected document type matches the expected document type."""
         return is_in_label_space(self.doctype, self.candidate_doctypes)
 
 
-def signals_from_result(result: ExtractionResult, *, candidate_doctypes: list[str]) -> Signals:
+def signals_from_result(
+    result: ExtractionResult, *, candidate_doctypes: list[str]
+) -> Signals:
     """Project a raw ExtractionResult into the four-signal bundle (canonicalizes issuer).
 
     The raw ``flagged_fields`` list wins whenever it is non-empty (so every existing
@@ -58,23 +63,34 @@ def signals_from_result(result: ExtractionResult, *, candidate_doctypes: list[st
 
 class SignalProvider(abc.ABC):
     """One contract; pluggable impls (fixture / model-reported / computed)."""
+
     @abc.abstractmethod
-    async def signals_for(self, artifact_name: str, *, candidate_doctypes: list[str]) -> Signals:
+    async def signals_for(
+        self, artifact_name: str, *, candidate_doctypes: list[str]
+    ) -> Signals:
         """Produce the four disposition signals for a document artifact."""
 
 
 class ExtractionSignalProvider(SignalProvider):
     """Signals derived from the extraction seam; canonicalizes the issuer Bridge-side."""
+
     def __init__(self, extractor: ExtractionSeam | None = None) -> None:
         self._extractor = extractor  # None -> resolve the extraction seam lazily
 
-    async def signals_for(self, artifact_name: str, *, candidate_doctypes: list[str]) -> Signals:
-        extractor = self._extractor or get_adapter(Seam.extraction, resolve_mode(Seam.extraction))
+    async def signals_for(
+        self, artifact_name: str, *, candidate_doctypes: list[str]
+    ) -> Signals:
+        """Extract quality, freshness, and schema completeness signals from a document."""
+        extractor = self._extractor or get_adapter(
+            Seam.extraction, resolve_mode(Seam.extraction)
+        )
         r = await extractor.extract(artifact_name)
         return signals_from_result(r, candidate_doctypes=candidate_doctypes)
 
 
-def dispose_signals(signals: Signals, thresholds: DispositionThresholds = DEFAULT_THRESHOLDS) -> DispositionVerdict:
+def dispose_signals(
+    signals: Signals, thresholds: DispositionThresholds = DEFAULT_THRESHOLDS
+) -> DispositionVerdict:
     """Run the deterministic gate over a Signals bundle (each signal drives its route)."""
     return dispose(
         doctype=signals.doctype,

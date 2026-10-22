@@ -42,7 +42,10 @@ async def extract_document(
             tool_context.state, doc_id=artifact_name, result=result
         )
     return {
-        "classification": {"doctype": result.fields.doctype, "issuer": canonicalize_issuer(result.fields.issuer)},
+        "classification": {
+            "doctype": result.fields.doctype,
+            "issuer": canonicalize_issuer(result.fields.issuer),
+        },
         "key_fields": result.fields.key_fields,
         "signals": {
             "legible": result.legible,
@@ -94,8 +97,6 @@ def build_extraction_agent(model: str | BaseLlm | None = None) -> LlmAgent:
         model=effective_model,
         mode="single_turn",
         instruction=EXTRACTION_INSTRUCTION,
-        planner=BuiltInPlanner(
-            thinking_config=types.ThinkingConfig(thinking_budget=0)
-        ),
+        planner=BuiltInPlanner(thinking_config=types.ThinkingConfig(thinking_budget=0)),
         tools=[FunctionTool(func=extract_document)],
     )

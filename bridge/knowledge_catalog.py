@@ -17,7 +17,7 @@ Provides the 4 pillars of the Enterprise Data Architecture Knowledge Catalog:
    `AgentSemanticContext`):
    Grounded semantic context for domain agents plus role-based and
    channel-based access control defining who can see internal vs. external
-   data (`gemini_app` for internal Aon roles vs. `custom_web` for external
+   data (`gemini_app` for internal Benefits Consumer roles vs. `custom_web` for external
    clients and carriers).
 """
 
@@ -115,9 +115,9 @@ class CatalogAsset(BaseModel):
     zone: AssetLocationZone
     physical_uri: str
     owner_domain: str
-    classification: Literal["public", "client_shared", "internal_only", "restricted_pii"] = (
-        "internal_only"
-    )
+    classification: Literal[
+        "public", "client_shared", "internal_only", "restricted_pii"
+    ] = "internal_only"
     schema_fields: tuple[str, ...] = ()
     registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -331,7 +331,14 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         physical_uri="gs://docubridge-audit-vault/vault/",
         owner_domain="enterprise-governance",
         classification="internal_only",
-        schema_fields=("context_id", "doc_id", "version", "sha256", "vault_uri", "locked_at"),
+        schema_fields=(
+            "context_id",
+            "doc_id",
+            "version",
+            "sha256",
+            "vault_uri",
+            "locked_at",
+        ),
     ),
     CatalogAsset(
         asset_id="asset.alloydb_operational_store",
@@ -446,7 +453,14 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         physical_uri="alloydb://docubridge-enterprise-data/gym/feedback_diff_log",
         owner_domain="agent-gym-governance",
         classification="internal_only",
-        schema_fields=("signal_id", "source_zone", "issuer", "doctype", "field_path", "patches"),
+        schema_fields=(
+            "signal_id",
+            "source_zone",
+            "issuer",
+            "doctype",
+            "field_path",
+            "patches",
+        ),
     ),
     CatalogAsset(
         asset_id="asset.gym_benchmark_test_suite",
@@ -456,7 +470,12 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         physical_uri="alloydb://docubridge-enterprise-data/gym/benchmark_test_suite",
         owner_domain="agent-gym-governance",
         classification="internal_only",
-        schema_fields=("case_id", "perturbation_type", "baseline_passed", "candidate_passed"),
+        schema_fields=(
+            "case_id",
+            "perturbation_type",
+            "baseline_passed",
+            "candidate_passed",
+        ),
     ),
     CatalogAsset(
         asset_id="asset.gym_tribal_rulebook",
@@ -466,7 +485,14 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         physical_uri="alloydb://docubridge-enterprise-data/gym/active_tribal_rulebook",
         owner_domain="agent-gym-governance",
         classification="internal_only",
-        schema_fields=("rule_id", "category", "issuer_pattern", "doctype", "instruction", "status"),
+        schema_fields=(
+            "rule_id",
+            "category",
+            "issuer_pattern",
+            "doctype",
+            "instruction",
+            "status",
+        ),
     ),
     CatalogAsset(
         asset_id="asset.gym_trust_policy_registry",
@@ -476,7 +502,12 @@ DEFAULT_SYSTEM_ASSETS: tuple[CatalogAsset, ...] = (
         physical_uri="alloydb://docubridge-enterprise-data/gym/trust_policy_registry",
         owner_domain="agent-gym-governance",
         classification="internal_only",
-        schema_fields=("slice_id", "issuer_pattern", "autonomy_level", "consecutive_matches"),
+        schema_fields=(
+            "slice_id",
+            "issuer_pattern",
+            "autonomy_level",
+            "consecutive_matches",
+        ),
     ),
 )
 
@@ -484,7 +515,11 @@ DEFAULT_ACCESS_POLICIES: dict[CatalogRole, AccessPolicy] = {
     "broker": AccessPolicy(
         role="broker",
         allowed_channels=("gemini_app",),
-        allowed_views=("v_broker_placement", "v_claims_coverage", "v_underwriter_exposure"),
+        allowed_views=(
+            "v_broker_placement",
+            "v_claims_coverage",
+            "v_underwriter_exposure",
+        ),
         allow_internal_conflict_notes=True,
         allow_competitor_quotes=True,
         allow_raw_vault_uri=True,
@@ -500,7 +535,11 @@ DEFAULT_ACCESS_POLICIES: dict[CatalogRole, AccessPolicy] = {
     "underwriter": AccessPolicy(
         role="underwriter",
         allowed_channels=("gemini_app",),
-        allowed_views=("v_underwriter_exposure", "v_broker_placement", "v_claims_coverage"),
+        allowed_views=(
+            "v_underwriter_exposure",
+            "v_broker_placement",
+            "v_claims_coverage",
+        ),
         allow_internal_conflict_notes=True,
         allow_competitor_quotes=True,
         allow_raw_vault_uri=True,
@@ -508,7 +547,11 @@ DEFAULT_ACCESS_POLICIES: dict[CatalogRole, AccessPolicy] = {
     "executive": AccessPolicy(
         role="executive",
         allowed_channels=("gemini_app",),
-        allowed_views=("v_broker_placement", "v_claims_coverage", "v_underwriter_exposure"),
+        allowed_views=(
+            "v_broker_placement",
+            "v_claims_coverage",
+            "v_underwriter_exposure",
+        ),
         allow_internal_conflict_notes=True,
         allow_competitor_quotes=True,
         allow_raw_vault_uri=True,
@@ -569,7 +612,11 @@ def authorize_access(
                     target_view=target_view,
                     agent_policies=spiffe_policies,
                 )
-            except (ShadowAgentError, SpiffeAuthenticationError, PermissionError) as exc:
+            except (
+                ShadowAgentError,
+                SpiffeAuthenticationError,
+                PermissionError,
+            ) as exc:
                 span.set_attribute("docubridge.access_allowed", False)
                 return AccessDecision(
                     allowed=False,
@@ -649,34 +696,50 @@ class KnowledgeCatalog(Protocol):
 
     def list_glossary_terms(
         self, *, domain: str | None = None, include_confidential: bool = True
-    ) -> list[BusinessGlossaryTerm]: ...
+    ) -> list[BusinessGlossaryTerm]:
+        """Return business glossary terms filtered by domain, parent glossary ID, or search query."""
+        ...
 
-    def register_asset(self, asset: CatalogAsset) -> None: ...
+    def register_asset(self, asset: CatalogAsset) -> None:
+        """Register or update a catalog asset in the knowledge catalog."""
+        ...
 
     def list_assets(
         self,
         *,
         zone: AssetLocationZone | None = None,
         external_safe_only: bool = False,
-    ) -> list[CatalogAsset]: ...
+    ) -> list[CatalogAsset]:
+        """Return catalog assets filtered by asset type, domain, sensitivity tier, or search query."""
+        ...
 
-    def register_spiffe_agent(self, policy: SpiffeAgentPolicy) -> None: ...
+    def register_spiffe_agent(self, policy: SpiffeAgentPolicy) -> None:
+        """Register or update a SPIFFE workload identity card in the knowledge catalog."""
+        ...
 
     def list_spiffe_agents(
         self, *, security_zone: Literal["internal", "external"] | None = None
-    ) -> list[SpiffeAgentPolicy]: ...
+    ) -> list[SpiffeAgentPolicy]:
+        """Return registered SPIFFE workload identities, optionally filtered by trust domain."""
+        ...
 
     def register_submission_lineage(
         self,
         entry: LedgerEntry,
         facts: list[ConsolidatedFact],
-    ) -> list[LineageTrace]: ...
+    ) -> list[LineageTrace]:
+        """Record end-to-end W3C PROV-O lineage edges and derived assets for a document submission."""
+        ...
 
     def trace_lineage(
         self, entity_id: str, field_name_or_path: str
-    ) -> LineageTrace | None: ...
+    ) -> LineageTrace | None:
+        """Trace upstream and downstream W3C PROV-O lineage edges for a target catalog asset."""
+        ...
 
-    def list_lineage_for_entity(self, entity_id: str) -> list[LineageTrace]: ...
+    def list_lineage_for_entity(self, entity_id: str) -> list[LineageTrace]:
+        """Return all lineage edges associated with a specific entity ID."""
+        ...
 
     def build_agent_context(
         self,
@@ -686,7 +749,9 @@ class KnowledgeCatalog(Protocol):
         target_view: str,
         agent_spiffe_id: str | None = None,
         svid_verified: bool = False,
-    ) -> AgentSemanticContext: ...
+    ) -> AgentSemanticContext:
+        """Assemble the grounded catalog, glossary, and SPIFFE context payload for an agent."""
+        ...
 
 
 class InMemoryKnowledgeCatalog:
@@ -704,9 +769,7 @@ class InMemoryKnowledgeCatalog:
         self._glossary: dict[str, BusinessGlossaryTerm] = {
             t.term_id: t for t in glossary_terms
         }
-        self._assets: dict[str, CatalogAsset] = {
-            a.asset_id: a for a in system_assets
-        }
+        self._assets: dict[str, CatalogAsset] = {a.asset_id: a for a in system_assets}
         self._policies: dict[CatalogRole, AccessPolicy] = (
             dict(access_policies)
             if access_policies is not None
@@ -728,6 +791,7 @@ class InMemoryKnowledgeCatalog:
     def list_spiffe_agents(
         self, *, security_zone: Literal["internal", "external"] | None = None
     ) -> list[SpiffeAgentPolicy]:
+        """Return registered SPIFFE workload identities, optionally filtered by trust domain."""
         agents = list(self._spiffe_policies.values())
         if security_zone is not None:
             agents = [a for a in agents if a.security_zone == security_zone]
@@ -740,6 +804,7 @@ class InMemoryKnowledgeCatalog:
     def list_glossary_terms(
         self, *, domain: str | None = None, include_confidential: bool = True
     ) -> list[BusinessGlossaryTerm]:
+        """Return business glossary terms filtered by domain, parent glossary ID, or search query."""
         terms = list(self._glossary.values())
         if domain is not None:
             terms = [t for t in terms if t.domain == domain]
@@ -748,6 +813,7 @@ class InMemoryKnowledgeCatalog:
         return terms
 
     def register_asset(self, asset: CatalogAsset) -> None:
+        """Register or update a catalog asset in the in-memory knowledge catalog."""
         self._assets[asset.asset_id] = asset
 
     def list_assets(
@@ -756,14 +822,13 @@ class InMemoryKnowledgeCatalog:
         zone: AssetLocationZone | None = None,
         external_safe_only: bool = False,
     ) -> list[CatalogAsset]:
+        """Return catalog assets filtered by asset type, domain, sensitivity tier, or search query."""
         assets = list(self._assets.values())
         if zone is not None:
             assets = [a for a in assets if a.zone == zone]
         if external_safe_only:
             assets = [
-                a
-                for a in assets
-                if a.classification in ("public", "client_shared")
+                a for a in assets if a.classification in ("public", "client_shared")
             ]
         return assets
 
@@ -771,9 +836,7 @@ class InMemoryKnowledgeCatalog:
         self, fact: ConsolidatedFact, fallback_vault_uri: str | None = None
     ) -> LineageTrace:
         vault_uri = (
-            fact.vault_uri
-            or fallback_vault_uri
-            or f"vault://local/vault/{fact.doc_id}"
+            fact.vault_uri or fallback_vault_uri or f"vault://local/vault/{fact.doc_id}"
         )
         page_num = fact.source_anchor.page_number if fact.source_anchor else 1
         source_pdf_uri = (
@@ -944,7 +1007,9 @@ class InMemoryKnowledgeCatalog:
             traces: list[LineageTrace] = []
             for fact in facts:
                 trace = self._build_trace_from_fact(fact, fallback_vault_uri=vault_uri)
-                self._lineage.setdefault((fact.entity_id, fact.field_path), []).append(trace)
+                self._lineage.setdefault((fact.entity_id, fact.field_path), []).append(
+                    trace
+                )
                 leaf = fact.field_path.split(".")[-1]
                 if leaf != fact.field_path:
                     self._lineage.setdefault((fact.entity_id, leaf), []).append(trace)
@@ -955,6 +1020,7 @@ class InMemoryKnowledgeCatalog:
     def trace_lineage(
         self, entity_id: str, field_name_or_path: str
     ) -> LineageTrace | None:
+        """Trace upstream and downstream W3C PROV-O lineage edges for a target catalog asset."""
         with trace_step(
             "docubridge.catalog.lineage_trace",
             {
@@ -976,10 +1042,13 @@ class InMemoryKnowledgeCatalog:
             span.set_attribute("docubridge.source_doc_id", result.source_doc_id)
             span.set_attribute("docubridge.hop_count", len(result.nodes))
             if result.source_anchor:
-                span.set_attribute("docubridge.page_number", result.source_anchor.page_number)
+                span.set_attribute(
+                    "docubridge.page_number", result.source_anchor.page_number
+                )
             return result
 
     def list_lineage_for_entity(self, entity_id: str) -> list[LineageTrace]:
+        """Return all lineage edges associated with a specific entity ID."""
         results = [
             traces[-1]
             for (ent_id, fpath), traces in self._lineage.items()
@@ -1003,6 +1072,7 @@ class InMemoryKnowledgeCatalog:
         agent_spiffe_id: str | None = None,
         svid_verified: bool = False,
     ) -> AgentSemanticContext:
+        """Assemble the grounded catalog, glossary, and SPIFFE context payload for an agent."""
         decision = authorize_access(
             role=role,
             channel=channel,

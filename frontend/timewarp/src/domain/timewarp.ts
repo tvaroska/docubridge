@@ -6,7 +6,7 @@
 // stamped lifecycle + fired-event trail. The `lifecycle`/`step` values are the shared
 // LifecycleStatus vocabulary (relayed verbatim — content-not-pixels).
 
-import type { LifecycleStatus } from "@docbride/shared";
+import type { LifecycleStatus } from "@docubridge/shared";
 
 // --------------------------------------------------------------------------- //
 // Wire shapes (snake_case from the time-warp host)                            //

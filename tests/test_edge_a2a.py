@@ -12,6 +12,7 @@ speaks that binding — the gRPC-method-named JSON-RPC ops (``SendMessage``,
 ``subscribe``, ...). We drive the real client rather than hand-rolling JSON-RPC
 envelopes, which is the strongest conformance proof for this SDK version.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -248,7 +249,9 @@ async def test_inline_bytes_rejected_end_to_end(edge):
     """A FileWithBytes (raw) part → the task does not complete successfully."""
     async with _client(edge.app()) as (_hc, client):
         parts = encode_collect_request(CollectRequest(process="address-proof"))
-        parts.append(ph.new_raw_part(b"not-allowed-on-the-wire", media_type="image/svg+xml"))
+        parts.append(
+            ph.new_raw_part(b"not-allowed-on-the-wire", media_type="image/svg+xml")
+        )
         msg = Message(role=Role.ROLE_USER, message_id=uuid.uuid4().hex, parts=parts)
 
         task_id = None
@@ -296,11 +299,14 @@ async def test_message_stream_sse_events(edge):
         )
         # D7: the deterministic legs never stream WORKING — in either edge mode.
         assert not [
-            su for su in status_updates
+            su
+            for su in status_updates
             if su.status_update.status.state == TaskState.TASK_STATE_WORKING
         ]
         # The artifact carried the ExchangeTurn data part.
-        turn = decode_exchange_turn(list(artifact_updates[-1].artifact_update.artifact.parts))
+        turn = decode_exchange_turn(
+            list(artifact_updates[-1].artifact_update.artifact.parts)
+        )
         assert isinstance(turn, ExchangeTurn)
 
 
@@ -506,9 +512,12 @@ async def test_input_required_park_does_not_hang(edge):
     INPUT_REQUIRED state, the call returns (does not hang), and the exchange_turn
     artifact is present.
     """
+
     # Stub collector returning a non-terminal turn
     class StubCollector:
-        async def collect(self, request, documents, candidate_doctypes, results_out=None):
+        async def collect(
+            self, request, documents, candidate_doctypes, results_out=None
+        ):
             return ExchangeTurn(
                 context_id="stub-context",
                 status=CollectionStatus(entries=[]),
@@ -650,7 +659,9 @@ async def test_card_advertises_dual_input_modes(edge):
         assert "text/plain" in body["defaultInputModes"]
 
         # The address-proof skill has input_modes containing both
-        address_skill = next((s for s in body["skills"] if s["id"] == "address-proof"), None)
+        address_skill = next(
+            (s for s in body["skills"] if s["id"] == "address-proof"), None
+        )
         assert address_skill is not None
         assert "inputModes" in address_skill
         assert "application/json" in address_skill["inputModes"]
@@ -717,7 +728,9 @@ def test_decode_intake_precedence_json_wins():
     Text part is first to prove precedence is by content, not position.
     """
     text_part = ph.new_text_part("collect address proof")
-    json_parts = encode_collect_request(CollectRequest(process="address-proof", message="from JSON"))
+    json_parts = encode_collect_request(
+        CollectRequest(process="address-proof", message="from JSON")
+    )
     msg = Message(
         role=Role.ROLE_USER,
         message_id="m",
@@ -732,7 +745,9 @@ def test_decode_intake_neither_present():
     """decode_intake: neither JSON nor text → raises ValueError."""
     junk = ph.new_data_part({"not": "a-request"})
     msg = Message(role=Role.ROLE_USER, message_id="m", parts=[junk])
-    with pytest.raises(ValueError, match="no CollectRequest data part or text/plain intake found"):
+    with pytest.raises(
+        ValueError, match="no CollectRequest data part or text/plain intake found"
+    ):
         decode_intake(msg)
 
 
@@ -809,10 +824,16 @@ def test_edge_mode_hybrid_rebinds_injected_leg_store():
     from google.adk.artifacts import InMemoryArtifactService
 
     store = InMemoryArtifactService()
-    leg = LlmLeg(model=ScriptedLlm(max_calls=0), artifact_store=InMemoryArtifactService())
+    leg = LlmLeg(
+        model=ScriptedLlm(max_calls=0), artifact_store=InMemoryArtifactService()
+    )
     executor = CollectExecutor(collector=Collector(FixtureExtractor()))
     build_a2a_app(
-        url=URL, executor=executor, artifact_store=store, edge_mode="hybrid", llm_leg=leg
+        url=URL,
+        executor=executor,
+        artifact_store=store,
+        edge_mode="hybrid",
+        llm_leg=leg,
     )
     assert executor.llm_leg is leg
     assert leg.artifact_store is store
@@ -903,7 +924,8 @@ async def test_hybrid_text_only_routes_to_llm_leg_unrouted():
         events, task = await _send_parts(client, [ph.new_text_part("hello there")])
 
     working = [
-        e.status_update.status for e in events
+        e.status_update.status
+        for e in events
         if e.HasField("status_update")
         and e.status_update.status.state == TaskState.TASK_STATE_WORKING
     ]

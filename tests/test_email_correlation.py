@@ -108,9 +108,9 @@ def test_two_distinct_legs_are_ambiguous_but_a_repeat_is_not():
         correlate([a, b], board.rfps.values(), SECRET)
     mail = _mail(recipients=[f"rfp-quotes+{a}@broker.example"], subject=f"[ref:{a}]")
     assert find_tokens(mail, MAILBOX) == [a]
-    assert correlate(find_tokens(mail, MAILBOX), board.rfps.values(), SECRET)[1].party == (
-        "carrier-a"
-    )
+    assert correlate(find_tokens(mail, MAILBOX), board.rfps.values(), SECRET)[
+        1
+    ].party == ("carrier-a")
 
 
 def test_secret_from_env_refuses_a_default(monkeypatch):

@@ -96,10 +96,15 @@ async def test_advance_drives_ladder_on_shared_store():
         assert state["pending"][0]["fire_at"] == REMINDER
         # The shared store record + the dashboard projection both show overdue.
         assert store.get(sid).lifecycle is LifecycleStatus.overdue
-        assert readmodel.project_exchange(store.get(sid))["lifecycle"] == LifecycleStatus.overdue
+        assert (
+            readmodel.project_exchange(store.get(sid))["lifecycle"]
+            == LifecycleStatus.overdue
+        )
 
         # Advance to reminder_ticks -> reminder, one pending at escalate_ticks.
-        state = (await hc.post("/timewarp/advance", json={"ticks": REMINDER - OVERDUE})).json()
+        state = (
+            await hc.post("/timewarp/advance", json={"ticks": REMINDER - OVERDUE})
+        ).json()
         ex = state["exchanges"][0]
         assert ex["lifecycle"] == "reminder"
         assert [e["step"] for e in ex["events"]] == ["overdue", "reminder"]
@@ -107,7 +112,9 @@ async def test_advance_drives_ladder_on_shared_store():
         assert state["pending"][0]["fire_at"] == ESCALATE
 
         # Advance to escalate_ticks -> escalated, NO pending alarm (terminal stall).
-        state = (await hc.post("/timewarp/advance", json={"ticks": ESCALATE - REMINDER})).json()
+        state = (
+            await hc.post("/timewarp/advance", json={"ticks": ESCALATE - REMINDER})
+        ).json()
         ex = state["exchanges"][0]
         assert ex["lifecycle"] == "escalated"
         assert ex["done"] is True

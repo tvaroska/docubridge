@@ -54,6 +54,7 @@ R2). Refusals (a file part, an invalid context id, an invalid request, an exhaus
 conflict) are raised before any task event, so a new task is a JSON-RPC error and nothing
 is stored.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -291,9 +292,8 @@ class CollectExecutor(AgentExecutor):
         """The bound LLM leg (``None`` in deterministic mode)."""
         return self._llm_leg
 
-    async def execute(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Execute an inbound A2A document collection request against the bridge state machine."""
         message = context.message
         route, scope = await self._route_for(message, context.current_task)
 
@@ -361,9 +361,7 @@ class CollectExecutor(AgentExecutor):
         """Classify ``message`` against ``task`` (D3 route table) + the task's review
         scope. G1: deterministic mode never reads the LLM session."""
         scope = (
-            await self._review_scope(task)
-            if self._mode is EdgeMode.hybrid
-            else None
+            await self._review_scope(task) if self._mode is EdgeMode.hybrid else None
         )
         route = classify_route(
             message,
@@ -400,7 +398,9 @@ class CollectExecutor(AgentExecutor):
             return None
         user_id, session_id = raw.get("user_id"), raw.get("session_id")
         call_ids = raw.get("call_ids") or []
-        if not (isinstance(user_id, str) and isinstance(session_id, str) and session_id):
+        if not (
+            isinstance(user_id, str) and isinstance(session_id, str) and session_id
+        ):
             return None
         call_ids = tuple(c for c in call_ids if isinstance(c, str) and c)
         key = self._llm_leg.key_for(user_id=user_id, session_id=session_id)
@@ -821,9 +821,7 @@ class CollectExecutor(AgentExecutor):
             last_chunk=True,
         )
         status_text, reason_code = llm_status(result.projection, turn)
-        status_message = _text_message(
-            status_text, context_id, reason_code=reason_code
-        )
+        status_message = _text_message(status_text, context_id, reason_code=reason_code)
         state = self._status_for(turn)
         if state == TaskState.TASK_STATE_COMPLETED:
             await updater.complete(message=status_message)
@@ -865,8 +863,11 @@ class CollectExecutor(AgentExecutor):
         return ExchangeTurn(context_id=context_id, status=status, terminal=True)
 
     async def _emit_turn(
-        self, context: RequestContext, event_queue: EventQueue,
-        turn: ExchangeTurn, message,
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+        turn: ExchangeTurn,
+        message,
     ) -> None:
         """Enqueue the task (if new), add the ExchangeTurn artifact, set task state.
 
@@ -908,13 +909,12 @@ class CollectExecutor(AgentExecutor):
             # Non-terminal turn (terminal=False) → INPUT_REQUIRED, the park signal.
             await updater.update_status(state, message=status_message)
 
-    async def cancel(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         # P4-5: tasks/cancel is the app's explicit terminal close (DUR-6) —
         # transitions any non-terminal task (WORKING/INPUT_REQUIRED, including an
         # escalated stall) to CANCELED; an already-terminal task is not cancelable
         # (the SDK handler enforces both).
+        """Cancel an in-flight A2A collection task and emit a cancellation event."""
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
 
@@ -952,14 +952,13 @@ class CollectExecutor(AgentExecutor):
         RFP opener's turn is non-terminal while it waits on carriers.
         """
         return (
-            TaskState.TASK_STATE_COMPLETED if turn.terminal
+            TaskState.TASK_STATE_COMPLETED
+            if turn.terminal
             else TaskState.TASK_STATE_INPUT_REQUIRED
         )
 
 
-def llm_status(
-    projection: LlmProjection, turn: ExchangeTurn
-) -> tuple[str, str | None]:
+def llm_status(projection: LlmProjection, turn: ExchangeTurn) -> tuple[str, str | None]:
     """D6: the R4 status text + ``status.message.metadata`` reason_code — both
     Bridge-decided, never model text.
 

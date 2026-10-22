@@ -1,9 +1,9 @@
 """The consumer's ``BenefitsQuote``, mirrored, plus the wire -> consumer mapper.
 
-**What this mirrors.** ``~/aon/contract/quote.py``, ``~/aon/contract/enums.py`` and
-``~/aon/contract/wire.py`` (``SourceRef`` / ``ArtifactRef``) at Aon ``83c86cd``
+**What this mirrors.** ``~/benefits-consumer/contract/quote.py``, ``~/benefits-consumer/contract/enums.py`` and
+``~/benefits-consumer/contract/wire.py`` (``SourceRef`` / ``ArtifactRef``) at Benefits Consumer ``83c86cd``
 (2026-09-30): field names, optionality, closed enums and ``extra="forbid"`` are
-identical. The mapping rules mirror ``~/aon/engine/extraction/gcp.py::_money`` /
+identical. The mapping rules mirror ``~/benefits-consumer/engine/extraction/gcp.py::_money`` /
 ``_to_quote`` (money is code-parsed from text; a design row with no carrier term gets
 ``category_original = category`` AND a review entry).
 
@@ -42,7 +42,7 @@ CONSUMER_CONTRACT_VERSION = "1"  # the consumer's own contract version, not ours
 
 
 # --------------------------------------------------------------------------- #
-# The mirrored consumer vocabulary (``~/aon/contract/enums.py``)               #
+# The mirrored consumer vocabulary (``~/benefits-consumer/contract/enums.py``)               #
 # --------------------------------------------------------------------------- #
 class ProductLine(str, Enum):
     AD_AND_D = "AD_AND_D"
@@ -66,6 +66,7 @@ class TobaccoClass(str, Enum):
 
 class RateFrequency(str, Enum):
     """The consumer's billing frequencies — narrower than the Bridge's on purpose."""
+
     MONTHLY = "MONTHLY"
     BI_WEEKLY = "BI_WEEKLY"
     ANNUAL = "ANNUAL"
@@ -79,7 +80,7 @@ class SourcePath(str, Enum):
 
 
 # --------------------------------------------------------------------------- #
-# The mirrored consumer models (``~/aon/contract/wire.py`` + ``quote.py``)     #
+# The mirrored consumer models (``~/benefits-consumer/contract/wire.py`` + ``quote.py``)     #
 # --------------------------------------------------------------------------- #
 class ArtifactRef(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -126,6 +127,7 @@ class CommissionTerms(BaseModel):
 
 class BenefitsQuote(BaseModel):
     """The consumer's normalized quote, minus ``fx`` (see the module docstring)."""
+
     model_config = ConfigDict(extra="forbid")
 
     contract_version: str = CONSUMER_CONTRACT_VERSION
@@ -156,6 +158,7 @@ class BenefitsQuote(BaseModel):
 # --------------------------------------------------------------------------- #
 class ConsumerIntake(BaseModel):
     """The context the document never carries — supplied by the consumer, not the Bridge."""
+
     model_config = ConfigDict(extra="forbid")
 
     client: str
@@ -209,8 +212,15 @@ _KEY_FIELD_MAP = {
 # Table columns the consumer models. ``rate_basis`` has no consumer column: a review
 # flag on it addresses the whole row (``rates[i]``), since it qualifies ``amount``.
 _TABLE_COLUMNS = {
-    "rates": {"coverage_tier", "tobacco", "age_band", "amount", "frequency",
-              "benefit_amount", "rate_basis"},
+    "rates": {
+        "coverage_tier",
+        "tobacco",
+        "age_band",
+        "amount",
+        "frequency",
+        "benefit_amount",
+        "rate_basis",
+    },
     "design": {"category", "category_original", "value"},
 }
 _ROW_PATH = re.compile(r"^fields\.tables\.(rates|design)(?:\[(\d+)\](?:\.(\w+))?)?$")
@@ -240,8 +250,8 @@ def consumer_review_path(bridge_path: str) -> str:
     if bridge_path == "fields.issuer":
         return "carrier"
     prefix = "fields.key_fields."
-    if bridge_path.startswith(prefix) and bridge_path[len(prefix):] in _KEY_FIELD_MAP:
-        return _KEY_FIELD_MAP[bridge_path[len(prefix):]]
+    if bridge_path.startswith(prefix) and bridge_path[len(prefix) :] in _KEY_FIELD_MAP:
+        return _KEY_FIELD_MAP[bridge_path[len(prefix) :]]
     match = _ROW_PATH.match(bridge_path)
     if match:
         table, index, column = match.groups()
@@ -252,7 +262,9 @@ def consumer_review_path(bridge_path: str) -> str:
         if column in _TABLE_COLUMNS[table]:
             return f"{table}[{index}].{column}"
     raise ConformanceGap(
-        [f"fields_requiring_review: {bridge_path} (no consumer field to carry the flag)"]
+        [
+            f"fields_requiring_review: {bridge_path} (no consumer field to carry the flag)"
+        ]
     )
 
 
@@ -355,21 +367,24 @@ def map_entry_to_quote(entry: LedgerEntry, intake: ConsumerIntake) -> BenefitsQu
         gaps.extend(row_gaps)
         if row_gaps:
             continue
-        rates.append(RateTier(
-            coverage_tier=tier,
-            tobacco=tobacco,
-            age_band=row.get("age_band"),
-            amount=amounts["amount"],
-            frequency=frequency,
-            benefit_amount=amounts["benefit_amount"],
-        ))
+        rates.append(
+            RateTier(
+                coverage_tier=tier,
+                tobacco=tobacco,
+                age_band=row.get("age_band"),
+                amount=amounts["amount"],
+                frequency=frequency,
+                benefit_amount=amounts["benefit_amount"],
+            )
+        )
 
     design: list[DesignField] = []
     derived_review: list[str] = []
     for i, row in enumerate(entry.tables.get("design", [])):
         row_gaps = [
             f"design[{i}].{column} (no consumer column)"
-            for column in row if column not in _TABLE_COLUMNS["design"]
+            for column in row
+            if column not in _TABLE_COLUMNS["design"]
         ]
         for column in ("category", "value"):
             if not row.get(column):
@@ -382,9 +397,13 @@ def map_entry_to_quote(entry: LedgerEntry, intake: ConsumerIntake) -> BenefitsQu
             # The consumer's rule: close the hole honestly AND surface it for review.
             original = row["category"]
             derived_review.append(f"design[{i}].category_original")
-        design.append(DesignField(
-            category=row["category"], category_original=original, value=row["value"],
-        ))
+        design.append(
+            DesignField(
+                category=row["category"],
+                category_original=original,
+                value=row["value"],
+            )
+        )
 
     commission = None
     if any(name.startswith("commission_") for name in kf):
@@ -428,7 +447,8 @@ def map_entry_to_quote(entry: LedgerEntry, intake: ConsumerIntake) -> BenefitsQu
         expiration_date=dates["expiration_date"],
         is_incumbent=intake.is_incumbent,
         source=SourceRef(
-            path=SourcePath.a2a, artifact=ArtifactRef(**entry.artifact.model_dump()),
+            path=SourcePath.a2a,
+            artifact=ArtifactRef(**entry.artifact.model_dump()),
         ),
         design=design,
         rates=rates,

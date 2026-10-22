@@ -21,6 +21,7 @@ edges. So the gate's two out-edges are routed ``"again"``/``"done"`` while
 Runs via ``Runner(node=workflow, ...)`` — the App-path + ``ResumabilityConfig``
 durability is P4, not wired here.
 """
+
 from __future__ import annotations
 
 from google.adk.workflow import START, Edge, FunctionNode, Workflow

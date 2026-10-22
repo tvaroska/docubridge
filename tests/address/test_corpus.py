@@ -3,6 +3,7 @@
 Canonical consolidated test module for the address eval corpus.
 See wiki/evals/address/description.md ("Consumers (parity)").
 """
+
 import re
 from pathlib import Path
 
@@ -36,14 +37,24 @@ PORTAL_UPLOAD_PROMPT = (
 
 # ========== A. Well-formedness (parametrized) ==========
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 def test_record_wellformed(record):
     """Every corpus record has required keys and validates."""
     # Assert required keys present
     required_keys = {
-        "id", "doctype", "issuer_raw", "issuer",
-        "expected_disposition", "expected_gate",
-        "extraction", "artifact", "synthetic", "note"
+        "id",
+        "doctype",
+        "issuer_raw",
+        "issuer",
+        "expected_disposition",
+        "expected_gate",
+        "extraction",
+        "artifact",
+        "synthetic",
+        "note",
     }
     assert required_keys <= set(record.keys()), f"Missing keys in {record['id']}"
 
@@ -57,7 +68,10 @@ def test_record_wellformed(record):
 
 # ========== B. Disposition/gate parity through pure gate (parametrized) ==========
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 def test_gate_parity(record):
     """Every record's disposition/gate matches through run_disposition_gate."""
     extraction = record["extraction"]
@@ -74,14 +88,16 @@ def test_gate_parity(record):
         f"got {result['disposition']}"
     )
     assert result["gate"] == record["expected_gate"], (
-        f"{record['id']}: expected gate {record['expected_gate']}, "
-        f"got {result['gate']}"
+        f"{record['id']}: expected gate {record['expected_gate']}, got {result['gate']}"
     )
 
 
 # ========== C. Determinism-on-repeat through pure gate (parametrized) ==========
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 def test_gate_deterministic(record):
     """run_disposition_gate is deterministic on identical inputs."""
     extraction = record["extraction"]
@@ -101,7 +117,10 @@ def test_gate_deterministic(record):
 
 # ========== D. Full collect-path parity + determinism (parametrized, async, seam) ==========
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 async def test_collect_path_parity(record):
     """Every record produces expected disposition/gate/issuer through Collector, deterministically."""
     collector = Collector(FixtureExtractor())
@@ -111,12 +130,16 @@ async def test_collect_path_parity(record):
     # Run collect twice with identical inputs
     turn1 = await collector.collect(
         request,
-        documents=[DocumentSubmission(doc_id=record["id"], artifact_name=record["artifact"])],
+        documents=[
+            DocumentSubmission(doc_id=record["id"], artifact_name=record["artifact"])
+        ],
         candidate_doctypes=CANDIDATE_DOCTYPES,
     )
     turn2 = await collector.collect(
         request,
-        documents=[DocumentSubmission(doc_id=record["id"], artifact_name=record["artifact"])],
+        documents=[
+            DocumentSubmission(doc_id=record["id"], artifact_name=record["artifact"])
+        ],
         candidate_doctypes=CANDIDATE_DOCTYPES,
     )
 
@@ -150,7 +173,10 @@ async def test_collect_path_parity(record):
 
 # ========== E. Fixture ↔ corpus resolution (parametrized, async, seam) ==========
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 async def test_fixture_resolves_every_id(record):
     """Every corpus artifact and id resolves through FixtureExtractor."""
     extractor = FixtureExtractor()
@@ -164,12 +190,11 @@ async def test_fixture_resolves_every_id(record):
 
     # Resolve by bare id
     result_by_id = await extractor.extract(record["id"])
-    assert result_by_id == expected, (
-        f"{record['id']}: extraction via id mismatch"
-    )
+    assert result_by_id == expected, f"{record['id']}: extraction via id mismatch"
 
 
 # ========== E2. Portal samples ↔ corpus (single, async) ==========
+
 
 def portal_sample_ids() -> list[str]:
     """The demo portal's upload-picker ids (`CORPUS_IDS` in UploadPrompt.tsx)."""
@@ -201,7 +226,10 @@ async def test_portal_samples_resolve_to_corpus():
 
 # ========== F. Canonicalization parity (parametrized) ==========
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 def test_issuer_canonicalization_parity(record):
     """Issuer canonicalization matches corpus expectation."""
     # Skip records with null issuer_raw (gov-id records)
@@ -217,6 +245,7 @@ def test_issuer_canonicalization_parity(record):
 
 
 # ========== G. Category coverage (single, non-parametrized) ==========
+
 
 def test_category_coverage():
     """Corpus covers all 3 dispositions and all 4 gates."""
@@ -236,6 +265,7 @@ def test_category_coverage():
 
 
 # ========== H. No-PII (single + per-record) ==========
+
 
 def test_no_pii():
     """Corpus contains only synthetic data with the sanctioned identity."""
@@ -259,6 +289,7 @@ def test_no_pii():
 
 # ========== I. Timeline validity (single) ==========
 
+
 def test_timeline_validity():
     """Timeline references valid corpus ids and has well-formed SLA blocks."""
     timeline = load_timeline()
@@ -272,7 +303,12 @@ def test_timeline_validity():
 
         # Check SLA block
         sla = exchange["sla"]
-        for field in ["overdue_ticks", "reminder_ticks", "escalate_ticks", "resubmit_cap"]:
+        for field in [
+            "overdue_ticks",
+            "reminder_ticks",
+            "escalate_ticks",
+            "resubmit_cap",
+        ]:
             assert isinstance(sla[field], int), (
                 f"Exchange {exchange['id']}: sla.{field} not an integer"
             )
@@ -289,8 +325,13 @@ def test_timeline_validity():
                 # If beat has expected_disposition, it must match corpus
                 # (Do NOT check expected_gate — timeline uses shorthand "hitl" != "hitl_review")
                 if "expected_disposition" in beat:
-                    corpus_record = next(r for r in corpus_records() if r["id"] == beat["document"])
-                    assert beat["expected_disposition"] == corpus_record["expected_disposition"], (
+                    corpus_record = next(
+                        r for r in corpus_records() if r["id"] == beat["document"]
+                    )
+                    assert (
+                        beat["expected_disposition"]
+                        == corpus_record["expected_disposition"]
+                    ), (
                         f"Exchange {exchange['id']}, beat tick {beat['tick']}, "
                         f"document {beat['document']}: "
                         f"expected_disposition {beat['expected_disposition']} != "

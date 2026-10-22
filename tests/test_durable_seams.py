@@ -10,6 +10,7 @@ execute end-to-end against a provisioned Cloud SQL (P7-9): they are gated on
 ``BRIDGE_TEST_GCP=1`` by the ``adapter`` fixture AND ``skip`` when no Postgres DSN
 env is set (a provisioned DSN is a P7-9 input, not a P7-2 artifact).
 """
+
 from __future__ import annotations
 
 import os
@@ -57,9 +58,7 @@ async def test_sessions_durable_roundtrip(adapter, tmp_path, monkeypatch):
     await svc.db_engine.dispose()
 
     svc2 = get_adapter(Seam.sessions, adapter).build_session_service(db_url=dsn)
-    got = await svc2.get_session(
-        app_name="address", user_id="u1", session_id="sess-1"
-    )
+    got = await svc2.get_session(app_name="address", user_id="u1", session_id="sess-1")
     assert got is not None
     assert got.id == "sess-1"
     assert got.state == {"k": "v"}
@@ -110,7 +109,9 @@ def _engine_of(store):
 
 
 @pytest.mark.seam("task_store")
-async def test_task_store_cross_replica_read_after_write(adapter, tmp_path, monkeypatch):
+async def test_task_store_cross_replica_read_after_write(
+    adapter, tmp_path, monkeypatch
+):
     """Write a TERMINAL task via one adapter handle, read it back via a SECOND,
     independent handle to the SAME backing store — with NO dispose between.
 

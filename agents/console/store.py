@@ -38,12 +38,12 @@ class ConsoleSessionRecord:
     separate in-memory map in the app so this record stays a plain serializable value.
     """
 
-    session_id: str            # the console handle (== ADK session_id for simplicity)
+    session_id: str  # the console handle (== ADK session_id for simplicity)
     prepared_key: str
     app_name: str = "address"  # run_collection hard-codes this
     user_id: str = "address-driver"
-    status: str = "running"    # running | parked | done | error
-    turn: dict | None = None   # last observed ExchangeTurn (model_dump(mode="json"))
+    status: str = "running"  # running | parked | done | error
+    turn: dict | None = None  # last observed ExchangeTurn (model_dump(mode="json"))
     rounds: int = 0
     satisfied: bool = False
     error: str | None = None
@@ -52,10 +52,21 @@ class ConsoleSessionRecord:
 class ConsoleStore(Protocol):
     """The persistence seam-in-waiting for console sessions (native swap, §2c)."""
 
-    def create(self, rec: ConsoleSessionRecord) -> None: ...
-    def get(self, session_id: str) -> ConsoleSessionRecord: ...  # KeyError -> host 404
-    def put(self, rec: ConsoleSessionRecord) -> None: ...
-    def list(self) -> list[ConsoleSessionRecord]: ...
+    def create(self, rec: ConsoleSessionRecord) -> None:
+        """Create and persist a new customer console session state."""
+        ...
+
+    def get(self, session_id: str) -> ConsoleSessionRecord:
+        """Retrieve a customer console session state by session ID."""
+        ...  # KeyError -> host 404
+
+    def put(self, rec: ConsoleSessionRecord) -> None:
+        """Save or update a customer console session state."""
+        ...
+
+    def list(self) -> list[ConsoleSessionRecord]:
+        """List all customer console session states."""
+        ...
 
 
 class InMemoryConsoleStore:
@@ -69,15 +80,19 @@ class InMemoryConsoleStore:
         self._records: dict[str, ConsoleSessionRecord] = {}
 
     def create(self, rec: ConsoleSessionRecord) -> None:
+        """Create and store a new customer console session state in memory."""
         self._records[rec.session_id] = rec
 
     def get(self, session_id: str) -> ConsoleSessionRecord:
+        """Retrieve a customer console session state from memory by session ID."""
         return self._records[session_id]  # KeyError -> host maps 404
 
     def put(self, rec: ConsoleSessionRecord) -> None:
+        """Save or overwrite a customer console session state in memory."""
         self._records[rec.session_id] = rec
 
     def list(self) -> list[ConsoleSessionRecord]:
         # Insertion order (dict preserves it); newest last. The UI reverses for a
         # newest-first list.
+        """List all customer console session states stored in memory."""
         return list(self._records.values())

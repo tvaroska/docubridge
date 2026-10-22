@@ -26,6 +26,7 @@ from typing import Any, Protocol, runtime_checkable
 class Alarm:
     """A scheduled alarm. ``key`` is the caller's idempotency handle; ``payload``
     is opaque to the clock (P5-2 will put the ladder step / exchange id here)."""
+
     key: str
     fire_at: int
     payload: Any = None
@@ -35,12 +36,29 @@ class Alarm:
 class Scheduler(Protocol):
     """The scheduler seam's abstraction. Local = VirtualClock; GCP = Cloud Tasks (P7)."""
 
-    def now(self) -> int: ...
-    def schedule(self, key: str, fire_at: int, payload: Any = None) -> Alarm: ...
-    def cancel(self, key: str) -> bool: ...
-    def pending(self) -> list[Alarm]: ...
-    def advance(self, ticks: int) -> list[Alarm]: ...
-    def advance_to(self, tick: int) -> list[Alarm]: ...
+    def now(self) -> int:
+        """Return the current UTC timestamp from the scheduler clock."""
+        ...
+
+    def schedule(self, key: str, fire_at: int, payload: Any = None) -> Alarm:
+        """Schedule a callback to fire at a target UTC timestamp under a unique key."""
+        ...
+
+    def cancel(self, key: str) -> bool:
+        """Cancel a previously scheduled callback by its key."""
+        ...
+
+    def pending(self) -> list[Alarm]:
+        """Return all currently scheduled keys and their due timestamps."""
+        ...
+
+    def advance(self, ticks: int) -> list[Alarm]:
+        """Advance the scheduler clock by a relative duration and run due callbacks."""
+        ...
+
+    def advance_to(self, tick: int) -> list[Alarm]:
+        """Advance the scheduler clock to a target UTC timestamp and run due callbacks."""
+        ...
 
 
 class VirtualClock:
@@ -54,14 +72,18 @@ class VirtualClock:
     def __init__(self) -> None:
         self._now = 0
         self._alarms: dict[str, Alarm] = {}
-        self._seq: dict[str, int] = {}  # insertion order per live key, for stable tiebreak
+        self._seq: dict[
+            str, int
+        ] = {}  # insertion order per live key, for stable tiebreak
         self._counter = 0
 
     def now(self) -> int:
+        """Return the current virtual UTC timestamp."""
         return self._now
 
     def schedule(self, key: str, fire_at: int, payload: Any = None) -> Alarm:
         # fire_at in the past-or-now relative to _now is allowed: it fires on the next advance.
+        """Register a callback at a due timestamp on the deterministic virtual clock."""
         alarm = Alarm(key=key, fire_at=fire_at, payload=payload)
         if key not in self._seq:
             self._seq[key] = self._counter
@@ -70,18 +92,22 @@ class VirtualClock:
         return alarm
 
     def cancel(self, key: str) -> bool:
+        """Cancel a pending callback on the virtual clock by its key."""
         self._seq.pop(key, None)
         return self._alarms.pop(key, None) is not None
 
     def pending(self) -> list[Alarm]:
+        """Return all pending callbacks ordered by due timestamp on the virtual clock."""
         return [self._alarms[k] for k in self._sorted_keys()]
 
     def advance(self, ticks: int) -> list[Alarm]:
+        """Advance the virtual clock by the given timedelta and execute due callbacks."""
         if ticks < 0:
             raise ValueError("cannot advance the virtual clock backwards")
         return self.advance_to(self._now + ticks)
 
     def advance_to(self, tick: int) -> list[Alarm]:
+        """Advance the virtual clock to a target timestamp and execute due callbacks."""
         if tick < self._now:
             raise ValueError("cannot move the virtual clock backwards")
         self._now = tick
@@ -93,4 +119,6 @@ class VirtualClock:
         return fired
 
     def _sorted_keys(self) -> list[str]:
-        return sorted(self._alarms, key=lambda k: (self._alarms[k].fire_at, self._seq[k]))
+        return sorted(
+            self._alarms, key=lambda k: (self._alarms[k].fire_at, self._seq[k])
+        )

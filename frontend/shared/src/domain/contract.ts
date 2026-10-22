@@ -1,4 +1,4 @@
-// Shared contract mirror (@docbride/shared, P6-5) — the snake_case→camelCase domain core.
+// Shared contract mirror (@docubridge/shared, P6-5) — the snake_case→camelCase domain core.
 //
 // The three frontend apps (provider-portal, agent-console, ops-dashboard) each hand-mapped
 // the same contract core (LedgerEntry / Requirement + their wire shapes + snake→camel

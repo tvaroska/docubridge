@@ -1,4 +1,4 @@
-// Panel — a titled MUI Paper wrapper (@docbride/shared, P6-5).
+// Panel — a titled MUI Paper wrapper (@docubridge/shared, P6-5).
 //
 // A thin layout primitive the apps share for "a titled card of content". It ARRANGES +
 // LABELS only (a title + a padded Paper); it never authors or rewrites any agent content

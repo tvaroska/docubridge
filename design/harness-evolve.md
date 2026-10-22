@@ -90,7 +90,7 @@ NIGHTLY / BATCH (Offline — Harness Evolve Compiler over 50/50 Train/Holdout Sp
          │
          ▼
 PROMOTION (Zero Redeploy — skill_registry.install_skill)
-6. Winning skill folder is published to gs://documents001-bridge-skills/<doctype>/ (version++),
+6. Winning skill folder is published to gs://docubridge-showcase-bridge-skills/<doctype>/ (version++),
    and consolidated one-off SQL rules are marked TribalRuleStatus.RETIRED.
 7. GeminiExtractor._catalog() and the Agent Card detect the updated skill on the next read
    and hot-reload the evolved prompt, schema, and processor binding — zero container redeploy.

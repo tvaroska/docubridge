@@ -4,6 +4,7 @@ Proves the resumability switch reaches the ``Runner`` (the thing P4-2's durable
 park/resume relies on) and that the agent-side session factory mirrors the sessions
 seam without importing ``bridge/``.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,9 +58,7 @@ def test_runner_exposes_resumability():
 def test_durable_session_service_builds_database(tmp_path, monkeypatch):
     """A configured async DSN builds a DatabaseSessionService."""
     monkeypatch.delenv("BRIDGE_SESSION_DB_URL", raising=False)
-    svc = build_durable_session_service(
-        db_url=f"sqlite+aiosqlite:///{tmp_path}/s.db"
-    )
+    svc = build_durable_session_service(db_url=f"sqlite+aiosqlite:///{tmp_path}/s.db")
     assert isinstance(svc, DatabaseSessionService)
 
 

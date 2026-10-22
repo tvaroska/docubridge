@@ -19,6 +19,7 @@ reaches the Bridge by card URL only; the doorbell is parsed as generic JSON, no
 ``a2a``/``bridge`` type import). The receiver is **unauthenticated locally**;
 OIDC / Agent-Identity auth on the doorbell and a Cloud SQL-backed index are P7.
 """
+
 from __future__ import annotations
 
 import json
@@ -58,7 +59,9 @@ class SessionIndex:
     """
 
     def __init__(self, *, path: str | None = None) -> None:
-        self._path = path or os.environ.get("BRIDGE_WAKE_INDEX_PATH", "").strip() or None
+        self._path = (
+            path or os.environ.get("BRIDGE_WAKE_INDEX_PATH", "").strip() or None
+        )
         self._map: dict[str, SessionRef] = {}
         if self._path and os.path.exists(self._path):
             with open(self._path) as fh:
@@ -66,10 +69,12 @@ class SessionIndex:
             self._map = {k: SessionRef(**v) for k, v in raw.items()}
 
     def put(self, task_id: str, ref: SessionRef) -> None:
+        """Associate an A2A task ID with an customer session coordinate."""
         self._map[task_id] = ref
         self._flush()
 
     def get(self, task_id: str) -> SessionRef | None:
+        """Look up the customer session coordinate for a given A2A task ID."""
         return self._map.get(task_id)
 
     def _flush(self) -> None:

@@ -160,7 +160,9 @@ async def test_whole_use_case_added_live_while_an_exchange_is_in_flight(
         assert set(card) == {"address-proof"}
         before = await a2a.send(
             client,
-            a2a.submission((W9, COI), ctx="onboard-pre", process=PROCESS, party=SUPPLIER),
+            a2a.submission(
+                (W9, COI), ctx="onboard-pre", process=PROCESS, party=SUPPLIER
+            ),
             context_id="onboard-pre",
         )
         assert before.status.state == TaskState.TASK_STATE_COMPLETED
@@ -229,7 +231,9 @@ async def test_whole_use_case_added_live_while_an_exchange_is_in_flight(
         # Path-B: a W-9 + a COI, both accepted; artifacts persist and are fetchable.
         collected = await a2a.send(
             client,
-            a2a.submission((W9, COI), ctx="onboard-live", process=PROCESS, party=SUPPLIER),
+            a2a.submission(
+                (W9, COI), ctx="onboard-live", process=PROCESS, party=SUPPLIER
+            ),
             context_id="onboard-live",
         )
         assert collected.status.state == TaskState.TASK_STATE_COMPLETED

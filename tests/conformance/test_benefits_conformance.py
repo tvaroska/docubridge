@@ -57,7 +57,7 @@ RECORD_A, RECORD_B = RECORD_IDS
 _GEMINI = os.environ.get("BRIDGE_TEST_GEMINI") == "1"
 _CONSUMER_REPO = os.environ.get("BRIDGE_TEST_CONSUMER_REPO")
 
-# The consumer's vocabulary (``~/aon/contract/enums.py``), re-declared locally as in
+# The consumer's vocabulary (``~/benefits-consumer/contract/enums.py``), re-declared locally as in
 # ``tests/test_structured_quote.py`` — test modules do not import each other.
 AON_COVERAGE_TIERS = {"EE", "EE_SPOUSE", "EE_CHILDREN", "FAMILY"}
 AON_TOBACCO = {"UNI", "NON_TOBACCO", "TOBACCO"}
@@ -97,7 +97,9 @@ journeys = pytest.mark.parametrize(
 # The journey, per record x leg x reference shape                             #
 # --------------------------------------------------------------------------- #
 @journeys
-async def test_journey_lands_expected_terminal_outcome(record_id, leg, ref, corpus_server):
+async def test_journey_lands_expected_terminal_outcome(
+    record_id, leg, ref, corpus_server
+):
     record = RECORDS[record_id]
     _, _, run = await _journey(record_id, leg, ref, corpus_server)
 
@@ -125,8 +127,9 @@ async def test_journey_maps_onto_consumer_quote(record_id, leg, ref, corpus_serv
 
     quote = map_entry_to_quote(run.entry, intake_for(record_id))
 
-    assert quote.model_dump(mode="json", exclude={"source"}) == (
-        RECORDS[record_id]["expected_consumer_quote"]
+    assert (
+        quote.model_dump(mode="json", exclude={"source"})
+        == (RECORDS[record_id]["expected_consumer_quote"])
     )
     assert quote.source.path is consumer.SourcePath.a2a
     assert quote.source.artifact.uri == run.entry.artifact.uri
@@ -165,7 +168,7 @@ PARITY_CONTEXT_ID = "conformance-parity"
 async def test_hybrid_exchange_turn_byte_identical_to_deterministic(
     record_id, leg, ref, monkeypatch
 ):
-    """Aon parity (S3-edge-3): the hybrid edge's ExchangeTurn is byte-for-byte the
+    """Benefits Consumer parity (S3-edge-3): the hybrid edge's ExchangeTurn is byte-for-byte the
     deterministic edge's, and the LLM leg is called 0 times.
 
     Not on the ``edge_mode``-parametrized ``corpus_server`` (that would run it twice
@@ -214,8 +217,11 @@ async def test_gemini_leg_read_the_pdf_by_reference(record_id, corpus_server):
     assert part.inline_data.data == _pdf_bytes(record_id)
     # Extracted against the installed skill schema (no `schemas=` injected).
     rates = call["config"]["response_schema"]["properties"]["fields"]["properties"][
-        "tables"]["properties"]["rates"]
-    assert {"WEEKLY", "BI_WEEKLY"} <= set(rates["items"]["properties"]["frequency"]["enum"])
+        "tables"
+    ]["properties"]["rates"]
+    assert {"WEEKLY", "BI_WEEKLY"} <= set(
+        rates["items"]["properties"]["frequency"]["enum"]
+    )
     assert "benefits-quote" in prompt
     # The edge fetches twice (extraction + persistence): assert presence, not a count.
     assert f"/{RECORDS[record_id]['artifact']}" in corpus_server.seen
@@ -225,7 +231,9 @@ async def test_gemini_leg_read_the_pdf_by_reference(record_id, corpus_server):
 async def test_gemini_leg_gs_uri_rides_by_reference(record_id, corpus_server):
     """gs://: the model reads the object; the Bridge downloads and persists nothing."""
     client = ReplayClient(RECORDS[record_id])
-    _, uri, run = await _journey(record_id, "gemini", "gs", corpus_server, client=client)
+    _, uri, run = await _journey(
+        record_id, "gemini", "gs", corpus_server, client=client
+    )
 
     (call,) = client.calls
     part = call["contents"][1]
@@ -293,15 +301,21 @@ def _entry(record_id: str, **update) -> LedgerEntry:
 
 def test_mapping_requires_wire_confidence():
     with pytest.raises(ConformanceGap) as exc:
-        map_entry_to_quote(_entry(RECORD_A, overall_confidence=None), intake_for(RECORD_A))
+        map_entry_to_quote(
+            _entry(RECORD_A, overall_confidence=None), intake_for(RECORD_A)
+        )
     assert [g for g in exc.value.gaps if g.startswith("extraction_confidence")]
 
 
 def test_unmappable_review_path_is_a_gap():
     """A review flag the consumer cannot carry is never silently dropped."""
-    review = FieldReview(path="fields.key_fields.premium", reason=ReviewReason.model_flagged)
+    review = FieldReview(
+        path="fields.key_fields.premium", reason=ReviewReason.model_flagged
+    )
     with pytest.raises(ConformanceGap) as exc:
-        map_entry_to_quote(_entry(RECORD_A, field_reviews=[review]), intake_for(RECORD_A))
+        map_entry_to_quote(
+            _entry(RECORD_A, field_reviews=[review]), intake_for(RECORD_A)
+        )
     assert any("fields.key_fields.premium" in g for g in exc.value.gaps)
 
 
@@ -326,8 +340,12 @@ def test_consumer_review_path_table(bridge_path, consumer_path):
 
 @pytest.mark.parametrize(
     "bridge_path",
-    ["fields.doctype", "fields.key_fields.deductible", "fields.tables.riders[0].name",
-     "fields.tables.rates[0].premium_cents"],
+    [
+        "fields.doctype",
+        "fields.key_fields.deductible",
+        "fields.tables.riders[0].name",
+        "fields.tables.rates[0].premium_cents",
+    ],
 )
 def test_consumer_review_path_refuses_the_unmappable(bridge_path):
     with pytest.raises(ConformanceGap):
@@ -353,7 +371,9 @@ def _printed_cells(record: dict) -> list[str]:
     values = list(fields["key_fields"].values())
     for table, rows in fields["tables"].items():
         for i, row in enumerate(rows):
-            values += [overrides.get(f"{table}[{i}].{col}", v) for col, v in row.items()]
+            values += [
+                overrides.get(f"{table}[{i}].{col}", v) for col, v in row.items()
+            ]
     return values
 
 
@@ -401,7 +421,7 @@ def test_isolation():
     offenders = [
         (str(path.relative_to(REPO_ROOT)), root)
         for path in sorted((REPO_ROOT / "bridge").rglob("*.py"))
-        for root in _imported_roots(path) & {"tests", "aon", "agents"}
+        for root in _imported_roots(path) & {"tests", "benefits_consumer", "agents"}
     ]
     assert not offenders, offenders
     mapper = REPO_ROOT / "tests/conformance/consumer.py"
@@ -413,7 +433,13 @@ def test_isolation():
 # --------------------------------------------------------------------------- #
 def _canonical_cell(column: str, raw: str) -> str:
     """Absorb live echo variance (case, a stray ``USD``/``$``, an ``Age`` prefix)."""
-    if column in ("coverage_tier", "tobacco", "frequency", "rate_basis", "product_line"):
+    if column in (
+        "coverage_tier",
+        "tobacco",
+        "frequency",
+        "rate_basis",
+        "product_line",
+    ):
         return raw.strip().upper().replace(" ", "_").replace("-", "_")
     if column in ("amount", "benefit_amount"):
         return raw.upper().replace("USD", "").replace("$", "").strip()
@@ -459,11 +485,15 @@ async def test_live_gemini_conformance(corpus_server):
         t: [{c: _canonical_cell(c, v) for c, v in row.items()} for row in rows]
         for t, rows in entry.tables.items()
     }
-    canonical = entry.model_copy(update={
-        "key_fields": kf,
-        "tables": tables,
-        "field_reviews": [r for r in entry.field_reviews if not _unprinted_unmodelled(r)],
-    })
+    canonical = entry.model_copy(
+        update={
+            "key_fields": kf,
+            "tables": tables,
+            "field_reviews": [
+                r for r in entry.field_reviews if not _unprinted_unmodelled(r)
+            ],
+        }
+    )
     quote = map_entry_to_quote(canonical, intake_for(RECORD_A))
     expected = record["expected_consumer_quote"]
 
@@ -475,8 +505,14 @@ async def test_live_gemini_conformance(corpus_server):
 
     def rows(dumped):
         return sorted(
-            (r["coverage_tier"], r["tobacco"], r["age_band"], Decimal(r["amount"]),
-             r["frequency"], Decimal(r["benefit_amount"]))
+            (
+                r["coverage_tier"],
+                r["tobacco"],
+                r["age_band"],
+                Decimal(r["amount"]),
+                r["frequency"],
+                Decimal(r["benefit_amount"]),
+            )
             for r in dumped
         )
 
@@ -508,7 +544,7 @@ print(json.dumps({"quote": q.model_dump(mode="json"), "models": models, "vocab":
 def _consumer_python() -> tuple[Path, Path]:
     if not _CONSUMER_REPO:
         pytest.skip(
-            "set BRIDGE_TEST_CONSUMER_REPO=<consumer checkout, e.g. ~/aon> to validate "
+            "set BRIDGE_TEST_CONSUMER_REPO=<consumer checkout, e.g. ~/benefits-consumer> to validate "
             "the mapped quote against the consumer's own BenefitsQuote"
         )
     repo = Path(_CONSUMER_REPO).expanduser()
@@ -540,13 +576,21 @@ async def test_real_consumer_accepts_mapped_quote(record_id, corpus_server):
     ours = quote.model_dump(mode="json")
     assert real["quote"] == {**ours, "fx": None}
     mirror = {
-        "BenefitsQuote": consumer.BenefitsQuote, "RateTier": consumer.RateTier,
-        "DesignField": consumer.DesignField, "CommissionTerms": consumer.CommissionTerms,
-        "SourceRef": consumer.SourceRef, "ArtifactRef": consumer.ArtifactRef,
+        "BenefitsQuote": consumer.BenefitsQuote,
+        "RateTier": consumer.RateTier,
+        "DesignField": consumer.DesignField,
+        "CommissionTerms": consumer.CommissionTerms,
+        "SourceRef": consumer.SourceRef,
+        "ArtifactRef": consumer.ArtifactRef,
     }
     for name, model in mirror.items():
         extra = {"fx"} if name == "BenefitsQuote" else set()
         assert set(real["models"][name]) == set(model.model_fields) | extra, name
-    for enum_cls in (consumer.RateFrequency, consumer.ProductLine, consumer.CoverageTier,
-                     consumer.TobaccoClass, consumer.SourcePath):
+    for enum_cls in (
+        consumer.RateFrequency,
+        consumer.ProductLine,
+        consumer.CoverageTier,
+        consumer.TobaccoClass,
+        consumer.SourcePath,
+    ):
         assert real["vocab"][enum_cls.__name__] == sorted(m.value for m in enum_cls)

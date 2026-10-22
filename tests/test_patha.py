@@ -42,7 +42,9 @@ from contract.wire import CollectRequest, ExchangeTurn
 
 DOCTYPES = ["gov-id", "utility-bill"]
 
-BENEFITS_CORPUS = Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+BENEFITS_CORPUS = (
+    Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+)
 
 BASE = "http://test"
 URL = "http://test/"
@@ -204,7 +206,9 @@ async def test_edge_path_a_branch_skips_extraction():
 
     async with _client(app) as (_hc, client):
         task_id = None
-        async for ev in client.send_message(SendMessageRequest(message=_assertion_message())):
+        async for ev in client.send_message(
+            SendMessageRequest(message=_assertion_message())
+        ):
             if ev.HasField("task"):
                 task_id = ev.task.id
             elif ev.HasField("status_update"):
@@ -336,9 +340,7 @@ def test_live_doctype_add_validates_new_doctype(tmp_path, monkeypatch):
     assert complete.fields.doctype == "pay-stub"
 
 
-def test_half_installed_doctype_skips_typed_check_loudly(
-    tmp_path, monkeypatch, caplog
-):
+def test_half_installed_doctype_skips_typed_check_loudly(tmp_path, monkeypatch, caplog):
     """Declared-but-absent schema asset: skip the check, but never silently."""
     monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(tmp_path))
     _install_pay_stub(None)  # SKILL.md declares bridge-schema; the asset is absent
@@ -358,11 +360,16 @@ def test_injected_schemas_drive_validation_without_a_registry():
     schemas = {"pay-stub": json.loads(_pay_stub_schema())}
 
     with pytest.raises(ValidationError):
-        patha.validate_assertion(_pay_stub_assertion({"employer": "Acme"}), schemas=schemas)
+        patha.validate_assertion(
+            _pay_stub_assertion({"employer": "Acme"}), schemas=schemas
+        )
     # An empty injected catalog means "no installed doctype" → skip, never reject.
-    assert patha.validate_assertion(
-        _pay_stub_assertion({"employer": "Acme"}), schemas={}
-    ).fields.doctype == "pay-stub"
+    assert (
+        patha.validate_assertion(
+            _pay_stub_assertion({"employer": "Acme"}), schemas={}
+        ).fields.doctype
+        == "pay-stub"
+    )
 
 
 async def test_edge_path_a_malformed_benefits_assertion_rejected():
@@ -410,7 +417,9 @@ async def test_consumer_vocabulary_assertion_disposes_hitl_review():
     assert verdict.reason_code == "flagged_fields"
 
     entry = project_ledger_entry(
-        doc_id="doc-a", result=ExtractionResult.model_validate(assertion), verdict=verdict
+        doc_id="doc-a",
+        result=ExtractionResult.model_validate(assertion),
+        verdict=verdict,
     )
     assert [(r.path, r.reason.value) for r in entry.field_reviews] == [
         ("fields.key_fields.expiry", "model_flagged")

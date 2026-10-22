@@ -164,7 +164,9 @@ def build_dashboard_app(
         def lifespan(_app: FastAPI):
             return email_drain_loop(processor, interval)
 
-    app = FastAPI(title="Ops Dashboard (Bridge-side read-model, SSE)", lifespan=lifespan)
+    app = FastAPI(
+        title="Ops Dashboard (Bridge-side read-model, SSE)", lifespan=lifespan
+    )
     app.add_exception_handler(StaleExchangeWrite, _stale_exchange_write_409)
     app.add_middleware(OtelAsgiMiddleware, service_component="dashboard")
     app.add_middleware(
@@ -178,7 +180,9 @@ def build_dashboard_app(
         try:
             return active_store.get(sid)
         except KeyError as e:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid!r}") from e
+            raise HTTPException(
+                status_code=404, detail=f"unknown session {sid!r}"
+            ) from e
 
     @app.get("/exchanges")
     def get_exchanges() -> list[dict]:

@@ -53,12 +53,20 @@ def _quote(**overrides) -> NormalizedQuote:
 
 class TestMaxCheck:
     def test_conforms_under_limit(self):
-        rule = StandardRule(id="deductible_cap", field="deductible", check="max", limit=1000)
-        assert flag_quote(_quote(deductible="750.00"), ProgramStandard((rule,), True)).conformant
+        rule = StandardRule(
+            id="deductible_cap", field="deductible", check="max", limit=1000
+        )
+        assert flag_quote(
+            _quote(deductible="750.00"), ProgramStandard((rule,), True)
+        ).conformant
 
     def test_flags_over_limit(self):
-        rule = StandardRule(id="deductible_cap", field="deductible", check="max", limit=1000)
-        verdict = flag_quote(_quote(deductible="1500.00"), ProgramStandard((rule,), True))
+        rule = StandardRule(
+            id="deductible_cap", field="deductible", check="max", limit=1000
+        )
+        verdict = flag_quote(
+            _quote(deductible="1500.00"), ProgramStandard((rule,), True)
+        )
         assert not verdict.conformant
         gap = verdict.gaps[0]
         assert gap.rule_id == "deductible_cap"
@@ -68,25 +76,52 @@ class TestMaxCheck:
 
 class TestMustIncludeCheck:
     def test_conforms_when_present(self):
-        rule = StandardRule(id="must_cover_dental", field="coverage_limits", check="must_include", value="dental")
-        assert flag_quote(_quote(coverage_limits="dental, vision"), ProgramStandard((rule,), True)).conformant
+        rule = StandardRule(
+            id="must_cover_dental",
+            field="coverage_limits",
+            check="must_include",
+            value="dental",
+        )
+        assert flag_quote(
+            _quote(coverage_limits="dental, vision"), ProgramStandard((rule,), True)
+        ).conformant
 
     def test_flags_when_absent(self):
-        rule = StandardRule(id="must_cover_dental", field="coverage_limits", check="must_include", value="dental")
-        verdict = flag_quote(_quote(coverage_limits="vision only"), ProgramStandard((rule,), True))
+        rule = StandardRule(
+            id="must_cover_dental",
+            field="coverage_limits",
+            check="must_include",
+            value="dental",
+        )
+        verdict = flag_quote(
+            _quote(coverage_limits="vision only"), ProgramStandard((rule,), True)
+        )
         assert not verdict.conformant
         assert verdict.gaps[0].rule_id == "must_cover_dental"
 
 
 class TestMustNotIncludeCheck:
     def test_conforms_when_absent(self):
-        rule = StandardRule(id="no_orthodontics_exclusion", field="exclusions", check="must_not_include", value="orthodontics")
-        assert flag_quote(_quote(exclusions="cosmetic surgery"), ProgramStandard((rule,), True)).conformant
+        rule = StandardRule(
+            id="no_orthodontics_exclusion",
+            field="exclusions",
+            check="must_not_include",
+            value="orthodontics",
+        )
+        assert flag_quote(
+            _quote(exclusions="cosmetic surgery"), ProgramStandard((rule,), True)
+        ).conformant
 
     def test_flags_when_present(self):
-        rule = StandardRule(id="no_orthodontics_exclusion", field="exclusions", check="must_not_include", value="orthodontics")
+        rule = StandardRule(
+            id="no_orthodontics_exclusion",
+            field="exclusions",
+            check="must_not_include",
+            value="orthodontics",
+        )
         verdict = flag_quote(
-            _quote(exclusions="cosmetic surgery, orthodontics"), ProgramStandard((rule,), True)
+            _quote(exclusions="cosmetic surgery, orthodontics"),
+            ProgramStandard((rule,), True),
         )
         assert not verdict.conformant
         assert verdict.gaps[0].rule_id == "no_orthodontics_exclusion"
@@ -94,14 +129,22 @@ class TestMustNotIncludeCheck:
 
 class TestRouting:
     def test_gap_routes_to_negotiate(self):
-        rule = StandardRule(id="deductible_cap", field="deductible", check="max", limit=1000)
-        verdict = flag_quote(_quote(deductible="2000.00"), ProgramStandard((rule,), True))
+        rule = StandardRule(
+            id="deductible_cap", field="deductible", check="max", limit=1000
+        )
+        verdict = flag_quote(
+            _quote(deductible="2000.00"), ProgramStandard((rule,), True)
+        )
         assert verdict.conformant is False
         assert verdict.route == ROUTE_NEGOTIATE == "negotiate"
 
     def test_conformant_routes_none(self):
-        rule = StandardRule(id="deductible_cap", field="deductible", check="max", limit=1000)
-        verdict = flag_quote(_quote(deductible="500.00"), ProgramStandard((rule,), True))
+        rule = StandardRule(
+            id="deductible_cap", field="deductible", check="max", limit=1000
+        )
+        verdict = flag_quote(
+            _quote(deductible="500.00"), ProgramStandard((rule,), True)
+        )
         assert verdict.conformant is True
         assert verdict.route == ROUTE_NONE == "none"
         assert verdict.gaps == []
@@ -110,7 +153,12 @@ class TestRouting:
 class TestSenseA:
     def test_verdict_only_routes_never_binds(self):
         # Sense A: the verdict carries no accept/reject/bind field — only a route.
-        assert set(StandardGapVerdict.model_fields) == {"party", "conformant", "gaps", "route"}
+        assert set(StandardGapVerdict.model_fields) == {
+            "party",
+            "conformant",
+            "gaps",
+            "route",
+        }
 
     def test_only_negotiate_or_none_routes_emitted(self):
         std = load_program_standard("benefits-procurement")
@@ -139,7 +187,9 @@ class TestLoader:
 class TestErrors:
     def test_unknown_check_raises(self):
         with pytest.raises(ValueError, match="unknown check"):
-            StandardRule.from_dict({"id": "r", "field": "deductible", "check": "bogus", "limit": 1})
+            StandardRule.from_dict(
+                {"id": "r", "field": "deductible", "check": "bogus", "limit": 1}
+            )
 
     def test_unknown_field_raises(self):
         rule = StandardRule(id="r", field="nonexistent", check="max", limit=1000)
@@ -156,7 +206,9 @@ class TestCorpusOracle:
         # 4 base carrier quotes + carrier-b's revised v2 quote (S1-benefits-5); every
         # document (base or revised) must reproduce its own expected_gaps block — the
         # revised carrier-b closes the gap, so its expected_gaps is [].
-        assert len(docs) == 5, "expected 4 carrier quotes + 1 revised in the benefits corpus"
+        assert len(docs) == 5, (
+            "expected 4 carrier quotes + 1 revised in the benefits corpus"
+        )
 
         std = load_program_standard("benefits-procurement")
         extractor = FixtureExtractor(corpus_path=BENEFITS_CORPUS)
@@ -165,7 +217,9 @@ class TestCorpusOracle:
             result = await extractor.extract(doc["id"])
             verdict = flag_quote(normalize_from_extraction(party, result), std)
             violated = {g.rule_id for g in verdict.gaps}
-            assert violated == set(doc["expected_gaps"]), f"gap mismatch for {doc['id']}"
+            assert violated == set(doc["expected_gaps"]), (
+                f"gap mismatch for {doc['id']}"
+            )
 
     async def test_carrier_b_is_the_sole_flagged_leg(self):
         data = json.loads(BENEFITS_CORPUS.read_text())

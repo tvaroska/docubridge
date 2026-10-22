@@ -1,4 +1,4 @@
-// RFP status projection mirror (@docbride/shared, S0-frontend-1).
+// RFP status projection mirror (@docubridge/shared, S0-frontend-1).
 //
 // The wire shape of `bridge.rfp.RfpStatusView` as the Bridge serves it in two places:
 //   * the dashboard SSE/REST row's `rfp` key (`project_rfp_exchange` — no `as_of`), and

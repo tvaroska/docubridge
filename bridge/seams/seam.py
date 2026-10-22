@@ -5,6 +5,7 @@ from enum import Enum
 
 class Seam(str, Enum):
     """The managed-service boundaries in the Bridge (one local + one GCP adapter each)."""
+
     sessions = "sessions"
     task_store = "task_store"
     exchange_store = "exchange_store"
@@ -18,6 +19,7 @@ class Seam(str, Enum):
 
 class SeamMode(str, Enum):
     """Seam adapter mode (local vs GCP)."""
+
     local = "local"
     gcp = "gcp"
 

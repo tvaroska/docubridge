@@ -1,5 +1,5 @@
 [project]
-name = "docbride"
+name = "docubridge"
 version = "0.1.0"
 description = "A2A Document Bridge — clean-slate build (Core + Address)"
 requires-python = ">=3.12,<3.14"

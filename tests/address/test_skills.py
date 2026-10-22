@@ -3,6 +3,7 @@
 P3-3: Tests that authored skill folders match corpus, contract models, and code
 constants so they cannot drift.
 """
+
 from agents.address.gate import DOCTYPE_GOV_ID, DOCTYPE_UTILITY_BILL, is_satisfied
 from bridge.classification import canonicalize_issuer
 from bridge.disposition import DEFAULT_THRESHOLDS
@@ -26,7 +27,9 @@ class TestWellFormedness:
         assert fm["name"] == "gov-id", "name must be lowercase-hyphen"
         assert len(fm["name"]) <= 64, "name must be <= 64 chars"
         assert len(fm["description"]) <= 1024, "description must be <= 1024 chars"
-        assert skill["metadata"]["bridge-kind"] == "doctype", "gov-id must be a doctype skill"
+        assert skill["metadata"]["bridge-kind"] == "doctype", (
+            "gov-id must be a doctype skill"
+        )
         assert skill["body"], "SKILL.md body must be non-empty"
 
     def test_utility_bill_well_formed(self):
@@ -38,7 +41,9 @@ class TestWellFormedness:
         assert fm["name"] == "utility-bill", "name must be lowercase-hyphen"
         assert len(fm["name"]) <= 64, "name must be <= 64 chars"
         assert len(fm["description"]) <= 1024, "description must be <= 1024 chars"
-        assert skill["metadata"]["bridge-kind"] == "doctype", "utility-bill must be a doctype skill"
+        assert skill["metadata"]["bridge-kind"] == "doctype", (
+            "utility-bill must be a doctype skill"
+        )
         assert skill["body"], "SKILL.md body must be non-empty"
 
     def test_address_proof_well_formed(self):
@@ -50,7 +55,9 @@ class TestWellFormedness:
         assert fm["name"] == "address-proof", "name must be lowercase-hyphen"
         assert len(fm["name"]) <= 64, "name must be <= 64 chars"
         assert len(fm["description"]) <= 1024, "description must be <= 1024 chars"
-        assert skill["metadata"]["bridge-kind"] == "process", "address-proof must be a process skill"
+        assert skill["metadata"]["bridge-kind"] == "process", (
+            "address-proof must be a process skill"
+        )
         assert skill["body"], "SKILL.md body must be non-empty"
 
 
@@ -77,12 +84,14 @@ class TestAddressProofSkill:
         # Compare to loaded_skills()
         skills = loaded_skills()
         address_proof_skill = next(s for s in skills if s.name == "address-proof")
-        assert set(candidates_from_skill) == set(address_proof_skill.candidate_doctypes), \
-            "skill candidate_doctypes must match loaded_skills()"
+        assert set(candidates_from_skill) == set(
+            address_proof_skill.candidate_doctypes
+        ), "skill candidate_doctypes must match loaded_skills()"
 
         # Compare to gate constants
-        assert set(candidates_from_skill) == {DOCTYPE_GOV_ID, DOCTYPE_UTILITY_BILL}, \
+        assert set(candidates_from_skill) == {DOCTYPE_GOV_ID, DOCTYPE_UTILITY_BILL}, (
             "skill candidate_doctypes must match gate constants"
+        )
 
     def test_satisfaction_prose_present(self):
         """Test prose satisfaction description is present and mentions key concepts."""
@@ -94,11 +103,13 @@ class TestAddressProofSkill:
 
         # Check for key concepts (case-insensitive)
         satisfaction_lower = satisfaction.lower()
-        assert ("id" in satisfaction_lower or "government" in satisfaction_lower), \
+        assert "id" in satisfaction_lower or "government" in satisfaction_lower, (
             "satisfaction must mention ID/government"
+        )
         assert "two" in satisfaction_lower, "satisfaction must mention 'two' bills"
-        assert ("distinct" in satisfaction_lower or "different" in satisfaction_lower), \
+        assert "distinct" in satisfaction_lower or "different" in satisfaction_lower, (
             "satisfaction must mention distinct/different issuers"
+        )
 
     def test_policy_file_exists_and_loads(self):
         """Test policy.yaml is referenced and loads successfully."""
@@ -114,11 +125,13 @@ class TestAddressProofSkill:
         policy = skill["assets"]["policy.yaml"]
 
         disp = policy["disposition"]
-        assert disp["auto_approve_at"] == DEFAULT_THRESHOLDS.auto_approve_at, \
+        assert disp["auto_approve_at"] == DEFAULT_THRESHOLDS.auto_approve_at, (
             "auto_approve_at must equal DEFAULT_THRESHOLDS (0.85)"
+        )
         assert disp["auto_approve_at"] == 0.85, "auto_approve_at must be 0.85"
-        assert disp["resubmit_below"] == DEFAULT_THRESHOLDS.resubmit_below, \
+        assert disp["resubmit_below"] == DEFAULT_THRESHOLDS.resubmit_below, (
             "resubmit_below must equal DEFAULT_THRESHOLDS (0.55)"
+        )
         assert disp["resubmit_below"] == 0.55, "resubmit_below must be 0.55"
         assert disp["max_resubmissions"] == 3, "max_resubmissions must be 3"
 
@@ -132,29 +145,36 @@ class TestAddressProofSkill:
         timeline_sla = timeline["exchanges"][0]["sla"]
 
         sla = policy["sla"]
-        assert sla["deadline"] == sla["escalate_ticks"], "deadline must equal escalate_ticks"
+        assert sla["deadline"] == sla["escalate_ticks"], (
+            "deadline must equal escalate_ticks"
+        )
         assert sla["escalate_ticks"] == 3, "escalate_ticks must be 3"
-        assert sla["escalate_ticks"] == timeline_sla["escalate_ticks"], \
+        assert sla["escalate_ticks"] == timeline_sla["escalate_ticks"], (
             "escalate_ticks must match timeline"
+        )
 
         assert sla["overdue_ticks"] == 1, "overdue_ticks must be 1"
-        assert sla["overdue_ticks"] == timeline_sla["overdue_ticks"], \
+        assert sla["overdue_ticks"] == timeline_sla["overdue_ticks"], (
             "overdue_ticks must match timeline"
+        )
 
         assert sla["reminder_ticks"] == 2, "reminder_ticks must be 2"
-        assert sla["reminder_ticks"] == timeline_sla["reminder_ticks"], \
+        assert sla["reminder_ticks"] == timeline_sla["reminder_ticks"], (
             "reminder_ticks must match timeline"
+        )
 
-        assert policy["disposition"]["max_resubmissions"] == timeline_sla["resubmit_cap"], \
-            "max_resubmissions must match timeline resubmit_cap (3)"
+        assert (
+            policy["disposition"]["max_resubmissions"] == timeline_sla["resubmit_cap"]
+        ), "max_resubmissions must match timeline resubmit_cap (3)"
 
     def test_sla_ladder(self):
         """Test SLA ladder is correct."""
         skill = load_skill("address-proof")
         policy = skill["assets"]["policy.yaml"]
 
-        assert policy["sla"]["ladder"] == ["overdue", "reminder", "escalated"], \
+        assert policy["sla"]["ladder"] == ["overdue", "reminder", "escalated"], (
             "ladder must be [overdue, reminder, escalated]"
+        )
 
     def test_is_satisfied_behavior(self):
         """Test that prose satisfaction matches is_satisfied code behavior.
@@ -203,8 +223,9 @@ class TestAddressProofSkill:
             ],
             outstanding=RequirementsList(done=False),
         )
-        assert not is_satisfied(status_same_issuer), \
+        assert not is_satisfied(status_same_issuer), (
             "two bills from same issuer must NOT satisfy (distinct issuer check)"
+        )
 
         # Two bills, distinct issuers -> satisfied
         status_distinct_issuers = CollectionStatus(
@@ -230,8 +251,9 @@ class TestAddressProofSkill:
             ],
             outstanding=RequirementsList(done=True),
         )
-        assert is_satisfied(status_distinct_issuers), \
+        assert is_satisfied(status_distinct_issuers), (
             "two bills from distinct issuers must satisfy"
+        )
 
 
 class TestGovIdSkill:
@@ -250,10 +272,12 @@ class TestGovIdSkill:
         skill = load_skill("gov-id")
         schema = skill["assets"]["schema.json"]
 
-        assert set(schema["required"]) == {"doctype", "key_fields"}, \
+        assert set(schema["required"]) == {"doctype", "key_fields"}, (
             "top-level required must be {doctype, key_fields}"
-        assert schema["properties"]["doctype"]["enum"] == ["gov-id"], \
+        )
+        assert schema["properties"]["doctype"]["enum"] == ["gov-id"], (
             "doctype enum must be ['gov-id']"
+        )
 
     def test_schema_key_fields_match_contract(self):
         """Test schema key_fields match GovIdKeyFields contract model."""
@@ -267,12 +291,13 @@ class TestGovIdSkill:
 
         expected = {"name", "address", "doc_number", "issuing_authority", "expiry"}
 
-        assert schema_properties == expected, \
+        assert schema_properties == expected, (
             "schema properties must match expected fields"
-        assert schema_required == expected, \
-            "schema required must match expected fields"
-        assert schema_properties == contract_fields, \
+        )
+        assert schema_required == expected, "schema required must match expected fields"
+        assert schema_properties == contract_fields, (
             "schema properties must match GovIdKeyFields contract"
+        )
 
     def test_schema_covers_corpus_records(self):
         """Test schema covers all keys in corpus gov-id records."""
@@ -285,8 +310,9 @@ class TestGovIdSkill:
             if record["extraction"]["fields"]["doctype"] == "gov-id":
                 corpus_key_fields = record["extraction"]["fields"].get("key_fields", {})
                 for key in corpus_key_fields:
-                    assert key in schema_fields, \
+                    assert key in schema_fields, (
                         f"corpus key '{key}' in {record['id']} must be in schema"
+                    )
 
     def test_validation_rules(self):
         """Test validation.yaml has required rule ids."""
@@ -294,11 +320,13 @@ class TestGovIdSkill:
         validation = skill["assets"]["validation.yaml"]
 
         rule_ids = {rule["id"] for rule in validation["rules"]}
-        assert rule_ids == {"not_expired", "complete_fields"}, \
+        assert rule_ids == {"not_expired", "complete_fields"}, (
             "rule ids must be {not_expired, complete_fields}"
+        )
 
-        assert validation["signals"]["completeness"] == "agent", \
+        assert validation["signals"]["completeness"] == "agent", (
             "completeness signal must be owned by agent"
+        )
 
 
 class TestUtilityBillSkill:
@@ -317,12 +345,15 @@ class TestUtilityBillSkill:
         skill = load_skill("utility-bill")
         schema = skill["assets"]["schema.json"]
 
-        assert set(schema["required"]) == {"doctype", "issuer", "key_fields"}, \
+        assert set(schema["required"]) == {"doctype", "issuer", "key_fields"}, (
             "top-level required must be {doctype, issuer, key_fields}"
-        assert schema["properties"]["doctype"]["enum"] == ["utility-bill"], \
+        )
+        assert schema["properties"]["doctype"]["enum"] == ["utility-bill"], (
             "doctype enum must be ['utility-bill']"
-        assert "issuer" in schema["properties"], \
+        )
+        assert "issuer" in schema["properties"], (
             "issuer must be a top-level property (not in key_fields)"
+        )
 
     def test_schema_key_fields_match_contract(self):
         """Test schema key_fields match UtilityBillKeyFields contract model."""
@@ -336,12 +367,13 @@ class TestUtilityBillSkill:
 
         expected = {"name", "service_address", "statement_date"}
 
-        assert schema_properties == expected, \
+        assert schema_properties == expected, (
             "schema properties must match expected fields"
-        assert schema_required == expected, \
-            "schema required must match expected fields"
-        assert schema_properties == contract_fields, \
+        )
+        assert schema_required == expected, "schema required must match expected fields"
+        assert schema_properties == contract_fields, (
             "schema properties must match UtilityBillKeyFields contract"
+        )
 
     def test_schema_covers_corpus_records(self):
         """Test schema covers all keys in corpus utility-bill records.
@@ -358,8 +390,9 @@ class TestUtilityBillSkill:
             if record["extraction"]["fields"]["doctype"] == "utility-bill":
                 corpus_key_fields = record["extraction"]["fields"].get("key_fields", {})
                 for key in corpus_key_fields:
-                    assert key in schema_fields, \
+                    assert key in schema_fields, (
                         f"corpus key '{key}' in {record['id']} must be in schema"
+                    )
 
     def test_validation_rules(self):
         """Test validation.yaml has required rules with window_days."""
@@ -370,12 +403,16 @@ class TestUtilityBillSkill:
         assert "recent_bill" in rule_ids, "must have recent_bill rule"
         assert "address_present" in rule_ids, "must have address_present rule"
 
-        recent_bill_rule = next(r for r in validation["rules"] if r["id"] == "recent_bill")
-        assert recent_bill_rule.get("window_days") == 90, \
+        recent_bill_rule = next(
+            r for r in validation["rules"] if r["id"] == "recent_bill"
+        )
+        assert recent_bill_rule.get("window_days") == 90, (
             "recent_bill rule must have window_days == 90"
+        )
 
-        assert validation["signals"]["completeness"] == "agent", \
+        assert validation["signals"]["completeness"] == "agent", (
             "completeness signal must be owned by agent"
+        )
 
     def test_issuer_canonicalization_reference_exists(self):
         """Test issuer-canonicalization.md exists and contains examples."""
@@ -391,22 +428,27 @@ class TestUtilityBillSkill:
     def test_canonicalization_parity(self):
         """Test documented canonicalization examples match code behavior."""
         # Test PowerCo variants
-        assert canonicalize_issuer("PowerCo") == "power-co", \
+        assert canonicalize_issuer("PowerCo") == "power-co", (
             "PowerCo must canonicalize to power-co"
-        assert canonicalize_issuer("Power Co.") == "power-co", \
+        )
+        assert canonicalize_issuer("Power Co.") == "power-co", (
             "Power Co. must canonicalize to power-co"
-        assert canonicalize_issuer("PowerCo Ltd") == "power-co", \
+        )
+        assert canonicalize_issuer("PowerCo Ltd") == "power-co", (
             "PowerCo Ltd must canonicalize to power-co (ltd dropped, co kept)"
+        )
 
         # Test AquaUtil
-        assert canonicalize_issuer("AquaUtil") == "aqua-util", \
+        assert canonicalize_issuer("AquaUtil") == "aqua-util", (
             "AquaUtil must canonicalize to aqua-util"
+        )
 
         # Verify all PowerCo variants canonicalize identically
-        assert (canonicalize_issuer("PowerCo") ==
-                canonicalize_issuer("Power Co.") ==
-                canonicalize_issuer("PowerCo Ltd")), \
-            "all PowerCo variants must canonicalize to the same value"
+        assert (
+            canonicalize_issuer("PowerCo")
+            == canonicalize_issuer("Power Co.")
+            == canonicalize_issuer("PowerCo Ltd")
+        ), "all PowerCo variants must canonicalize to the same value"
 
 
 class TestSkillRegistryNodrift:
@@ -417,7 +459,9 @@ class TestSkillRegistryNodrift:
         skills = loaded_skills()
         skill_names = {s.name for s in skills}
 
-        assert "address-proof" in skill_names, "address-proof must be in loaded_skills()"
+        assert "address-proof" in skill_names, (
+            "address-proof must be in loaded_skills()"
+        )
         assert "gov-id" in skill_names, "gov-id must be in loaded_skills()"
         assert "utility-bill" in skill_names, "utility-bill must be in loaded_skills()"
 
@@ -427,16 +471,15 @@ class TestSkillRegistryNodrift:
         skills = loaded_skills()
         skill_meta = next(s for s in skills if s.name == "address-proof")
 
-        assert folder["frontmatter"]["name"] == skill_meta.name, \
-            "name must match"
-        assert folder["metadata"]["bridge-kind"] == skill_meta.kind, \
-            "kind must match"
+        assert folder["frontmatter"]["name"] == skill_meta.name, "name must match"
+        assert folder["metadata"]["bridge-kind"] == skill_meta.kind, "kind must match"
 
         # Parse candidate doctypes from skill folder
         candidates_str = folder["metadata"]["bridge-candidate-doctypes"]
         candidates = tuple(candidates_str.split())
-        assert candidates == skill_meta.candidate_doctypes, \
+        assert candidates == skill_meta.candidate_doctypes, (
             "candidate_doctypes must match"
+        )
 
     def test_gov_id_metadata_matches(self):
         """Test gov-id folder matches loaded_skills() metadata."""
@@ -444,10 +487,8 @@ class TestSkillRegistryNodrift:
         skills = loaded_skills()
         skill_meta = next(s for s in skills if s.name == "gov-id")
 
-        assert folder["frontmatter"]["name"] == skill_meta.name, \
-            "name must match"
-        assert folder["metadata"]["bridge-kind"] == skill_meta.kind, \
-            "kind must match"
+        assert folder["frontmatter"]["name"] == skill_meta.name, "name must match"
+        assert folder["metadata"]["bridge-kind"] == skill_meta.kind, "kind must match"
 
     def test_utility_bill_metadata_matches(self):
         """Test utility-bill folder matches loaded_skills() metadata."""
@@ -455,7 +496,5 @@ class TestSkillRegistryNodrift:
         skills = loaded_skills()
         skill_meta = next(s for s in skills if s.name == "utility-bill")
 
-        assert folder["frontmatter"]["name"] == skill_meta.name, \
-            "name must match"
-        assert folder["metadata"]["bridge-kind"] == skill_meta.kind, \
-            "kind must match"
+        assert folder["frontmatter"]["name"] == skill_meta.name, "name must match"
+        assert folder["metadata"]["bridge-kind"] == skill_meta.kind, "kind must match"

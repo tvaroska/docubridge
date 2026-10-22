@@ -6,7 +6,7 @@
 // Every relayed lifecycle value is shown verbatim via the shared LifecycleBadge.
 
 import { Box, List, ListItem, ListItemText, Slider, Stack, Typography } from "@mui/material";
-import { LifecycleBadge, Panel } from "@docbride/shared";
+import { LifecycleBadge, Panel } from "@docubridge/shared";
 import { useState } from "react";
 import * as api from "../api";
 import type { TimewarpState } from "../domain/timewarp";

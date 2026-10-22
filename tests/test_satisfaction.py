@@ -9,6 +9,7 @@ through ``build_a2a_app(satisfaction=...)``; the default edge stays model-free a
 byte-identical; the app's gate (``agents.address.gate.is_satisfied``) always owns
 done. One live test (real Gemini) is gated on ``BRIDGE_TEST_GEMINI=1``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -279,7 +280,9 @@ async def test_failure_never_logs_ledger_contents(caplog):
 
 def _reqs(*statuses: RequirementStatus) -> RequirementsList:
     return RequirementsList(
-        requirements=[Requirement(item=f"i{n}", status=s) for n, s in enumerate(statuses)]
+        requirements=[
+            Requirement(item=f"i{n}", status=s) for n, s in enumerate(statuses)
+        ]
     )
 
 

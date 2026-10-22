@@ -109,7 +109,9 @@ def _fmt_bound(name: str, b: Bound, *, no_lower: str) -> str:
 
 
 def _fmt_t(t: DispositionThresholds) -> str:
-    return f"auto_approve_at={t.auto_approve_at:.2f} resubmit_below={t.resubmit_below:.2f}"
+    return (
+        f"auto_approve_at={t.auto_approve_at:.2f} resubmit_below={t.resubmit_below:.2f}"
+    )
 
 
 def _verdict(c: ThresholdCorridor, t: DispositionThresholds) -> str:
@@ -117,11 +119,14 @@ def _verdict(c: ThresholdCorridor, t: DispositionThresholds) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the CLI calibration harness and print empirical threshold metrics."""
     parser = argparse.ArgumentParser(
         prog="python -m bridge.calibration",
         description="Check the disposition thresholds against the eval-corpus corridor.",
     )
-    parser.add_argument("--auto-approve-at", type=float, help="candidate auto_approve_at")
+    parser.add_argument(
+        "--auto-approve-at", type=float, help="candidate auto_approve_at"
+    )
     parser.add_argument("--resubmit-below", type=float, help="candidate resubmit_below")
     args = parser.parse_args(argv)
 

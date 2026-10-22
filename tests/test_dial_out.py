@@ -87,16 +87,16 @@ class TestDialOut:
         """OUT-3: the DialOut dataclass has no token/credential field."""
         names = {f.name for f in dataclasses.fields(DialOut)}
         assert names == {"context_id", "party", "process", "card_url", "message"}
-        assert not any(
-            tok in n for n in names for tok in ("token", "cred", "bearer")
-        )
+        assert not any(tok in n for n in names for tok in ("token", "cred", "bearer"))
 
 
 class TestDeliver:
     def test_deliver_pushes_by_reference_artifact(self):
         t = FakeTransport()
         c = OutboundClient(t)
-        ref = ArtifactRef(uri="bridge://comparison/acme-2026", mime_type="application/json")
+        ref = ArtifactRef(
+            uri="bridge://comparison/acme-2026", mime_type="application/json"
+        )
         delivery = Delivery(
             context_id="acme-2026", recipient="broker", artifact=ref, summary="4-leg"
         )
@@ -119,9 +119,13 @@ class TestDeliver:
         t = FakeTransport()
         c = OutboundClient(t)
         ref = ArtifactRef(uri="bridge://comparison/acme-2026")
-        d1 = c.deliver(Delivery(context_id="acme-2026", recipient="broker", artifact=ref))
+        d1 = c.deliver(
+            Delivery(context_id="acme-2026", recipient="broker", artifact=ref)
+        )
         d2 = c.deliver(
-            Delivery(context_id="acme-2026", recipient="broker", artifact=ref, summary="x")
+            Delivery(
+                context_id="acme-2026", recipient="broker", artifact=ref, summary="x"
+            )
         )
         assert d1.resent is False
         assert d2.resent is True
@@ -137,6 +141,4 @@ class TestDeliver:
 
     def test_delivery_carries_no_bearer_token(self):
         names = {f.name for f in dataclasses.fields(Delivery)}
-        assert not any(
-            tok in n for n in names for tok in ("token", "cred", "bearer")
-        )
+        assert not any(tok in n for n in names for tok in ("token", "cred", "bearer"))

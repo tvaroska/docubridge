@@ -17,7 +17,9 @@ with open(CORPUS_PATH) as f:
 CORPUS_RECORDS = CORPUS_DATA["documents"]
 
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 async def test_corpus_round_trip_parity(record):
     """Fixture extractor reproduces corpus extraction blocks exactly."""
     extractor = FixtureExtractor()
@@ -59,7 +61,9 @@ async def test_determinism():
     assert result1 == result2
 
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 async def test_signals_feed_gate_to_expected_disposition(record):
     """Extraction signals wire cleanly into the disposition gate."""
     extractor = FixtureExtractor()

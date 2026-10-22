@@ -1,7 +1,7 @@
-// App-specific view model for the Agent Console (P6-3; hoisted to @docbride/shared at P6-5).
+// App-specific view model for the Agent Console (P6-3; hoisted to @docubridge/shared at P6-5).
 //
 // The shared contract core (LedgerEntry / Requirement camel + their wire shapes + the
-// snake→camel mapEntry / mapRequirement) now lives in @docbride/shared (§2f). This module
+// snake→camel mapEntry / mapRequirement) now lives in @docubridge/shared (§2f). This module
 // keeps only the CONSOLE-SPECIFIC view types (Turn / Snapshot / Prepared) + the view mappers
 // that compose the shared mappers.
 //
@@ -17,7 +17,7 @@ import {
   type Requirement,
   type WireLedgerEntry,
   type WireRequirement,
-} from "@docbride/shared";
+} from "@docubridge/shared";
 
 // Re-export the shared contract core so existing app imports keep working.
 export { mapEntry, mapRequirement };

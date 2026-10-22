@@ -18,6 +18,7 @@ Document AI OCR pre-pass, exercised by ``tests/test_docai_extraction.py``).
 Parity is **terminal-outcome, never ledger-identical** (CLAUDE.md; design/seams.md):
 confidences are deliberately not compared between the legs.
 """
+
 from __future__ import annotations
 
 import json

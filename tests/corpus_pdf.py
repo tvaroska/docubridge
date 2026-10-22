@@ -258,7 +258,9 @@ def conformance_pdf_lines(record: dict) -> list[str]:
         lines.append(f"Commission rate (%): {kf['commission_rate_pct']}")
     if "commission_notes" in kf:
         lines.append(f"Commission notes: {kf['commission_notes']}")
-    lines.append("Rates (tier | tobacco | age band | amount | frequency | basis | benefit):")
+    lines.append(
+        "Rates (tier | tobacco | age band | amount | frequency | basis | benefit):"
+    )
     for i, row in enumerate(tables.get("rates", [])):
         cells = [
             f"{label}{_cell(record, 'rates', i, column, row[column])}"
@@ -270,7 +272,9 @@ def conformance_pdf_lines(record: dict) -> list[str]:
     for i, row in enumerate(tables.get("design", [])):
         cells = [_cell(record, "design", i, "category", row["category"])]
         if "category_original" in row:
-            original = _cell(record, "design", i, "category_original", row["category_original"])
+            original = _cell(
+                record, "design", i, "category_original", row["category_original"]
+            )
             cells.append(f"Carrier term: {original}")
         cells.append(_cell(record, "design", i, "value", row["value"]))
         lines.append(" | ".join(cells))

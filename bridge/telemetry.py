@@ -121,16 +121,21 @@ class RingBufferTelemetryExporter(SpanExporter):
             maxlen=maxlen
         )
 
-    def export(self, spans: tuple[ReadableSpan, ...] | list[ReadableSpan]) -> SpanExportResult:
+    def export(
+        self, spans: tuple[ReadableSpan, ...] | list[ReadableSpan]
+    ) -> SpanExportResult:
+        """Append exported OpenTelemetry spans into the bounded in-memory ring buffer."""
         with self._lock:
             for sp in spans:
                 self._spans.append(_span_to_dict(sp))
         return SpanExportResult.SUCCESS
 
     def shutdown(self) -> None:
+        """Shut down the in-memory ring buffer span exporter."""
         return None
 
     def clear(self) -> None:
+        """Remove all recorded spans from the in-memory ring buffer."""
         with self._lock:
             self._spans.clear()
 
@@ -142,6 +147,7 @@ class RingBufferTelemetryExporter(SpanExporter):
         entity_id: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
+        """Return recent spans from the ring buffer, optionally filtered by trace ID."""
         with self._lock:
             items = list(self._spans)
         if trace_id:
@@ -197,7 +203,10 @@ class CloudTraceV2SpanExporter(SpanExporter):
                 from google.auth.transport.requests import AuthorizedSession
 
                 creds, _ = google.auth.default(
-                    scopes=["https://www.googleapis.com/auth/trace.append", "https://www.googleapis.com/auth/cloud-platform"]
+                    scopes=[
+                        "https://www.googleapis.com/auth/trace.append",
+                        "https://www.googleapis.com/auth/cloud-platform",
+                    ]
                 )
                 self._session = AuthorizedSession(creds)
                 return self._session
@@ -206,7 +215,9 @@ class CloudTraceV2SpanExporter(SpanExporter):
                 return None
 
     @staticmethod
-    def _to_cloud_trace_span(project_id: str, span_dict: dict[str, Any]) -> dict[str, Any]:
+    def _to_cloud_trace_span(
+        project_id: str, span_dict: dict[str, Any]
+    ) -> dict[str, Any]:
         trace_id = span_dict["trace_id"]
         span_id = span_dict["span_id"]
         span_name_res = f"projects/{project_id}/traces/{trace_id}/spans/{span_id}"
@@ -219,13 +230,12 @@ class CloudTraceV2SpanExporter(SpanExporter):
                 attr_map[k] = {"intValue": str(v)}
             else:
                 s_val = str(v)[:256]
-                attr_map[k] = {
-                    "stringValue": {"value": s_val, "truncatedByteCount": 0}
-                }
+                attr_map[k] = {"stringValue": {"value": s_val, "truncatedByteCount": 0}}
 
-        svc_name = (
-            os.environ.get("K_SERVICE", "").strip()
-            or ("vertex-agent-engine" if os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID") else "docubridge")
+        svc_name = os.environ.get("K_SERVICE", "").strip() or (
+            "vertex-agent-engine"
+            if os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID")
+            else "docubridge"
         )
         attr_map.setdefault(
             "service.name",
@@ -258,13 +268,10 @@ class CloudTraceV2SpanExporter(SpanExporter):
     @staticmethod
     def _to_bigquery_row(span_dict: dict[str, Any]) -> dict[str, Any]:
         attrs = span_dict.get("attributes") or {}
-        svc_name = (
-            os.environ.get("K_SERVICE", "").strip()
-            or (
-                "vertex-agent-engine"
-                if os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID")
-                else "docubridge"
-            )
+        svc_name = os.environ.get("K_SERVICE", "").strip() or (
+            "vertex-agent-engine"
+            if os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID")
+            else "docubridge"
         )
         return {
             "insertId": f"{span_dict.get('trace_id', '')}:{span_dict.get('span_id', '')}",
@@ -301,11 +308,11 @@ class CloudTraceV2SpanExporter(SpanExporter):
                     else None
                 ),
                 "actor_role": (
-                    str(attrs.get("docubridge.actor_role") or attrs.get("docubridge.role"))
-                    if (
-                        "docubridge.actor_role" in attrs
-                        or "docubridge.role" in attrs
+                    str(
+                        attrs.get("docubridge.actor_role")
+                        or attrs.get("docubridge.role")
                     )
+                    if ("docubridge.actor_role" in attrs or "docubridge.role" in attrs)
                     else None
                 ),
                 "actor_principal": (
@@ -335,7 +342,10 @@ class CloudTraceV2SpanExporter(SpanExporter):
             return default_project, "docubridge_telemetry", "otel_spans"
         return None
 
-    def export(self, spans: tuple[ReadableSpan, ...] | list[ReadableSpan]) -> SpanExportResult:
+    def export(
+        self, spans: tuple[ReadableSpan, ...] | list[ReadableSpan]
+    ) -> SpanExportResult:
+        """BatchWrite OpenTelemetry spans directly to the Google Cloud Trace v2 API."""
         if not self._is_gcp_enabled():
             return SpanExportResult.SUCCESS
         project_id = self._project_id()
@@ -406,6 +416,7 @@ class CloudTraceV2SpanExporter(SpanExporter):
         return SpanExportResult.SUCCESS
 
     def shutdown(self) -> None:
+        """Shut down the Cloud Trace v2 span exporter."""
         return None
 
 
@@ -475,7 +486,9 @@ def clear_recorded_spans() -> None:
 def _percentile(sorted_vals: list[float], pct: int) -> float:
     if not sorted_vals:
         return 0.0
-    idx = min(len(sorted_vals) - 1, max(0, round((pct / 100.0) * (len(sorted_vals) - 1))))
+    idx = min(
+        len(sorted_vals) - 1, max(0, round((pct / 100.0) * (len(sorted_vals) - 1)))
+    )
     return round(sorted_vals[idx], 3)
 
 
@@ -489,7 +502,7 @@ def compute_trace_analytics(
     summary matching the BigQuery SQL analytics views (`v_step_latency_analytics`,
     `v_trace_waterfall`, `v_entity_pipeline_summary`)."""
     spans = get_recorded_spans(trace_id=trace_id, entity_id=entity_id, limit=limit)
-    project_id = _CLOUD_TRACE_EXPORTER._project_id() or "documents001"
+    project_id = _CLOUD_TRACE_EXPORTER._project_id() or "docubridge-showcase"
     bq_target = CloudTraceV2SpanExporter._resolve_bq_target(project_id) or (
         project_id,
         "docubridge_telemetry",
@@ -519,7 +532,9 @@ def compute_trace_analytics(
                 "invocation_count": inv_count,
                 "span_count": inv_count,
                 "error_count": err_count,
-                "error_rate_pct": round(100.0 * err_count / inv_count, 2) if inv_count else 0.0,
+                "error_rate_pct": round(100.0 * err_count / inv_count, 2)
+                if inv_count
+                else 0.0,
                 "avg_duration_ms": avg_dur,
                 "p50_duration_ms": _percentile(durations, 50),
                 "p95_duration_ms": _percentile(durations, 95),
@@ -540,7 +555,10 @@ def compute_trace_analytics(
         tid = sp.get("trace_id", "")
         st_str = sp.get("start_time", "")
         try:
-            epoch_ms = datetime.fromisoformat(st_str.replace("Z", "+00:00")).timestamp() * 1000.0
+            epoch_ms = (
+                datetime.fromisoformat(st_str.replace("Z", "+00:00")).timestamp()
+                * 1000.0
+            )
         except Exception:
             epoch_ms = 0.0
         if tid and (tid not in trace_min_ts or epoch_ms < trace_min_ts[tid]):
@@ -566,8 +584,16 @@ def compute_trace_analytics(
         model_name = attrs.get("gen_ai.request.model")
         op_name = attrs.get("gen_ai.operation.name")
         traffic_type = attrs.get("docubridge.finops.traffic_type")
-        in_tok = int(attrs["gen_ai.usage.input_tokens"]) if "gen_ai.usage.input_tokens" in attrs else None
-        out_tok = int(attrs["gen_ai.usage.output_tokens"]) if "gen_ai.usage.output_tokens" in attrs else None
+        in_tok = (
+            int(attrs["gen_ai.usage.input_tokens"])
+            if "gen_ai.usage.input_tokens" in attrs
+            else None
+        )
+        out_tok = (
+            int(attrs["gen_ai.usage.output_tokens"])
+            if "gen_ai.usage.output_tokens" in attrs
+            else None
+        )
         span_total_tok = (in_tok or 0) + (out_tok or 0)
 
         if model_name == "gemini-3.8-flash":
@@ -598,7 +624,8 @@ def compute_trace_analytics(
                 "zone": attrs.get("docubridge.zone"),
                 "entity_id": attrs.get("docubridge.entity_id"),
                 "doc_id": attrs.get("docubridge.doc_id"),
-                "actor_role": attrs.get("docubridge.actor_role") or attrs.get("docubridge.role"),
+                "actor_role": attrs.get("docubridge.actor_role")
+                or attrs.get("docubridge.role"),
                 "agent_spiffe_id": attrs.get("docubridge.agent_spiffe_id"),
                 "gen_ai_system": attrs.get("gen_ai.system"),
                 "gen_ai_model": model_name,
@@ -724,12 +751,18 @@ def compute_trace_analytics(
     }
 
 
-def parse_incoming_span_context(headers: Mapping[str, str] | None) -> SpanContext | None:
+def parse_incoming_span_context(
+    headers: Mapping[str, str] | None,
+) -> SpanContext | None:
     """Extract a parent ``SpanContext`` from W3C ``traceparent`` or Google
     ``X-Cloud-Trace-Context`` request headers."""
     if not headers:
         return None
-    lower = {k.lower(): v for k, v in headers.items() if isinstance(k, str) and isinstance(v, str)}
+    lower = {
+        k.lower(): v
+        for k, v in headers.items()
+        if isinstance(k, str) and isinstance(v, str)
+    }
 
     tp = lower.get("traceparent", "").strip()
     if tp:
@@ -847,15 +880,18 @@ class OtelAsgiMiddleware:
         path = scope.get("path", "/")
         span_name = f"docubridge.http.{self.service_component} {method} {path}"
 
-        with parent_trace_context_from_headers(hdr_dict), trace_step(
-            span_name,
-            {
-                "http.method": method,
-                "http.target": path,
-                "docubridge.component": self.service_component,
-            },
-            kind=SpanKind.SERVER,
-        ) as span:
+        with (
+            parent_trace_context_from_headers(hdr_dict),
+            trace_step(
+                span_name,
+                {
+                    "http.method": method,
+                    "http.target": path,
+                    "docubridge.component": self.service_component,
+                },
+                kind=SpanKind.SERVER,
+            ) as span,
+        ):
             ctx = span.get_span_context()
             trace_id_hex = f"{ctx.trace_id:032x}" if ctx and ctx.is_valid else ""
             span_id_hex = f"{ctx.span_id:016x}" if ctx and ctx.is_valid else ""
@@ -865,9 +901,7 @@ class OtelAsgiMiddleware:
                     status_code = int(message.get("status", 200))
                     span.set_attribute("http.status_code", status_code)
                     if status_code >= 500:
-                        span.set_status(
-                            Status(StatusCode.ERROR, f"HTTP {status_code}")
-                        )
+                        span.set_status(Status(StatusCode.ERROR, f"HTTP {status_code}"))
                     if trace_id_hex:
                         headers_list = list(message.get("headers") or ())
                         headers_list.append(
@@ -877,7 +911,9 @@ class OtelAsgiMiddleware:
                             headers_list.append(
                                 (
                                     b"traceparent",
-                                    f"00-{trace_id_hex}-{span_id_hex}-01".encode("ascii"),
+                                    f"00-{trace_id_hex}-{span_id_hex}-01".encode(
+                                        "ascii"
+                                    ),
                                 )
                             )
                         message = {**message, "headers": headers_list}

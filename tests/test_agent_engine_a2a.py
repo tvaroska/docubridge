@@ -19,6 +19,7 @@ Covers:
 8. Dual Option A + Option B support on `BridgeA2aAgentEngine.async_stream_query`
    (ADK `(user_id, session_id, message)` and A2A `payload`).
 """
+
 from __future__ import annotations
 
 import json
@@ -151,9 +152,7 @@ async def test_live_agent_card_reflects_new_skill_without_redeploy(
         (src / "SKILL.md").read_text(),
         assets={
             "assets/schema.json": (src / "assets" / "schema.json").read_text(),
-            "assets/validation.yaml": (
-                src / "assets" / "validation.yaml"
-            ).read_text(),
+            "assets/validation.yaml": (src / "assets" / "validation.yaml").read_text(),
         },
     )
     card2 = await engine.async_get_agent_card()

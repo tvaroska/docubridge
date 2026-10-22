@@ -8,7 +8,7 @@
 # NEVER agents/ (the Bridge core never depends on consumers; the isolation-guard
 # test enforces it). The eval corpus (wiki/evals/) is a RUNTIME fixture read via
 # __file__-relative paths (bridge/extraction/fixture.py, bridge/edge/artifacts.py),
-# so it MUST ship in the image and the app MUST run from the source tree (docbride
+# so it MUST ship in the image and the app MUST run from the source tree (docubridge
 # is a uv "virtual" project — deps are synced, the source is not installed as a
 # wheel, so __file__ stays in the tree and the corpus resolves).
 FROM python:3.12-slim
@@ -21,7 +21,7 @@ WORKDIR /app
 # Sync ONLY the dependency closure first (better layer caching): the manifest +
 # lockfile change rarely relative to source. --extra gcp pulls the deployed-path
 # deps (asyncpg / google-cloud-storage / google-cloud-tasks) the Gcp seam adapters
-# import lazily. --no-install-project: docbride is a virtual project (no build
+# import lazily. --no-install-project: docubridge is a virtual project (no build
 # backend); we run from the copied source tree, not an installed wheel.
 COPY pyproject.toml uv.lock ./
 ENV UV_COMPILE_BYTECODE=1 \

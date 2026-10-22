@@ -31,7 +31,9 @@ from bridge.pathb import ESCALATE_MESSAGE
 from bridge.program import Leg, fan_out
 from bridge.standard import ROUTE_NEGOTIATE, ROUTE_NONE, load_program_standard
 
-BENEFITS_CORPUS = Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+BENEFITS_CORPUS = (
+    Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+)
 
 CORPUS_DOC = {
     "carrier-a": "benefits-carrier-a-usd-en",
@@ -123,7 +125,9 @@ class TestRevise:
 
         revised = normalize_from_extraction(
             "carrier-b",
-            await FixtureExtractor(corpus_path=BENEFITS_CORPUS).extract(REVISED_CARRIER_B),
+            await FixtureExtractor(corpus_path=BENEFITS_CORPUS).extract(
+                REVISED_CARRIER_B
+            ),
         )
         neg2 = revise(neg, "carrier-b", revised, standard, policy=policy)
 
@@ -157,7 +161,9 @@ class TestRevise:
 
         revised = normalize_from_extraction(
             "carrier-b",
-            await FixtureExtractor(corpus_path=BENEFITS_CORPUS).extract(REVISED_CARRIER_B),
+            await FixtureExtractor(corpus_path=BENEFITS_CORPUS).extract(
+                REVISED_CARRIER_B
+            ),
         )
         neg = revise(neg, "carrier-b", revised, standard, policy=policy)
         after = comparison_from_negotiation(neg, standard)
@@ -186,7 +192,9 @@ class TestBindAndRollup:
         policy = load_negotiate_policy("benefits-procurement")
         revised = normalize_from_extraction(
             "carrier-b",
-            await FixtureExtractor(corpus_path=BENEFITS_CORPUS).extract(REVISED_CARRIER_B),
+            await FixtureExtractor(corpus_path=BENEFITS_CORPUS).extract(
+                REVISED_CARRIER_B
+            ),
         )
         neg = revise(neg, "carrier-b", revised, standard, policy=policy)
 
@@ -211,7 +219,10 @@ class TestBindAndRollup:
         neg = open_negotiation("p1", [(Leg("carrier-z", "ctx"), quote)], standard)
         policy = NegotiatePolicy(revise_cap=2)
         neg = revise(
-            neg, "carrier-z", _hand_quote("carrier-z", "cosmetic surgery"), standard,
+            neg,
+            "carrier-z",
+            _hand_quote("carrier-z", "cosmetic surgery"),
+            standard,
             policy=policy,
         )
         neg = bind_leg(neg, "carrier-z", version=0)  # bind the original, not latest
@@ -229,7 +240,9 @@ class TestBindAndRollup:
         policy = load_negotiate_policy("benefits-procurement")
         revised = normalize_from_extraction(
             "carrier-b",
-            await FixtureExtractor(corpus_path=BENEFITS_CORPUS).extract(REVISED_CARRIER_B),
+            await FixtureExtractor(corpus_path=BENEFITS_CORPUS).extract(
+                REVISED_CARRIER_B
+            ),
         )
         neg = revise(neg, "carrier-b", revised, standard, policy=policy)
         neg = bind_leg(neg, "carrier-b")
@@ -268,7 +281,9 @@ def test_negotiate_is_pure_no_corpus():
     neg = open_negotiation("p1", [(Leg("carrier-z", "ctx"), flagged)], standard)
     assert neg.legs[0].current.verdict.route == ROUTE_NEGOTIATE
 
-    neg = revise(neg, "carrier-z", fixed, standard, policy=NegotiatePolicy(revise_cap=2))
+    neg = revise(
+        neg, "carrier-z", fixed, standard, policy=NegotiatePolicy(revise_cap=2)
+    )
     assert neg.legs[0].current.verdict.route == ROUTE_NONE
 
     neg = bind_leg(neg, "carrier-z")

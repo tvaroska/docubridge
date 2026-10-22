@@ -20,6 +20,7 @@ Scope: this is the proportionate pre-deploy default-deny. Full mitigation — Ga
 egress policy and closing the DNS-rebinding window (a host that resolves public at
 check time and private at connect time) — is P7 (``design/zones.md``).
 """
+
 from __future__ import annotations
 
 import ipaddress

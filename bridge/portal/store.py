@@ -46,9 +46,11 @@ class PortalSessionRecord:
     candidate_doctypes: tuple[str, ...]
     max_resubmissions: int
     thresholds: DispositionThresholds
-    active_state: PathBState | None = None   # current doc slot (None => start a fresh slot)
-    last_step: PathBStep | None = None       # the active non-terminal park (RESUBMIT/HITL)
-    ledger: tuple[LedgerEntry, ...] = ()      # finalized entries across slots
+    active_state: PathBState | None = (
+        None  # current doc slot (None => start a fresh slot)
+    )
+    last_step: PathBStep | None = None  # the active non-terminal park (RESUBMIT/HITL)
+    ledger: tuple[LedgerEntry, ...] = ()  # finalized entries across slots
     # SLA follow-up lifecycle (P6-5). The time-warp host stamps the fired ladder step here
     # (via ``dataclasses.replace``); the dashboard read-model prefers it over the cosmetic
     # ledger derivation. Default ``on_track`` keeps every existing construction unchanged.
@@ -58,10 +60,21 @@ class PortalSessionRecord:
 class PortalStore(Protocol):
     """The persistence seam-in-waiting for portal sessions (native swap, §2b)."""
 
-    def create(self, rec: PortalSessionRecord) -> None: ...
-    def get(self, session_id: str) -> PortalSessionRecord: ...  # KeyError -> host maps 404
-    def put(self, rec: PortalSessionRecord) -> None: ...
-    def list(self) -> list[PortalSessionRecord]: ...  # P6-4: Ops Dashboard read-model source
+    def create(self, rec: PortalSessionRecord) -> None:
+        """Create and persist a new portal upload session record."""
+        ...
+
+    def get(self, session_id: str) -> PortalSessionRecord:
+        """Fetch a portal upload session by session ID, or None if not found."""
+        ...  # KeyError -> host maps 404
+
+    def put(self, rec: PortalSessionRecord) -> None:
+        """Update an existing portal upload session record."""
+        ...
+
+    def list(self) -> list[PortalSessionRecord]:
+        """List all portal upload session records."""
+        ...  # P6-4: Ops Dashboard read-model source
 
 
 class InMemoryPortalStore:
@@ -75,12 +88,15 @@ class InMemoryPortalStore:
         self._records: dict[str, PortalSessionRecord] = {}
 
     def create(self, rec: PortalSessionRecord) -> None:
+        """Create and store a new portal upload session in memory."""
         self._records[rec.session_id] = rec
 
     def get(self, session_id: str) -> PortalSessionRecord:
+        """Fetch a portal upload session from memory by session ID."""
         return self._records[session_id]  # KeyError -> host maps 404
 
     def put(self, rec: PortalSessionRecord) -> None:
+        """Save or overwrite a portal upload session in memory."""
         self._records[rec.session_id] = rec
 
     def list(self) -> list[PortalSessionRecord]:

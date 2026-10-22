@@ -5,6 +5,7 @@ is ≥1 accepted ``gov-id`` OR ≥2 accepted ``utility-bill`` entries from *dist
 issuers (same-issuer does not satisfy — the CUJ-10 reject half). Only ``accepted``
 entries count.
 """
+
 from __future__ import annotations
 
 from agents.address.gate import is_satisfied

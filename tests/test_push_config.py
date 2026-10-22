@@ -5,6 +5,7 @@ Reuses the ``_client`` / ``_fixture_app`` / ``_send`` harness from
 ``test_edge_a2a.py``. The webhook receiver is a mock httpx transport that records
 POSTs into a shared list.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -44,7 +45,9 @@ ACCEPTED = ("gov-id-clean", "images/gov-id-clean.svg")
 def _fixture_app_with_push(push_httpx_client):
     """Edge app with a push sender bound to the supplied httpx client."""
     executor = CollectExecutor(collector=Collector(FixtureExtractor()))
-    return build_a2a_app(url=URL, executor=executor, push_httpx_client=push_httpx_client)
+    return build_a2a_app(
+        url=URL, executor=executor, push_httpx_client=push_httpx_client
+    )
 
 
 @asynccontextmanager
@@ -118,7 +121,9 @@ async def test_push_config_crud_round_trip():
     """
     recorder = MockWebhookRecorder()
     mock_transport = httpx.MockTransport(recorder.handle_request)
-    push_client = httpx.AsyncClient(transport=mock_transport, base_url="http://receiver")
+    push_client = httpx.AsyncClient(
+        transport=mock_transport, base_url="http://receiver"
+    )
 
     async with _client(_fixture_app_with_push(push_client)) as (_hc, client):
         # Send to create a task
@@ -147,7 +152,9 @@ async def test_push_config_crud_round_trip():
 
         # List configs
         response = await client.list_task_push_notification_configs(
-            ListTaskPushNotificationConfigsRequest(tenant=config.tenant, task_id=task_id)
+            ListTaskPushNotificationConfigsRequest(
+                tenant=config.tenant, task_id=task_id
+            )
         )
         configs = response.configs
         assert any(c.id == config.id for c in configs)
@@ -161,7 +168,9 @@ async def test_push_config_crud_round_trip():
 
         # List again - should be empty
         response_after = await client.list_task_push_notification_configs(
-            ListTaskPushNotificationConfigsRequest(tenant=config.tenant, task_id=task_id)
+            ListTaskPushNotificationConfigsRequest(
+                tenant=config.tenant, task_id=task_id
+            )
         )
         configs_after = response_after.configs
         assert not any(c.id == config.id for c in configs_after)
@@ -178,7 +187,9 @@ async def test_webhook_fires_on_task_events():
 
     recorder = MockWebhookRecorder()
     mock_transport = httpx.MockTransport(recorder.handle_request)
-    push_client = httpx.AsyncClient(transport=mock_transport, base_url="http://receiver")
+    push_client = httpx.AsyncClient(
+        transport=mock_transport, base_url="http://receiver"
+    )
 
     # Use mock bridge for multi-turn scenario
     app = build_mock_bridge_app(url=URL, push_httpx_client=push_client)
@@ -189,10 +200,13 @@ async def test_webhook_fires_on_task_events():
         # Add scenario marker via CollectRequest message field
         from bridge.edge import encode_collect_request
         from contract.wire import CollectRequest
+
         parts = encode_collect_request(
             CollectRequest(process="address-proof", message="scenario:path-b-two-bills")
         )
-        message1 = Message(role=Role.ROLE_USER, message_id=uuid.uuid4().hex, parts=parts)
+        message1 = Message(
+            role=Role.ROLE_USER, message_id=uuid.uuid4().hex, parts=parts
+        )
 
         task_id = None
         context_id = None
@@ -232,6 +246,6 @@ async def test_webhook_fires_on_task_events():
         # Assert at least one POST body mentions the task_id
         # The body is JSON-encoded PushNotificationEvent (Task/status/artifact)
         task_id_bytes = task_id.encode("utf-8")
-        assert any(
-            task_id_bytes in post for post in recorder.posts
-        ), "Expected task_id in webhook POST body"
+        assert any(task_id_bytes in post for post in recorder.posts), (
+            "Expected task_id in webhook POST body"
+        )

@@ -12,6 +12,7 @@ The gate owns Sense-B: it does **not** trust ``turn.terminal`` or
 transport/advisory signals). The accepted-ledger rule is the authority the tests
 pin.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -57,9 +58,7 @@ def is_satisfied(status: CollectionStatus) -> bool:
     if any(e.doctype == DOCTYPE_GOV_ID for e in accepted):
         return True
     bill_issuers = {
-        e.issuer
-        for e in accepted
-        if e.doctype == DOCTYPE_UTILITY_BILL and e.issuer
+        e.issuer for e in accepted if e.doctype == DOCTYPE_UTILITY_BILL and e.issuer
     }
     return len(bill_issuers) >= 2
 

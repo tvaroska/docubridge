@@ -41,14 +41,18 @@ if TYPE_CHECKING:
 
 class DocumentSubmission(BaseModel):
     """One submitted document for a collect turn."""
+
     model_config = ConfigDict(extra="forbid")
     doc_id: str
-    artifact_name: str                 # extraction-seam lookup key
+    artifact_name: str  # extraction-seam lookup key
     artifact: ArtifactRef | None = None
 
 
 def project_ledger_entry(
-    *, doc_id: str, result: ExtractionResult, verdict: DispositionVerdict,
+    *,
+    doc_id: str,
+    result: ExtractionResult,
+    verdict: DispositionVerdict,
     artifact: ArtifactRef | None = None,
 ) -> LedgerEntry:
     """Project one dispositioned document into a classified LedgerEntry (sense A).
@@ -103,12 +107,15 @@ def project_outstanding(entries: list[LedgerEntry]) -> RequirementsList:
 
 
 def project_collection_status(
-    entries: list[LedgerEntry], outstanding: RequirementsList | None = None,
+    entries: list[LedgerEntry],
+    outstanding: RequirementsList | None = None,
 ) -> CollectionStatus:
     """Assemble the Bridge-owned classified ledger (what we have)."""
     return CollectionStatus(
         entries=entries,
-        outstanding=outstanding if outstanding is not None else project_outstanding(entries),
+        outstanding=outstanding
+        if outstanding is not None
+        else project_outstanding(entries),
     )
 
 
@@ -133,7 +140,9 @@ class Collector:
         self._knowledge_catalog = knowledge_catalog
 
     async def collect(
-        self, request: CollectRequest, *,
+        self,
+        request: CollectRequest,
+        *,
         documents: list[DocumentSubmission],
         candidate_doctypes: list[str],
         results_out: dict[str, ExtractionResult] | None = None,
@@ -145,7 +154,9 @@ class Collector:
         the LLM leg's gate pin from them without re-extracting. ``None`` (the default)
         leaves the behaviour identical.
         """
-        extractor = self._extractor or get_adapter(Seam.extraction, resolve_mode(Seam.extraction))
+        extractor = self._extractor or get_adapter(
+            Seam.extraction, resolve_mode(Seam.extraction)
+        )
         context_id = request.context_id or uuid.uuid4().hex
         entity_id = request.party or context_id
         should_redact = (
@@ -229,6 +240,6 @@ class Collector:
         return ExchangeTurn(
             context_id=context_id,
             status=status,
-            requirements=None,     # app-owned; the Bridge never supplies it
-            terminal=True,         # one-turn completed path (no loop / no park)
+            requirements=None,  # app-owned; the Bridge never supplies it
+            terminal=True,  # one-turn completed path (no loop / no park)
         )

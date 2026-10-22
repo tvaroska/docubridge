@@ -69,7 +69,7 @@ The answer to "what level of human oversight, and when is manual review invoked?
 - Flagged records (`gov-id-expired` 0.93, `benefits-conformance-hi-usd-flagged` 0.90) bound only `resubmit_below`. The HI record is flagged only through its `field_reviews`. `passport-unsupported` bounds nothing.
 - Excluded on purpose: `benefits/expected.json` and `rfp/expected.json` carry no expected gate.
 
-**Reconciliation with Aon.** Aon's frontend `LOW_CONFIDENCE_THRESHOLD = 0.9` (`frontend/src/lib/review.ts`) is a display highlight, not a gate. The contract asks the consumer to render the Bridge's `gate` / `reason_code` / `field_reviews`. If it shows a confidence badge, the badge should use `auto_approve_at` (0.85), so that "highlighted" means exactly "not auto-approved on confidence". The contract values stay 0.85 / 0.55. Aon S0-arch-2 adopts them, and the change on Aon's side is a proposal (see DECISIONS.md, 2026-09-30 S0-docs-5).
+**Reconciliation with Benefits Consumer.** the consumer's frontend `LOW_CONFIDENCE_THRESHOLD = 0.9` (`frontend/src/lib/review.ts`) is a display highlight, not a gate. The contract asks the consumer to render the Bridge's `gate` / `reason_code` / `field_reviews`. If it shows a confidence badge, the badge should use `auto_approve_at` (0.85), so that "highlighted" means exactly "not auto-approved on confidence". The contract values stay 0.85 / 0.55. Benefits Consumer S0-arch-2 adopts them, and the change on the consumer's side is a proposal (see DECISIONS.md, 2026-09-30 S0-docs-5).
 
 ---
 
@@ -136,7 +136,7 @@ The dashboard numbers are the next bottleneck: every SSE frame carries every ent
 - `pyproject.toml` `gcp` extra: `google-cloud-documentai>=3.0`.
 - Terraform: `docai_processor` → the runtime env plus a cross-project `roles/documentai.apiUser` grant (`manage_docai_grant`, `docai_grant` output).
 - `tests/corpus_scanned_pdf.py`: a deterministic raster-only render of carrier-C with no text layer.
-- `design/docai-prepass.md`: the shared contract (Aon's `ADP_DOCAI_PROCESSOR` is the same setting).
+- `design/docai-prepass.md`: the shared contract (the consumer's `ADP_DOCAI_PROCESSOR` is the same setting).
 
 **T2 evidence.**
 - `uv run pytest tests/test_docai_extraction.py` gives 36 passed / 2 gated live skips.

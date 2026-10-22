@@ -85,7 +85,9 @@ def validate_assertion(
     if schema is None:
         # Out of the installed label space — a free-string doctype (the corpus's
         # passport) must stay reportable; the disposition gate owns rejecting it.
-        _LOG.debug("path-a: no installed doctype skill for %r; typed check skipped", doctype)
+        _LOG.debug(
+            "path-a: no installed doctype skill for %r; typed check skipped", doctype
+        )
         return result
     model = key_field_model(doctype, schema)
     if model is None:

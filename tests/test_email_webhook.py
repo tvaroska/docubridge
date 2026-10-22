@@ -60,33 +60,55 @@ class FakeGraph:
 
 
 def _notification(mid="AAMk1", state=STATE, **extra) -> dict:
-    return {"value": [{
-        "subscriptionId": "sub-1", "clientState": state, "changeType": "created",
-        "resource": "Users/abc/Messages/" + mid, "resourceData": {"id": mid},
-        **extra,
-    }]}
+    return {
+        "value": [
+            {
+                "subscriptionId": "sub-1",
+                "clientState": state,
+                "changeType": "created",
+                "resource": "Users/abc/Messages/" + mid,
+                "resourceData": {"id": mid},
+                **extra,
+            }
+        ]
+    }
 
 
 @pytest.fixture
 def env(tmp_path):
     fake = FakeGraph()
-    graph = GraphMailClient(tenant_id="t", client_id="c", client_secret="s",
-                            mailbox=MAILBOX, transport=httpx.MockTransport(fake))
+    graph = GraphMailClient(
+        tenant_id="t",
+        client_id="c",
+        client_secret="s",
+        mailbox=MAILBOX,
+        transport=httpx.MockTransport(fake),
+    )
     seam = LocalEmailIngress(tmp_path)
     board = make_board()
-    proc = EmailProcessor(board=board, seam=seam, mailbox=MAILBOX, secret=SECRET,
-                          extraction=extractor(), artifact_store=InMemoryArtifactService(),
-                          base_url=BASE_URL)
+    proc = EmailProcessor(
+        board=board,
+        seam=seam,
+        mailbox=MAILBOX,
+        secret=SECRET,
+        extraction=extractor(),
+        artifact_store=InMemoryArtifactService(),
+        base_url=BASE_URL,
+    )
     return fake, graph, seam, board, proc
 
 
 def _client(app) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t")
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://t"
+    )
 
 
 async def test_validation_token_handshake_echoes_plain_text(env):
     fake, graph, seam, *_ = env
-    async with _client(build_email_app(seam=seam, graph=graph, client_state=STATE)) as c:
+    async with _client(
+        build_email_app(seam=seam, graph=graph, client_state=STATE)
+    ) as c:
         resp = await c.post(f"{URL}?validationToken=abc%20123")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/plain")
@@ -99,7 +121,9 @@ async def test_valid_notification_lands_once_and_a_resend_is_a_duplicate(env):
     fake, graph, seam, *_ = env
     raw = compose("rfp-quotes@broker.example")
     fake.messages["AAMk1"] = raw
-    async with _client(build_email_app(seam=seam, graph=graph, client_state=STATE)) as c:
+    async with _client(
+        build_email_app(seam=seam, graph=graph, client_state=STATE)
+    ) as c:
         resp = await c.post(URL, json=_notification())
         assert resp.status_code == 202
         assert resp.json() == {"landed": 1, "duplicates": 0, "ignored": 0}
@@ -123,7 +147,9 @@ async def test_valid_notification_lands_once_and_a_resend_is_a_duplicate(env):
 )
 async def test_unauthenticated_or_malformed_items_are_ignored_without_graph(env, note):
     fake, graph, seam, *_ = env
-    app = build_email_app(seam=seam, graph=graph, client_state=STATE, tenant_id="tenant-1")
+    app = build_email_app(
+        seam=seam, graph=graph, client_state=STATE, tenant_id="tenant-1"
+    )
     async with _client(app) as c:
         resp = await c.post(URL, json=note)
     assert resp.status_code == 202
@@ -135,7 +161,9 @@ async def test_unauthenticated_or_malformed_items_are_ignored_without_graph(env,
 async def test_graph_failure_is_503_and_nothing_lands(env):
     fake, graph, seam, *_ = env
     fake.fail_with = 500
-    async with _client(build_email_app(seam=seam, graph=graph, client_state=STATE)) as c:
+    async with _client(
+        build_email_app(seam=seam, graph=graph, client_state=STATE)
+    ) as c:
         resp = await c.post(URL, json=_notification())
     assert resp.status_code == 503
     assert seam.pending() == []
@@ -149,7 +177,9 @@ async def test_storage_failure_is_503(env, monkeypatch):
         raise OSError("disk full")
 
     monkeypatch.setattr(seam, "land", broken)
-    async with _client(build_email_app(seam=seam, graph=graph, client_state=STATE)) as c:
+    async with _client(
+        build_email_app(seam=seam, graph=graph, client_state=STATE)
+    ) as c:
         assert (await c.post(URL, json=_notification())).status_code == 503
 
 
@@ -157,11 +187,15 @@ async def test_oversize_message_is_recorded_not_retried(env, monkeypatch):
     fake, graph, seam, *_ = env
     fake.messages["AAMk1"] = b"x" * 4096
     monkeypatch.setenv("BRIDGE_EMAIL_MAX_BYTES", "1024")
-    async with _client(build_email_app(seam=seam, graph=graph, client_state=STATE)) as c:
+    async with _client(
+        build_email_app(seam=seam, graph=graph, client_state=STATE)
+    ) as c:
         resp = await c.post(URL, json=_notification())
         assert resp.status_code == 202 and resp.json()["ignored"] == 1
         # The public webhook-only host serves no marker reads (review fix).
-        assert (await c.get(f"/email/outcomes/{oversize_key('AAMk1')}")).status_code == 404
+        assert (
+            await c.get(f"/email/outcomes/{oversize_key('AAMk1')}")
+        ).status_code == 404
     assert seam.processed(oversize_key("AAMk1"))["reason"] == "oversize"
     assert seam.pending() == []
 
@@ -177,9 +211,16 @@ async def test_a_garbled_token_response_is_503_not_an_oversize_ack(env):
             return httpx.Response(200, content=b"<html>not json</html>")
         return fake(request)
 
-    graph = GraphMailClient(tenant_id="t", client_id="c", client_secret="s",
-                            mailbox=MAILBOX, transport=httpx.MockTransport(handler))
-    async with _client(build_email_app(seam=seam, graph=graph, client_state=STATE)) as c:
+    graph = GraphMailClient(
+        tenant_id="t",
+        client_id="c",
+        client_secret="s",
+        mailbox=MAILBOX,
+        transport=httpx.MockTransport(handler),
+    )
+    async with _client(
+        build_email_app(seam=seam, graph=graph, client_state=STATE)
+    ) as c:
         assert (await c.post(URL, json=_notification())).status_code == 503
     assert seam.processed(oversize_key("AAMk1")) is None
     assert seam.pending() == []
@@ -191,14 +232,22 @@ def test_malformed_max_bytes_env_fails_at_startup(env, monkeypatch):
     with pytest.raises(ValueError, match="BRIDGE_EMAIL_MAX_BYTES"):
         build_email_app(seam=seam, graph=graph, client_state=STATE)
     with pytest.raises(ValueError, match="BRIDGE_EMAIL_MAX_BYTES"):
-        EmailProcessor(board=board, seam=seam, mailbox=MAILBOX, secret=SECRET,
-                       extraction=extractor(), artifact_store=InMemoryArtifactService(),
-                       base_url=BASE_URL)
+        EmailProcessor(
+            board=board,
+            seam=seam,
+            mailbox=MAILBOX,
+            secret=SECRET,
+            extraction=extractor(),
+            artifact_store=InMemoryArtifactService(),
+            base_url=BASE_URL,
+        )
 
 
 async def test_body_cap_and_bad_json(env):
     _, graph, seam, *_ = env
-    async with _client(build_email_app(seam=seam, graph=graph, client_state=STATE)) as c:
+    async with _client(
+        build_email_app(seam=seam, graph=graph, client_state=STATE)
+    ) as c:
         big = json.dumps({"value": [], "pad": "x" * (256 * 1024)})
         assert (await c.post(URL, content=big)).status_code == 413
         assert (await c.post(URL, content=b"{not json")).status_code == 400
@@ -216,12 +265,15 @@ async def test_no_graph_bound_is_404_and_graph_requires_client_state(env):
 
 async def test_processor_bound_drain_files_and_outcome_route(env):
     fake, graph, _seam, board, proc = env
-    raw = compose(proc.reply_address(RFP_ID, "carrier-a"),
-                  attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")])
+    raw = compose(
+        proc.reply_address(RFP_ID, "carrier-a"),
+        attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+    )
     fake.messages["AAMk1"] = raw
     key = landing_key(raw)
-    async with _client(build_email_app(graph=graph, client_state=STATE,
-                                       processor=proc)) as c:
+    async with _client(
+        build_email_app(graph=graph, client_state=STATE, processor=proc)
+    ) as c:
         resp = await c.post(URL, json=_notification())
         assert resp.json()["landed"] == 1
         # The background drain already filed it; an explicit drain finds nothing new.
@@ -241,7 +293,9 @@ async def test_explicit_drain_route_returns_outcomes(env):
     async with _client(build_email_app(processor=proc)) as c:
         (outcome,) = (await c.post("/email/drain")).json()
     assert (outcome["status"], outcome["reason"], outcome["party"]) == (
-        "filed", "no_attachments", "carrier-b"
+        "filed",
+        "no_attachments",
+        "carrier-b",
     )
 
 
@@ -253,11 +307,14 @@ async def test_background_drain_failure_is_logged_not_raised(env, caplog):
             raise RuntimeError("503 upstream")
 
     proc.extraction = Flaky()
-    raw = compose(proc.reply_address(RFP_ID, "carrier-a"),
-                  attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")])
+    raw = compose(
+        proc.reply_address(RFP_ID, "carrier-a"),
+        attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+    )
     fake.messages["AAMk1"] = raw
-    async with _client(build_email_app(graph=graph, client_state=STATE,
-                                       processor=proc)) as c:
+    async with _client(
+        build_email_app(graph=graph, client_state=STATE, processor=proc)
+    ) as c:
         assert (await c.post(URL, json=_notification())).status_code == 202
     assert seam.pending() == [landing_key(raw)]  # still queued for the next drain
     assert any("background email drain failed" in r.message for r in caplog.records)

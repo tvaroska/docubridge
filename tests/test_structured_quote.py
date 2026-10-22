@@ -59,13 +59,22 @@ BENEFITS_CORPUS = ROOT / "wiki/evals/benefits/expected.json"
 BASE = "http://test"
 URL = "http://test/"
 
-# The consumer's normalized quote vocabulary (``~/aon/contract/quote.py`` +
-# ``~/aon/contract/enums.py``), mirrored here because ``tests/`` must not import the
+# The consumer's normalized quote vocabulary (``~/benefits-consumer/contract/quote.py`` +
+# ``~/benefits-consumer/contract/enums.py``), mirrored here because ``tests/`` must not import the
 # consumer. Our schema must carry every field and every enum value of theirs.
 AON_RATE_TIER_FIELDS = {
-    "coverage_tier", "tobacco", "age_band", "amount", "frequency", "benefit_amount",
+    "coverage_tier",
+    "tobacco",
+    "age_band",
+    "amount",
+    "frequency",
+    "benefit_amount",
 }
-AON_DESIGN_FIELDS = {"category", "category_original", "value"}  # requested_value: intake-side
+AON_DESIGN_FIELDS = {
+    "category",
+    "category_original",
+    "value",
+}  # requested_value: intake-side
 AON_COVERAGE_TIERS = {"EE", "EE_SPOUSE", "EE_CHILDREN", "FAMILY"}
 AON_TOBACCO = {"UNI", "NON_TOBACCO", "TOBACCO"}
 AON_FREQUENCIES = {"MONTHLY", "BI_WEEKLY", "ANNUAL"}
@@ -84,28 +93,45 @@ def _corpus_block() -> dict:
 
 def _rate_sheet_assertion() -> dict:
     """A synthetic VB rate sheet: mixed MONTHLY/WEEKLY carriers, a per-$1,000 basis,
-    design rows and commission — the shapes the Aon exec asked about."""
+    design rows and commission — the shapes the Benefits Consumer exec asked about."""
     block = _corpus_block()
-    block["fields"]["key_fields"].update({
-        "product_line": "CRITICAL_ILLNESS",
-        "carrier_product_name": "CritCare Plus",
-        "plan_year": "2027",
-        "commission_basis": "level",
-        "commission_rate_pct": "20",
-    })
+    block["fields"]["key_fields"].update(
+        {
+            "product_line": "CRITICAL_ILLNESS",
+            "carrier_product_name": "CritCare Plus",
+            "plan_year": "2027",
+            "commission_basis": "level",
+            "commission_rate_pct": "20",
+        }
+    )
     block["fields"]["tables"] = {
         "rates": [
-            {"coverage_tier": "EE", "tobacco": "NON_TOBACCO", "age_band": "30-34",
-             "amount": "$1.10", "frequency": "MONTHLY", "rate_basis": "PER_1000",
-             "benefit_amount": "$10,000"},
-            {"coverage_tier": "EE_SPOUSE", "tobacco": "TOBACCO", "age_band": "30-34",
-             "amount": "$0.62", "frequency": "WEEKLY", "rate_basis": "PER_1000",
-             "benefit_amount": "$10,000"},
+            {
+                "coverage_tier": "EE",
+                "tobacco": "NON_TOBACCO",
+                "age_band": "30-34",
+                "amount": "$1.10",
+                "frequency": "MONTHLY",
+                "rate_basis": "PER_1000",
+                "benefit_amount": "$10,000",
+            },
+            {
+                "coverage_tier": "EE_SPOUSE",
+                "tobacco": "TOBACCO",
+                "age_band": "30-34",
+                "amount": "$0.62",
+                "frequency": "WEEKLY",
+                "rate_basis": "PER_1000",
+                "benefit_amount": "$10,000",
+            },
             {"coverage_tier": "FAMILY", "amount": "4.25", "frequency": "SEMI_MONTHLY"},
         ],
         "design": [
-            {"category": "Heart Attack", "category_original": "Myocardial Infarction",
-             "value": "100%"},
+            {
+                "category": "Heart Attack",
+                "category_original": "Myocardial Infarction",
+                "value": "100%",
+            },
             {"category": "Pre-existing Condition Limitation", "value": "6 months"},
         ],
     }
@@ -125,7 +151,9 @@ def test_enums_are_supersets_of_the_consumer_vocabulary():
     assert set(rates["coverage_tier"]["enum"]) == AON_COVERAGE_TIERS
     assert set(rates["tobacco"]["enum"]) == AON_TOBACCO
     # The exec's mixed monthly/weekly question: WEEKLY + SEMI_MONTHLY on top.
-    assert AON_FREQUENCIES | {"WEEKLY", "SEMI_MONTHLY"} == set(rates["frequency"]["enum"])
+    assert AON_FREQUENCIES | {"WEEKLY", "SEMI_MONTHLY"} == set(
+        rates["frequency"]["enum"]
+    )
     assert set(rates["rate_basis"]["enum"]) == {"FLAT", "PER_1000", "PER_UNIT"}
     key_fields = SCHEMA["properties"]["key_fields"]["properties"]
     assert set(key_fields["product_line"]["enum"]) == AON_PRODUCT_LINES
@@ -133,12 +161,14 @@ def test_enums_are_supersets_of_the_consumer_vocabulary():
 
 def test_money_stays_text_everywhere():
     """No numeric type anywhere in the schema: the consumer code-parses money."""
+
     def types(node):
         if isinstance(node, dict):
             if "type" in node:
                 yield node["type"]
             for v in node.values():
                 yield from types(v)
+
     assert set(types(SCHEMA)) == {"object", "string", "array"}
 
 
@@ -169,16 +199,27 @@ async def test_corpus_block_without_tables_still_accepted():
 @pytest.mark.parametrize(
     ("mutate", "loc", "err_type"),
     [
-        (lambda t: t["rates"][0].update(frequency="Monthly"),
-         ("rates", 0, "frequency"), "literal_error"),
+        (
+            lambda t: t["rates"][0].update(frequency="Monthly"),
+            ("rates", 0, "frequency"),
+            "literal_error",
+        ),
         (lambda t: t["rates"][1].pop("amount"), ("rates", 1, "amount"), "missing"),
-        (lambda t: t["rates"][2].update(premium_cents="425"),
-         ("rates", 2, "premium_cents"), "extra_forbidden"),
+        (
+            lambda t: t["rates"][2].update(premium_cents="425"),
+            ("rates", 2, "premium_cents"),
+            "extra_forbidden",
+        ),
         (lambda t: t.update(riders=[{"name": "x"}]), ("riders",), "extra_forbidden"),
         (lambda t: t["design"][0].pop("value"), ("design", 0, "value"), "missing"),
     ],
-    ids=["bad-frequency", "missing-amount", "extra-column", "undeclared-table",
-         "design-missing-value"],
+    ids=[
+        "bad-frequency",
+        "missing-amount",
+        "extra-column",
+        "undeclared-table",
+        "design-missing-value",
+    ],
 )
 def test_malformed_rows_rejected_at_validation(mutate, loc, err_type):
     bad = _rate_sheet_assertion()
@@ -317,7 +358,9 @@ def test_parse_prunes_null_cells_and_tables():
     result = _parse_extraction(json.dumps(_model_answer()))
     assert "other" not in result.fields.tables
     assert result.fields.tables["rates"][2] == {
-        "coverage_tier": "FAMILY", "amount": "4.25", "frequency": "SEMI_MONTHLY",
+        "coverage_tier": "FAMILY",
+        "amount": "4.25",
+        "frequency": "SEMI_MONTHLY",
     }
 
 
@@ -360,15 +403,27 @@ async def test_gemini_extract_to_ledger_round_trip():
 # contract_version semantics                                                  #
 # --------------------------------------------------------------------------- #
 def test_contract_minor_bumped_for_additive_tables():
-    assert _minor(CONTRACT_VERSION) >= 1  # "1.1" introduced tables; later minors keep it
+    assert (
+        _minor(CONTRACT_VERSION) >= 1
+    )  # "1.1" introduced tables; later minors keep it
     assert LedgerEntry.model_fields["tables"].default == {}
 
 
 def _turn_payload(version: str) -> dict:
-    turn = ExchangeTurn(context_id="c", status=CollectionStatus(entries=[
-        LedgerEntry(doc_id="d", doctype="benefits-quote", disposition="accepted",
-                    gate="auto_approve", tables={"rates": [{"amount": "1"}]})
-    ])).model_dump(mode="json")
+    turn = ExchangeTurn(
+        context_id="c",
+        status=CollectionStatus(
+            entries=[
+                LedgerEntry(
+                    doc_id="d",
+                    doctype="benefits-quote",
+                    disposition="accepted",
+                    gate="auto_approve",
+                    tables={"rates": [{"amount": "1"}]},
+                )
+            ]
+        ),
+    ).model_dump(mode="json")
     turn["contract_version"] = version
     turn["status"]["entries"][0]["added_in_a_later_minor"] = "x"
     return turn
@@ -396,7 +451,5 @@ def test_v1_payload_without_tables_still_decodes():
 def test_corpus_extraction_round_trips_byte_stable():
     """ExtractionResult of a v1 block re-dumps with an empty ``tables`` only."""
     block = _corpus_block()
-    dumped = ExtractionResult.model_validate(block).model_dump(
-        exclude_defaults=True
-    )
+    dumped = ExtractionResult.model_validate(block).model_dump(exclude_defaults=True)
     assert "tables" not in dumped["fields"]

@@ -31,6 +31,7 @@ directly rather than subclassing ``vertexai.preview.reasoning_engines.A2aAgent``
    so a single deployed ``ReasoningEngine`` serves both Option A (remote ``LlmLeg`` / ADK ``App``)
    and Option B (remote A2A server).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -97,11 +98,7 @@ def is_agent_engine_a2a_enabled(value: str | bool | None = None) -> bool:
     """Return True when Option B (A2A server on Agent Engine) is enabled."""
     if isinstance(value, bool):
         return value
-    raw = (
-        value
-        if isinstance(value, str)
-        else os.environ.get(AGENT_ENGINE_A2A_ENV, "")
-    )
+    raw = value if isinstance(value, str) else os.environ.get(AGENT_ENGINE_A2A_ENV, "")
     return raw.strip().lower() in {"1", "true", "yes"}
 
 
@@ -353,9 +350,8 @@ class BridgeA2aAgentEngine:
         active_executor.bind_edge(
             mode, llm_leg=leg, reviewers=self._config.get("reviewers")
         )
-        satisfaction_arg = (
-            self._injected.get("satisfaction_obj")
-            or self._config.get("satisfaction")
+        satisfaction_arg = self._injected.get("satisfaction_obj") or self._config.get(
+            "satisfaction"
         )
         active_executor.bind_assessor(resolve_assessor(satisfaction_arg))
 
@@ -407,9 +403,7 @@ class BridgeA2aAgentEngine:
         else:
             app = Starlette(
                 routes=routes,
-                middleware=[
-                    Middleware(AuthenticationMiddleware, backend=auth_backend)
-                ],
+                middleware=[Middleware(AuthenticationMiddleware, backend=auth_backend)],
             )
         app.state.rfp_board = board
 
@@ -475,9 +469,7 @@ class BridgeA2aAgentEngine:
                 if k_lower == "a2a-version":
                     has_version_header = True
                 if k_lower != "content-type":
-                    raw_headers.append(
-                        (k_lower.encode("latin-1"), v.encode("latin-1"))
-                    )
+                    raw_headers.append((k_lower.encode("latin-1"), v.encode("latin-1")))
         if not has_version_header and body:
             try:
                 parsed_body = json.loads(body.decode("utf-8"))
@@ -545,21 +537,26 @@ class BridgeA2aAgentEngine:
         if body:
             try:
                 parsed_rpc = json.loads(body.decode("utf-8"))
-                if isinstance(parsed_rpc, dict) and isinstance(parsed_rpc.get("method"), str):
+                if isinstance(parsed_rpc, dict) and isinstance(
+                    parsed_rpc.get("method"), str
+                ):
                     rpc_method_attr = parsed_rpc["method"]
             except Exception:
                 pass
 
-        with parent_trace_context_from_headers(headers), trace_step(
-            "docubridge.agent_engine.a2a_dispatch",
-            {
-                "docubridge.zone": "2_intake_validation",
-                "http.method": method,
-                "http.target": path,
-                "a2a.rpc_method": rpc_method_attr,
-                "docubridge.caller": user,
-            },
-        ) as span:
+        with (
+            parent_trace_context_from_headers(headers),
+            trace_step(
+                "docubridge.agent_engine.a2a_dispatch",
+                {
+                    "docubridge.zone": "2_intake_validation",
+                    "http.method": method,
+                    "http.target": path,
+                    "a2a.rpc_method": rpc_method_attr,
+                    "docubridge.caller": user,
+                },
+            ) as span,
+        ):
             await self._app(scope, _receive, _send)
             span.set_attribute("http.status_code", status_code)
         return status_code, resp_headers, b"".join(chunks)

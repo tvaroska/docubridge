@@ -105,36 +105,50 @@ def test_guard_detects_a_synthetic_violation(tmp_path):
     # Test case 1: Direct import of agents (should be caught)
     violation1 = tmp_path / "test1.py"
     violation1.write_text("import agents\n")
-    assert _imports_package(violation1, "agents") == ["agents"], "Should detect 'import agents'"
+    assert _imports_package(violation1, "agents") == ["agents"], (
+        "Should detect 'import agents'"
+    )
 
     # Test case 2: From import (should be caught)
     violation2 = tmp_path / "test2.py"
     violation2.write_text("from agents.foo import bar\n")
-    assert _imports_package(violation2, "agents") == ["agents.foo"], "Should detect 'from agents.foo import bar'"
+    assert _imports_package(violation2, "agents") == ["agents.foo"], (
+        "Should detect 'from agents.foo import bar'"
+    )
 
     # Test case 3: Import agents submodule (should be caught)
     violation3 = tmp_path / "test3.py"
     violation3.write_text("import agents.address\n")
-    assert _imports_package(violation3, "agents") == ["agents.address"], "Should detect 'import agents.address'"
+    assert _imports_package(violation3, "agents") == ["agents.address"], (
+        "Should detect 'import agents.address'"
+    )
 
     # Test case 4: Comment mentioning agents (should NOT be caught)
     false_positive1 = tmp_path / "test4.py"
     false_positive1.write_text("# import agents\nimport sys\n")
-    assert _imports_package(false_positive1, "agents") == [], "Should ignore agents in comments"
+    assert _imports_package(false_positive1, "agents") == [], (
+        "Should ignore agents in comments"
+    )
 
     # Test case 5: String mentioning agents (should NOT be caught)
     false_positive2 = tmp_path / "test5.py"
     false_positive2.write_text('x = "import agents"\n')
-    assert _imports_package(false_positive2, "agents") == [], "Should ignore agents in strings"
+    assert _imports_package(false_positive2, "agents") == [], (
+        "Should ignore agents in strings"
+    )
 
     # Test case 6: Module name starting with 'agents' but not exactly 'agents' (should NOT be caught)
     false_positive3 = tmp_path / "test6.py"
     false_positive3.write_text("import agentspew\n")
-    assert _imports_package(false_positive3, "agents") == [], "Should not flag 'agentspew' (not 'agents' or 'agents.*')"
+    assert _imports_package(false_positive3, "agents") == [], (
+        "Should not flag 'agentspew' (not 'agents' or 'agents.*')"
+    )
 
     # Test case 7: Multiple violations in one file
     violation4 = tmp_path / "test7.py"
-    violation4.write_text("import agents\nfrom agents.foo import bar\nimport agents.baz\n")
+    violation4.write_text(
+        "import agents\nfrom agents.foo import bar\nimport agents.baz\n"
+    )
     violations = _imports_package(violation4, "agents")
     assert len(violations) == 3, f"Should detect 3 violations, got {violations}"
     assert "agents" in violations
@@ -145,7 +159,9 @@ def test_guard_detects_a_synthetic_violation(tmp_path):
     # This would be a relative import from within bridge/, which is allowed
     false_positive4 = tmp_path / "test8.py"
     false_positive4.write_text("from .agents import something\n")
-    assert _imports_package(false_positive4, "agents") == [], "Should ignore relative imports (level > 0)"
+    assert _imports_package(false_positive4, "agents") == [], (
+        "Should ignore relative imports (level > 0)"
+    )
 
 
 def test_guard_detects_reverse_violation(tmp_path):
@@ -153,7 +169,9 @@ def test_guard_detects_reverse_violation(tmp_path):
 
     # Direct + from imports of bridge (should be caught)
     violation1 = tmp_path / "rev1.py"
-    violation1.write_text("import bridge\nfrom bridge.edge import server\nimport bridge.agent\n")
+    violation1.write_text(
+        "import bridge\nfrom bridge.edge import server\nimport bridge.agent\n"
+    )
     violations = _imports_package(violation1, "bridge")
     assert len(violations) == 3, f"Should detect 3 bridge violations, got {violations}"
     assert "bridge" in violations
@@ -163,12 +181,16 @@ def test_guard_detects_reverse_violation(tmp_path):
     # contract/ imports are always allowed (the shared package) — never flagged as bridge
     allowed = tmp_path / "rev2.py"
     allowed.write_text("from contract.wire import CollectRequest\nimport contract\n")
-    assert _imports_package(allowed, "bridge") == [], "Should not flag contract/ imports"
+    assert _imports_package(allowed, "bridge") == [], (
+        "Should not flag contract/ imports"
+    )
 
     # Near-miss package name (should NOT be caught)
     near_miss = tmp_path / "rev3.py"
     near_miss.write_text("import bridgehead\n")
-    assert _imports_package(near_miss, "bridge") == [], "Should not flag 'bridgehead' (not 'bridge' or 'bridge.*')"
+    assert _imports_package(near_miss, "bridge") == [], (
+        "Should not flag 'bridgehead' (not 'bridge' or 'bridge.*')"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -272,7 +294,9 @@ def test_core_never_imports_demo_hosts():
 def test_demo_import_detector_positive_control(tmp_path):
     cases = {
         "import bridge.demos.rfp_demo\n": ["bridge.demos.rfp_demo"],
-        "from bridge.demos.rfp_demo import build_rfp_demo_app\n": ["bridge.demos.rfp_demo"],
+        "from bridge.demos.rfp_demo import build_rfp_demo_app\n": [
+            "bridge.demos.rfp_demo"
+        ],
         "from bridge import demos\n": ["bridge.demos"],
         "from bridge import dashboard\n": [],
         "import bridge.demosaic\n": [],

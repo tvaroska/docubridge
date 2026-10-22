@@ -21,6 +21,7 @@ mock over an ``httpx.ASGITransport`` loopback client:
 Both scripted multi-turn scenarios (``path-b-two-bills``, ``resubmit``) are covered
 end to end.
 """
+
 from __future__ import annotations
 
 import httpx
@@ -185,9 +186,7 @@ async def test_dur4_crash_safe_resume_resubmit(tmp_path):
     turn, session = await _park_then_restart_resume(tmp_path, "resubmit")
 
     assert turn.terminal is True
-    accepted = [
-        e for e in turn.status.entries if e.disposition is Disposition.accepted
-    ]
+    accepted = [e for e in turn.status.entries if e.disposition is Disposition.accepted]
     assert any(
         e.doc_id == "bill-aquautil-clean" and e.doctype == "utility-bill"
         for e in accepted

@@ -115,7 +115,9 @@ async def test_escalated_status_survives_restart(tmp_path):
                     continue
                 meta = MessageToDict(part.metadata) if part.HasField("metadata") else {}
                 if meta.get(META_KIND) == KIND_EXCHANGE_TURN:
-                    turn_restored = ExchangeTurn.model_validate(MessageToDict(part.data))
+                    turn_restored = ExchangeTurn.model_validate(
+                        MessageToDict(part.data)
+                    )
 
         assert turn_restored is not None
         assert turn_restored.lifecycle == LifecycleStatus.escalated

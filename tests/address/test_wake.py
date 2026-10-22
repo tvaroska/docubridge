@@ -11,6 +11,7 @@ Bridge on a loopback ``ASGITransport`` (the A2A client rejects non-loopback http
 a durable ``DatabaseSessionService`` over a ``tmp_path`` DSN, and a file-backed
 ``SessionIndex``.
 """
+
 from __future__ import annotations
 
 import json
@@ -158,9 +159,7 @@ async def test_wake_resumes_resubmit_clean_bill(tmp_path):
         await hc.aclose()
 
     assert turn is not None and turn.terminal is True
-    accepted = [
-        e for e in turn.status.entries if e.disposition is Disposition.accepted
-    ]
+    accepted = [e for e in turn.status.entries if e.disposition is Disposition.accepted]
     assert any(
         e.doc_id == "bill-aquautil-clean" and e.doctype == "utility-bill"
         for e in accepted
@@ -217,9 +216,7 @@ async def test_restart_survival_via_doorbell(tmp_path):
         svc = build_durable_session_service(db_url=dsn)
         idx = SessionIndex(path=index_path)
         peer_task_id = await _park_seed(svc, hc, "path-b-two-bills", index=idx)
-        parked = await svc.get_session(
-            app_name="address", user_id=USER, session_id=SID
-        )
+        parked = await svc.get_session(app_name="address", user_id=USER, session_id=SID)
         n_events_at_park = len(parked.events)
         del svc
         del idx
@@ -292,8 +289,11 @@ async def test_idempotent_double_doorbell(tmp_path):
         peer_task_id = await _park_seed(svc, hc, "path-b-two-bills", index=idx)
 
         first = await wake_task(
-            peer_task_id, index=idx, card_url=CARD_URL,
-            session_service=svc, httpx_client=hc,
+            peer_task_id,
+            index=idx,
+            card_url=CARD_URL,
+            session_service=svc,
+            httpx_client=hc,
         )
         assert first is not None and first.terminal is True
         session_after_first = await svc.get_session(
@@ -303,8 +303,11 @@ async def test_idempotent_double_doorbell(tmp_path):
 
         # A duplicate doorbell for the now-terminal task: no pending call → no-op.
         second = await wake_task(
-            peer_task_id, index=idx, card_url=CARD_URL,
-            session_service=svc, httpx_client=hc,
+            peer_task_id,
+            index=idx,
+            card_url=CARD_URL,
+            session_service=svc,
+            httpx_client=hc,
         )
         session_after_second = await svc.get_session(
             app_name="address", user_id=USER, session_id=SID
@@ -334,9 +337,7 @@ async def test_escalated_stall_survives_restart_noop_wake(tmp_path):
         peer_task_id = await _park_seed(svc, hc, "escalated-stall", index=idx)
 
         # The escalated lifecycle is on the parked turn's persisted artifact.
-        parked = await svc.get_session(
-            app_name="address", user_id=USER, session_id=SID
-        )
+        parked = await svc.get_session(app_name="address", user_id=USER, session_id=SID)
         turn = read_latest_exchange_turn(
             type("C", (), {"session": parked, "state": None})()
         )
@@ -357,8 +358,12 @@ async def test_escalated_stall_survives_restart_noop_wake(tmp_path):
 
         # A doorbell for the stall drives no terminal turn (it re-parks) → None.
         woke = await wake_task(
-            peer_task_id, index=idx, card_url=CARD_URL,
-            session_service=rebuilt_svc, httpx_client=hc, max_resumes=3,
+            peer_task_id,
+            index=idx,
+            card_url=CARD_URL,
+            session_service=rebuilt_svc,
+            httpx_client=hc,
+            max_resumes=3,
         )
     finally:
         await hc.aclose()
@@ -396,7 +401,11 @@ def test_extract_task_id_shapes():
 
 def test_extract_task_id_over_real_push_events():
     """Lock the SDK shape: a serialized Task / status / artifact update parses."""
-    task = Task(id="task-abc", context_id="ctx-1", status=TaskStatus(state=TaskState.TASK_STATE_COMPLETED))
+    task = Task(
+        id="task-abc",
+        context_id="ctx-1",
+        status=TaskStatus(state=TaskState.TASK_STATE_COMPLETED),
+    )
     assert extract_task_id(json.dumps(MessageToDict(task))) == "task-abc"
 
     su = TaskStatusUpdateEvent(
@@ -481,22 +490,24 @@ async def test_emitter_receiver_loop_via_captured_doorbell(tmp_path):
         assert emit_task_id is not None
         await client.create_task_push_notification_config(
             TaskPushNotificationConfig(
-                tenant="t", id=uuid.uuid4().hex, task_id=emit_task_id,
+                tenant="t",
+                id=uuid.uuid4().hex,
+                task_id=emit_task_id,
                 url="http://receiver/hook",
             )
         )
         msg2 = Message(
-            role=Role.ROLE_USER, message_id=uuid.uuid4().hex,
+            role=Role.ROLE_USER,
+            message_id=uuid.uuid4().hex,
             parts=encode_collect_request(CollectRequest(process="address-proof")),
-            context_id=emit_context_id, task_id=emit_task_id,
+            context_id=emit_context_id,
+            task_id=emit_task_id,
         )
         async for _ev in client.send_message(SendMessageRequest(message=msg2)):
             pass
 
         assert recorder.posts, "the P4-4 sender must emit a doorbell"
-        captured_body = next(
-            (b for b in recorder.posts if extract_task_id(b)), None
-        )
+        captured_body = next((b for b in recorder.posts if extract_task_id(b)), None)
         assert captured_body is not None
         captured_id = extract_task_id(captured_body)
         assert captured_id == emit_task_id, "the captured body names the changed task"
@@ -509,7 +520,10 @@ async def test_emitter_receiver_loop_via_captured_doorbell(tmp_path):
 
         woke = await wake_task(
             extract_task_id(captured_body),  # the real captured doorbell body → id
-            index=idx, card_url=CARD_URL, session_service=svc, httpx_client=hc,
+            index=idx,
+            card_url=CARD_URL,
+            session_service=svc,
+            httpx_client=hc,
         )
     finally:
         await hc.aclose()

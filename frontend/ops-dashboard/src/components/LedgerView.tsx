@@ -11,8 +11,8 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import { DispositionBadge, Panel } from "@docbride/shared";
-import type { Disposition } from "@docbride/shared";
+import { DispositionBadge, Panel } from "@docubridge/shared";
+import type { Disposition } from "@docubridge/shared";
 import type { OpsExchange } from "../domain/ops";
 
 interface LedgerViewProps {

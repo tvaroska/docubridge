@@ -70,9 +70,7 @@ def build_document_bridge(model: str | BaseLlm | None = None) -> LlmAgent:
         name="document_bridge",
         model=effective_model,
         instruction=INSTRUCTION,
-        planner=BuiltInPlanner(
-            thinking_config=types.ThinkingConfig(thinking_budget=0)
-        ),
+        planner=BuiltInPlanner(thinking_config=types.ThinkingConfig(thinking_budget=0)),
         sub_agents=[build_extraction_agent(effective_model)],
         tools=[
             FunctionTool(func=run_disposition_gate),

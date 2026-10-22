@@ -57,7 +57,9 @@ from contract.wire import (
 )
 
 PROCESS = "benefits-rfp"  # the process skill under test (named here, never in bridge/)
-BENEFITS_CORPUS = Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+BENEFITS_CORPUS = (
+    Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+)
 CARRIERS = ("carrier-a", "carrier-b", "carrier-c")
 LINES = ("LIFE", "AD_AND_D")
 OPENED = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
@@ -76,17 +78,25 @@ def policy():
 
 
 def _requirements(carriers=CARRIERS, lines=LINES, status=RequirementStatus.required):
-    return RequirementsList(requirements=[
-        Requirement(item=line, party=c, status=status, doctype_hint="benefits-quote")
-        for c in carriers for line in lines
-    ])
+    return RequirementsList(
+        requirements=[
+            Requirement(
+                item=line, party=c, status=status, doctype_hint="benefits-quote"
+            )
+            for c in carriers
+            for line in lines
+        ]
+    )
 
 
 def _request(**over) -> CollectRequest:
     return CollectRequest(
-        process=PROCESS, party="acme-broker", context_id="rfp-ctx",
+        process=PROCESS,
+        party="acme-broker",
+        context_id="rfp-ctx",
         requirements=over.pop("requirements", _requirements()),
-        due_at=over.pop("due_at", DUE), **over,
+        due_at=over.pop("due_at", DUE),
+        **over,
     )
 
 
@@ -94,17 +104,35 @@ def _open():
     return open_rfp(_request(), now=OPENED, rfp_id="acme-vb-2027")
 
 
-def _entry(doc_id, *, disposition=Disposition.accepted, gate=Gate.auto_approve,
-           reason_code=None, message=None, product_line=None):
+def _entry(
+    doc_id,
+    *,
+    disposition=Disposition.accepted,
+    gate=Gate.auto_approve,
+    reason_code=None,
+    message=None,
+    product_line=None,
+):
     key_fields = {"product_line": product_line} if product_line else {}
-    return LedgerEntry(doc_id=doc_id, doctype="benefits-quote", disposition=disposition,
-                       gate=gate, key_fields=key_fields, reason_code=reason_code,
-                       message=message)
+    return LedgerEntry(
+        doc_id=doc_id,
+        doctype="benefits-quote",
+        disposition=disposition,
+        gate=gate,
+        key_fields=key_fields,
+        reason_code=reason_code,
+        message=message,
+    )
 
 
 def _bad(doc_id, n=0):
-    return _entry(f"{doc_id}-{n}", disposition=Disposition.rejected, gate=Gate.resubmit,
-                  reason_code="low_confidence", message="Please resend a clearer copy.")
+    return _entry(
+        f"{doc_id}-{n}",
+        disposition=Disposition.rejected,
+        gate=Gate.resubmit,
+        reason_code="low_confidence",
+        message="Please resend a clearer copy.",
+    )
 
 
 def _status_of(view, party, line):
@@ -146,7 +174,9 @@ class TestPolicyFromSkill:
         assert not hasattr(rfp_mod, "QUOTE_DOCTYPE")
 
     def test_negotiate_process_refused_on_pattern(self):
-        with pytest.raises(ValueError, match=r"benefits-procurement.*pattern 'negotiate'"):
+        with pytest.raises(
+            ValueError, match=r"benefits-procurement.*pattern 'negotiate'"
+        ):
             load_rfp_policy("benefits-procurement")
 
     def test_doctype_skill_refused_on_kind(self):
@@ -228,16 +258,37 @@ class TestOpen:
         assert len(rfp.cells) == 6
         assert {c.status for c in rfp.cells} == {RfpItemStatus.invited}
 
-    @pytest.mark.parametrize("bad", [
-        {"requirements": None},
-        {"due_at": None},
-        {"due_at": datetime(2026, 10, 15)},  # naive
-        {"requirements": RequirementsList(requirements=[
-            Requirement(item="LIFE", status=RequirementStatus.required)])},
-        {"requirements": RequirementsList(requirements=[
-            Requirement(item="LIFE", party="carrier-a", status=RequirementStatus.required),
-            Requirement(item="LIFE", party="carrier-a", status=RequirementStatus.required)])},
-    ])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            {"requirements": None},
+            {"due_at": None},
+            {"due_at": datetime(2026, 10, 15)},  # naive
+            {
+                "requirements": RequirementsList(
+                    requirements=[
+                        Requirement(item="LIFE", status=RequirementStatus.required)
+                    ]
+                )
+            },
+            {
+                "requirements": RequirementsList(
+                    requirements=[
+                        Requirement(
+                            item="LIFE",
+                            party="carrier-a",
+                            status=RequirementStatus.required,
+                        ),
+                        Requirement(
+                            item="LIFE",
+                            party="carrier-a",
+                            status=RequirementStatus.required,
+                        ),
+                    ]
+                )
+            },
+        ],
+    )
     def test_rejects_malformed_request(self, bad):
         with pytest.raises(ValueError):
             open_rfp(_request(**bad), now=OPENED)
@@ -247,22 +298,27 @@ class TestOpen:
 # The due date drives the ladder                                              #
 # --------------------------------------------------------------------------- #
 class TestLadder:
-    @pytest.mark.parametrize(("at", "step"), [
-        (DUE - DAY, LifecycleStatus.on_track),
-        (DUE - timedelta(seconds=1), LifecycleStatus.on_track),
-        (DUE, LifecycleStatus.overdue),
-        (DUE + DAY, LifecycleStatus.overdue),
-        (DUE + 2 * DAY, LifecycleStatus.reminder),
-        (DUE + 4 * DAY, LifecycleStatus.escalated),
-        (DUE + 30 * DAY, LifecycleStatus.escalated),
-    ])
+    @pytest.mark.parametrize(
+        ("at", "step"),
+        [
+            (DUE - DAY, LifecycleStatus.on_track),
+            (DUE - timedelta(seconds=1), LifecycleStatus.on_track),
+            (DUE, LifecycleStatus.overdue),
+            (DUE + DAY, LifecycleStatus.overdue),
+            (DUE + 2 * DAY, LifecycleStatus.reminder),
+            (DUE + 4 * DAY, LifecycleStatus.escalated),
+            (DUE + 30 * DAY, LifecycleStatus.escalated),
+        ],
+    )
     def test_ladder_anchored_on_due_date(self, policy, at, step):
         assert lifecycle_at(policy, DUE, at) is step
 
     def test_waiting_items_turn_overdue_past_due(self, policy):
         rfp = acknowledge(_open(), "carrier-a", now=OPENED + DAY)
         before = rfp_status(rfp, now=DUE - DAY, policy=policy)
-        assert _status_of(before, "carrier-a", "LIFE").status is RfpItemStatus.acknowledged
+        assert (
+            _status_of(before, "carrier-a", "LIFE").status is RfpItemStatus.acknowledged
+        )
         assert _status_of(before, "carrier-b", "LIFE").status is RfpItemStatus.invited
         assert before.lifecycle is LifecycleStatus.on_track
         after = rfp_status(rfp, now=DUE, policy=policy)
@@ -272,14 +328,22 @@ class TestLadder:
     def test_carrier_that_responded_stops_laddering(self, policy):
         rfp = _open()
         for line in LINES:
-            rfp = receive(rfp, "carrier-a", _entry(f"a-{line}"), now=OPENED + DAY,
-                          policy=policy, product_line=line)
-        rfp = decline(rfp, "carrier-b", now=OPENED + DAY, message="Not writing VB this year.")
+            rfp = receive(
+                rfp,
+                "carrier-a",
+                _entry(f"a-{line}"),
+                now=OPENED + DAY,
+                policy=policy,
+                product_line=line,
+            )
+        rfp = decline(
+            rfp, "carrier-b", now=OPENED + DAY, message="Not writing VB this year."
+        )
         view = rfp_status(rfp, now=DUE + 4 * DAY, policy=policy)
         lifecycle = {c.party: c.lifecycle for c in view.carriers}
         assert lifecycle == {
             "carrier-a": LifecycleStatus.on_track,
-            "carrier-b": LifecycleStatus.on_track,   # declined: nothing to chase
+            "carrier-b": LifecycleStatus.on_track,  # declined: nothing to chase
             "carrier-c": LifecycleStatus.escalated,  # silent past due + 4d
         }
         assert view.lifecycle is LifecycleStatus.escalated
@@ -290,59 +354,108 @@ class TestLadder:
 # --------------------------------------------------------------------------- #
 class TestReceive:
     def test_accepted_quote_is_received_and_revision_is_a_new_version(self, policy):
-        rfp = receive(_open(), "carrier-a", _entry("a-life-v0", product_line="LIFE"),
-                      now=OPENED + DAY, policy=policy)
-        rfp = receive(rfp, "carrier-a", _entry("a-life-v1", product_line="LIFE"),
-                      now=OPENED + 2 * DAY, policy=policy)
+        rfp = receive(
+            _open(),
+            "carrier-a",
+            _entry("a-life-v0", product_line="LIFE"),
+            now=OPENED + DAY,
+            policy=policy,
+        )
+        rfp = receive(
+            rfp,
+            "carrier-a",
+            _entry("a-life-v1", product_line="LIFE"),
+            now=OPENED + 2 * DAY,
+            policy=policy,
+        )
         cell = rfp.cell("carrier-a", "LIFE")
         assert cell.status is RfpItemStatus.received
         assert cell.versions == ["a-life-v0", "a-life-v1"]
         assert [e.doc_id for e in rfp.entries] == ["a-life-v0", "a-life-v1"]
 
     def test_failing_quote_is_incomplete_with_verbatim_reason(self, policy):
-        rfp = receive(_open(), "carrier-b", _bad("b-life"), now=OPENED + DAY,
-                      policy=policy, product_line="LIFE")
+        rfp = receive(
+            _open(),
+            "carrier-b",
+            _bad("b-life"),
+            now=OPENED + DAY,
+            policy=policy,
+            product_line="LIFE",
+        )
         cell = rfp.cell("carrier-b", "LIFE")
         assert cell.status is RfpItemStatus.incomplete
         assert (cell.reason_code, cell.message) == (
-            "low_confidence", "Please resend a clearer copy.")
+            "low_confidence",
+            "Please resend a clearer copy.",
+        )
         assert cell.attempts == 1
         # incomplete is not "overdue" — it says more (the carrier must fix it)
         view = rfp_status(rfp, now=DUE + DAY, policy=policy)
         assert _status_of(view, "carrier-b", "LIFE").status is RfpItemStatus.incomplete
 
     def test_hitl_park_is_incomplete_but_not_an_attempt(self, policy):
-        hitl = _entry("b-life", disposition=Disposition.pending, gate=Gate.hitl_review,
-                      reason_code="mid_confidence", message="Queued for review.")
-        rfp = receive(_open(), "carrier-b", hitl, now=OPENED, policy=policy,
-                      product_line="LIFE")
+        hitl = _entry(
+            "b-life",
+            disposition=Disposition.pending,
+            gate=Gate.hitl_review,
+            reason_code="mid_confidence",
+            message="Queued for review.",
+        )
+        rfp = receive(
+            _open(), "carrier-b", hitl, now=OPENED, policy=policy, product_line="LIFE"
+        )
         assert rfp.cell("carrier-b", "LIFE").status is RfpItemStatus.incomplete
         assert rfp.cell("carrier-b", "LIFE").attempts == 0
 
     def test_resubmit_cap_escalates_never_rejects(self, policy):
         rfp = _open()
         for n in range(policy.max_resubmissions):
-            rfp = receive(rfp, "carrier-b", _bad("b-life", n), now=OPENED, policy=policy,
-                          product_line="LIFE")
+            rfp = receive(
+                rfp,
+                "carrier-b",
+                _bad("b-life", n),
+                now=OPENED,
+                policy=policy,
+                product_line="LIFE",
+            )
         assert not rfp.cell("carrier-b", "LIFE").escalated
-        rfp = receive(rfp, "carrier-b", _bad("b-life", 9), now=OPENED, policy=policy,
-                      product_line="LIFE")
+        rfp = receive(
+            rfp,
+            "carrier-b",
+            _bad("b-life", 9),
+            now=OPENED,
+            policy=policy,
+            product_line="LIFE",
+        )
         cell = rfp.cell("carrier-b", "LIFE")
         assert cell.escalated and cell.status is RfpItemStatus.incomplete
         assert cell.reason_code == REASON_ESCALATED
         assert [e.kind for e in rfp.audit].count(KIND_ESCALATED) == 1
-        view = rfp_status(rfp, now=DUE - DAY, policy=policy)  # before due, cap still escalates
+        view = rfp_status(
+            rfp, now=DUE - DAY, policy=policy
+        )  # before due, cap still escalates
         assert {c.party: c.lifecycle for c in view.carriers}["carrier-b"] is (
-            LifecycleStatus.escalated)
+            LifecycleStatus.escalated
+        )
 
     def test_product_line_from_the_quote_itself(self, policy):
-        rfp = receive(_open(), "carrier-c", _entry("c-add", product_line="AD_AND_D"),
-                      now=OPENED, policy=policy)
+        rfp = receive(
+            _open(),
+            "carrier-c",
+            _entry("c-add", product_line="AD_AND_D"),
+            now=OPENED,
+            policy=policy,
+        )
         assert rfp.cell("carrier-c", "AD_AND_D").status is RfpItemStatus.received
 
     def test_unrequested_quote_is_flagged_not_dropped(self, policy):
-        rfp = receive(_open(), "carrier-c", _entry("c-ci", product_line="CRITICAL_ILLNESS"),
-                      now=OPENED, policy=policy)
+        rfp = receive(
+            _open(),
+            "carrier-c",
+            _entry("c-ci", product_line="CRITICAL_ILLNESS"),
+            now=OPENED,
+            policy=policy,
+        )
         assert rfp.unmatched == ["c-ci"]
         assert [e.doc_id for e in rfp.entries] == ["c-ci"]
         assert rfp.audit[-1].kind == KIND_UNREQUESTED
@@ -350,22 +463,43 @@ class TestReceive:
 
     def test_uninvited_carrier_is_refused(self, policy):
         with pytest.raises(KeyError):
-            receive(_open(), "carrier-z", _entry("z", product_line="LIFE"), now=OPENED,
-                    policy=policy)
+            receive(
+                _open(),
+                "carrier-z",
+                _entry("z", product_line="LIFE"),
+                now=OPENED,
+                policy=policy,
+            )
 
     def test_decline_one_line_and_cannot_decline_a_received_one(self, policy):
-        rfp = receive(_open(), "carrier-a", _entry("a-life", product_line="LIFE"),
-                      now=OPENED, policy=policy)
+        rfp = receive(
+            _open(),
+            "carrier-a",
+            _entry("a-life", product_line="LIFE"),
+            now=OPENED,
+            policy=policy,
+        )
         with pytest.raises(ValueError):
             decline(rfp, "carrier-a", product_line="LIFE", now=OPENED)
-        rfp = decline(rfp, "carrier-a", product_line="AD_AND_D", now=OPENED,
-                      message="AD&D not offered in this state.")
+        rfp = decline(
+            rfp,
+            "carrier-a",
+            product_line="AD_AND_D",
+            now=OPENED,
+            message="AD&D not offered in this state.",
+        )
         assert rfp.cell("carrier-a", "AD_AND_D").status is RfpItemStatus.declined
         assert rfp.cell("carrier-a", "LIFE").status is RfpItemStatus.received
 
     def test_operations_are_pure(self, policy):
         rfp = _open()
-        receive(rfp, "carrier-a", _entry("a", product_line="LIFE"), now=OPENED, policy=policy)
+        receive(
+            rfp,
+            "carrier-a",
+            _entry("a", product_line="LIFE"),
+            now=OPENED,
+            policy=policy,
+        )
         acknowledge(rfp, "carrier-b", now=OPENED)
         assert {c.status for c in rfp.cells} == {RfpItemStatus.invited}
         assert rfp.entries == []
@@ -377,12 +511,21 @@ class TestReceive:
 class TestUpdateRequirements:
     def test_agent_adds_a_carrier_and_a_line_and_waives_an_item(self, policy):
         rfp = _open()
-        next_reqs = RequirementsList(requirements=[
-            Requirement(item="LIFE", party="carrier-c", status=RequirementStatus.waived),
-            Requirement(item="CRITICAL_ILLNESS", party="carrier-a",
-                        status=RequirementStatus.required),
-            Requirement(item="LIFE", party="carrier-d", status=RequirementStatus.required),
-        ])
+        next_reqs = RequirementsList(
+            requirements=[
+                Requirement(
+                    item="LIFE", party="carrier-c", status=RequirementStatus.waived
+                ),
+                Requirement(
+                    item="CRITICAL_ILLNESS",
+                    party="carrier-a",
+                    status=RequirementStatus.required,
+                ),
+                Requirement(
+                    item="LIFE", party="carrier-d", status=RequirementStatus.required
+                ),
+            ]
+        )
         rfp = update_requirements(rfp, next_reqs, now=OPENED + DAY)
         assert [leg.party for leg in rfp.legs] == [*CARRIERS, "carrier-d"]
         assert len({leg.context_id for leg in rfp.legs}) == 4
@@ -403,8 +546,9 @@ async def _corpus_entry(party, *, product_line):
     verdict: DispositionVerdict = dispose_signals(
         signals_from_result(result, candidate_doctypes=["benefits-quote"])
     )
-    entry = project_ledger_entry(doc_id=f"{party}-{product_line}", result=result,
-                                 verdict=verdict)
+    entry = project_ledger_entry(
+        doc_id=f"{party}-{product_line}", result=result, verdict=verdict
+    )
     return entry, product_line
 
 
@@ -413,13 +557,25 @@ async def _half_filled(policy):
     rfp = acknowledge(rfp, "carrier-b", now=OPENED + DAY)
     for line in LINES:
         entry, line = await _corpus_entry("carrier-a", product_line=line)
-        rfp = receive(rfp, "carrier-a", entry, now=OPENED + 2 * DAY, policy=policy,
-                      product_line=line)
+        rfp = receive(
+            rfp,
+            "carrier-a",
+            entry,
+            now=OPENED + 2 * DAY,
+            policy=policy,
+            product_line=line,
+        )
     entry, line = await _corpus_entry("carrier-c", product_line="LIFE")
-    rfp = receive(rfp, "carrier-c", entry, now=OPENED + 3 * DAY, policy=policy,
-                  product_line=line)
-    return decline(rfp, "carrier-c", product_line="AD_AND_D", now=OPENED + 3 * DAY,
-                   message="AD&D not offered.")
+    rfp = receive(
+        rfp, "carrier-c", entry, now=OPENED + 3 * DAY, policy=policy, product_line=line
+    )
+    return decline(
+        rfp,
+        "carrier-c",
+        product_line="AD_AND_D",
+        now=OPENED + 3 * DAY,
+        message="AD&D not offered.",
+    )
 
 
 class TestAnswer:
@@ -429,7 +585,8 @@ class TestAnswer:
         view = rfp_status(rfp, now=DUE - DAY, policy=policy)
         assert (view.ready, view.waiting) == (3, 3)
         assert view.counts == {
-            RfpItemStatus.received: 3, RfpItemStatus.acknowledged: 2,
+            RfpItemStatus.received: 3,
+            RfpItemStatus.acknowledged: 2,
             RfpItemStatus.declined: 1,
         }
 
@@ -440,8 +597,10 @@ class TestAnswer:
         assert turn.terminal is False and turn.requirements is None
         assert turn.status.outstanding.done is False
         assert turn.lifecycle is LifecycleStatus.overdue
-        outstanding = {(r.party, r.item): r.reason_code
-                       for r in turn.status.outstanding.requirements}
+        outstanding = {
+            (r.party, r.item): r.reason_code
+            for r in turn.status.outstanding.requirements
+        }
         assert outstanding == {
             ("carrier-b", "LIFE"): "overdue",
             ("carrier-b", "AD_AND_D"): "overdue",
@@ -456,14 +615,21 @@ class TestAnswer:
         clock = {"now": DUE - DAY}
         board = RfpBoard(policy=policy, clock=lambda: clock["now"])
         board.put(rfp)
-        client = TestClient(build_dashboard_app(store=InMemoryPortalStore(), rfps=board))
+        client = TestClient(
+            build_dashboard_app(store=InMemoryPortalStore(), rfps=board)
+        )
 
         rows = client.get("/exchanges").json()
         assert [r["session_id"] for r in rows] == ["acme-vb-2027"]
         row = rows[0]
         assert (row["process"], row["status"], row["lifecycle"]) == (
-            PROCESS, "in_flight", "on_track")
-        cells = {(c["party"], c["product_line"]): c["status"] for c in row["rfp"]["cells"]}
+            PROCESS,
+            "in_flight",
+            "on_track",
+        )
+        cells = {
+            (c["party"], c["product_line"]): c["status"] for c in row["rfp"]["cells"]
+        }
         assert cells[("carrier-a", "LIFE")] == "received"
         assert cells[("carrier-b", "LIFE")] == "acknowledged"
         assert client.get("/exchanges/acme-vb-2027").json() == row
@@ -473,7 +639,8 @@ class TestAnswer:
         row = client.get("/exchanges/acme-vb-2027").json()
         assert row["lifecycle"] == "escalated" and row["escalated"] is True
         assert [r["session_id"] for r in client.get("/queues/escalation").json()] == [
-            "acme-vb-2027"]
+            "acme-vb-2027"
+        ]
 
     async def test_snapshot_only_changes_on_a_state_change(self, policy):
         """The wall clock moving must not churn the SSE diff-poll; a ladder step must."""
@@ -501,12 +668,17 @@ class TestNoteUnreadable:
     def test_audit_only_and_pure(self):
         rfp = _open()
         before = rfp.model_dump()
-        noted = note_unreadable(rfp, "carrier-a", filename="rates.xlsx",
-                                reason="unsupported_media_type", now=OPENED + DAY)
+        noted = note_unreadable(
+            rfp,
+            "carrier-a",
+            filename="rates.xlsx",
+            reason="unsupported_media_type",
+            now=OPENED + DAY,
+        )
         assert rfp.model_dump() == before  # the input is unchanged
         assert noted.cells == rfp.cells and noted.entries == rfp.entries
         assert noted.unmatched == rfp.unmatched
-        (event,) = noted.audit[len(rfp.audit):]
+        (event,) = noted.audit[len(rfp.audit) :]
         assert event.kind == KIND_ATTACHMENT_UNREADABLE
         assert (event.party, event.seq) == ("carrier-a", len(rfp.audit))
         assert event.detail == "rates.xlsx: unsupported_media_type"
@@ -514,8 +686,12 @@ class TestNoteUnreadable:
     def test_uninvited_carrier_raises_and_naive_now_refused(self):
         rfp = _open()
         with pytest.raises(KeyError):
-            note_unreadable(rfp, "carrier-z", filename="x.pdf", reason="r",
-                            now=OPENED)
+            note_unreadable(rfp, "carrier-z", filename="x.pdf", reason="r", now=OPENED)
         with pytest.raises(ValueError, match="timezone-aware"):
-            note_unreadable(rfp, "carrier-a", filename="x.pdf", reason="r",
-                            now=datetime(2026, 10, 1))
+            note_unreadable(
+                rfp,
+                "carrier-a",
+                filename="x.pdf",
+                reason="r",
+                now=datetime(2026, 10, 1),
+            )

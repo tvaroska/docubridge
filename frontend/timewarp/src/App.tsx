@@ -3,7 +3,7 @@
 // The stage hosts the three presentation modes (Split-Screen Theater / Timeline / Architecture
 // X-Ray) behind a ToggleButtonGroup, defaulting to `split`. The time-warp control strip is
 // always visible above the mode and drives the shared time-warp host over REST; the resulting
-// state feeds Timeline + X-Ray. Uses @docbride/shared (theme, Panel, Badges).
+// state feeds Timeline + X-Ray. Uses @docubridge/shared (theme, Panel, Badges).
 
 import {
   Alert,

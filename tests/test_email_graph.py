@@ -18,7 +18,9 @@ from bridge.email_ingress.mime import parse_mime
 
 MAILBOX = "rfp-quotes@broker.example"
 TOKEN_URL = "https://login.microsoftonline.com/tenant-1/oauth2/v2.0/token"
-VALUE_URL = f"https://graph.microsoft.com/v1.0/users/{MAILBOX}/messages/AAMk%2B1%3D/$value"
+VALUE_URL = (
+    f"https://graph.microsoft.com/v1.0/users/{MAILBOX}/messages/AAMk%2B1%3D/$value"
+)
 RAW = b"Message-ID: <x@y>\r\nSubject: hi\r\n\r\nbody\r\n"
 
 
@@ -32,12 +34,17 @@ class FakeGraph:
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         if request.url.host == "login.microsoftonline.com":
-            return httpx.Response(200, json={"access_token": "tok-1", "expires_in": 3599})
+            return httpx.Response(
+                200, json={"access_token": "tok-1", "expires_in": 3599}
+            )
         if request.url.path.endswith("/$value"):
             return httpx.Response(
                 self.value_status, content=self.value_body, headers=self.headers
             )
-        if request.url.path.endswith("/subscriptions") or "/subscriptions/" in request.url.path:
+        if (
+            request.url.path.endswith("/subscriptions")
+            or "/subscriptions/" in request.url.path
+        ):
             body = json.loads(request.content or b"{}")
             return httpx.Response(201, json={"id": "sub-1", **body})
         return httpx.Response(404)
@@ -58,7 +65,9 @@ def test_token_request_form_and_the_token_is_cached():
     client = _client(fake)
     assert client.fetch_mime("AAMk+1=") == RAW
     assert client.fetch_mime("AAMk+1=") == RAW
-    token_calls = [r for r in fake.requests if r.url.host == "login.microsoftonline.com"]
+    token_calls = [
+        r for r in fake.requests if r.url.host == "login.microsoftonline.com"
+    ]
     assert len(token_calls) == 1
     (token,) = token_calls
     assert str(token.url) == TOKEN_URL and token.method == "POST"
@@ -98,7 +107,10 @@ def test_transport_error_is_a_graph_error():
         raise httpx.ConnectError("down", request=request)
 
     client = GraphMailClient(
-        tenant_id="t", client_id="c", client_secret="s", mailbox=MAILBOX,
+        tenant_id="t",
+        client_id="c",
+        client_secret="s",
+        mailbox=MAILBOX,
         transport=httpx.MockTransport(boom),
     )
     with pytest.raises(GraphError):
@@ -141,7 +153,10 @@ def test_garbled_token_response_is_a_graph_error_never_a_value_error(token_respo
         return httpx.Response(200, content=RAW)
 
     client = GraphMailClient(
-        tenant_id="t", client_id="c", client_secret="s", mailbox=MAILBOX,
+        tenant_id="t",
+        client_id="c",
+        client_secret="s",
+        mailbox=MAILBOX,
         transport=httpx.MockTransport(handler),
     )
     with pytest.raises(GraphError) as info:
@@ -149,7 +164,9 @@ def test_garbled_token_response_is_a_graph_error_never_a_value_error(token_respo
     assert not isinstance(info.value, ValueError)
 
 
-@pytest.mark.parametrize("bad", ["", "../users/ceo@x/messages/1", "a b", "x" * 513, "a?b"])
+@pytest.mark.parametrize(
+    "bad", ["", "../users/ceo@x/messages/1", "a b", "x" * 513, "a?b"]
+)
 def test_invalid_id_issues_no_request(bad):
     fake = FakeGraph()
     with pytest.raises(ValueError):

@@ -6,7 +6,7 @@
 // state, no diagramming lib.
 
 import { Box, Typography } from "@mui/material";
-import { Panel } from "@docbride/shared";
+import { Panel } from "@docubridge/shared";
 import { latestLifecycle, type TimewarpState } from "../domain/timewarp";
 
 interface Node {

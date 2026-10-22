@@ -48,6 +48,7 @@ BASE_URL = "http://bridge.test/"
 NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
 DUE = NOW + timedelta(days=7)
 
+
 @pytest.fixture(scope="module")
 def skills_dir(tmp_path_factory):
     root = tmp_path_factory.mktemp("skills")
@@ -132,9 +133,7 @@ def test_receive_files_on_the_skills_item_key(board):
     )
     entry = project_ledger_entry(doc_id="x-w9-1", result=result, verdict=verdict)
     assert entry.disposition is Disposition.accepted
-    rfp = receive(
-        board.rfps[RFP_ID], "supplier-x", entry, now=NOW, policy=board.policy
-    )
+    rfp = receive(board.rfps[RFP_ID], "supplier-x", entry, now=NOW, policy=board.policy)
     board.put(rfp)
     cell = board.rfps[RFP_ID].cell("supplier-x", "W9")
     assert cell.status is RfpItemStatus.received and cell.versions == ["x-w9-1"]

@@ -236,9 +236,7 @@ class AuditVaultStore(abc.ABC):
         """Write-once lock ``data`` into the Audit Vault; refuse overwrites."""
 
     @abc.abstractmethod
-    def get_record(
-        self, context_id: str, doc_id: str, version: int = 1
-    ) -> VaultRecord:
+    def get_record(self, context_id: str, doc_id: str, version: int = 1) -> VaultRecord:
         """Return the :class:`VaultRecord` for ``(context_id, doc_id, version)``."""
 
     @abc.abstractmethod
@@ -249,9 +247,7 @@ class AuditVaultStore(abc.ABC):
     def list_records(self, context_id: str | None = None) -> list[VaultRecord]:
         """List locked vault records (optionally filtered by ``context_id``)."""
 
-    def delete_document(
-        self, context_id: str, doc_id: str, version: int = 1
-    ) -> None:
+    def delete_document(self, context_id: str, doc_id: str, version: int = 1) -> None:
         """Deletion is unconditionally forbidden on the write-once Audit Vault."""
         raise VaultImmutabilityError(
             f"Audit Vault is write-once locked (WORM); deletion of "
@@ -277,6 +273,7 @@ class InMemoryAuditVaultStore(AuditVaultStore):
         mime_type: str = "application/pdf",
         locked_at: datetime | None = None,
     ) -> VaultRecord:
+        """Compute SHA-256 content hashes and lock an immutable document record in memory."""
         key = (context_id, doc_id, version)
         if key in self._records:
             raise VaultImmutabilityError(
@@ -301,21 +298,22 @@ class InMemoryAuditVaultStore(AuditVaultStore):
         self._blobs[key] = bytes(data)
         return rec
 
-    def get_record(
-        self, context_id: str, doc_id: str, version: int = 1
-    ) -> VaultRecord:
+    def get_record(self, context_id: str, doc_id: str, version: int = 1) -> VaultRecord:
+        """Retrieve an immutable vault record by vault ID from memory."""
         key = (context_id, doc_id, version)
         if key not in self._records:
             raise KeyError(f"no vault record for {context_id}/{doc_id}/v{version}")
         return self._records[key]
 
     def read_bytes(self, context_id: str, doc_id: str, version: int = 1) -> bytes:
+        """Read the locked raw document bytes for a vault ID from memory."""
         key = (context_id, doc_id, version)
         if key not in self._blobs:
             raise KeyError(f"no vault bytes for {context_id}/{doc_id}/v{version}")
         return self._blobs[key]
 
     def list_records(self, context_id: str | None = None) -> list[VaultRecord]:
+        """List locked vault records in memory, optionally filtered by exchange ID."""
         records = list(self._records.values())
         if context_id is not None:
             records = [r for r in records if r.context_id == context_id]
@@ -351,6 +349,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         mime_type: str = "application/pdf",
         locked_at: datetime | None = None,
     ) -> VaultRecord:
+        """Write an immutable object to Cloud Storage and persist its audit record in Firestore."""
         key = (context_id, doc_id, version)
         if key in self._index:
             raise VaultImmutabilityError(
@@ -359,9 +358,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         obj_path = _vault_object_key(context_id, doc_id, version, filename)
         bucket = self._get_bucket()
         existing_blobs = list(
-            bucket.list_blobs(
-                prefix=_vault_version_prefix(context_id, doc_id, version)
-            )
+            bucket.list_blobs(prefix=_vault_version_prefix(context_id, doc_id, version))
         )
         if existing_blobs:
             raise VaultImmutabilityError(
@@ -383,9 +380,7 @@ class GcpAuditVaultStore(AuditVaultStore):
                 "locked_at": locked_ts.isoformat(),
             }
         try:
-            blob.upload_from_string(
-                data, content_type=mime_type, if_generation_match=0
-            )
+            blob.upload_from_string(data, content_type=mime_type, if_generation_match=0)
         except Exception as exc:
             raise VaultImmutabilityError(
                 f"GCS write-once precondition failed for {obj_path}: {exc}"
@@ -448,9 +443,8 @@ class GcpAuditVaultStore(AuditVaultStore):
         self._index[(context_id, doc_id, version)] = rec
         return rec
 
-    def get_record(
-        self, context_id: str, doc_id: str, version: int = 1
-    ) -> VaultRecord:
+    def get_record(self, context_id: str, doc_id: str, version: int = 1) -> VaultRecord:
+        """Fetch an immutable vault audit record by vault ID from Firestore."""
         key = (context_id, doc_id, version)
         if key in self._index:
             return self._index[key]
@@ -462,12 +456,14 @@ class GcpAuditVaultStore(AuditVaultStore):
         raise KeyError(f"no vault record for {context_id}/{doc_id}/v{version}")
 
     def read_bytes(self, context_id: str, doc_id: str, version: int = 1) -> bytes:
+        """Download the locked raw document bytes for a vault ID from Cloud Storage."""
         rec = self.get_record(context_id, doc_id, version)
         obj_path = _vault_object_key(context_id, doc_id, version, rec.filename)
         blob = self._get_bucket().blob(obj_path)
         return blob.download_as_bytes()
 
     def list_records(self, context_id: str | None = None) -> list[VaultRecord]:
+        """List locked vault audit records from Firestore, optionally filtered by exchange ID."""
         prefix = f"vault/{context_id}/" if context_id is not None else "vault/"
         for blob in self._get_bucket().list_blobs(prefix=prefix):
             key_match = _VAULT_KEY_RE.match(getattr(blob, "name", ""))

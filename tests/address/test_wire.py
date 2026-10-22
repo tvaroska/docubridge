@@ -6,6 +6,7 @@ consumer decoder round-trips it. Importing ``bridge.edge.wire`` from a *test* is
 allowed — the isolation guard forbids ``bridge``↔``agents`` in first-party code,
 not in ``tests/``.
 """
+
 from __future__ import annotations
 
 import json
@@ -87,9 +88,7 @@ def test_rejects_wrong_shape_collect_request():
 
 
 def test_empty_and_non_json_blobs_return_none():
-    empty = types.Part(
-        inline_data=types.Blob(data=b"", mime_type="text/plain")
-    )
+    empty = types.Part(inline_data=types.Blob(data=b"", mime_type="text/plain"))
     junk = types.Part(
         inline_data=types.Blob(
             data=b"<a2a_datapart_json>not json</a2a_datapart_json>",

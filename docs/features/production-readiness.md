@@ -432,7 +432,7 @@ retry with the specific rejection reason fed back to the model.
 **Key approach:** The retry mirrors the existing `bridge/seams/gcp/_TerminalRetryStore`
 idiom (attempts=3, warn per failure, error on exhaustion, raise the last error). The
 correction echoes the rejected output (making the next attempt a repair rather than a
-re-roll) — a deliberate small deviation from Aon's reason-only correction. The happy path
+re-roll) — a deliberate small deviation from the consumer's reason-only correction. The happy path
 is unchanged: a valid first response completes in exactly one model call with no extra
 latency or cost.
 
@@ -629,19 +629,19 @@ extraction path. **Not** in scope: top-level `required` (`issuer` on utility-bil
   models built for `gov-id`/`utility-bill` have field and required sets identical to
   `GovIdKeyFields`/`UtilityBillKeyFields` (no coverage regression from deleting the dict).
 
-### S0-docs-4 — Correct the false premise in the Aon open question (2026-09-23)
+### S0-docs-4 — Correct the false premise in the Benefits Consumer open question (2026-09-23)
 
-**What:** `spec/open-questions.md:38-44` — the incoming Aon feature request — rested on three
+**What:** `spec/open-questions.md:38-44` — the incoming Benefits Consumer feature request — rested on three
 claims that had all gone false, and it cited `design/architecture.md` as their authority, so
 the stale premise had propagated out of `spec/` into the design SoT. The entry therefore filed
 a live capability gap as "a later-cycle capability, not a critical-path item".
 
-**The three falsified claims (re-verified against `~/aon` at implement time):**
-- *"it has **no real PDF path**"* (line 40) — `~/aon/engine/extraction/gcp.py:386::GcpExtractor`
+**The three falsified claims (re-verified against `~/benefits-consumer` at implement time):**
+- *"it has **no real PDF path**"* (line 40) — `~/benefits-consumer/engine/extraction/gcp.py:386::GcpExtractor`
   is a Vertex Gemini engine: `gemini-2.5-flash`, `temperature=0`,
   `response_schema=_ExtractedQuote`, `_MAX_ATTEMPTS = 3` with each rejection reason fed back,
   **no** fixture fallback, `fields_requiring_review`, an `application/pdf` binary part, and
-  `gs://` passed through for Vertex to read by reference. Logged at `~/aon/DECISIONS.md:586`
+  `gs://` passed through for Vertex to read by reference. Logged at `~/benefits-consumer/DECISIONS.md:586`
   (2026-09-13, with a live `ADP_TEST_GCP=1` seam run).
 - *"the deferred Benefits/RFP cycle"* (line 44) — Sprint 1 (Benefits, CUJ-3/11/12) closed
   2026-09-07 T3-green; all seven `S1-benefits-*` tasks are archived in
@@ -687,7 +687,7 @@ names both as prerequisites, and one of them is now met.)*
   RFP stays the eval scaffold.
 
 **Gotcha (the trap in this task):** the failure mode being fixed is *asserting a stale fact*,
-so the plan's fact table was re-derived from `~/aon` rather than transcribed, and the rewrite
+so the plan's fact table was re-derived from `~/benefits-consumer` rather than transcribed, and the rewrite
 keeps the question **OPEN** — a corrected premise, not a resolution. S0-docs-1's *delete-the-
 resolved-question* precedent does not apply here: "two engines now exist; does the consumer
 delegate over A2A, and what must converge first" is genuinely undecided. Also: the task line
@@ -699,7 +699,7 @@ statements ("a by-reference artifact resolver", "an end-to-end conformance run")
 - T1: no code changed; `uv run ruff check` clean; `uv run pytest -q` → **789 passed, 31
   skipped**, identical to the pre-change baseline.
 - T2: the premise checks re-run green (`GcpExtractor` + its markers in
-  `~/aon/engine/extraction/gcp.py`, `skills/benefits-quote/assets/`, the Sprint-1 close line,
+  `~/benefits-consumer/engine/extraction/gcp.py`, `skills/benefits-quote/assets/`, the Sprint-1 close line,
   and `tests/test_pdf_extraction.py tests/test_cuj3_dial_out_deliver.py
   tests/test_cuj12_interop.py` → 14 passed, 1 skipped); `git diff --staged -- spec/` empty —
   no `spec/` path in the commit — and the stale sentence still present in `spec/`; the proposal
@@ -743,13 +743,13 @@ A separate broker-RFP CUJ was rejected: it would leave CUJ-13 Driver-less while 
 
 **What:** four spec files had drifted from the code.
 - `standards.md:23,46` counted eight seams; the `Seam` enum has nine (`email_ingress`). D2 (`:35`) cited a `strict=True` per-party-scoping footgun, but no such flag exists anywhere.
-- `open-questions.md` still asked three resolved questions: request intake, FX rate source and the Requirements-list schema. Its "Benefits/RFP deferred" settled bullet was false. The never-applied S0-docs-4 Aon rewrite had gone stale too: its prerequisites and OCR boundary converged (S0-arch-7/9/12), and its "could not do the job" finding is false clause by clause.
+- `open-questions.md` still asked three resolved questions: request intake, FX rate source and the Requirements-list schema. Its "Benefits/RFP deferred" settled bullet was false. The never-applied S0-docs-4 Benefits Consumer rewrite had gone stale too: its prerequisites and OCR boundary converged (S0-arch-7/9/12), and its "could not do the job" finding is false clause by clause.
 - `demos/benefits-demo.md:18,32` named `benefits-quote` (a doctype skill) as the process skill; the shipped process skill is `benefits-procurement`, with its rules in `assets/standard.yaml`. The demo had no beat for the scanned-PDF and 1000-row capabilities.
 - `demos/rfp-demo.md:64` Requirement fields lagged `contract/wire.py` and listed a phantom `note`.
 
 **Proposal:** `DECISIONS.md` "2026-10-01 — S0-docs-7" carries apply-ready text under the house "SPEC PROPOSAL (not applied — spec/ is protected)" marker. No frontmatter is touched (S0-docs-11).
 - **standards.md:** three whole-line replacements. The seams are listed by name with no count, Email ingress included and named as a Bridge-owned boundary. D2 states the as-built posture: isolation at the network layer, a party addresses only its own leg, and every artifact fetch is authorized against the leg that asked.
-- **open-questions.md:** a full-body replacement. The three resolved questions and the deferred bullet are deleted, and retention stays. The Aon section is restated: what the Bridge now offers for carrier quotes, the delegate-or-keep question still open, and only contract shape (wider vocabulary refused, not coerced) and provenance kept as open sub-points.
+- **open-questions.md:** a full-body replacement. The three resolved questions and the deferred bullet are deleted, and retention stays. The Benefits Consumer section is restated: what the Bridge now offers for carrier quotes, the delegate-or-keep question still open, and only contract shape (wider vocabulary refused, not coerced) and provenance kept as open sub-points.
 - **benefits-demo.md:** a full-body replacement. The process skill is `benefits-procurement`, the doctype schema lists its tables, a new **`3b · Hard documents`** beat is added (no renumbering — `standard.yaml` and `bridge/` docstrings cite beat 4/5), plus two depth bullets, the scanned and 1000-row demo data and validation, and the design parameters stated as chosen.
 - **rfp-demo.md:64:** the fields of `contract.wire.Requirement` plus `done` and the due date. The Nimbus scenario stays, as the industry-neutral requirement.
 - **Design fold-ins**, so no decision is lost with the deleted questions: `design/fulfillment-graph.md:27` (fixed FX table, live source as a one-argument swap) and `design/collect.md` (item shape, `party` = party × item, due date anchoring the chase ladder).
@@ -763,8 +763,8 @@ A separate broker-RFP CUJ was rejected: it would leave CUJ-13 Driver-less while 
   3. Every relative `](x.md)` link resolves against the real file's directory: 17 / 15 / 16 / 14 links, 0 misses.
   4. Every `Seam` member (9) maps to a display name that appears in the proposed Ring-2 row, Email ingress included. `\b(eight|nine)\b` → none.
   5. No `strict=True`. The D2 bullet links `../design/zones.md`, which contains "network layer only".
-  6. open-questions.md has none of the three resolved headings, exactly one "Artifact retention window" and one "Feature request (incoming)". The Aon section still asks delegate-or-keep. The stale strings (convergence prerequisites, adapter swap, no real PDF path, could not do the job, Benefits/RFP deferred, eval scaffold) → none.
-  7. benefits-demo.md has the "Process skill `benefits-procurement`" line ×1 and `request benefits-procurement` ×1, no `benefits-quote` as the process, and names `standard.yaml`. The named skills exist under `skills/`. Beats run 1, 2, 3, 3b, 4, 5, 6, and 3b mentions scanned + 1000 rows. Backing tests: the two scanned-PDF tests + `tests/perf/test_scale_extraction.py` + `tests/test_cuj11_negotiate_bind_rollup.py` → 8 passed, 0 skipped. Aon offer paragraph: `tests/conformance` + `tests/test_rfp_second_use_case.py` → 86 passed / 6 skipped (gated); with `BRIDGE_TEST_CONSUMER_REPO=~/aon`, `-k consumer` → 36 passed, the real-consumer drift check included.
+  6. open-questions.md has none of the three resolved headings, exactly one "Artifact retention window" and one "Feature request (incoming)". The Benefits Consumer section still asks delegate-or-keep. The stale strings (convergence prerequisites, adapter swap, no real PDF path, could not do the job, Benefits/RFP deferred, eval scaffold) → none.
+  7. benefits-demo.md has the "Process skill `benefits-procurement`" line ×1 and `request benefits-procurement` ×1, no `benefits-quote` as the process, and names `standard.yaml`. The named skills exist under `skills/`. Beats run 1, 2, 3, 3b, 4, 5, 6, and 3b mentions scanned + 1000 rows. Backing tests: the two scanned-PDF tests + `tests/perf/test_scale_extraction.py` + `tests/test_cuj11_negotiate_bind_rollup.py` → 8 passed, 0 skipped. Benefits Consumer offer paragraph: `tests/conformance` + `tests/test_rfp_second_use_case.py` → 86 passed / 6 skipped (gated); with `BRIDGE_TEST_CONSUMER_REPO=~/benefits-consumer`, `-k consumer` → 36 passed, the real-consumer drift check included.
   8. `set(Requirement.model_fields) == {item, status, party, doctype_hint, reason_code, message}`, and every field plus `done` and `required|optional|satisfied|waived` appears on the proposed :64. `note` is gone.
   9. The status grep on changed lines only (task ids, sprint/cycle, deferred, not yet, shipped, built, TODO, dates, checkboxes) → empty in all four files. There are no `<` placeholders.
   10. `design/fulfillment-graph.md` changes on line 27 only and `design/collect.md` gains the `party` paragraph. Both `+` sets are status-free, and only those two design files changed.

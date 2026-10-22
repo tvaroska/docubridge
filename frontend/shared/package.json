@@ -1,5 +1,5 @@
 {
-  "name": "@docbride/shared",
+  "name": "@docubridge/shared",
   "private": true,
   "version": "0.1.0",
   "description": "Shared UI/domain package (theme, Panel, Badges, snake->camel contract mirror) for the Document Bridge frontends (FE-6).",

@@ -28,7 +28,9 @@ from bridge.program import fan_out
 from bridge.seams import Seam, SeamMode, get_adapter
 from bridge.standard import ROUTE_NEGOTIATE, ROUTE_NONE, load_program_standard
 
-BENEFITS_CORPUS = Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+BENEFITS_CORPUS = (
+    Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+)
 PROCESS = "benefits-procurement"
 
 # Corpus doc id per carrier party (see wiki/evals/benefits/expected.json).
@@ -49,7 +51,10 @@ async def test_cuj3_dial_out_deliver_golden_run():
 
     # 2. A peer directory advertising the process for each leg's card_url.
     directory = FakePeerDirectory(
-        {leg.context_id: PeerCard(leg.party, leg.context_id, (PROCESS,)) for leg in program.legs}
+        {
+            leg.context_id: PeerCard(leg.party, leg.context_id, (PROCESS,))
+            for leg in program.legs
+        }
     )
 
     # 3. Dial each leg (Agent-Card discovery → message/send). One receipt per leg,
@@ -85,7 +90,9 @@ async def test_cuj3_dial_out_deliver_golden_run():
 
     # 4. The carriers' quotes arrive — extract each party + normalize to one schema.
     extractor = FixtureExtractor(corpus_path=BENEFITS_CORPUS)
-    corpus_docs = {d["id"]: d for d in json.loads(BENEFITS_CORPUS.read_text())["documents"]}
+    corpus_docs = {
+        d["id"]: d for d in json.loads(BENEFITS_CORPUS.read_text())["documents"]
+    }
     quotes = []
     for leg in program.legs:
         doc_id = CORPUS_DOC[leg.party]
@@ -98,7 +105,9 @@ async def test_cuj3_dial_out_deliver_golden_run():
     comparison = build_comparison("acme-2026", quotes, standard)
     assert comparison.currency == "USD"
     assert comparison.language == "en"
-    flagged = [leg.party for leg in comparison.legs if leg.verdict.route == ROUTE_NEGOTIATE]
+    flagged = [
+        leg.party for leg in comparison.legs if leg.verdict.route == ROUTE_NEGOTIATE
+    ]
     assert flagged == ["carrier-b"]
     for leg in comparison.legs:
         if leg.party != "carrier-b":
@@ -121,6 +130,4 @@ async def test_cuj3_dial_out_deliver_golden_run():
     # 7. No bearer token anywhere in the journey.
     for cls in (DialOut, Delivery):
         names = {f.name for f in dataclasses.fields(cls)}
-        assert not any(
-            tok in n for n in names for tok in ("token", "cred", "bearer")
-        )
+        assert not any(tok in n for n in names for tok in ("token", "cred", "bearer"))

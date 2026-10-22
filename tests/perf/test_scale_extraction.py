@@ -17,8 +17,9 @@ from tests.perf.scale_corpus import build_scale_pdf, quote_50_pages, rate_sheet_
 
 def _extractor(doc, client, **kwargs):
     pdf = build_scale_pdf(doc)
-    return GeminiExtractor(client=client, resolver=lambda n: (pdf, "application/pdf"),
-                           **kwargs)
+    return GeminiExtractor(
+        client=client, resolver=lambda n: (pdf, "application/pdf"), **kwargs
+    )
 
 
 async def test_rate_sheet_1000_rows_exact_and_ordered():

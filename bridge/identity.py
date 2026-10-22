@@ -93,9 +93,14 @@ class SpiffeId(BaseModel):
 
     @classmethod
     def parse(cls, raw_uri: str) -> SpiffeId:
+        """Parse and validate a `spiffe://<trust-domain>/<path>` URI string."""
         cleaned = raw_uri.strip()
         match = _SPIFFE_URI_RE.fullmatch(cleaned)
-        if match is None or "//" in match.group("path") or match.group("path").endswith("/"):
+        if (
+            match is None
+            or "//" in match.group("path")
+            or match.group("path").endswith("/")
+        ):
             raise SpiffeAuthenticationError(
                 f"Malformed SPIFFE ID '{raw_uri}'. Expected 'spiffe://<trust-domain>/<path>'."
             )
@@ -222,6 +227,7 @@ class UserPrincipal(BaseModel):
     authenticated_via: Literal["jwt", "iap", "header", "query_dev"] = "query_dev"
 
     def effective_approval_limit(self) -> Decimal:
+        """Return the maximum monetary approval limit granted to this user principal."""
         if self.max_approval_amount is not None:
             return self.max_approval_amount
         return DEFAULT_ROLE_APPROVAL_LIMITS.get(self.role, Decimal("0.00"))
@@ -281,7 +287,14 @@ def mint_jwt_svid(
         "iat": now,
         "exp": now + ttl_seconds,
     }
-    if obo_subject or obo_role or tenant_id or allowed_entities or carrier_slug or max_approval_amount is not None:
+    if (
+        obo_subject
+        or obo_role
+        or tenant_id
+        or allowed_entities
+        or carrier_slug
+        or max_approval_amount is not None
+    ):
         obo_block: dict[str, Any] = {}
         if obo_subject:
             obo_block["sub"] = obo_subject
@@ -380,7 +393,11 @@ def verify_jwt_svid(
 
         if expected_audience is not None:
             aud = claims.get("aud")
-            aud_list = [aud] if isinstance(aud, str) else (aud if isinstance(aud, list) else [])
+            aud_list = (
+                [aud]
+                if isinstance(aud, str)
+                else (aud if isinstance(aud, list) else [])
+            )
             if expected_audience not in aud_list:
                 raise SpiffeAuthenticationError(
                     f"JWT-SVID audience mismatch (expected '{expected_audience}')."
@@ -476,7 +493,10 @@ def authorize_entity_access(
         },
     ) as span:
         if principal.role == "client":
-            if principal.allowed_entities and entity_id not in principal.allowed_entities:
+            if (
+                principal.allowed_entities
+                and entity_id not in principal.allowed_entities
+            ):
                 raise TenantIsolationError(
                     f"Tenant isolation violation: client principal '{principal.subject}' "
                     f"(tenant='{principal.tenant_id or 'restricted'}') is not authorized "
@@ -520,6 +540,7 @@ def filter_quotes_for_principal(
 
 
 def parse_decimal_header(raw: str | None) -> Decimal | None:
+    """Parse an optional HTTP header string into a non-negative Decimal amount."""
     if not raw or not raw.strip():
         return None
     try:

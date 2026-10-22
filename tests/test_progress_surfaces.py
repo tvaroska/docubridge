@@ -9,6 +9,7 @@ and a parked task:
 
 Reuses the ``_client`` harness from ``test_edge_a2a.py`` and ``test_mock_bridge.py``.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -143,7 +144,9 @@ async def test_all_four_surfaces_terminal_task():
     """
     async with _client(_fixture_app()) as (_hc, client):
         # Send a terminal task
-        task_id, events = await _send(client, _collect_message("address-proof", [ACCEPTED]))
+        task_id, events = await _send(
+            client, _collect_message("address-proof", [ACCEPTED])
+        )
         assert task_id is not None
 
         # Surface 1: tasks/get returns the task with exchange_turn artifact
@@ -163,9 +166,7 @@ async def test_all_four_surfaces_terminal_task():
         # wired (not MethodNotFound).
         raised_resubscribe_error = False
         try:
-            async for _ev in client.subscribe(
-                SubscribeToTaskRequest(task_id=task_id)
-            ):
+            async for _ev in client.subscribe(SubscribeToTaskRequest(task_id=task_id)):
                 pass
         except Exception:
             raised_resubscribe_error = True

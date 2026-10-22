@@ -10,6 +10,7 @@ header. The live authenticated wire send to a real counterparty is deferred
 (S1-benefits-6) / gated on ``BRIDGE_TEST_GCP`` (a P7-9 input). Mirrors
 ``test_gcp_scheduler.py``.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -118,8 +119,14 @@ def test_build_resolves_config_from_env(monkeypatch):
 def test_reconcile_matching_host_passes():
     assert reconcile_card_host(_CARD_URL, _GATEWAY_HOST) == _CARD_URL
     # A bare-host / host:port Gateway value also reconciles on origin.
-    assert reconcile_card_host("https://h.example/rpc", "h.example") == "https://h.example/rpc"
-    assert reconcile_card_host("https://h.example:8443/rpc", "h.example:8443") == "https://h.example:8443/rpc"
+    assert (
+        reconcile_card_host("https://h.example/rpc", "h.example")
+        == "https://h.example/rpc"
+    )
+    assert (
+        reconcile_card_host("https://h.example:8443/rpc", "h.example:8443")
+        == "https://h.example:8443/rpc"
+    )
 
 
 def test_reconcile_mismatched_host_refuses_loud():
@@ -143,9 +150,13 @@ def test_transport_mints_oidc_id_token_with_authorized_audience():
     directory = FakePeerDirectory(
         {_CARD_URL: PeerCard("carrier-a", _CARD_URL, ("benefits-procurement",))}
     )
-    dialout = DialOut(context_id="ctx-a", party="carrier-a",
-                      process="benefits-procurement", card_url=_CARD_URL,
-                      message="request benefits-quote")
+    dialout = DialOut(
+        context_id="ctx-a",
+        party="carrier-a",
+        process="benefits-procurement",
+        card_url=_CARD_URL,
+        message="request benefits-quote",
+    )
     receipt = client.dial(dialout, directory=directory)
     assert receipt.resent is False
 
@@ -154,7 +165,9 @@ def test_transport_mints_oidc_id_token_with_authorized_audience():
     # The token rode the transport header, minted per-call.
     assert len(sender.posts) == 1
     assert sender.posts[0]["url"] == _CARD_URL
-    assert sender.posts[0]["headers"]["Authorization"] == f"Bearer id-token::{_CARD_URL}"
+    assert (
+        sender.posts[0]["headers"]["Authorization"] == f"Bearer id-token::{_CARD_URL}"
+    )
 
 
 def test_dial_to_mismatched_card_host_refuses_loud():
@@ -168,9 +181,13 @@ def test_dial_to_mismatched_card_host_refuses_loud():
     directory = FakePeerDirectory(
         {bad_url: PeerCard("evil", bad_url, ("benefits-procurement",))}
     )
-    dialout = DialOut(context_id="ctx-b", party="evil",
-                      process="benefits-procurement", card_url=bad_url,
-                      message="request benefits-quote")
+    dialout = DialOut(
+        context_id="ctx-b",
+        party="evil",
+        process="benefits-procurement",
+        card_url=bad_url,
+        message="request benefits-quote",
+    )
     with pytest.raises(ValueError, match=r"evil\.example"):
         client.dial(dialout, directory=directory)
     assert fetcher.audiences == []
@@ -232,16 +249,28 @@ def test_gcp_a2a_client_live_send():
     directory = FakePeerDirectory(
         {card_url: PeerCard("peer", card_url, ("benefits-procurement",))}
     )
-    dialout = DialOut(context_id="live-dial-test", party="peer",
-                      process="benefits-procurement", card_url=card_url,
-                      message="request benefits-quote")
+    dialout = DialOut(
+        context_id="live-dial-test",
+        party="peer",
+        process="benefits-procurement",
+        card_url=card_url,
+        message="request benefits-quote",
+    )
     receipt = client.dial(dialout, directory=directory)
     assert receipt.resent is False
     # Deliver a by-reference artifact too (the party-channel live half).
-    delivery = Delivery(context_id="live-dial-test", recipient="peer",
-                        artifact=ArtifactRef(uri="bridge://comparison/live"))
+    delivery = Delivery(
+        context_id="live-dial-test",
+        recipient="peer",
+        artifact=ArtifactRef(uri="bridge://comparison/live"),
+    )
     assert client.deliver(delivery).resent is False
     # A nudge is the party-channel chase (deferred live half — no-op transport).
-    nudge = Nudge(context_id="live-dial-test", party="peer",
-                  step=LifecycleStatus.overdue, channel="email", message="hi")
+    nudge = Nudge(
+        context_id="live-dial-test",
+        party="peer",
+        step=LifecycleStatus.overdue,
+        channel="email",
+        message="hi",
+    )
     assert client.send(nudge).resent is False

@@ -84,7 +84,7 @@ updates the requirements. The board host then drains carrier replies onto that R
 
 ### S0-frontend-1 — RFP views: consumer status API, manual "chase now", carrier checklist (2026-09-30)
 
-**Problem.** For the Aon demo the Bridge had no RFP views: nothing a consumer could render on its own screen, no RFP matrix on the ops dashboard, and no carrier-facing checklist.
+**Problem.** For the Benefits Consumer demo the Bridge had no RFP views: nothing a consumer could render on its own screen, no RFP matrix on the ops dashboard, and no carrier-facing checklist.
 
 **What was built.** See `design/rfp-views.md` and `DECISIONS.md` 2026-09-30 S0-frontend-1.
 - **Aggregate (`bridge/rfp.py`).** `RfpLeg.chases` / `last_chased_at` (kept across `update_requirements`), `chaseable_items`, `record_chase` (audit-only `chased` event; no cell moves) and `chase_message`. `RfpCarrierView` carries the chase count.
@@ -94,19 +94,19 @@ updates the requirements. The board host then drains carrier replies onto that R
 - **Carrier checklist** (portal host, `bridge/portal/rfp_checklist.py`): `GET /rfp/legs/{context_id}`, filtered to that carrier only, and `POST /rfp/legs/{context_id}/uploads`. The upload files a quote into a named row through extract → gate → ledger → fresh read → acknowledge → `receive(product_line=…)` → put (404 / 409 / 422, board untouched on refusal).
 - **Local demo host** (`bridge/demos/rfp_demo.py`): one seeded RFP (3 carriers × CI / HI, seeded through the real upload path) behind `/ops` + `/portal` on one shared board.
 - **Frontend.**
-  - `@docbride/shared`: `RfpItemStatus`, `FieldReview` + `mapFieldReview`, `domain/rfp.ts` (`mapRfpStatus`, `isChaseable`), `RfpStatusBadge`.
+  - `@docubridge/shared`: `RfpItemStatus`, `FieldReview` + `mapFieldReview`, `domain/rfp.ts` (`mapRfpStatus`, `isChaseable`), `RfpStatusBadge`.
   - ops-dashboard: `RfpExchangeView` (carriers × product lines, `data-highlight` overdue / escalated, per-carrier lifecycle, chase count, "Chase now" + "Chase all waiting", portal link) in an "RFP exchanges" section; `api.chaseRfp`.
   - provider-portal: `?leg=<context_id>` opens `RfpChecklist` (verbatim reasons and field reviews, reply address, artifact picker + upload); themeable via `VITE_PORTAL_ACCENT` / `VITE_PORTAL_TITLE`.
 
 **Verification.** `tests/test_rfp_views.py` (29 tests) plus vitest coverage for the mappers, `RfpStatusBadge`, `RfpExchangeView` and `RfpChecklist`. T2 `/tmp/s0frontend1_t2.py` passes every check against the demo host: the seeded matrix and reply addresses; overdue derived on read with no re-put and escalation at due + 4 days; one chase Nudge scoped to carrier-c, `chase-1` on the second, 409 for a fully received carrier; carrier-b's checklist free of other carriers, 404 for a random leg; an upload turning a row received on `/ops/rfps` and in an `/ops/events` frame.
 
-**Proposals / follow-ups.** See `DECISIONS.md`: a CUJ-9/13 Driver line; reconcile `spec/demos/rfp-demo.md`; the Aon S0-frontend-12/16 hand-off; a ladder-armed automatic chase; an outbound invitation carrying the reply address; a durable RFP store; deployed reachability and auth for the consumer API; a real byte upload.
+**Proposals / follow-ups.** See `DECISIONS.md`: a CUJ-9/13 Driver line; reconcile `spec/demos/rfp-demo.md`; the Benefits Consumer S0-frontend-12/16 hand-off; a ladder-armed automatic chase; an outbound invitation carrying the reply address; a durable RFP store; deployed reachability and auth for the consumer API; a real byte upload.
 
 ### S0-arch-13 — Email intake: a dedicated M365 mailbox, token-correlated, create-only landing (2026-09-30)
 
 **Problem.** Carriers answer RFPs by email, and the Bridge had no inbound email channel. Email was only an advisory outbound nudge, and cold inbound push is deferred.
 
-**Ownership.** The Bridge owns the edge: email is a collection channel under Aon S0-arch-3's split, and the reply is solicited (correlated by token), not cold push. See `DECISIONS.md` 2026-09-30 S0-arch-13.
+**Ownership.** The Bridge owns the edge: email is a collection channel under Benefits Consumer S0-arch-3's split, and the reply is solicited (correlated by token), not cold push. See `DECISIONS.md` 2026-09-30 S0-arch-13.
 
 **What was built.**
 - **A ninth seam, `email_ingress`** (`EmailIngressSeam`): `land` / `pending` / `read` / `put_attachment` / `mark_processed` / `processed` over one layout (`inbox/<key>.eml`, `attachments/<key>/<i>/<filename>`, `processed/<key>.json`). Every write is create-only:
@@ -150,7 +150,7 @@ updates the requirements. The board host then drains carrier replies onto that R
 - spec "nine seams"
 - a CUJ Driver line
 - an optional `wiki/evals/rfp` reply case
-- the Aon S0-infra-7 owner
+- the Benefits Consumer S0-infra-7 owner
 - a deployed drain trigger and subscription auto-renewal
 - a durable RFP store / claim
 - an xlsx parser
@@ -176,7 +176,7 @@ updates the requirements. The board host then drains carrier replies onto that R
 
 ### S0-arch-11 — `benefits-rfp` collection process (2026-09-30)
 
-**Problem.** The Aon exec asked "which documents are ready, which are waiting on a carrier?" and the Bridge had no answer. CUJ-9/13 (RFP) was unbuilt.
+**Problem.** The Benefits Consumer exec asked "which documents are ready, which are waiting on a carrier?" and the Bridge had no answer. CUJ-9/13 (RFP) was unbuilt.
 
 **What was built.**
 - **Contract 1.2** (additive, every field defaulted):

@@ -19,6 +19,7 @@ non-terminal turn parks the collect node as a ``LongRunningFunctionTool`` and
 interrupts the invocation; resuming needs P3-2 (``RequestInterceptor``) + P4
 (durable session). Those golden runs land in P3-5.
 """
+
 from __future__ import annotations
 
 import json
@@ -99,9 +100,7 @@ async def _run(wf: Workflow):
         parts=[types.Part(text="address-proof scenario:path-a-instant")],
     )
     final_output = None
-    async for event in runner.run_async(
-        user_id="u", session_id="s", new_message=seed
-    ):
+    async for event in runner.run_async(user_id="u", session_id="s", new_message=seed):
         if getattr(event, "output", None) is not None:
             final_output = event.output
     session = await session_service.get_session(
@@ -121,9 +120,7 @@ def test_build_address_workflow_has_four_edge_conditional_cycle():
     def name_of(node):
         return getattr(node, "name", node)
 
-    edges = {
-        (name_of(e.from_node), name_of(e.to_node)): e.route for e in wf.edges
-    }
+    edges = {(name_of(e.from_node), name_of(e.to_node)): e.route for e in wf.edges}
     start = name_of(START)
     assert edges[(start, "collect")] is None
     assert edges[("collect", "gate")] is None
@@ -168,9 +165,7 @@ async def test_satisfying_turn_routes_done_in_one_cycle():
         context_id="ctx-fast",
         terminal=True,
         status=CollectionStatus(
-            entries=[
-                _entry("gov-id-clean", "gov-id", disposition=Disposition.accepted)
-            ]
+            entries=[_entry("gov-id-clean", "gov-id", disposition=Disposition.accepted)]
         ),
     )
     wf = build_address_workflow(

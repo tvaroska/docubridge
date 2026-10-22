@@ -168,9 +168,11 @@ def declares_issuer(schema: dict) -> bool:
 
 
 def issuer_description(schema: dict) -> str:
-    return str(((schema.get("properties") or {}).get("issuer") or {}).get(
-        "description", ""
-    ) or "")
+    """Return a human-readable description of the expected document issuer."""
+    return str(
+        ((schema.get("properties") or {}).get("issuer") or {}).get("description", "")
+        or ""
+    )
 
 
 def _model_name(doctype: str) -> str:

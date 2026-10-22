@@ -1,4 +1,4 @@
-// Shared Badges + theme tests (@docbride/shared, P6-5).
+// Shared Badges + theme tests (@docubridge/shared, P6-5).
 //
 // Proves the badges render the VALUE as text (label = the verbatim vocabulary value, never
 // a rewritten explanation) and that makeTheme carries the caller's primary accent.

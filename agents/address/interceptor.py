@@ -19,6 +19,7 @@ exchange ``context_id`` (AGENT-5). It only fills fields the native path left emp
 experimental register catalog — no register change (see ``bridge/adk``). Never
 imports ``bridge/`` (isolation convention).
 """
+
 from __future__ import annotations
 
 from typing import Any

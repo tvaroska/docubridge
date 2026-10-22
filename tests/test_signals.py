@@ -23,7 +23,9 @@ with open(CORPUS_PATH) as f:
 CORPUS_RECORDS = CORPUS_DATA["documents"]
 
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 async def test_provider_produces_four_signals_from_corpus(record):
     """ExtractionSignalProvider produces the four signals from the corpus."""
     provider = ExtractionSignalProvider()
@@ -39,14 +41,19 @@ async def test_provider_produces_four_signals_from_corpus(record):
     assert signals.doctype == record["extraction"]["fields"]["doctype"]
 
     # Check type_match computed property
-    expected_type_match = record["extraction"]["fields"]["doctype"] in ["gov-id", "utility-bill"]
+    expected_type_match = record["extraction"]["fields"]["doctype"] in [
+        "gov-id",
+        "utility-bill",
+    ]
     assert signals.type_match == expected_type_match
 
     # Check canonical issuer
     assert signals.issuer == record["issuer"]
 
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 async def test_signals_to_gate_reproduces_corpus_verdicts(record):
     """dispose_signals reproduces the corpus expected_disposition/expected_gate."""
     provider = ExtractionSignalProvider()

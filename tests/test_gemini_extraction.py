@@ -8,6 +8,7 @@ extraction analogue of ``BRIDGE_TEST_GCP``) and SKIPS in the default suite, exac
 like the live seam tests — it is the "reproduce the Address eval corpus on the
 deployed extraction path" gate, run against a provisioned project (P7-9).
 """
+
 from __future__ import annotations
 
 import ast
@@ -216,7 +217,10 @@ _TWO_DOCTYPES = {
                 "properties": {
                     "name": {"type": "string"},
                     "issuing_authority": {"type": "string"},
-                    "expiry": {"type": "string", "description": "ISO date (YYYY-MM-DD)"},
+                    "expiry": {
+                        "type": "string",
+                        "description": "ISO date (YYYY-MM-DD)",
+                    },
                 }
             }
         }
@@ -264,7 +268,9 @@ def test_response_schema_unions_key_fields_across_doctypes():
     fields = schema["properties"]["fields"]
     key_fields = fields["properties"]["key_fields"]
     props = key_fields["properties"]
-    assert {"issuing_authority", "expiry", "service_address", "statement_date"} <= set(props)
+    assert {"issuing_authority", "expiry", "service_address", "statement_date"} <= set(
+        props
+    )
     assert all(spec["nullable"] is True for spec in props.values())
     # Not required: one document only ever carries one doctype's fields (and the
     # corpus's blurry bill carries none at all).
@@ -752,7 +758,9 @@ def test_gemini_imports_genai_lazily_not_at_module_level():
     google import (it stays edge-free/cycle-free like ``fixture.py``) and builds no
     client eagerly — the credential-free test seam.
     """
-    src = (Path(__file__).resolve().parents[1] / "bridge/extraction/gemini.py").read_text()
+    src = (
+        Path(__file__).resolve().parents[1] / "bridge/extraction/gemini.py"
+    ).read_text()
     tree = ast.parse(src)
 
     # No top-level (module body) google import.
@@ -834,7 +842,9 @@ def test_get_adapter_extraction_gcp_is_gcp_extraction():
 # --- live corpus terminal-outcome parity (gated) ---------------------------
 
 
-@pytest.mark.skipif(not _GEMINI, reason="set BRIDGE_TEST_GEMINI=1 to run the live Gemini engine")
+@pytest.mark.skipif(
+    not _GEMINI, reason="set BRIDGE_TEST_GEMINI=1 to run the live Gemini engine"
+)
 @pytest.mark.parametrize(
     "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
 )

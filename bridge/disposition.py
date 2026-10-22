@@ -22,6 +22,7 @@ class DispositionThresholds:
     Equal values are legal: there is then no confidence HITL band, and flags still
     route to HITL.
     """
+
     auto_approve_at: float = 0.85
     resubmit_below: float = 0.55
 
@@ -48,6 +49,7 @@ DEFAULT_THRESHOLDS = DispositionThresholds()
 @dataclass(frozen=True)
 class CorridorPoint:
     """One gate-bearing corpus record, projected onto what the gate reads."""
+
     record_id: str
     overall_confidence: float
     legible: bool
@@ -62,6 +64,7 @@ class Bound:
 
     ``gt_by`` / ``le_by`` name the corpus record that set each edge.
     """
+
     gt: float | None = None
     gt_by: str | None = None
     le: float | None = None
@@ -84,6 +87,7 @@ class Bound:
 @dataclass(frozen=True)
 class ThresholdCorridor:
     """The feasible threshold region implied by a set of corpus points."""
+
     resubmit_below: Bound
     auto_approve_at: Bound
     points: int
@@ -91,9 +95,9 @@ class ThresholdCorridor:
     def contains(self, t: DispositionThresholds) -> bool:
         """Both thresholds lie inside their bounds (``r <= a`` is the thresholds' own
         invariant, enforced at construction)."""
-        return self.resubmit_below.contains(t.resubmit_below) and self.auto_approve_at.contains(
-            t.auto_approve_at
-        )
+        return self.resubmit_below.contains(
+            t.resubmit_below
+        ) and self.auto_approve_at.contains(t.auto_approve_at)
 
     @property
     def feasible(self) -> bool:
@@ -183,6 +187,7 @@ def threshold_corridor(points: Iterable[CorridorPoint]) -> ThresholdCorridor:
 
 class DispositionVerdict(BaseModel, extra="forbid"):
     """A disposition verdict with reason code and human-readable message."""
+
     disposition: Disposition
     gate: Gate
     reason_code: str

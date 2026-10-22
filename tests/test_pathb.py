@@ -43,7 +43,9 @@ class SpyExtractor:
 async def test_clean_doc_auto_approves_one_step(doc_id):
     """A clean doc → ACCEPT, terminal, accepted, attempts unchanged (0)."""
     result = await pathb.step(
-        _state(), doc_id=doc_id, artifact_name=_artifact(doc_id),
+        _state(),
+        doc_id=doc_id,
+        artifact_name=_artifact(doc_id),
         extractor=FixtureExtractor(),
     )
     assert result.action is PathBAction.ACCEPT
@@ -57,7 +59,8 @@ async def test_clean_doc_auto_approves_one_step(doc_id):
 async def test_unsupported_doctype_terminal_reject():
     """passport-unsupported → REJECT, terminal, gate==unsupported (a judgment)."""
     result = await pathb.step(
-        _state(), doc_id="passport-unsupported",
+        _state(),
+        doc_id="passport-unsupported",
         artifact_name=_artifact("passport-unsupported"),
         extractor=FixtureExtractor(),
     )
@@ -79,7 +82,9 @@ async def test_blurry_parks_for_resubmit_then_clear_hitl_then_resolved_accept():
 
     # t5: bill-aquautil-blurry → resubmit park
     s1 = await pathb.step(
-        state, doc_id="bill-1", artifact_name=_artifact("bill-aquautil-blurry"),
+        state,
+        doc_id="bill-1",
+        artifact_name=_artifact("bill-aquautil-blurry"),
         extractor=ext,
     )
     assert s1.action is PathBAction.RESUBMIT
@@ -90,7 +95,9 @@ async def test_blurry_parks_for_resubmit_then_clear_hitl_then_resolved_accept():
 
     # t6: resubmit bill-aquautil-clear → HITL park (mid-confidence 0.72)
     s2 = await pathb.step(
-        s1.state, doc_id="bill-1", artifact_name=_artifact("bill-aquautil-clear"),
+        s1.state,
+        doc_id="bill-1",
+        artifact_name=_artifact("bill-aquautil-clear"),
         extractor=ext,
     )
     assert s2.action is PathBAction.HITL
@@ -122,8 +129,10 @@ async def test_resubmit_cap_escalates_not_rejects():
     # fail#1..#3 → RESUBMIT (park), attempts 1,2,3
     for i in range(1, 4):
         state_step = await pathb.step(
-            state, doc_id=f"bill-{i}",
-            artifact_name=_artifact("bill-aquautil-blurry"), extractor=ext,
+            state,
+            doc_id=f"bill-{i}",
+            artifact_name=_artifact("bill-aquautil-blurry"),
+            extractor=ext,
         )
         assert state_step.action is PathBAction.RESUBMIT, f"fail#{i} should park"
         assert state_step.terminal is False
@@ -132,7 +141,9 @@ async def test_resubmit_cap_escalates_not_rejects():
 
     # fail#4 → ESCALATE (over cap): pending, route-to-human, NOT rejected
     esc = await pathb.step(
-        state, doc_id="bill-4", artifact_name=_artifact("bill-aquautil-blurry"),
+        state,
+        doc_id="bill-4",
+        artifact_name=_artifact("bill-aquautil-blurry"),
         extractor=ext,
     )
     assert esc.action is PathBAction.ESCALATE
@@ -147,11 +158,17 @@ async def test_seam_called_once_per_document():
     """One extract() call per graph step (seam spy)."""
     spy = SpyExtractor()
     await pathb.step(
-        _state(), doc_id="d1", artifact_name=_artifact("gov-id-clean"), extractor=spy,
+        _state(),
+        doc_id="d1",
+        artifact_name=_artifact("gov-id-clean"),
+        extractor=spy,
     )
     assert len(spy.calls) == 1
     await pathb.step(
-        _state(), doc_id="d2", artifact_name=_artifact("bill-powerco-clean"), extractor=spy,
+        _state(),
+        doc_id="d2",
+        artifact_name=_artifact("bill-powerco-clean"),
+        extractor=spy,
     )
     assert len(spy.calls) == 2
 
@@ -159,7 +176,9 @@ async def test_seam_called_once_per_document():
 async def test_resolve_hitl_rejects_non_park():
     """resolve_hitl only finalizes a HITL/ESCALATE park."""
     accept_step = await pathb.step(
-        _state(), doc_id="d", artifact_name=_artifact("gov-id-clean"),
+        _state(),
+        doc_id="d",
+        artifact_name=_artifact("gov-id-clean"),
         extractor=FixtureExtractor(),
     )
     with pytest.raises(ValueError, match="HITL/ESCALATE park"):
@@ -169,11 +188,15 @@ async def test_resolve_hitl_rejects_non_park():
 async def test_resolve_hitl_reviewer_rejects():
     """A reviewer may resolve a HITL park to rejected (terminal REJECT)."""
     hitl = await pathb.step(
-        _state(), doc_id="d", artifact_name=_artifact("bill-aquautil-clear"),
+        _state(),
+        doc_id="d",
+        artifact_name=_artifact("bill-aquautil-clear"),
         extractor=FixtureExtractor(),
     )
     assert hitl.action is PathBAction.HITL
-    resolved = pathb.resolve_hitl(hitl, Disposition.rejected, message="Reviewer declined.")
+    resolved = pathb.resolve_hitl(
+        hitl, Disposition.rejected, message="Reviewer declined."
+    )
     assert resolved.action is PathBAction.REJECT
     assert resolved.terminal is True
     assert resolved.entry.disposition is Disposition.rejected

@@ -49,8 +49,8 @@ EDGE_MODE_ENV = "BRIDGE_EDGE_MODE"
 class Path(str, Enum):
     """The dual-path fulfillment mode for an inbound response."""
 
-    A = "A"    # structured extraction-assertion -> validate-only (no extraction)
-    B = "B"    # file upload / free text -> portal / extraction graph
+    A = "A"  # structured extraction-assertion -> validate-only (no extraction)
+    B = "B"  # file upload / free text -> portal / extraction graph
 
 
 def _is_extraction_assertion(data: dict) -> bool:
@@ -109,7 +109,7 @@ class EdgeMode(str, Enum):
     """The edge routing mode (``BRIDGE_EDGE_MODE``, S3-edge-1 D2)."""
 
     deterministic = "deterministic"  # R1 + R2 only — every message model-free
-    hybrid = "hybrid"                # + the LlmAgent leg for text-only intents
+    hybrid = "hybrid"  # + the LlmAgent leg for text-only intents
 
 
 def resolve_edge_mode(value: EdgeMode | str | None = None) -> EdgeMode:
@@ -139,11 +139,11 @@ def resolve_edge_mode(value: EdgeMode | str | None = None) -> EdgeMode:
 class Route(str, Enum):
     """Where the edge executor sends one inbound message (S3-edge-1 D3)."""
 
-    GUARD_REFUSE = "guard_refuse"            # G  — task parked for a reviewer
-    PATH_A = "path_a"                        # R1 — validate-only assertion
-    COLLECT = "collect"                      # R2 — the deterministic Collector
-    LLM = "llm"                              # R4 — text-only intent → LlmAgent leg
-    RESUME_REVIEW = "resume_review"          # R6 — resolution of the pending review
+    GUARD_REFUSE = "guard_refuse"  # G  — task parked for a reviewer
+    PATH_A = "path_a"  # R1 — validate-only assertion
+    COLLECT = "collect"  # R2 — the deterministic Collector
+    LLM = "llm"  # R4 — text-only intent → LlmAgent leg
+    RESUME_REVIEW = "resume_review"  # R6 — resolution of the pending review
     NO_PENDING_REVIEW = "no_pending_review"  # R5 — resolution, nothing pending
 
 

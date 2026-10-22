@@ -79,9 +79,7 @@ def disposition_policy_from_doc(skill_name: str, policy_doc: dict) -> Dispositio
         ) from e
 
     if max_resubmissions < 0:
-        raise ValueError(
-            f"max_resubmissions must be >= 0; got {max_resubmissions}"
-        )
+        raise ValueError(f"max_resubmissions must be >= 0; got {max_resubmissions}")
 
     policy = DispositionPolicy(
         auto_approve_at=auto_approve_at,

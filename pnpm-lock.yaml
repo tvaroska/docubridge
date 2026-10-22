@@ -10,7 +10,7 @@ importers:
 
   frontend/agent-console:
     dependencies:
-      '@docbride/shared':
+      '@docubridge/shared':
         specifier: workspace:*
         version: link:../shared
       '@emotion/react':
@@ -65,7 +65,7 @@ importers:
 
   frontend/ops-dashboard:
     dependencies:
-      '@docbride/shared':
+      '@docubridge/shared':
         specifier: workspace:*
         version: link:../shared
       '@emotion/react':
@@ -114,7 +114,7 @@ importers:
 
   frontend/provider-portal:
     dependencies:
-      '@docbride/shared':
+      '@docubridge/shared':
         specifier: workspace:*
         version: link:../shared
       '@emotion/react':
@@ -209,7 +209,7 @@ importers:
 
   frontend/timewarp:
     dependencies:
-      '@docbride/shared':
+      '@docubridge/shared':
         specifier: workspace:*
         version: link:../shared
       '@emotion/react':

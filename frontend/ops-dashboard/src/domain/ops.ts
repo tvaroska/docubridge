@@ -1,7 +1,7 @@
-// App-specific view model for the Ops Dashboard (P6-4; hoisted to @docbride/shared at P6-5).
+// App-specific view model for the Ops Dashboard (P6-4; hoisted to @docubridge/shared at P6-5).
 //
 // The shared contract core (LedgerEntry camel + its wire shape + the snake→camel mapEntry)
-// now lives in @docbride/shared (§2f). This module keeps only the DASHBOARD-SPECIFIC view
+// now lives in @docubridge/shared (§2f). This module keeps only the DASHBOARD-SPECIFIC view
 // types (OpsExchange / Snapshot) + the view mappers that compose the shared mapEntry.
 //
 // Content-not-pixels: the dashboard host sends protocol-only JSON (OpsExchange projections
@@ -15,7 +15,7 @@ import {
   type RfpStatus,
   type WireLedgerEntry,
   type WireRfpStatus,
-} from "@docbride/shared";
+} from "@docubridge/shared";
 
 // Re-export the shared contract core so existing app imports keep working.
 export { mapEntry };

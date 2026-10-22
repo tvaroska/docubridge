@@ -22,6 +22,7 @@ loaded skills for a name-token / tag substring match. If exactly one process ski
 exists, default to it (the current single-skill reality: ``address-proof``). Leave
 ``party=None`` (it falls back to the exchange context per the field doc).
 """
+
 from __future__ import annotations
 
 from a2a.helpers import proto_helpers as ph
@@ -48,7 +49,9 @@ def parse_text_request(text: str, *, context_id: str | None = None) -> CollectRe
     """
     stripped = text.strip()
     if not stripped:
-        raise ValueError("empty or whitespace-only text; cannot parse to a CollectRequest")
+        raise ValueError(
+            "empty or whitespace-only text; cannot parse to a CollectRequest"
+        )
 
     # Scan loaded process skills for a name-token or tag substring match
     skills = loaded_skills()
@@ -73,7 +76,9 @@ def parse_text_request(text: str, *, context_id: str | None = None) -> CollectRe
         if len(process_skills) == 1:
             matched_process = process_skills[0].name
         elif len(process_skills) == 0:
-            raise ValueError("no process skills loaded; cannot resolve process from text")
+            raise ValueError(
+                "no process skills loaded; cannot resolve process from text"
+            )
         else:
             raise ValueError(
                 f"could not resolve process from text (no match in {len(process_skills)} "

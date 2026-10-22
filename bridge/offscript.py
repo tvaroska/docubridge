@@ -10,6 +10,7 @@ instruction, not a new flow (design/adk.md).
 Imports contract + google.adk.tools (ToolContext typing) + stdlib only —
 NEVER agents/.
 """
+
 from google.adk.artifacts import BaseArtifactService
 from google.adk.tools import ToolContext
 
@@ -31,8 +32,12 @@ USER_NAMESPACE_PREFIX = "user:"
 
 
 async def _erase_artifact(
-    artifact_service: BaseArtifactService, *,
-    app_name: str, user_id: str, session_id: str, filename: str,
+    artifact_service: BaseArtifactService,
+    *,
+    app_name: str,
+    user_id: str,
+    session_id: str,
+    filename: str,
 ) -> bool:
     """Real erase of a document artifact's bytes (all versions) — not a soft flag.
 
@@ -50,17 +55,24 @@ async def _erase_artifact(
     if filename.startswith(USER_NAMESPACE_PREFIX):
         return False
     keys = await artifact_service.list_artifact_keys(
-        app_name=app_name, user_id=user_id, session_id=session_id,
+        app_name=app_name,
+        user_id=user_id,
+        session_id=session_id,
     )
     if filename not in keys:
         return False
     await artifact_service.delete_artifact(
-        app_name=app_name, user_id=user_id, session_id=session_id, filename=filename,
+        app_name=app_name,
+        user_id=user_id,
+        session_id=session_id,
+        filename=filename,
     )
     return True
 
 
-async def handle_deletion_request(artifact_name: str, tool_context: ToolContext) -> dict:
+async def handle_deletion_request(
+    artifact_name: str, tool_context: ToolContext
+) -> dict:
     """Handle an off-script deletion/erasure request: really erase the document's bytes.
 
     Deletion is a real erase (ArtifactService.delete_artifact), never a soft flag
@@ -79,8 +91,11 @@ async def handle_deletion_request(artifact_name: str, tool_context: ToolContext)
     erased = False
     if svc is not None and session is not None:
         erased = await _erase_artifact(
-            svc, app_name=session.app_name, user_id=session.user_id,
-            session_id=session.id, filename=artifact_name,
+            svc,
+            app_name=session.app_name,
+            user_id=session.user_id,
+            session_id=session.id,
+            filename=artifact_name,
         )
     if erased:
         return {

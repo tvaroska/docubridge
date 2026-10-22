@@ -241,6 +241,7 @@ class EmailProcessor:
     # -- outbound helpers (the invite / "chase now" copy, S0-frontend-1) ------------ #
 
     def token_for(self, rfp_id: str, party: str) -> str:
+        """Extract the intake correlation token from an inbound email recipient address."""
         return mint_token(self._secret, rfp_id, party)
 
     def reply_address(self, rfp_id: str, party: str) -> str:
@@ -352,7 +353,9 @@ class EmailProcessor:
             if att.mime_type not in READABLE_MIME_TYPES:
                 unreadable.append(
                     UnreadableAttachment(
-                        index=att.index, filename=att.filename, reason=REASON_UNSUPPORTED
+                        index=att.index,
+                        filename=att.filename,
+                        reason=REASON_UNSUPPORTED,
                     )
                 )
                 continue
@@ -381,7 +384,9 @@ class EmailProcessor:
             submission = DocumentSubmission(
                 doc_id=f"email-{key}-{att.index}",
                 artifact_name=uri,
-                artifact=ArtifactRef(uri=uri, mime_type=att.mime_type, name=att.filename),
+                artifact=ArtifactRef(
+                    uri=uri, mime_type=att.mime_type, name=att.filename
+                ),
             )
             version = await persist_submission(
                 self.artifact_store,
@@ -693,7 +698,9 @@ def build_email_app(
                 _LOG.warning("email notification ignored: tenantId mismatch")
                 ignored += 1
                 continue
-            if not isinstance(message_id, str) or not MESSAGE_ID_RE.fullmatch(message_id):
+            if not isinstance(message_id, str) or not MESSAGE_ID_RE.fullmatch(
+                message_id
+            ):
                 _LOG.warning("email notification ignored: invalid message id")
                 ignored += 1
                 continue
@@ -710,7 +717,9 @@ def build_email_app(
                         seam.mark_processed, key, outcome.model_dump(mode="json")
                     )
                 except Exception:
-                    _LOG.exception("email oversize marker failed; asking Graph to retry")
+                    _LOG.exception(
+                        "email oversize marker failed; asking Graph to retry"
+                    )
                     return Response(status_code=503)
                 ignored += 1
                 continue

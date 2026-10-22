@@ -75,7 +75,7 @@ class A2uiView(BaseModel):
     kind: Literal["party_status", "upload_prompt", "hitl_review"]
     context_id: str
     accepted: list[A2uiItem] = []
-    rejected: list[A2uiItem] = []          # sent-but-not-accepted, each with its agent message
+    rejected: list[A2uiItem] = []  # sent-but-not-accepted, each with its agent message
     outstanding: list[A2uiRequirement] = []
     actions: list[A2uiAction] = []
     lifecycle: LifecycleStatus = LifecycleStatus.on_track

@@ -233,10 +233,7 @@ def test_timeline_parity():
 
     # Load expected from corpus
     timeline = load_timeline()
-    beats = [
-        b for b in timeline["exchanges"][1]["beats"]
-        if b["event"] == "followup"
-    ]
+    beats = [b for b in timeline["exchanges"][1]["beats"] if b["event"] == "followup"]
 
     # Assert parity: (tick, step) matches (tick, kind)
     assert [(e.tick, e.step.value) for e in ladder.events] == [
@@ -257,5 +254,6 @@ def test_stamp_lifecycle_projects_onto_turn_and_surfaces():
 
     # Verify existing surfacing
     from bridge.edge.wire import summarize_turn
+
     summary = summarize_turn(t2)
     assert summary.endswith("[escalated]")

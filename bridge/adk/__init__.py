@@ -1,4 +1,5 @@
 """Bridge ADK integration core (experimental-surface register + Ring-3 discipline artifacts)."""
+
 from __future__ import annotations
 
 from bridge.adk.experimental import (

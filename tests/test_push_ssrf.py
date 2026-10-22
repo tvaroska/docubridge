@@ -6,6 +6,7 @@ registration, with an env allowlist escape hatch.
 S0-sec-3: the manual-run ``serve`` helpers default to ``127.0.0.1``, not
 ``0.0.0.0``.
 """
+
 from __future__ import annotations
 
 import inspect

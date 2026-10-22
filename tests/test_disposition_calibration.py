@@ -112,7 +112,11 @@ def test_corridor_just_outside_flips_some_corpus_gate(auto, resubmit):
     """Exactness: just outside the corridor, at least one corpus gate changes."""
     t = DispositionThresholds(auto_approve_at=auto, resubmit_below=resubmit)
     assert not threshold_corridor(corpus_points()).contains(t)
-    flipped = [rid for rid, s, gate in _corpus_signals() if dispose_signals(s, t).gate is not gate]
+    flipped = [
+        rid
+        for rid, s, gate in _corpus_signals()
+        if dispose_signals(s, t).gate is not gate
+    ]
     assert flipped, t
 
 
@@ -120,13 +124,17 @@ def test_corridor_just_outside_flips_some_corpus_gate(auto, resubmit):
 
 
 def test_legible_resubmit_sets_lower_bound():
-    c = threshold_corridor([_pt("a", 0.4, Gate.resubmit), _pt("b", 0.45, Gate.resubmit)])
+    c = threshold_corridor(
+        [_pt("a", 0.4, Gate.resubmit), _pt("b", 0.45, Gate.resubmit)]
+    )
     assert c.resubmit_below == Bound(gt=0.45, gt_by="b")
     assert c.auto_approve_at == Bound()
 
 
 def test_ties_keep_first_record():
-    c = threshold_corridor([_pt("a", 0.9, Gate.auto_approve), _pt("b", 0.9, Gate.auto_approve)])
+    c = threshold_corridor(
+        [_pt("a", 0.9, Gate.auto_approve), _pt("b", 0.9, Gate.auto_approve)]
+    )
     assert c.auto_approve_at.le_by == "a"
     assert c.resubmit_below.le_by == "a"
 
@@ -171,7 +179,9 @@ def test_illegible_expecting_non_resubmit_raises():
 
 def test_infeasible_pair():
     """resubmit_below > 0.8 and auto_approve_at <= 0.7 cannot both hold."""
-    c = threshold_corridor([_pt("r", 0.8, Gate.resubmit), _pt("a", 0.7, Gate.auto_approve)])
+    c = threshold_corridor(
+        [_pt("r", 0.8, Gate.resubmit), _pt("a", 0.7, Gate.auto_approve)]
+    )
     assert c.resubmit_below.gt == 0.8
     assert c.auto_approve_at.le == 0.7
     assert c.feasible is False

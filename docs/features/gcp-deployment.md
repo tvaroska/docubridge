@@ -1170,7 +1170,7 @@ project stay cleanly skipped as the documented operator step (no silent cap).
   asyncpg / google-cloud-storage / google-cloud-tasks), copies `contract/ bridge/ skills/
   wiki/` ONLY (never `agents/` — the isolation invariant; the eval corpus ships because the
   fixture/artifact loaders read it via `__file__`-relative paths at runtime). Runs from the
-  source tree (docbride is a uv virtual project — no wheel install, so `__file__` stays in
+  source tree (docubridge is a uv virtual project — no wheel install, so `__file__` stays in
   the tree and the corpus resolves). `EXPOSE 8080`; `CMD` boots `serve_container()`.
 
 - **`serve_container()` in `bridge/edge/server.py`** — the container entrypoint: reads `PORT`

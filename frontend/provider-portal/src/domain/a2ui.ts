@@ -1,8 +1,8 @@
-// App-specific A2UI view model for the Provider Portal (P6-2; hoisted to @docbride/shared
+// App-specific A2UI view model for the Provider Portal (P6-2; hoisted to @docubridge/shared
 // at P6-5).
 //
 // The shared contract core (the camel LedgerEntry / Requirement + their wire shapes + the
-// snake→camel mapEntry / mapRequirement) now lives in @docbride/shared (§2f). This module
+// snake→camel mapEntry / mapRequirement) now lives in @docubridge/shared (§2f). This module
 // keeps only the PORTAL-SPECIFIC A2UI view types (A2uiView / A2uiAction) + the view mapper
 // that composes the shared mappers.
 //
@@ -19,7 +19,7 @@ import {
   type Requirement,
   type WireLedgerEntry,
   type WireRequirement,
-} from "@docbride/shared";
+} from "@docubridge/shared";
 
 // Re-export the shared contract core so existing app imports keep working. The portal's
 // A2UI "item" IS a shared LedgerEntry; its "requirement" IS a shared Requirement (the portal

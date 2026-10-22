@@ -88,8 +88,13 @@ class PageAwareFakeClient:
         with self._lock:
             index = len(self.calls)
             record = {
-                "index": index, "model": model, "contents": list(contents),
-                "config": config, "kind": kind, "window": window, "truncated": False,
+                "index": index,
+                "model": model,
+                "contents": list(contents),
+                "config": config,
+                "kind": kind,
+                "window": window,
+                "truncated": False,
             }
             self.calls.append(record)
             self.in_flight += 1
@@ -99,7 +104,9 @@ class PageAwareFakeClient:
                 time.sleep(self.latency_s)
             self._check_document(contents)
             if kind == "survey":
-                return _response(json.dumps({"page_count": self.doc.total_pages}), "STOP")
+                return _response(
+                    json.dumps({"page_count": self.doc.total_pages}), "STOP"
+                )
             first, last = window or (1, self.doc.total_pages)
             retry = any(isinstance(c, str) and _CORRECTION_MARK in c for c in contents)
             fault = self.faults.get(window)
@@ -111,7 +118,9 @@ class PageAwareFakeClient:
             text = json.dumps(payload)
             rows = sum(len(r) for r in payload["fields"].get("tables", {}).values())
             estimate = rows * self.tokens_per_row + self.base_tokens
-            budget = config.get("max_output_tokens") if isinstance(config, dict) else None
+            budget = (
+                config.get("max_output_tokens") if isinstance(config, dict) else None
+            )
             if budget is not None and estimate > budget:
                 record["truncated"] = True
                 cut = max(1, int(len(text) * budget / estimate))
@@ -141,7 +150,9 @@ class PageAwareFakeClient:
         elif by_ref is not None:
             assert str(by_ref.file_uri).startswith("gs://"), by_ref.file_uri
         else:  # pragma: no cover - a misuse of the double
-            raise AssertionError(f"expected a PDF document part, got {type(part).__name__}")
+            raise AssertionError(
+                f"expected a PDF document part, got {type(part).__name__}"
+            )
 
     def _payload(self, first: int, last: int) -> dict:
         doc = self.doc
@@ -156,10 +167,14 @@ class PageAwareFakeClient:
             if 0 <= local < local_rows:
                 path = f"fields.tables.rates[{local}].frequency"
                 flagged.append(path)
-                reviews.append({
-                    "path": path, "reason": "low_confidence", "confidence": 0.41,
-                    "detail": "frequency printed ambiguously",
-                })
+                reviews.append(
+                    {
+                        "path": path,
+                        "reason": "low_confidence",
+                        "confidence": 0.41,
+                        "detail": "frequency printed ambiguously",
+                    }
+                )
                 confidence[path] = 0.41
         fields: dict = {
             "doctype": doc.doctype,

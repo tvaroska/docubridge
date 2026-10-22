@@ -90,7 +90,9 @@ def compose(
         msg[name] = value
     msg.set_content("Please find our quote attached.\n")
     if inline_png:
-        msg.add_alternative('<p>Our quote attached.</p><img src="cid:logo">', subtype="html")
+        msg.add_alternative(
+            '<p>Our quote attached.</p><img src="cid:logo">', subtype="html"
+        )
         html = msg.get_payload()[1]
         html.add_related(PNG_1PX, maintype="image", subtype="png", cid="<logo>")
     for filename, data, mime in attachments or []:

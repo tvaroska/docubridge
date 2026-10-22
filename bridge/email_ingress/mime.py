@@ -209,7 +209,11 @@ def parse_mime(
                 ):
                     skipped_inline += 1
                     continue
-                if ctype in _BODY_TYPES and disposition != "attachment" and not declared:
+                if (
+                    ctype in _BODY_TYPES
+                    and disposition != "attachment"
+                    and not declared
+                ):
                     continue  # the body — never kept
                 data = part.get_payload(decode=True) or b""
             else:
@@ -217,7 +221,9 @@ def parse_mime(
             index = len(attachments)
             mime_type = ctype
             if mime_type == "application/octet-stream" and declared:
-                mime_type = mime_for(sanitize_filename(declared, index=index, mime_type=ctype))
+                mime_type = mime_for(
+                    sanitize_filename(declared, index=index, mime_type=ctype)
+                )
             filename = sanitize_filename(declared, index=index, mime_type=mime_type)
             if mime_type == "application/octet-stream":
                 mime_type = mime_for(filename)

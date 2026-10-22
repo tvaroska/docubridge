@@ -41,7 +41,7 @@ default global endpoint answers "processor not found" for an ``eu`` processor.
 **Portable by construction.** Only the stdlib, a lazy ``google.cloud.documentai``
 import, and ``ResolvedDocument`` (used by the thin ``__call__`` adapter alone). The
 builders and the flattener take primitives (``mime_type``, ``data``, ``uri``), so this
-module can be vendored by a consumer engine (Aon's ``ADP_DOCAI_PROCESSOR`` is the same
+module can be vendored by a consumer engine (the consumer's ``ADP_DOCAI_PROCESSOR`` is the same
 setting). No module-level ``google*`` import — a structural test enforces it.
 """
 
@@ -280,10 +280,16 @@ def extract_docai_source_anchors(
             name_layout = getattr(ff, "field_name", None)
             val_layout = getattr(ff, "field_value", None)
             raw_name = (
-                getattr(name_layout, "content", None)
-                or getattr(getattr(name_layout, "text_anchor", None), "content", None)
-                or ""
-            ).strip().rstrip(":")
+                (
+                    getattr(name_layout, "content", None)
+                    or getattr(
+                        getattr(name_layout, "text_anchor", None), "content", None
+                    )
+                    or ""
+                )
+                .strip()
+                .rstrip(":")
+            )
             if not raw_name or raw_name in anchors:
                 continue
             raw_val = (
@@ -319,10 +325,12 @@ class DocAIPrepass:
 
     @property
     def processor(self) -> str:
+        """Return the configured Document AI processor resource path."""
         return self._ref.name
 
     @property
     def endpoint(self) -> str:
+        """Return the regional Document AI API endpoint hostname."""
         return self._ref.endpoint
 
     def _get_client(self):

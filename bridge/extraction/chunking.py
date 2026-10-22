@@ -145,7 +145,7 @@ def _object_streams(data: bytes) -> Iterable[bytes]:
         head = _STREAM.search(body)
         if head is None:
             continue
-        raw = body[head.end():]
+        raw = body[head.end() :]
         stop = raw.rfind(b"endstream")
         if stop >= 0:
             raw = raw[:stop]
@@ -192,8 +192,12 @@ def pdf_page_count(data: bytes) -> int | None:
 def plan_windows(total: int, size: int) -> list[tuple[int, int]]:
     """1-based inclusive page windows of ``size`` pages over ``total`` pages."""
     if total < 1 or size < 1:
-        raise ValueError(f"plan_windows needs total >= 1 and size >= 1; got {total}, {size}")
-    return [(first, min(first + size - 1, total)) for first in range(1, total + 1, size)]
+        raise ValueError(
+            f"plan_windows needs total >= 1 and size >= 1; got {total}, {size}"
+        )
+    return [
+        (first, min(first + size - 1, total)) for first in range(1, total + 1, size)
+    ]
 
 
 def bisect_window(first: int, last: int) -> tuple[tuple[int, int], tuple[int, int]]:
@@ -234,7 +238,10 @@ def rebase_path(
         return path, False
     table, idx = match["table"], int(match["idx"])
     if idx < window_rows.get(table, 0):
-        return f"{match['prefix']}{table}[{idx + offsets.get(table, 0)}]{match['rest']}", False
+        return (
+            f"{match['prefix']}{table}[{idx + offsets.get(table, 0)}]{match['rest']}",
+            False,
+        )
     return f"fields.tables.{table}", True
 
 
@@ -276,8 +283,13 @@ def merge_window_results(
     doctype = head.fields.doctype
     for a, b, result in windows[1:]:
         if result.fields.doctype != doctype:
-            _conflict("doctype", doctype, _span(first_a, first_b),
-                      result.fields.doctype, _span(a, b))
+            _conflict(
+                "doctype",
+                doctype,
+                _span(first_a, first_b),
+                result.fields.doctype,
+                _span(a, b),
+            )
 
     issuer: str | None = None
     issuer_span = ""
@@ -318,7 +330,9 @@ def merge_window_results(
                 _LOG.warning(
                     "page window %s: row path %r names a row the window did not emit; "
                     "coarsened to %r",
-                    _span(_a, _b), path, rebased,
+                    _span(_a, _b),
+                    path,
+                    rebased,
                 )
             return rebased
 

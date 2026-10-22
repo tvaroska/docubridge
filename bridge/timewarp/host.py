@@ -107,10 +107,12 @@ class TimewarpHost:
 
     # ---------------------------------------------------------- pause/reset --
     def pause(self) -> dict:
+        """Pause automatic virtual-clock progression on the timewarp host."""
         self._paused = True
         return self.state()
 
     def resume(self) -> dict:
+        """Resume virtual-clock progression on the timewarp host."""
         self._paused = False
         return self.state()
 

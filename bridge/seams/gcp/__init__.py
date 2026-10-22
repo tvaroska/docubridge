@@ -186,6 +186,7 @@ class GcpSessions(SessionsSeam):
         location: str | None = None,
         vertex_factory=None,
     ):
+        """Construct the ADK session service backed by Vertex AI Agent Engine Sessions."""
         raw_engine_id = (
             agent_engine_id
             or self._agent_engine_id
@@ -198,9 +199,7 @@ class GcpSessions(SessionsSeam):
                 location=location or self._location,
             )
             if vertex_factory is not None:
-                return vertex_factory(
-                    project=proj, location=loc, agent_engine_id=eid
-                )
+                return vertex_factory(project=proj, location=loc, agent_engine_id=eid)
             from google.adk.sessions import VertexAiSessionService
 
             return VertexAiSessionService(
@@ -242,6 +241,7 @@ class GcpMemoryBank(MemoryBankSeam):
         location: str | None = None,
         vertex_factory=None,
     ):
+        """Construct the ADK memory service backed by Vertex AI Agent Engine Memory Bank."""
         del db_path  # local-only SQLite path parameter; unused on Vertex Memory Bank
         proj, loc, eid = parse_agent_engine_resource(
             agent_engine_id or self._agent_engine_id,
@@ -266,6 +266,7 @@ class GcpTaskStore(TaskStoreSeam):
     """
 
     def build_task_store(self, db_url: str | None = None):
+        """Construct the durable A2A task store backed by Firestore in Native mode."""
         from a2a.server.tasks import DatabaseTaskStore
         from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -298,6 +299,7 @@ class GcpExchangeStore(ExchangeStoreSeam):
     """
 
     def build_exchange_store(self, db_url: str | None = None):
+        """Construct the durable exchange store backed by Firestore and Cloud Storage."""
         from bridge.exchange_store import SqlExchangeStore
 
         return SqlExchangeStore(_resolve_dsn(db_url))
@@ -377,7 +379,9 @@ def _TerminalRetryTaskStore(inner, **kwargs):  # class-like factory name
     return _terminal_retry_task_store()(inner, **kwargs)
 
 
-def _resolve_bucket(bucket_name: str | None = None, env: str = SKILLS_BUCKET_ENV) -> str:
+def _resolve_bucket(
+    bucket_name: str | None = None, env: str = SKILLS_BUCKET_ENV
+) -> str:
     """Resolve the Skill Registry GCS bucket: ``bucket_name`` arg wins, else env.
 
     Raises ``RuntimeError`` when neither is set — the gcp adapter REFUSES a silent
@@ -426,7 +430,7 @@ def _download_prefix(bucket, prefix: str, dest) -> None:
     skipped. ``dest`` is a ``Path``.
     """
     for blob in bucket.list_blobs(prefix=prefix):
-        rel = blob.name[len(prefix):]
+        rel = blob.name[len(prefix) :]
         if not rel:
             continue
         target = dest / rel
@@ -470,6 +474,7 @@ class GcpSkillRegistry(SkillRegistrySeam):
         return Client().bucket(name)
 
     def list_skills(self):
+        """List all skill packages discovered in the Cloud Storage skills bucket."""
         import tempfile
         from pathlib import Path
 
@@ -494,6 +499,7 @@ class GcpSkillRegistry(SkillRegistrySeam):
         return metas
 
     def get_skill(self, name: str):
+        """Retrieve a single skill package definition by skill name."""
         import tempfile
         from pathlib import Path
 
@@ -508,6 +514,7 @@ class GcpSkillRegistry(SkillRegistrySeam):
             return skill_meta_from_dir(dest)
 
     def install_skill(self, name, skill_md, assets=None):
+        """Upload and register a skill directory into the Cloud Storage skills bucket."""
         import tempfile
         from pathlib import Path
 
@@ -530,6 +537,7 @@ class GcpSkillRegistry(SkillRegistrySeam):
     def read_asset(self, name, rel):
         # Traversal defense BEFORE any I/O (no client built for a bad request) —
         # the same defense install_skill applies, on the read side.
+        """Read a raw asset file belonging to an installed skill package."""
         _validate_skill_paths(name, [rel])
         blob = self._bucket().blob(f"{name}/{rel}")
         if not blob.exists():
@@ -657,6 +665,7 @@ class _GcpCloudTasksScheduler:
             client.delete_task(name=name)
 
     def now(self) -> int:
+        """Return the current UTC timestamp from the scheduler clock."""
         import time
 
         return int(time.time())
@@ -740,13 +749,17 @@ class _GcpCloudTasksScheduler:
             if body:
                 data = json.loads(body)
                 key, payload = data.get("key", ""), data.get("payload")
-            alarms.append(Alarm(key=key, fire_at=_schedule_seconds(st), payload=payload))
+            alarms.append(
+                Alarm(key=key, fire_at=_schedule_seconds(st), payload=payload)
+            )
         return alarms
 
     def advance(self, ticks: int):
+        """Advance the scheduler clock by a relative duration and fire due callbacks."""
         raise NotImplementedError(_ADVANCE_UNSUPPORTED)
 
     def advance_to(self, tick: int):
+        """Advance the scheduler clock to a target UTC timestamp and fire due callbacks."""
         raise NotImplementedError(_ADVANCE_UNSUPPORTED)
 
 
@@ -965,6 +978,7 @@ class _AgentIdentityTransport:
         httpx.Client().post(url, headers=headers, content=body)
 
     def deliver(self, message) -> None:
+        """Deliver a signed A2A envelope to a remote peer endpoint with Cloud Run OIDC credentials."""
         target_url = getattr(message, "card_url", None)
         if not target_url:
             # Nudge / Delivery carry a party channel / recipient, not an https RPC
@@ -973,7 +987,9 @@ class _AgentIdentityTransport:
             # local fake transport holds (OutboundClient still mints the receipt).
             return
         url = reconcile_card_host(target_url, self._gateway_host)  # refuse-loud
-        id_token = self._fetch_id_token(url)  # Agent Identity: audience == reconciled url
+        id_token = self._fetch_id_token(
+            url
+        )  # Agent Identity: audience == reconciled url
         headers = {
             "Authorization": f"Bearer {id_token}",
             "Content-Type": "application/json",
@@ -1101,8 +1117,7 @@ class GcpExtraction(ExtractionSeam):
         else → ``ValueError`` (refuse-loud on misconfig).
         """
         name = (
-            self._engine_name
-            or os.environ.get(BRIDGE_EXTRACTION_ENGINE_ENV, "gemini")
+            self._engine_name or os.environ.get(BRIDGE_EXTRACTION_ENGINE_ENV, "gemini")
         ).strip() or "gemini"
         if name == "gemini":
             from bridge.extraction.gemini import GeminiExtractor
@@ -1123,6 +1138,7 @@ class GcpExtraction(ExtractionSeam):
         )
 
     async def extract(self, artifact_name: str):
+        """Run structured document extraction via Document AI and Gemini schema mapping."""
         return await self._resolve_engine().extract(artifact_name)
 
 
@@ -1189,11 +1205,13 @@ class GcpEmailIngress(EmailIngressSeam):
         return True
 
     def land(self, key: str, raw: bytes) -> bool:
+        """Persist an inbound raw MIME email message into the Cloud Storage ingress prefix."""
         validate_landing_key(key)
         blob = self._bucket().blob(f"inbox/{key}.eml")
         return self._create_only(blob, raw, "message/rfc822")
 
     def pending(self) -> list[str]:
+        """List message IDs currently waiting in the pending ingress prefix."""
         import re
 
         from ..protocols import EMAIL_KEY_PATTERN
@@ -1209,7 +1227,9 @@ class GcpEmailIngress(EmailIngressSeam):
             rel = blob.name[len("inbox/") :]
             key = rel.removesuffix(".eml")
             if not rel.endswith(".eml") or not re.fullmatch(EMAIL_KEY_PATTERN, key):
-                _LOG.warning("email_ingress: skipping unexpected inbox object %r", blob.name)
+                _LOG.warning(
+                    "email_ingress: skipping unexpected inbox object %r", blob.name
+                )
                 continue
             if key in done:
                 continue
@@ -1217,6 +1237,7 @@ class GcpEmailIngress(EmailIngressSeam):
         return [key for _, key in sorted(rows)]
 
     def read(self, key: str) -> bytes:
+        """Read the raw MIME bytes for a pending or processed ingress message ID."""
         validate_landing_key(key)
         blob = self._bucket().blob(f"inbox/{key}.eml")
         if not blob.exists():
@@ -1224,6 +1245,7 @@ class GcpEmailIngress(EmailIngressSeam):
         return blob.download_as_bytes()
 
     def put_attachment(self, key, index, filename, data, mime_type) -> str:
+        """Upload an extracted MIME attachment to the Cloud Storage attachment prefix."""
         validate_landing_key(key)
         validate_attachment_slot(index, filename)
         name = f"attachments/{key}/{index}/{filename}"
@@ -1232,6 +1254,7 @@ class GcpEmailIngress(EmailIngressSeam):
         return f"gs://{bucket.name}/{name}"
 
     def mark_processed(self, key: str, outcome: dict) -> bool:
+        """Move a processed message from the pending prefix to the processed archive prefix."""
         import json
 
         validate_landing_key(key)
@@ -1240,6 +1263,7 @@ class GcpEmailIngress(EmailIngressSeam):
         return self._create_only(blob, body, "application/json")
 
     def processed(self, key: str) -> dict | None:
+        """List message IDs that have been marked as processed."""
         import json
 
         validate_landing_key(key)

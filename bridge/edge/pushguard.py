@@ -22,6 +22,7 @@ resolves public at ``set_info`` time and private at send time) — is P7
 internal target, so the POST simply fails; only names/literals that resolve to a
 private range are the SSRF risk this guard blocks.
 """
+
 from __future__ import annotations
 
 from a2a.server.tasks import PushNotificationConfigStore
@@ -56,6 +57,7 @@ class SsrfGuardPushConfigStore(PushNotificationConfigStore):
         self._allowlist = allowlist if allowlist is not None else allowlist_from_env()
 
     async def set_info(self, task_id, notification_config, context):
+        """Validate the webhook destination against SSRF rules and store the push notification config."""
         url = getattr(notification_config, "url", "") or ""
         allowed, reason = webhook_url_allowed(url, allowlist=self._allowlist)
         if not allowed:
@@ -65,12 +67,15 @@ class SsrfGuardPushConfigStore(PushNotificationConfigStore):
         return await self._inner.set_info(task_id, notification_config, context)
 
     async def get_info(self, task_id, context):
+        """Retrieve the stored push notification configuration for a task ID."""
         return await self._inner.get_info(task_id, context)
 
     async def delete_info(self, task_id, context, config_id=None):
+        """Delete the stored push notification configuration for a task ID."""
         return await self._inner.delete_info(task_id, context, config_id)
 
     async def get_info_for_dispatch(self, task_id):
+        """Re-validate the target webhook URL immediately before outbound push dispatch."""
         return await self._inner.get_info_for_dispatch(task_id)
 
 

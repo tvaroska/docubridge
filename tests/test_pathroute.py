@@ -197,12 +197,17 @@ HYB = EdgeMode.hybrid
     ("message", "expected"),
     [
         pytest.param(_assertion_msg(), Route.PATH_A, id="assertion"),
-        pytest.param(_msg([*_collect_parts(), _url_part()]), Route.COLLECT, id="collect+file"),
+        pytest.param(
+            _msg([*_collect_parts(), _url_part()]), Route.COLLECT, id="collect+file"
+        ),
         pytest.param(_msg(_collect_parts()), Route.COLLECT, id="collect-only"),
-        pytest.param(_msg([ph.new_text_part("delete bill.pdf")]), Route.COLLECT, id="text-only"),
+        pytest.param(
+            _msg([ph.new_text_part("delete bill.pdf")]), Route.COLLECT, id="text-only"
+        ),
         pytest.param(_msg([_resolution_part()]), Route.COLLECT, id="resolution"),
         pytest.param(
-            _msg([_resolution_part(), ph.new_text_part("ok")]), Route.COLLECT,
+            _msg([_resolution_part(), ph.new_text_part("ok")]),
+            Route.COLLECT,
             id="resolution+text",
         ),
     ],
@@ -228,35 +233,50 @@ def test_classify_route_deterministic_is_path_a_or_collect(
         pytest.param(_msg([_url_part()]), Route.COLLECT, id="file-only-url"),
         pytest.param(
             _msg([ph.new_raw_part(b"inline", media_type="image/svg+xml")]),
-            Route.COLLECT, id="raw-inline-bytes",
+            Route.COLLECT,
+            id="raw-inline-bytes",
         ),
         pytest.param(
-            _msg([ph.new_text_part("hi"), ph.new_raw_part(b"x", media_type="image/png")]),
-            Route.COLLECT, id="text+raw",
+            _msg(
+                [ph.new_text_part("hi"), ph.new_raw_part(b"x", media_type="image/png")]
+            ),
+            Route.COLLECT,
+            id="text+raw",
         ),
         pytest.param(
             _msg([ph.new_text_part("collect address proof"), _url_part()]),
-            Route.COLLECT, id="text+url",
+            Route.COLLECT,
+            id="text+url",
         ),
         pytest.param(
             _msg([ph.new_text_part("please"), *_collect_parts()]),
-            Route.COLLECT, id="text+collect",
+            Route.COLLECT,
+            id="text+collect",
         ),
-        pytest.param(_msg([ph.new_text_part("delete bill.pdf")]), Route.LLM, id="text-only"),
+        pytest.param(
+            _msg([ph.new_text_part("delete bill.pdf")]), Route.LLM, id="text-only"
+        ),
         pytest.param(
             _msg([ph.new_text_part("I need"), ph.new_text_part("a person")]),
-            Route.LLM, id="multi-text",
+            Route.LLM,
+            id="multi-text",
         ),
-        pytest.param(_msg([ph.new_text_part("   ")]), Route.COLLECT, id="whitespace-text"),
+        pytest.param(
+            _msg([ph.new_text_part("   ")]), Route.COLLECT, id="whitespace-text"
+        ),
         pytest.param(_msg([]), Route.COLLECT, id="empty"),
         pytest.param(
-            _msg([ph.new_data_part({"not": "a-request"})]), Route.COLLECT,
+            _msg([ph.new_data_part({"not": "a-request"})]),
+            Route.COLLECT,
             id="unrelated-data",
         ),
-        pytest.param(_msg([_resolution_part()]), Route.NO_PENDING_REVIEW, id="resolution"),
+        pytest.param(
+            _msg([_resolution_part()]), Route.NO_PENDING_REVIEW, id="resolution"
+        ),
         pytest.param(
             _msg([ph.new_text_part("approve it"), _resolution_part()]),
-            Route.NO_PENDING_REVIEW, id="resolution+text",
+            Route.NO_PENDING_REVIEW,
+            id="resolution+text",
         ),
     ],
 )
@@ -272,7 +292,9 @@ def test_classify_route_hybrid_text_on_escalated_task_goes_to_llm():
 
 def test_classify_route_hybrid_resolution_matches_pending_review():
     msg = _msg([_resolution_part()])
-    assert _route(msg, HYB, task_state=INPUT_REQUIRED, pending=True) is Route.RESUME_REVIEW
+    assert (
+        _route(msg, HYB, task_state=INPUT_REQUIRED, pending=True) is Route.RESUME_REVIEW
+    )
     with_text = _msg([ph.new_text_part("approved"), _resolution_part()])
     assert (
         _route(with_text, HYB, task_state=INPUT_REQUIRED, pending=True)
@@ -299,12 +321,14 @@ def test_classify_route_hybrid_guard_precedes_everything(message):
 @pytest.mark.parametrize("task_state", [None, COMPLETED, TaskState.TASK_STATE_WORKING])
 def test_classify_route_hybrid_pending_only_guards_input_required(task_state):
     """has_pending_review alone does not guard — only on an INPUT_REQUIRED task."""
-    assert _route(
-        _msg([ph.new_text_part("hi")]), HYB, task_state=task_state, pending=True
-    ) is Route.LLM
+    assert (
+        _route(_msg([ph.new_text_part("hi")]), HYB, task_state=task_state, pending=True)
+        is Route.LLM
+    )
     assert _route(_assertion_msg(), HYB, task_state=task_state, pending=True) is (
         Route.PATH_A
     )
-    assert _route(
-        _msg([_resolution_part()]), HYB, task_state=task_state, pending=True
-    ) is Route.NO_PENDING_REVIEW
+    assert (
+        _route(_msg([_resolution_part()]), HYB, task_state=task_state, pending=True)
+        is Route.NO_PENDING_REVIEW
+    )

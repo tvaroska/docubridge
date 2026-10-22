@@ -132,9 +132,7 @@ def rfp_board_from_env(
         )
     from bridge.dashboard.board import RfpBoard  # lazy: the circular-import trap
 
-    return RfpBoard(
-        policy=policy, clock=clock, store=store, live_policy=rfp_policy_for
-    )
+    return RfpBoard(policy=policy, clock=clock, store=store, live_policy=rfp_policy_for)
 
 
 def rfp_context_id(request: CollectRequest, a2a_context_id: str) -> str:

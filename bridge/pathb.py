@@ -62,11 +62,13 @@ ESCALATE_MESSAGE = (
 class PathBAction(str, Enum):
     """The routing decision a single graph traversal emits."""
 
-    ACCEPT = "accept"        # auto_approve -> terminal accepted (this doc slot)
-    REJECT = "reject"        # unsupported doctype -> terminal rejected (a judgment)
-    RESUBMIT = "resubmit"    # quality gate, attempts <= cap -> park for a fresh document
-    HITL = "hitl"            # confidence gate -> park for human review (pending)
-    ESCALATE = "escalate"    # quality gate over cap -> route to human (pending, NOT rejected)
+    ACCEPT = "accept"  # auto_approve -> terminal accepted (this doc slot)
+    REJECT = "reject"  # unsupported doctype -> terminal rejected (a judgment)
+    RESUBMIT = "resubmit"  # quality gate, attempts <= cap -> park for a fresh document
+    HITL = "hitl"  # confidence gate -> park for human review (pending)
+    ESCALATE = (
+        "escalate"  # quality gate over cap -> route to human (pending, NOT rejected)
+    )
 
 
 @dataclass(frozen=True)
@@ -76,8 +78,8 @@ class PathBState:
     candidate_doctypes: tuple[str, ...]
     max_resubmissions: int = 3
     thresholds: DispositionThresholds = DEFAULT_THRESHOLDS
-    attempts: int = 0                       # quality-gate failures so far (§2b)
-    ledger: tuple[LedgerEntry, ...] = ()    # every version seen, newest last
+    attempts: int = 0  # quality-gate failures so far (§2b)
+    ledger: tuple[LedgerEntry, ...] = ()  # every version seen, newest last
 
 
 @dataclass(frozen=True)
@@ -89,8 +91,8 @@ class PathBStep:
     entry: LedgerEntry
     reason_code: str
     message: str
-    state: PathBState        # updated state (attempts, ledger) to thread on
-    terminal: bool           # ACCEPT/REJECT True; RESUBMIT/HITL/ESCALATE False
+    state: PathBState  # updated state (attempts, ledger) to thread on
+    terminal: bool  # ACCEPT/REJECT True; RESUBMIT/HITL/ESCALATE False
 
 
 async def step(

@@ -28,7 +28,9 @@ from bridge.normalize import normalize_from_extraction
 from bridge.program import fan_out
 from bridge.standard import ROUTE_NEGOTIATE, ROUTE_NONE, load_program_standard
 
-BENEFITS_CORPUS = Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+BENEFITS_CORPUS = (
+    Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+)
 PROCESS = "benefits-procurement"
 
 CORPUS_DOC = {
@@ -42,7 +44,9 @@ REVISED_CARRIER_B = "benefits-carrier-b-usd-en-v2"
 
 async def test_cuj11_negotiate_bind_rollup_golden_run():
     extractor = FixtureExtractor(corpus_path=BENEFITS_CORPUS)
-    corpus_docs = {d["id"]: d for d in json.loads(BENEFITS_CORPUS.read_text())["documents"]}
+    corpus_docs = {
+        d["id"]: d for d in json.loads(BENEFITS_CORPUS.read_text())["documents"]
+    }
     standard = load_program_standard(PROCESS)
     policy = load_negotiate_policy(PROCESS)
     assert policy.revise_cap == 2

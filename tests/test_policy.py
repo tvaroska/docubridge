@@ -83,5 +83,7 @@ def test_inverted_thresholds_rejected_naming_skill(tmp_path):
     (assets / "policy.yaml").write_text(
         "disposition:\n  auto_approve_at: 0.5\n  resubmit_below: 0.6\n  max_resubmissions: 3\n"
     )
-    with pytest.raises(ValueError, match="skill 'inverted' 'disposition:' thresholds invalid"):
+    with pytest.raises(
+        ValueError, match="skill 'inverted' 'disposition:' thresholds invalid"
+    ):
         load_disposition_policy("inverted", skills_dir=tmp_path)

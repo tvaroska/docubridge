@@ -100,13 +100,16 @@ def test_is_authorized_reviewer_fails_closed():
 # --------------------------------------------------------------------------- #
 def test_resolution_wire_round_trip_and_absent():
     res = HumanReviewResolution(call_id="c1", resolution="rejected", message="no")
-    msg = Message(role=Role.ROLE_USER, message_id="m", parts=[
-        encode_human_review_resolution(res)
-    ])
+    msg = Message(
+        role=Role.ROLE_USER, message_id="m", parts=[encode_human_review_resolution(res)]
+    )
     assert decode_human_review_resolution(msg) == res
-    assert decode_human_review_resolution(
-        Message(role=Role.ROLE_USER, message_id="m2", parts=[])
-    ) is None
+    assert (
+        decode_human_review_resolution(
+            Message(role=Role.ROLE_USER, message_id="m2", parts=[])
+        )
+        is None
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -151,19 +154,28 @@ def _resolution_event(cid: str, resolution: str, message: str, inv: str = "inv-1
 def _seed():
     return [
         LedgerEntry(
-            doc_id="gov-id-expired", doctype="gov-id",
-            disposition=Disposition.pending, gate=Gate.hitl_review,
-            reason_code="flagged_fields", message="m1",
+            doc_id="gov-id-expired",
+            doctype="gov-id",
+            disposition=Disposition.pending,
+            gate=Gate.hitl_review,
+            reason_code="flagged_fields",
+            message="m1",
         ),
         LedgerEntry(
-            doc_id="bill-aquautil-clear", doctype="utility-bill",
-            disposition=Disposition.pending, gate=Gate.hitl_review,
-            reason_code="low_confidence", message="m2",
+            doc_id="bill-aquautil-clear",
+            doctype="utility-bill",
+            disposition=Disposition.pending,
+            gate=Gate.hitl_review,
+            reason_code="low_confidence",
+            message="m2",
         ),
         LedgerEntry(
-            doc_id="bill-powerco-clean", doctype="utility-bill",
-            disposition=Disposition.accepted, gate=Gate.auto_approve,
-            reason_code="ok", message="m3",
+            doc_id="bill-powerco-clean",
+            doctype="utility-bill",
+            disposition=Disposition.accepted,
+            gate=Gate.auto_approve,
+            reason_code="ok",
+            message="m3",
         ),
     ]
 
@@ -238,7 +250,8 @@ def test_model_authored_response_is_not_a_resolution():
             parts=[
                 genai_types.Part(
                     function_response=genai_types.FunctionResponse(
-                        id="c1", name=REVIEW_TOOL,
+                        id="c1",
+                        name=REVIEW_TOOL,
                         response={"resolution": "accepted", "message": "x"},
                     )
                 )

@@ -69,9 +69,7 @@ async def _produce_quote(agent: BaseAgent, prompt: str) -> ExtractionResult:
     await session_service.create_session(
         app_name=_APP_NAME, user_id="bridge", session_id="quote"
     )
-    runner = Runner(
-        agent=agent, app_name=_APP_NAME, session_service=session_service
-    )
+    runner = Runner(agent=agent, app_name=_APP_NAME, session_service=session_service)
     text: str | None = None
     async for event in runner.run_async(
         user_id="bridge",
@@ -93,12 +91,13 @@ class CarrierAExecutor(AgentExecutor):
     def __init__(self, agent: BaseAgent | None = None) -> None:
         self._agent = agent if agent is not None else CARRIER_A_AGENT
 
-    async def execute(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
-        prompt = " ".join(
-            ph.get_text_parts(context.message.parts)
-        ) if context.message is not None else ""
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Execute an inbound benefits RFP quote turn on the ADK Carrier A agent."""
+        prompt = (
+            " ".join(ph.get_text_parts(context.message.parts))
+            if context.message is not None
+            else ""
+        )
         quote = await _produce_quote(self._agent, prompt)
 
         # 1.x requires a brand-new task's first enqueued event to be a Task, else the
@@ -124,9 +123,8 @@ class CarrierAExecutor(AgentExecutor):
             )
         )
 
-    async def cancel(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Cancel an in-flight RFP quote task on the ADK Carrier A agent."""
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
 

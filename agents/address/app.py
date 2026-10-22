@@ -16,6 +16,7 @@ ADK class, not a shared object (§1.4). Keep the two identical.
 # P7: the local↔GCP swap for the Address consumer's sessions (this factory vs the
 # GCP sessions adapter) must be reconciled at deploy — see the P7 phase in PLAN.md.
 """
+
 from __future__ import annotations
 
 import os

@@ -49,7 +49,7 @@ Every refusal is raised before any task event, so on a new task it is a JSON-RPC
 
 Like any `execute`-time refusal, one sent with an existing `task_id` marks that task FAILED (see the pre-dispatch guard below). Every other process keeps plain R2. With no RFP board bound, the edge behaves exactly as without the opener.
 
-Per-process opt-in (D5): skill frontmatter bridge-hitl: park | report (default report). report = the Collector's pending/hitl_review entry rides a terminal turn and the consumer owns review (Aon conformance record B stays COMPLETED with 0 LLM calls in hybrid mode). park = the Bridge owns review and parks on the native LRFT (Address hitl_review records park and reach timeline.json hitl_resolved).
+Per-process opt-in (D5): skill frontmatter bridge-hitl: park | report (default report). report = the Collector's pending/hitl_review entry rides a terminal turn and the consumer owns review (Benefits Consumer conformance record B stays COMPLETED with 0 LLM calls in hybrid mode). park = the Bridge owns review and parks on the native LRFT (Address hitl_review records park and reach timeline.json hitl_resolved).
 
 Ledger-from-tool-responses rule (D4): project_turn_from_events reads only function_response parts of run_disposition_gate, request_human_review, handle_deletion_request, reject_submission, escalate_submission, plus the executor-fed resolution response. Model text parts are never relayed. accepted comes only from a run_disposition_gate auto_approve response (args pinned by a before_tool_callback from extraction signals) or a reviewer resolution.
 

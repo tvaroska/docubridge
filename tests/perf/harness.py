@@ -78,7 +78,13 @@ PROCESS = "benefits-rfp"  # the process skill under test (named here, never in b
 CANDIDATES = ["benefits-quote"]
 # The schema's product_line enum has 4 values; ACCIDENT is the 5th line an RFP asks for,
 # so ``receive`` is ALWAYS told the product line explicitly.
-PRODUCT_LINES = ("AD_AND_D", "CRITICAL_ILLNESS", "HOSPITAL_INDEMNITY", "LIFE", "ACCIDENT")
+PRODUCT_LINES = (
+    "AD_AND_D",
+    "CRITICAL_ILLNESS",
+    "HOSPITAL_INDEMNITY",
+    "LIFE",
+    "ACCIDENT",
+)
 OPENED = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
 DUE = datetime(2026, 10, 15, 17, 0, tzinfo=UTC)
 NOW = OPENED + timedelta(days=3)
@@ -92,14 +98,16 @@ def canonical_cell(value: str) -> str:
     text = value.replace("$", "").replace("USD", "").replace(",", "").strip().casefold()
     for label in ("age ", "tier ", "tobacco ", "benefit "):
         if text.startswith(label):
-            text = text[len(label):]
+            text = text[len(label) :]
     return text.strip()
 
 
 def rows_match(got: list[dict], want: list[dict], *, canonical: bool) -> int:
     """How many rows equal the oracle row at the same index (exact, or canonicalized)."""
+
     def norm(row: dict) -> dict:
         return {k: canonical_cell(v) for k, v in row.items()} if canonical else row
+
     return sum(1 for g, w in zip(got, want, strict=False) if norm(g) == norm(w))
 
 
@@ -115,18 +123,20 @@ class _Static:
 
 def quote_result(rows: int, product_line: str) -> ExtractionResult:
     """An oracle-built, gate-clean quote result carrying ``rows`` rate rows."""
-    return ExtractionResult.model_validate({
-        "fields": {
-            "doctype": "benefits-quote",
-            "issuer": "Synthetic Mutual",
-            "key_fields": key_fields(product_line),
-            "tables": {"rates": rate_rows(rows)},
-        },
-        "overall_confidence": 0.93,
-        "field_confidence": {"currency": 0.99},
-        "legible": True,
-        "flagged_fields": [],
-    })
+    return ExtractionResult.model_validate(
+        {
+            "fields": {
+                "doctype": "benefits-quote",
+                "issuer": "Synthetic Mutual",
+                "key_fields": key_fields(product_line),
+                "tables": {"rates": rate_rows(rows)},
+            },
+            "overall_confidence": 0.93,
+            "field_confidence": {"currency": 0.99},
+            "legible": True,
+            "flagged_fields": [],
+        }
+    )
 
 
 async def _ticking(coro) -> tuple[Any, int, float]:
@@ -151,7 +161,9 @@ async def _ticking(coro) -> tuple[Any, int, float]:
     return result, ticks, elapsed
 
 
-async def extract_doc(doc: ScaleDoc, *, live: bool, chunk_pages: int | None = None) -> dict:
+async def extract_doc(
+    doc: ScaleDoc, *, live: bool, chunk_pages: int | None = None
+) -> dict:
     """Extract one scale document; the measurement row + correctness verdict."""
     pdf = build_scale_pdf(doc)
     client = None if live else PageAwareFakeClient(doc, latency_s=FAKE_LATENCY_S)
@@ -208,33 +220,58 @@ async def run(args: argparse.Namespace) -> tuple[dict, list[tuple[str, bool]]]:
     m["quote_50p"] = quote
     if args.live:
         for name, row in (("rate-sheet-1000", sheet), ("quote-50p", quote)):
-            checks.append((f"{name}: rate row count exact",
-                           row.get("rates_rows") == row.get("rates_expected")))
-            checks.append((f"{name}: >= 99% rate rows match (canonical)",
-                           row.get("rates_canonical", 0) >= 0.99 * row.get("rates_expected", 1)))
+            checks.append(
+                (
+                    f"{name}: rate row count exact",
+                    row.get("rates_rows") == row.get("rates_expected"),
+                )
+            )
+            checks.append(
+                (
+                    f"{name}: >= 99% rate rows match (canonical)",
+                    row.get("rates_canonical", 0)
+                    >= 0.99 * row.get("rates_expected", 1),
+                )
+            )
     else:
         checks += [
             ("rate-sheet-1000: 26 pages", sheet["pages"] == 26),
             ("rate-sheet-1000: 4 window calls", sheet.get("window_calls") == 4),
-            ("rate-sheet-1000: 1000/1000 rows exact & ordered",
-             sheet.get("rates_exact") == 1000 == sheet.get("rates_rows")),
-            ("rate-sheet-1000: key fields exact", sheet.get("key_fields_exact") is True),
-            ("rate-sheet-1000: 2 <= max in-flight <= 4",
-             2 <= sheet.get("max_in_flight", 0) <= 4),
+            (
+                "rate-sheet-1000: 1000/1000 rows exact & ordered",
+                sheet.get("rates_exact") == 1000 == sheet.get("rates_rows"),
+            ),
+            (
+                "rate-sheet-1000: key fields exact",
+                sheet.get("key_fields_exact") is True,
+            ),
+            (
+                "rate-sheet-1000: 2 <= max in-flight <= 4",
+                2 <= sheet.get("max_in_flight", 0) <= 4,
+            ),
             ("rate-sheet-1000: loop not blocked (ticks > 0)", sheet["loop_ticks"] > 0),
-            ("quote-50p: 50 pages, 7 windows",
-             quote["pages"] == 50 and quote.get("window_calls") == 7),
-            ("quote-50p: 1380 rate rows exact",
-             quote.get("rates_exact") == 1380 == quote.get("rates_rows")),
-            ("quote-50p: 60 design rows exact",
-             quote.get("design_exact") == 60 == quote.get("design_rows")),
+            (
+                "quote-50p: 50 pages, 7 windows",
+                quote["pages"] == 50 and quote.get("window_calls") == 7,
+            ),
+            (
+                "quote-50p: 1380 rate rows exact",
+                quote.get("rates_exact") == 1380 == quote.get("rates_rows"),
+            ),
+            (
+                "quote-50p: 60 design rows exact",
+                quote.get("design_exact") == 60 == quote.get("design_rows"),
+            ),
         ]
         before = await extract_doc(rate_sheet_1000(), live=False, chunk_pages=0)
         m["rate_sheet_1000_unchunked"] = before
-        checks.append((
-            "unchunked (chunk_pages=0): ExtractionTruncated after exactly 1 call",
-            before.get("error") == "ExtractionTruncated" and before.get("calls") == 1,
-        ))
+        checks.append(
+            (
+                "unchunked (chunk_pages=0): ExtractionTruncated after exactly 1 call",
+                before.get("error") == "ExtractionTruncated"
+                and before.get("calls") == 1,
+            )
+        )
 
     # 2. ledger ------------------------------------------------------------------------
     if big is None:
@@ -252,20 +289,33 @@ async def run(args: argparse.Namespace) -> tuple[dict, list[tuple[str, bool]]]:
         "dump_seconds": round(t_dump, 4),
         "entry_bytes": len(entry_json),
     }
-    checks.append(("ledger: 1000-row quote dispositions accepted",
-                   verdict.disposition.value == "accepted"))
+    checks.append(
+        (
+            "ledger: 1000-row quote dispositions accepted",
+            verdict.disposition.value == "accepted",
+        )
+    )
 
     # 3. rfp ---------------------------------------------------------------------------
     policy = load_rfp_policy(PROCESS)
     carriers = [f"carrier-{i:02d}" for i in range(1, args.carriers + 1)]
     lines = list(PRODUCT_LINES[: args.products])
     request = CollectRequest(
-        process=PROCESS, party="acme-broker", context_id="rfp-scale",
-        requirements=RequirementsList(requirements=[
-            Requirement(item=line, party=c, status=RequirementStatus.required,
-                        doctype_hint="benefits-quote")
-            for c in carriers for line in lines
-        ]),
+        process=PROCESS,
+        party="acme-broker",
+        context_id="rfp-scale",
+        requirements=RequirementsList(
+            requirements=[
+                Requirement(
+                    item=line,
+                    party=c,
+                    status=RequirementStatus.required,
+                    doctype_hint="benefits-quote",
+                )
+                for c in carriers
+                for line in lines
+            ]
+        ),
         due_at=DUE,
     )
     rfp = open_rfp(request, now=OPENED, rfp_id="scale-rfp")
@@ -273,7 +323,9 @@ async def run(args: argparse.Namespace) -> tuple[dict, list[tuple[str, bool]]]:
     for c in carriers:
         for line in lines:
             result = quote_result(args.rows_per_entry, line)
-            v = dispose_signals(signals_from_result(result, candidate_doctypes=CANDIDATES))
+            v = dispose_signals(
+                signals_from_result(result, candidate_doctypes=CANDIDATES)
+            )
             e = project_ledger_entry(doc_id=f"{c}-{line}", result=result, verdict=v)
             rfp = receive(rfp, c, e, now=NOW, policy=policy, product_line=line)
     t_receive = time.perf_counter() - start
@@ -284,9 +336,12 @@ async def run(args: argparse.Namespace) -> tuple[dict, list[tuple[str, bool]]]:
     decoded, t_decode = _timed(decode_wire, ExchangeTurn, json.loads(turn_json))
     cells = len(carriers) * len(lines)
     m["rfp"] = {
-        "carriers": len(carriers), "products": len(lines), "cells": cells,
+        "carriers": len(carriers),
+        "products": len(lines),
+        "cells": cells,
         "rows_per_entry": args.rows_per_entry,
-        "received": received, "waiting": view.waiting,
+        "received": received,
+        "waiting": view.waiting,
         "receive_all_seconds": round(t_receive, 3),
         "status_seconds": round(t_status, 4),
         "exchange_turn_bytes": len(turn_json),
@@ -294,13 +349,19 @@ async def run(args: argparse.Namespace) -> tuple[dict, list[tuple[str, bool]]]:
         "decode_wire_seconds": round(t_decode, 3),
     }
     checks += [
-        (f"rfp {len(carriers)}x{len(lines)}: {cells}/{cells} cells received",
-         received == cells),
+        (
+            f"rfp {len(carriers)}x{len(lines)}: {cells}/{cells} cells received",
+            received == cells,
+        ),
         (f"rfp {len(carriers)}x{len(lines)}: waiting == 0", view.waiting == 0),
-        ("rfp: ExchangeTurn round-trips through decode_wire",
-         len(decoded.status.entries) == cells
-         and all(len(x.tables.get("rates", [])) == args.rows_per_entry
-                 for x in decoded.status.entries)),
+        (
+            "rfp: ExchangeTurn round-trips through decode_wire",
+            len(decoded.status.entries) == cells
+            and all(
+                len(x.tables.get("rates", [])) == args.rows_per_entry
+                for x in decoded.status.entries
+            ),
+        ),
     ]
 
     # 4. portal ------------------------------------------------------------------------
@@ -308,8 +369,11 @@ async def run(args: argparse.Namespace) -> tuple[dict, list[tuple[str, bool]]]:
     rec = portal.start_session(store, process=PROCESS)
     start = time.perf_counter()
     rec = await portal.upload(
-        store, rec.session_id, doc_id="rate-sheet-1000",
-        artifact_name="rate-sheet-1000.pdf", extractor=_Static(big),
+        store,
+        rec.session_id,
+        doc_id="rate-sheet-1000",
+        artifact_name="rate-sheet-1000.pdf",
+        extractor=_Static(big),
     )
     t_upload = time.perf_counter() - start
     payload, t_view = _timed(lambda: encode_a2ui_view(portal.current_view(rec)))
@@ -329,8 +393,12 @@ async def run(args: argparse.Namespace) -> tuple[dict, list[tuple[str, bool]]]:
         "http_view_bytes": len(resp.content),
         "view_kind": payload.get("kind"),
     }
-    checks.append(("portal: view encodes and GET /view answers 200",
-                   resp.status_code == 200 and view_bytes > 0))
+    checks.append(
+        (
+            "portal: view encodes and GET /view answers 200",
+            resp.status_code == 200 and view_bytes > 0,
+        )
+    )
 
     # 5. dashboard / SSE ---------------------------------------------------------------
     board = RfpBoard(policy=policy, clock=lambda: NOW)
@@ -373,10 +441,12 @@ async def run(args: argparse.Namespace) -> tuple[dict, list[tuple[str, bool]]]:
         "sse_stream_seconds": round(t_stream, 3),
         "exchanges_in_snapshot": len(snap["exchanges"]),
     }
-    checks.append((
-        f"dashboard: first SSE frame carries the RFP row with {cells} cells",
-        rfp_row is not None and len(rfp_row["rfp"]["cells"]) == cells,
-    ))
+    checks.append(
+        (
+            f"dashboard: first SSE frame carries the RFP row with {cells} cells",
+            rfp_row is not None and len(rfp_row["rfp"]["cells"]) == cells,
+        )
+    )
     return m, checks
 
 
@@ -406,8 +476,9 @@ def main(argv: list[str] | None = None) -> int:
     _print(m, checks)
     if args.json:
         with open(args.json, "w", encoding="utf-8") as fh:
-            json.dump({"measurements": m, "checks": dict(checks)}, fh, indent=2,
-                      default=str)
+            json.dump(
+                {"measurements": m, "checks": dict(checks)}, fh, indent=2, default=str
+            )
     return 0 if all(ok for _, ok in checks) else 1
 
 

@@ -19,7 +19,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import { Panel } from "@docbride/shared";
+import { Panel } from "@docubridge/shared";
 import type { Comparison, ComparisonLeg } from "../domain/ops";
 
 interface ProgramComparisonProps {

@@ -12,6 +12,7 @@ Defaults to the plain ``Runner(node=...)`` path; ``run_collection(durable=True)`
 opts into the App path (``ResumabilityConfig`` + durable session service, P4-1).
 The end-to-end durable resume run itself is **P4-2**.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -158,9 +159,7 @@ def _pending_long_running_call(session):
     return None
 
 
-async def _run_once(
-    runner, *, user_id, session_id, new_message, remote_engine=None
-):
+async def _run_once(runner, *, user_id, session_id, new_message, remote_engine=None):
     """Run one turn on ``runner`` (or ``remote_engine`` when deployed to Vertex AI
     Agent Engine) and return the last ``event.output`` (raw dict|None).
 
@@ -316,9 +315,7 @@ async def run_collection(
         The terminal ``ExchangeTurn`` (read off ``event.output``) or None if the
         run did not produce a terminal output.
     """
-    req = open_request(
-        process=process, scenario=scenario, party=party, message=message
-    )
+    req = open_request(process=process, scenario=scenario, party=party, message=message)
 
     # Default the services and session_id.
     if artifact_service is None:

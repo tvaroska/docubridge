@@ -9,7 +9,9 @@ async def test_artifact_versioning():
     service = InMemoryArtifactService()
 
     # Save first version
-    part1 = genai_types.Part.from_bytes(data=b"version 0 content", mime_type="image/svg+xml")
+    part1 = genai_types.Part.from_bytes(
+        data=b"version 0 content", mime_type="image/svg+xml"
+    )
     version1 = await service.save_artifact(
         app_name="test_app",
         user_id="test_user",
@@ -22,7 +24,9 @@ async def test_artifact_versioning():
     assert version1 == 0
 
     # Save second version with same filename
-    part2 = genai_types.Part.from_bytes(data=b"version 1 content", mime_type="image/svg+xml")
+    part2 = genai_types.Part.from_bytes(
+        data=b"version 1 content", mime_type="image/svg+xml"
+    )
     version2 = await service.save_artifact(
         app_name="test_app",
         user_id="test_user",
@@ -109,7 +113,9 @@ async def test_artifact_versions_retained_for_exchange_life():
     service = InMemoryArtifactService()
 
     # Save version 0
-    part0 = genai_types.Part.from_bytes(data=b"original submission", mime_type="image/svg+xml")
+    part0 = genai_types.Part.from_bytes(
+        data=b"original submission", mime_type="image/svg+xml"
+    )
     v0 = await service.save_artifact(
         app_name="test_app",
         user_id="test_user",
@@ -120,7 +126,9 @@ async def test_artifact_versions_retained_for_exchange_life():
     assert v0 == 0
 
     # Save version 1 (resubmission)
-    part1 = genai_types.Part.from_bytes(data=b"resubmitted clear copy", mime_type="image/svg+xml")
+    part1 = genai_types.Part.from_bytes(
+        data=b"resubmitted clear copy", mime_type="image/svg+xml"
+    )
     v1 = await service.save_artifact(
         app_name="test_app",
         user_id="test_user",
@@ -199,13 +207,15 @@ def test_no_bridge_gc_symbols():
                         stripped = line.strip()
                         # Exclude docstrings, comments, and lines documenting the no-GC policy
                         # Look for actual code: function calls, assignments, conditionals
-                        if (stripped.startswith("#") or
-                            stripped.startswith('"""') or
-                            stripped.startswith("'''") or
-                            "**" in stripped or  # RST/Markdown markup (docstring)
-                            "must keep, zero" in stripped.lower() or  # Our doc comment
-                            "no artifact" in stripped.lower() or
-                            "not bespoke" in stripped.lower()):
+                        if (
+                            stripped.startswith("#")
+                            or stripped.startswith('"""')
+                            or stripped.startswith("'''")
+                            or "**" in stripped  # RST/Markdown markup (docstring)
+                            or "must keep, zero" in stripped.lower()  # Our doc comment
+                            or "no artifact" in stripped.lower()
+                            or "not bespoke" in stripped.lower()
+                        ):
                             continue
                         violations.append((py_file.name, i + 1, line.strip()))
 

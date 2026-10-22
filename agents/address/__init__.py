@@ -3,6 +3,7 @@
 Reaches the Bridge over the A2A wire by card URL only; never imports ``bridge/``
 (keeps the mock→real swap a URL change). See ``workflow.py`` for the graph.
 """
+
 from __future__ import annotations
 
 from agents.address.app import (

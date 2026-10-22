@@ -23,6 +23,7 @@ gate response whose verdict equals ``dispose_signals`` over the pinned signals.
 See ``design/a2a-edge.md`` (D4, "Gate pinning") and ``design/disposition.md``.
 The core never imports the edge.
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,7 +46,9 @@ GATE_TOOL_NAME = "run_disposition_gate"
 # of the sub-run's state copy).
 SIGNALS_KEY = "bridge:gate_signals"  # {doc_id: RecordedSignals dump}, insertion-ordered
 LABEL_SPACE_KEY = "bridge:label_space"  # list[str] — the process's candidate doctypes
-PINS_KEY = "bridge:gate_pins"  # {function_call_id: {"doc_id": str, "signals": Signals dump}}
+PINS_KEY = (
+    "bridge:gate_pins"  # {function_call_id: {"doc_id": str, "signals": Signals dump}}
+)
 
 REASON_GATE_UNPINNED = "gate_signals_missing"
 REASON_LABEL_SPACE_MISSING = "label_space_missing"
@@ -128,7 +131,9 @@ def record_signals(state: Any, rec: RecordedSignals) -> None:
 
 def record_extraction(state: Any, *, doc_id: str, result: ExtractionResult) -> None:
     """Record the genuine extraction of ``doc_id`` (called inside ``extract_document``)."""
-    record_signals(state, recorded_from_result(result, doc_id=doc_id, source="extraction"))
+    record_signals(
+        state, recorded_from_result(result, doc_id=doc_id, source="extraction")
+    )
 
 
 def seed_state_delta(

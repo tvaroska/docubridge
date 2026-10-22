@@ -55,14 +55,18 @@ async def _client(store=None, max_ticks: int = 50):
 async def _seed_accept(store) -> str:
     """Seed a one-step accept (bill-powerco-clean → done)."""
     rec = portal_engine.start_session(store, process=PROCESS)
-    await portal_engine.upload(store, rec.session_id, doc_id="d1", artifact_name="bill-powerco-clean")
+    await portal_engine.upload(
+        store, rec.session_id, doc_id="d1", artifact_name="bill-powerco-clean"
+    )
     return rec.session_id
 
 
 async def _seed_hitl(store) -> str:
     """Seed a HITL park (bill-aquautil-clear → hitl_review, pending)."""
     rec = portal_engine.start_session(store, process=PROCESS)
-    await portal_engine.upload(store, rec.session_id, doc_id="d1", artifact_name="bill-aquautil-clear")
+    await portal_engine.upload(
+        store, rec.session_id, doc_id="d1", artifact_name="bill-aquautil-clear"
+    )
     return rec.session_id
 
 
@@ -70,14 +74,18 @@ async def _seed_escalate(store) -> str:
     """Seed an escalation (bill-aquautil-blurry ×4 → cap → escalate, pending)."""
     rec = portal_engine.start_session(store, process=PROCESS)
     for i in range(4):
-        await portal_engine.upload(store, rec.session_id, doc_id=f"d{i}", artifact_name="bill-aquautil-blurry")
+        await portal_engine.upload(
+            store, rec.session_id, doc_id=f"d{i}", artifact_name="bill-aquautil-blurry"
+        )
     return rec.session_id
 
 
 async def _seed_reject(store) -> str:
     """Seed a one-step reject (passport-unsupported → done, rejected)."""
     rec = portal_engine.start_session(store, process=PROCESS)
-    await portal_engine.upload(store, rec.session_id, doc_id="d1", artifact_name="passport-unsupported")
+    await portal_engine.upload(
+        store, rec.session_id, doc_id="d1", artifact_name="passport-unsupported"
+    )
     return rec.session_id
 
 
@@ -127,7 +135,9 @@ async def test_get_exchange_shows_classified_ledger():
         assert len(exchange["entries"]) > 0
 
         # The accepted entry's reason_code/message are relayed verbatim (content-not-pixels).
-        accepted_entry = next(e for e in exchange["entries"] if e["disposition"] == "accepted")
+        accepted_entry = next(
+            e for e in exchange["entries"] if e["disposition"] == "accepted"
+        )
         assert accepted_entry["doctype"] in ("utility-bill", "gov-id")
         assert accepted_entry["issuer"] == "power-co"
         assert accepted_entry["reason_code"]
@@ -185,7 +195,9 @@ async def test_escalation_queue():
         assert esc_ex["session_id"] == sid_escalate
         assert esc_ex["escalated"] is True
         # An entry has REASON_ESCALATED, disposition pending (route-to-human).
-        escalated_entry = next(e for e in esc_ex["entries"] if e["reason_code"] == REASON_ESCALATED)
+        escalated_entry = next(
+            e for e in esc_ex["entries"] if e["reason_code"] == REASON_ESCALATED
+        )
         assert escalated_entry["disposition"] == "pending"
 
         # NO entry in the escalated exchange is rejected (dual-path invariant).
@@ -219,7 +231,9 @@ async def test_resolve_hitl_clears_queue_and_accepts():
         resolved = resp.json()
         assert resolved["status"] == "done"
         # The ledger has an accepted entry with the reviewer's message verbatim.
-        accepted_entry = next(e for e in resolved["entries"] if e["disposition"] == "accepted")
+        accepted_entry = next(
+            e for e in resolved["entries"] if e["disposition"] == "accepted"
+        )
         assert accepted_entry["message"] == "Reviewer approved."
 
         # After resolve: HITL queue is empty.
@@ -244,7 +258,9 @@ async def test_resolve_rejected():
         resolved = resp.json()
         assert resolved["status"] == "done"
         # The ledger has a rejected entry with the reviewer's message.
-        rejected_entry = next(e for e in resolved["entries"] if e["disposition"] == "rejected")
+        rejected_entry = next(
+            e for e in resolved["entries"] if e["disposition"] == "rejected"
+        )
         assert rejected_entry["message"] == "Reviewer rejected."
 
         # HITL queue is empty.
@@ -299,6 +315,7 @@ async def test_sse_stream_frames_and_closes():
 
             # The first frame parses to a dict with exchanges/hitl/escalation keys.
             import json
+
             first = json.loads(frames[0])
             assert "exchanges" in first
             assert "hitl" in first
@@ -315,7 +332,9 @@ async def test_sse_stream_frames_and_closes():
 # --------------------------------------------------------------------------- #
 # S0-perf-1: the snapshot projects the store ONCE per tick.                   #
 # --------------------------------------------------------------------------- #
-async def test_snapshot_projects_once_and_matches_the_three_call_composition(monkeypatch):
+async def test_snapshot_projects_once_and_matches_the_three_call_composition(
+    monkeypatch,
+):
     """``readmodel_snapshot`` calls ``list_exchanges`` once (not three times) and the
     snapshot equals the old ``list_exchanges`` / ``hitl_queue`` / ``escalation_queue``
     composition exactly (queues are filters over the one projection)."""

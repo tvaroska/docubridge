@@ -14,6 +14,7 @@ The model resolves like the ``document_bridge`` agent's (``BRIDGE_MODEL``, defau
 name becomes a ``BaseLlm`` lazily (first assessment), so building the app needs no
 credentials. Never imports ``bridge.edge`` (core → edge is the wrong direction).
 """
+
 from __future__ import annotations
 
 import json

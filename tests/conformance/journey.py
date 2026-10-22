@@ -400,7 +400,10 @@ async def _run_all(server: CorpusServer) -> bool:
     except ConformanceGap as gap:
         print(f"ConformanceGap (expected): {gap}")
         named = " ".join(gap.gaps)
-        if "rates[0].frequency=WEEKLY" not in named or "rates[1].rate_basis=PER_1000" not in named:
+        if (
+            "rates[0].frequency=WEEKLY" not in named
+            or "rates[1].rate_basis=PER_1000" not in named
+        ):
             print("  MISMATCH: the gap does not name both offending cells")
             ok = False
     else:

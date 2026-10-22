@@ -26,6 +26,7 @@ Discipline highlights:
 - **No bytes on the wire (D-artifacts):** inbound inline-bytes file parts are
   rejected; only by-reference (URI) document parts are accepted.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -266,9 +267,7 @@ def summarize_turn(turn: ExchangeTurn) -> str:
     collected = len(turn.status.entries)
     outstanding = (
         sum(
-            1
-            for r in turn.status.outstanding.requirements
-            if r.status in open_statuses
+            1 for r in turn.status.outstanding.requirements if r.status in open_statuses
         )
         if turn.status.outstanding is not None
         else 0

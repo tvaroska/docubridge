@@ -29,22 +29,49 @@ PARTY = "Synthetic Mutual"
 TIERS = ("EE", "EE_SPOUSE", "EE_CHILDREN", "FAMILY")
 TOBACCO = ("UNI", "NON_TOBACCO", "TOBACCO")
 AGE_BANDS = (
-    "18-24", "25-29", "30-34", "35-39", "40-44", "45-49",
-    "50-54", "55-59", "60-64", "65-69", "70-74", "75-79",
+    "18-24",
+    "25-29",
+    "30-34",
+    "35-39",
+    "40-44",
+    "45-49",
+    "50-54",
+    "55-59",
+    "60-64",
+    "65-69",
+    "70-74",
+    "75-79",
 )
 BENEFITS = (5000, 10000, 15000, 20000, 25000, 30000, 50000)
 FREQUENCIES = ("MONTHLY", "BI_WEEKLY", "WEEKLY")
 COMBOS = len(TIERS) * len(TOBACCO) * len(AGE_BANDS) * len(BENEFITS)  # 1008
 
 PROVISIONS = (
-    "Heart Attack", "Stroke", "Cancer", "Kidney Failure", "Major Organ Transplant",
-    "Coronary Bypass", "Paralysis", "Coma", "Blindness", "Deafness",
-    "Loss of Speech", "Benign Brain Tumor", "Wellness Benefit", "Waiting Period",
-    "Pre-existing Condition Limit", "Recurrence Benefit", "Portability",
-    "Spouse Coverage", "Child Coverage", "Guaranteed Issue",
+    "Heart Attack",
+    "Stroke",
+    "Cancer",
+    "Kidney Failure",
+    "Major Organ Transplant",
+    "Coronary Bypass",
+    "Paralysis",
+    "Coma",
+    "Blindness",
+    "Deafness",
+    "Loss of Speech",
+    "Benign Brain Tumor",
+    "Wellness Benefit",
+    "Waiting Period",
+    "Pre-existing Condition Limit",
+    "Recurrence Benefit",
+    "Portability",
+    "Spouse Coverage",
+    "Child Coverage",
+    "Guaranteed Issue",
 )
 
-RATE_HEADER = "Rates (tier | tobacco | age band | amount | frequency | basis | benefit):"
+RATE_HEADER = (
+    "Rates (tier | tobacco | age band | amount | frequency | basis | benefit):"
+)
 DESIGN_HEADER = "Benefit design (provision | carrier term | value):"
 
 
@@ -63,15 +90,17 @@ def rate_rows(n: int) -> list[dict[str, str]]:
         tob, rest = divmod(rest, len(AGE_BANDS) * len(BENEFITS))
         age, ben = divmod(rest, len(BENEFITS))
         cents = 150 + (i * 37) % 9000 + tier * 113 + tob * 41
-        rows.append({
-            "coverage_tier": TIERS[tier],
-            "tobacco": TOBACCO[tob],
-            "age_band": AGE_BANDS[age],
-            "amount": f"{cents / 100:.2f}",
-            "frequency": FREQUENCIES[i % len(FREQUENCIES)],
-            "rate_basis": "PER_1000" if i % 2 else "FLAT",
-            "benefit_amount": str(BENEFITS[ben] + 250 * block),
-        })
+        rows.append(
+            {
+                "coverage_tier": TIERS[tier],
+                "tobacco": TOBACCO[tob],
+                "age_band": AGE_BANDS[age],
+                "amount": f"{cents / 100:.2f}",
+                "frequency": FREQUENCIES[i % len(FREQUENCIES)],
+                "rate_basis": "PER_1000" if i % 2 else "FLAT",
+                "benefit_amount": str(BENEFITS[ben] + 250 * block),
+            }
+        )
     return rows
 
 
@@ -88,19 +117,23 @@ def design_rows(n: int) -> list[dict[str, str]]:
 
 
 def rate_line(row: dict[str, str]) -> str:
-    return " | ".join([
-        f"Tier {row['coverage_tier']}",
-        f"Tobacco {row['tobacco']}",
-        f"Age {row['age_band']}",
-        row["amount"],
-        row["frequency"],
-        row["rate_basis"],
-        f"Benefit {row['benefit_amount']}",
-    ])
+    return " | ".join(
+        [
+            f"Tier {row['coverage_tier']}",
+            f"Tobacco {row['tobacco']}",
+            f"Age {row['age_band']}",
+            row["amount"],
+            row["frequency"],
+            row["rate_basis"],
+            f"Benefit {row['benefit_amount']}",
+        ]
+    )
 
 
 def design_line(row: dict[str, str]) -> str:
-    return f"{row['category']} | Carrier term: {row['category_original']} | {row['value']}"
+    return (
+        f"{row['category']} | Carrier term: {row['category_original']} | {row['value']}"
+    )
 
 
 def key_fields(product_line: str = "CRITICAL_ILLNESS") -> dict[str, str]:
@@ -172,7 +205,7 @@ class ScaleDoc:
 
     def tables_for(self, first: int, last: int) -> dict[str, list[dict[str, str]]]:
         """The rows printed on pages ``first``-``last`` (1-based, inclusive); no empty tables."""
-        chosen = self.pages[first - 1:last]
+        chosen = self.pages[first - 1 : last]
         out: dict[str, list[dict[str, str]]] = {}
         rates = [r for p in chosen for r in p.rates]
         design = [r for p in chosen for r in p.design]
@@ -203,37 +236,57 @@ def scale_doc(
     total = 1 + len(rates_per_page) + len(designs_per_page)
     kf = key_fields(product_line)
     pages = [
-        _page(title, 1, total, [f"Carrier: {PARTY}"]
-              + [f"{_KEY_LABELS[k]}: {v}" for k, v in kf.items()], key_fields=kf)
+        _page(
+            title,
+            1,
+            total,
+            [f"Carrier: {PARTY}"] + [f"{_KEY_LABELS[k]}: {v}" for k, v in kf.items()],
+            key_fields=kf,
+        )
     ]
     all_rates = rate_rows(sum(rates_per_page))
     at = 0
     for n in rates_per_page:
-        chunk = all_rates[at:at + n]
+        chunk = all_rates[at : at + n]
         at += n
         k = len(pages) + 1
-        pages.append(_page(title, k, total, [RATE_HEADER, *map(rate_line, chunk)], rates=chunk))
+        pages.append(
+            _page(title, k, total, [RATE_HEADER, *map(rate_line, chunk)], rates=chunk)
+        )
     all_design = design_rows(sum(designs_per_page))
     at = 0
     for n in designs_per_page:
-        chunk = all_design[at:at + n]
+        chunk = all_design[at : at + n]
         at += n
         k = len(pages) + 1
-        pages.append(_page(title, k, total, [DESIGN_HEADER, *map(design_line, chunk)],
-                           design=chunk))
+        pages.append(
+            _page(
+                title, k, total, [DESIGN_HEADER, *map(design_line, chunk)], design=chunk
+            )
+        )
     return ScaleDoc(name=name, pages=pages)
 
 
 def rate_sheet_1000(product_line: str = "CRITICAL_ILLNESS") -> ScaleDoc:
     """26 pages: key fields on page 1, then 25 pages x 40 rate rows = 1000 rows."""
-    return scale_doc("rate-sheet-1000", f"Voluntary benefits rate sheet - {PARTY} (synthetic)",
-                     [40] * 25, [], product_line)
+    return scale_doc(
+        "rate-sheet-1000",
+        f"Voluntary benefits rate sheet - {PARTY} (synthetic)",
+        [40] * 25,
+        [],
+        product_line,
+    )
 
 
 def quote_50_pages(product_line: str = "CRITICAL_ILLNESS") -> ScaleDoc:
     """50 pages: key fields, 46 pages x 30 rate rows (1380), 3 pages x 20 design rows (60)."""
-    return scale_doc("quote-50p", f"Voluntary benefits quote - {PARTY} (synthetic)",
-                     [30] * 46, [20] * 3, product_line)
+    return scale_doc(
+        "quote-50p",
+        f"Voluntary benefits quote - {PARTY} (synthetic)",
+        [30] * 46,
+        [20] * 3,
+        product_line,
+    )
 
 
 def build_scale_pdf(doc: ScaleDoc) -> bytes:

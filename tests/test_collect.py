@@ -37,6 +37,7 @@ CORPUS_RECORDS = CORPUS_DATA["documents"]
 
 # ========== Projection units (pure — no I/O) ==========
 
+
 def test_project_ledger_entry_copies_all_fields():
     """project_ledger_entry copies every field from result + verdict to LedgerEntry."""
     result = ExtractionResult(
@@ -71,7 +72,9 @@ def test_project_ledger_entry_copies_all_fields():
     assert entry.issuer == "power-co"
     assert entry.key_fields == {"name": "Jordan Lee", "service_address": "14 Elm Row"}
     assert entry.reason_code == "illegible"
-    assert entry.message == "The document was unreadable — please resubmit a clearer copy."
+    assert (
+        entry.message == "The document was unreadable — please resubmit a clearer copy."
+    )
     assert entry.artifact == artifact
 
 
@@ -214,6 +217,7 @@ def test_project_collection_status_respects_explicit_outstanding():
     ]
     # Explicitly pass a custom outstanding
     from contract.wire import Requirement, RequirementsList
+
     custom_outstanding = RequirementsList(
         requirements=[
             Requirement(
@@ -232,7 +236,10 @@ def test_project_collection_status_respects_explicit_outstanding():
 
 # ========== One-turn collect path (COLL-4) ==========
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 async def test_corpus_single_doc_collect(record):
     """Corpus parametrized single-doc collect: each record disposes correctly."""
     collector = Collector(FixtureExtractor())
@@ -240,7 +247,9 @@ async def test_corpus_single_doc_collect(record):
 
     turn = await collector.collect(
         request,
-        documents=[DocumentSubmission(doc_id=record["id"], artifact_name=record["artifact"])],
+        documents=[
+            DocumentSubmission(doc_id=record["id"], artifact_name=record["artifact"])
+        ],
         candidate_doctypes=["gov-id", "utility-bill"],
     )
 
@@ -277,7 +286,11 @@ async def test_outstanding_reflects_disposition_accepted():
 
     turn = await collector.collect(
         request,
-        documents=[DocumentSubmission(doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg")],
+        documents=[
+            DocumentSubmission(
+                doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg"
+            )
+        ],
         candidate_doctypes=["gov-id", "utility-bill"],
     )
 
@@ -294,7 +307,11 @@ async def test_outstanding_reflects_disposition_rejected():
 
     turn = await collector.collect(
         request,
-        documents=[DocumentSubmission(doc_id="bill-blurry", artifact_name="images/bill-aquautil-blurry.svg")],
+        documents=[
+            DocumentSubmission(
+                doc_id="bill-blurry", artifact_name="images/bill-aquautil-blurry.svg"
+            )
+        ],
         candidate_doctypes=["gov-id", "utility-bill"],
     )
 
@@ -319,7 +336,11 @@ async def test_context_id_minting():
 
     turn = await collector.collect(
         request,
-        documents=[DocumentSubmission(doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg")],
+        documents=[
+            DocumentSubmission(
+                doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg"
+            )
+        ],
         candidate_doctypes=["gov-id", "utility-bill"],
     )
 
@@ -335,7 +356,11 @@ async def test_context_id_echo():
 
     turn = await collector.collect(
         request,
-        documents=[DocumentSubmission(doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg")],
+        documents=[
+            DocumentSubmission(
+                doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg"
+            )
+        ],
         candidate_doctypes=["gov-id", "utility-bill"],
     )
 
@@ -351,8 +376,12 @@ async def test_multi_doc_preserves_order_and_accumulates():
     turn = await collector.collect(
         request,
         documents=[
-            DocumentSubmission(doc_id="bill-1", artifact_name="images/bill-powerco-clean.svg"),
-            DocumentSubmission(doc_id="bill-2", artifact_name="images/bill-powerco-clean-2.svg"),
+            DocumentSubmission(
+                doc_id="bill-1", artifact_name="images/bill-powerco-clean.svg"
+            ),
+            DocumentSubmission(
+                doc_id="bill-2", artifact_name="images/bill-powerco-clean-2.svg"
+            ),
         ],
         candidate_doctypes=["gov-id", "utility-bill"],
     )
@@ -383,12 +412,17 @@ async def test_round_trip():
 
     turn = await collector.collect(
         request,
-        documents=[DocumentSubmission(doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg")],
+        documents=[
+            DocumentSubmission(
+                doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg"
+            )
+        ],
         candidate_doctypes=["gov-id", "utility-bill"],
     )
 
     # Round-trip through JSON
     from contract.wire import ExchangeTurn
+
     dumped = turn.model_dump(mode="json")
     reconstructed = ExchangeTurn.model_validate(dumped)
 
@@ -398,7 +432,10 @@ async def test_round_trip():
     assert reconstructed.requirements == turn.requirements
     assert len(reconstructed.status.entries) == len(turn.status.entries)
     assert reconstructed.status.entries[0].doc_id == turn.status.entries[0].doc_id
-    assert reconstructed.status.entries[0].disposition == turn.status.entries[0].disposition
+    assert (
+        reconstructed.status.entries[0].disposition
+        == turn.status.entries[0].disposition
+    )
 
 
 def test_project_ledger_entry_carries_the_review_view():
@@ -451,6 +488,7 @@ def test_project_ledger_entry_has_no_reviews_for_a_clean_document():
 
 # ========== Engine confidence on the wire (S0-arch-9, contract minor 1.3) ==========
 
+
 def _clean_verdict() -> DispositionVerdict:
     return DispositionVerdict(
         disposition=Disposition.accepted,
@@ -468,7 +506,9 @@ def test_project_ledger_entry_carries_engine_confidence():
         field_confidence={"name": 0.88, "expiry": 0.93},
         legible=True,
     )
-    entry = project_ledger_entry(doc_id="doc-k", result=result, verdict=_clean_verdict())
+    entry = project_ledger_entry(
+        doc_id="doc-k", result=result, verdict=_clean_verdict()
+    )
     assert entry.overall_confidence == 0.91
     assert entry.field_confidence == {"name": 0.88, "expiry": 0.93}
     # A copy, not the engine's own dict.
@@ -478,17 +518,29 @@ def test_project_ledger_entry_carries_engine_confidence():
 def test_ledger_entry_confidence_defaults_mean_no_engine_number():
     """``None`` (not 0.0) distinguishes "no engine number" from a real zero."""
     entry = LedgerEntry(
-        doc_id="d", doctype="gov-id", disposition="rejected", gate="unsupported",
+        doc_id="d",
+        doctype="gov-id",
+        disposition="rejected",
+        gate="unsupported",
     )
     assert entry.overall_confidence is None
     assert entry.field_confidence == {}
 
 
 def _turn_payload(version: str, *, extra_entry_key: bool = False) -> dict:
-    turn = ExchangeTurn(context_id="c", status=CollectionStatus(entries=[
-        LedgerEntry(doc_id="d", doctype="gov-id", disposition="accepted",
-                    gate="auto_approve")
-    ])).model_dump(mode="json")
+    turn = ExchangeTurn(
+        context_id="c",
+        status=CollectionStatus(
+            entries=[
+                LedgerEntry(
+                    doc_id="d",
+                    doctype="gov-id",
+                    disposition="accepted",
+                    gate="auto_approve",
+                )
+            ]
+        ),
+    ).model_dump(mode="json")
     turn["contract_version"] = version
     entry = turn["status"]["entries"][0]
     del entry["overall_confidence"]

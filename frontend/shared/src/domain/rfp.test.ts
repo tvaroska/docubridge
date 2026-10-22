@@ -1,4 +1,4 @@
-// RFP status mapper tests (@docbride/shared, S0-frontend-1).
+// RFP status mapper tests (@docubridge/shared, S0-frontend-1).
 //
 // Proves mapRfpStatus maps both wire forms — the consumer API (as_of, api_version, reply
 // fields) and the dashboard SSE row (none of those) — snake→camel, relays reasons and field

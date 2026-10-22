@@ -9,7 +9,7 @@
 // The Arm control arms the demo session's SLA ladder from tick 0.
 
 import { Box, Button, Stack, TextField, Typography } from "@mui/material";
-import { LifecycleBadge } from "@docbride/shared";
+import { LifecycleBadge } from "@docubridge/shared";
 import { useState } from "react";
 import * as api from "../api";
 import { latestLifecycle, type TimewarpState } from "../domain/timewarp";

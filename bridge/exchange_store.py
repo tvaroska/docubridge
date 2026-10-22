@@ -175,17 +175,20 @@ class InMemoryExchangeStore(ExchangeStore):
         )
 
     def get(self, kind: str, ref: str) -> ExchangeRecord | None:
+        """Retrieve an exchange state snapshot by exchange ID from memory."""
         _check_key(kind, ref)
         with self._lock:
             rec = self._records.get((kind, ref))
         return None if rec is None else self._copy(rec)
 
     def list(self, kind: str) -> list[ExchangeRecord]:
+        """List all exchange state snapshots stored in memory."""
         with self._lock:
             recs = [r for r in self._records.values() if r.kind == kind]
         return [self._copy(r) for r in recs]
 
     def put(self, kind, ref, *, context_id, doc, expected_version) -> int:
+        """Save or update an exchange state snapshot in memory."""
         _check_put(kind, ref, expected_version)
         stored = _json_roundtrip(doc)
         with self._lock:
@@ -302,6 +305,7 @@ class SqlExchangeStore(ExchangeStore):
         return engine
 
     def close(self) -> None:
+        """Dispose of the underlying SQLAlchemy engine for the exchange store."""
         with self._lock:
             if self._closed:
                 return
@@ -339,6 +343,7 @@ class SqlExchangeStore(ExchangeStore):
     # -- operations --------------------------------------------------------------
 
     def get(self, kind: str, ref: str) -> ExchangeRecord | None:
+        """Retrieve an exchange state snapshot by exchange ID from SQL."""
         _check_key(kind, ref)
         t = _table()
 
@@ -356,6 +361,7 @@ class SqlExchangeStore(ExchangeStore):
         return self._call(op)
 
     def list(self, kind: str) -> list[ExchangeRecord]:
+        """List all exchange state snapshots stored in the SQL database."""
         t = _table()
 
         async def op(engine):
@@ -372,6 +378,7 @@ class SqlExchangeStore(ExchangeStore):
         return self._call(op)
 
     def put(self, kind, ref, *, context_id, doc, expected_version) -> int:
+        """Persist or update an exchange state snapshot in the SQL database."""
         _check_put(kind, ref, expected_version)
         stored = _json_roundtrip(doc)
         t = _table()

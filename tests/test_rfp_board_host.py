@@ -446,8 +446,10 @@ def test_exhausted_cas_retry_leaves_the_mail_pending(tmp_path):
     assert store.puts == 3
     assert proc.seam.processed(key) is None
     assert proc.seam.pending() == [key]
-    cell = RfpBoard(policy=load_rfp_policy(PROCESS), store=inner).rfps[RFP_ID].cell(
-        "carrier-a", "CRITICAL_ILLNESS"
+    cell = (
+        RfpBoard(policy=load_rfp_policy(PROCESS), store=inner)
+        .rfps[RFP_ID]
+        .cell("carrier-a", "CRITICAL_ILLNESS")
     )
     assert cell.status is RfpItemStatus.invited
 

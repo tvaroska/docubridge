@@ -64,7 +64,7 @@ The processor lives in the **client's** project, so the grant does too.
 
 The module (`bridge/extraction/docai.py`) depends only on the standard library, a lazy `google.cloud.documentai` import, and the `ResolvedDocument` envelope. The request builder, the text flattener and the OCR-part builder take primitives (`mime_type`, `data`, `uri`), so a consumer engine can vendor them unchanged.
 
-A consumer with its own Gemini extraction path, such as Aon's `engine/extraction/`, adopts the same contract:
+A consumer with its own Gemini extraction path, such as the consumer's `engine/extraction/`, adopts the same contract:
 
 - Its `ADP_DOCAI_PROCESSOR` is `BRIDGE_DOCAI_PROCESSOR`.
 - It uses the same grant (`roles/documentai.apiUser` on the client's processor project).

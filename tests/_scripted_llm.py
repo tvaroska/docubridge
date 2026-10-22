@@ -14,6 +14,7 @@ Every scripted tool call must name a tool the request actually offers
 to the root agent vs the ``extraction_agent`` sub-agent (one shared instance sees
 both agents' requests). Every request is recorded; ``call_count`` counts them.
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -68,9 +69,13 @@ class ScriptedLlm(BaseLlm):
             return Reply(text=self.default_text)
         last = llm_request.contents[-1]
         parts = last.parts or []
-        responses = [p.function_response for p in parts if p.function_response is not None]
+        responses = [
+            p.function_response for p in parts if p.function_response is not None
+        ]
         if responses:
-            return self.on_tool.get(responses[-1].name or "", Reply(text=self.after_tool_text))
+            return self.on_tool.get(
+                responses[-1].name or "", Reply(text=self.after_tool_text)
+            )
         text = " ".join(p.text for p in parts if p.text).lower()
         for key, reply in self.on_text.items():
             if key.lower() in text:

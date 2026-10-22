@@ -86,7 +86,7 @@ the edge deterministic-only. The A2A edge now routes by message shape and task s
   app build; invalid value → `ValueError` fail-closed. It is a routing mode, not a seam.
   
 - **HITL handoff opt-in:** Skill frontmatter `bridge-hitl: park | report` (default
-  `report`). The Aon Benefits process uses `report` (consumer owns review, turn is
+  `report`). The Benefits Consumer Benefits process uses `report` (consumer owns review, turn is
   terminal), Address uses `park` (Bridge owns review via LRFT, turn parks).
   
 - **Ledger from tool responses only:** `project_turn_from_events` reads only

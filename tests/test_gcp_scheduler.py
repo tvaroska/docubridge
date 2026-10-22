@@ -9,6 +9,7 @@ a derived task name, ``cancel`` deletes by name, ``now`` is wall-clock, and
 roundtrip is gated on ``BRIDGE_TEST_GCP`` (a P7-9 input). Mirrors
 ``test_gcp_seams.py`` / ``test_gcp_skill_registry.py``.
 """
+
 from __future__ import annotations
 
 import json
@@ -238,7 +239,9 @@ def test_gcp_scheduler_live_roundtrip():
     arm a near-future task, observe it in pending(), then cancel it. Does NOT wait
     for a real firing — that is the P7-9 deployed run."""
     if os.environ.get("BRIDGE_TEST_GCP") != "1":
-        pytest.skip("set BRIDGE_TEST_GCP=1 to run the live Cloud Tasks roundtrip (P7-9)")
+        pytest.skip(
+            "set BRIDGE_TEST_GCP=1 to run the live Cloud Tasks roundtrip (P7-9)"
+        )
     queue = os.environ.get(BRIDGE_TASKS_QUEUE_ENV, "").strip()
     callback = os.environ.get(BRIDGE_FOLLOWUP_CALLBACK_URL_ENV, "").strip()
     sa = os.environ.get(BRIDGE_RUNTIME_SA_EMAIL_ENV, "").strip()

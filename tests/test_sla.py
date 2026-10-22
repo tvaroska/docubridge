@@ -63,7 +63,9 @@ class TestSlaValidation:
 
     def test_ladder_wrong_order_rejected(self, tmp_path):
         """Ladder with wrong order is rejected."""
-        self._write_bad_policy(tmp_path, {"ladder": ["reminder", "overdue", "escalated"]})
+        self._write_bad_policy(
+            tmp_path, {"ladder": ["reminder", "overdue", "escalated"]}
+        )
         with pytest.raises(ValueError, match="ladder must be"):
             load_sla_policy("bad-skill", skills_dir=tmp_path)
 

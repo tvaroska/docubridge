@@ -1,8 +1,8 @@
-// @docbride/shared — the shared UI/domain workspace package (P6-5).
+// @docubridge/shared — the shared UI/domain workspace package (P6-5).
 //
 // SOURCE-ONLY (§2e): no build step. Vite/Vitest resolve the TS through the bundler; the
 // consuming apps type-check this source during their own `tsc --noEmit`. Consumers import
-// from the barrel: `import { makeTheme, Panel, Badges, mapEntry } from "@docbride/shared";`.
+// from the barrel: `import { makeTheme, Panel, Badges, mapEntry } from "@docubridge/shared";`.
 //
 // Factors out of the three apps: `theme` (a makeTheme factory — accents differ per zone),
 // `Panel`, `Badges`, and the snake→camel `domain/contract` mirror (types + mappers). The

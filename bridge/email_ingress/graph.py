@@ -224,7 +224,11 @@ class GraphMailClient:
         import httpx
 
         url = f"{self._mailbox_path()}/mailFolders('Inbox')/messages"
-        params = {"$top": str(top), "$orderby": "receivedDateTime desc", "$select": "id"}
+        params = {
+            "$top": str(top),
+            "$orderby": "receivedDateTime desc",
+            "$select": "id",
+        }
         try:
             with self._http() as http:
                 resp = http.get(url, params=params, headers=self._headers())

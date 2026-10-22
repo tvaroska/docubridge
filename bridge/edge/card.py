@@ -17,6 +17,7 @@ A2A SDK note: types are proto-based (1.x). ``protocol_version`` lives on the
 per-interface ``AgentInterface`` (there is no ``AgentCard.protocol_version``
 field). The card is served at ``/.well-known/agent-card.json`` by the server.
 """
+
 from __future__ import annotations
 
 import os

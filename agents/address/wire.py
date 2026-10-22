@@ -25,6 +25,7 @@ Discipline (mirrors the server-side ``decode_exchange_turn`` / D5+D2):
 This module supersedes the tag-stripping logic previously inlined in
 ``turn_reader.py``. It never imports ``bridge/`` (isolation convention).
 """
+
 from __future__ import annotations
 
 import json
@@ -111,7 +112,7 @@ def _strip_tags(value: bytes) -> bytes:
     """Strip the ``<a2a_datapart_json>…</…>`` delimiters (if present)."""
     value = value.strip()
     if value.startswith(_TAG_START):
-        value = value[len(_TAG_START):]
+        value = value[len(_TAG_START) :]
     if value.endswith(_TAG_END):
         value = value[: -len(_TAG_END)]
     return value.strip()

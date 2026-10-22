@@ -38,6 +38,7 @@ collect→gate→collect loop without standing up the Bridge core.
 (``tests/test_isolation_guard.py``). It imports only ``contract/``, ``bridge.*``,
 ``a2a.*``. The consumer reaches this mock over the wire by card URL, never by import.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -262,9 +263,7 @@ SCENARIOS: dict[str, Scenario] = {
                             issuer="aqua-util",
                             reason_code="illegible",
                             message="bill is blurry; please resubmit a clearer copy",
-                            artifact=ArtifactRef(
-                                uri="mock://bill-aquautil-blurry.svg"
-                            ),
+                            artifact=ArtifactRef(uri="mock://bill-aquautil-blurry.svg"),
                         )
                     ],
                     outstanding=RequirementsList(
@@ -361,14 +360,13 @@ def select_scenario(
     marker: str | None = None
     for token in (request.message or "").split():
         if token.startswith(_SCENARIO_MARKER):
-            marker = token[len(_SCENARIO_MARKER):]
+            marker = token[len(_SCENARIO_MARKER) :]
             break
     if marker is None or marker == "":
         return scenarios[DEFAULT_SCENARIO]
     if marker not in scenarios:
         raise ValueError(
-            f"unknown scenario marker {marker!r}; known scenarios: "
-            f"{sorted(scenarios)}"
+            f"unknown scenario marker {marker!r}; known scenarios: {sorted(scenarios)}"
         )
     return scenarios[marker]
 
@@ -389,12 +387,11 @@ class ScriptedBridgeExecutor(AgentExecutor):
         # turn may omit the marker but must continue the same scenario).
         self._scenario_for_ctx: dict[str, str] = {}
 
-    async def execute(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         # Reuse the edge's dual-mode intake so the mock accepts exactly what the
         # real edge accepts (JSON CollectRequest or free text). Submissions are
         # intentionally ignored — scenarios are script-driven (Decision 5).
+        """Execute a scripted mock A2A bridge turn for deterministic conformance testing."""
         request = decode_intake(context.message)
         context_id = context.context_id
 
@@ -449,13 +446,12 @@ class ScriptedBridgeExecutor(AgentExecutor):
                 TaskState.TASK_STATE_INPUT_REQUIRED, message=status_message
             )
 
-    async def cancel(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         # P4-5: tasks/cancel is the app's explicit terminal close (DUR-6) —
         # transitions any non-terminal task (WORKING/INPUT_REQUIRED, including an
         # escalated stall) to CANCELED; an already-terminal task is not cancelable
         # (the SDK handler enforces both). Mirror CollectExecutor.cancel.
+        """Cancel an active scripted mock bridge execution."""
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
 

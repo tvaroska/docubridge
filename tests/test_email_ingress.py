@@ -86,10 +86,17 @@ async def test_reply_files_each_attachment_through_the_real_gate(rig):
     assert outcome.skipped_inline == 1
     ci, hi = outcome.filed
     assert (ci.filename, ci.disposition, ci.gate, ci.product_line) == (
-        CI_PDF.name, "accepted", "auto_approve", "CRITICAL_ILLNESS"
+        CI_PDF.name,
+        "accepted",
+        "auto_approve",
+        "CRITICAL_ILLNESS",
     )
     assert (hi.filename, hi.disposition, hi.gate, hi.reason_code, hi.product_line) == (
-        HI_PDF.name, "pending", "hitl_review", "flagged_fields", "HOSPITAL_INDEMNITY"
+        HI_PDF.name,
+        "pending",
+        "hitl_review",
+        "flagged_fields",
+        "HOSPITAL_INDEMNITY",
     )
     assert [(u.filename, u.reason) for u in outcome.unreadable] == [
         ("rates.xlsx", "unsupported_media_type")
@@ -102,8 +109,12 @@ async def test_reply_files_each_attachment_through_the_real_gate(rig):
     assert (hi_cell.reason_code, hi_cell.attempts) == ("flagged_fields", 0)
     assert rig.cell("carrier-b", "CRITICAL_ILLNESS").status is RfpItemStatus.invited
     kinds = [e.kind for e in rig.rfp.audit]
-    for kind in (KIND_ACKNOWLEDGED, KIND_QUOTE_RECEIVED, KIND_QUOTE_INCOMPLETE,
-                 KIND_ATTACHMENT_UNREADABLE):
+    for kind in (
+        KIND_ACKNOWLEDGED,
+        KIND_QUOTE_RECEIVED,
+        KIND_QUOTE_INCOMPLETE,
+        KIND_ATTACHMENT_UNREADABLE,
+    ):
         assert kind in kinds
     assert kinds.count(KIND_ATTACHMENT_UNREADABLE) == 1
 
@@ -114,7 +125,9 @@ async def test_reply_files_each_attachment_through_the_real_gate(rig):
     )
     assert ci_cell.entry.doc_id == f"email-{key}-0"
     part = await rig.store.load_artifact(
-        app_name=APP_NAME, user_id="carrier-a", session_id=leg.context_id,
+        app_name=APP_NAME,
+        user_id="carrier-a",
+        session_id=leg.context_id,
         filename=CI_PDF.name,
     )
     assert part.inline_data.data == CI_PDF.read_bytes()
@@ -140,8 +153,12 @@ async def test_replay_is_a_noop(rig):
 async def test_a_second_mail_is_a_new_artifact_version(rig):
     rig.land(rig.reply(attachments=quote_attachments(xlsx=False)))
     await rig.proc.drain()
-    rig.land(rig.reply(message_id="<quote-2@carrier-a.example>",
-                       attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")]))
+    rig.land(
+        rig.reply(
+            message_id="<quote-2@carrier-a.example>",
+            attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+        )
+    )
     (outcome,) = await rig.proc.drain()
     assert outcome.filed[0].artifact_uri.endswith("?v=1")
     assert len(rig.cell("carrier-a", "CRITICAL_ILLNESS").versions) == 2
@@ -150,16 +167,28 @@ async def test_a_second_mail_is_a_new_artifact_version(rig):
 @pytest.mark.parametrize(
     ("make", "reason"),
     [
-        (lambda r: compose(intake_address(MAILBOX, mint_token(b"other", RFP_ID,
-                                                              "carrier-a"))),
-         "no_exchange_token"),
+        (
+            lambda r: compose(
+                intake_address(MAILBOX, mint_token(b"other", RFP_ID, "carrier-a"))
+            ),
+            "no_exchange_token",
+        ),
         (lambda r: compose("broker@broker.example"), "no_exchange_token"),
-        (lambda r: r.reply(headers={"Authentication-Results":
-                                    "mx.broker.example; spf=pass; DMARC=fail"}),
-         "sender_authentication_failed"),
-        (lambda r: compose(r.proc.reply_address(RFP_ID, "carrier-a"),
-                           subject=r.proc.reply_subject_tag(RFP_ID, "carrier-b")),
-         "ambiguous_token"),
+        (
+            lambda r: r.reply(
+                headers={
+                    "Authentication-Results": "mx.broker.example; spf=pass; DMARC=fail"
+                }
+            ),
+            "sender_authentication_failed",
+        ),
+        (
+            lambda r: compose(
+                r.proc.reply_address(RFP_ID, "carrier-a"),
+                subject=r.proc.reply_subject_tag(RFP_ID, "carrier-b"),
+            ),
+            "ambiguous_token",
+        ),
         (lambda r: b"\x00\x01 not a message", "unparseable"),
     ],
     ids=["foreign-secret", "no-token", "dmarc-fail", "ambiguous", "unparseable"],
@@ -173,22 +202,30 @@ async def test_quarantine_never_touches_the_board(rig, make, reason, caplog):
     assert rig.rfp.model_dump() == before
     assert rig.seam.pending() == []
     assert rig.seam.processed(key)["reason"] == reason
-    assert any("quarantined" in r.message and r.levelname == "WARNING"
-               for r in caplog.records)
+    assert any(
+        "quarantined" in r.message and r.levelname == "WARNING" for r in caplog.records
+    )
 
 
 async def test_subject_tag_only_reply_files_normally(rig):
     tag = rig.proc.reply_subject_tag(RFP_ID, "carrier-a")
-    rig.land(compose("broker@broker.example", subject=f"Quote {tag}",
-                     attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")]))
+    rig.land(
+        compose(
+            "broker@broker.example",
+            subject=f"Quote {tag}",
+            attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+        )
+    )
     (outcome,) = await rig.proc.drain()
     assert (outcome.status, outcome.party) == ("filed", "carrier-a")
     assert rig.cell("carrier-a", "CRITICAL_ILLNESS").status is RfpItemStatus.received
 
 
 async def test_deterministic_engine_refusal_is_unreadable_and_the_rest_still_file(rig):
-    atts = [("unknown-stem.pdf", b"%PDF-1.4 x", "application/pdf"),
-            (CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")]
+    atts = [
+        ("unknown-stem.pdf", b"%PDF-1.4 x", "application/pdf"),
+        (CI_PDF.name, CI_PDF.read_bytes(), "application/pdf"),
+    ]
     rig.land(rig.reply(attachments=atts))
     (outcome,) = await rig.proc.drain()
     assert [(u.filename, u.reason) for u in outcome.unreadable] == [
@@ -202,9 +239,11 @@ async def test_hostile_filenames_never_wedge_the_drain(rig):
     # Review fix: ". .pdf" used to sanitize to ".pdf" (refused by the seam) and a
     # 128-char CJK name overflowed NAME_MAX — both raised out of every drain.
     long_cjk = "\u62a5\u4ef7" * 64 + ".xlsx"
-    atts = [(". .pdf", b"%PDF-1.4 x", "application/pdf"),
-            (long_cjk, b"PK\x03\x04", "application/vnd.ms-excel"),
-            (CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")]
+    atts = [
+        (". .pdf", b"%PDF-1.4 x", "application/pdf"),
+        (long_cjk, b"PK\x03\x04", "application/vnd.ms-excel"),
+        (CI_PDF.name, CI_PDF.read_bytes(), "application/pdf"),
+    ]
     key = rig.land(rig.reply(attachments=atts))
     (outcome,) = await rig.proc.drain()
     assert outcome.status == "filed" and rig.seam.pending() == []
@@ -238,7 +277,9 @@ async def test_correlated_mail_without_attachments_is_an_acknowledgement(rig):
     rig.land(rig.reply())
     (outcome,) = await rig.proc.drain()
     assert (outcome.status, outcome.reason) == ("filed", "no_attachments")
-    assert rig.cell("carrier-a", "CRITICAL_ILLNESS").status is RfpItemStatus.acknowledged
+    assert (
+        rig.cell("carrier-a", "CRITICAL_ILLNESS").status is RfpItemStatus.acknowledged
+    )
     assert rig.cell("carrier-b", "CRITICAL_ILLNESS").status is RfpItemStatus.invited
 
 
@@ -254,15 +295,21 @@ async def test_drain_processes_in_landing_order(rig):
 def test_processor_refuses_without_secret_or_mailbox(tmp_path, monkeypatch):
     monkeypatch.delenv("BRIDGE_EMAIL_TOKEN_SECRET", raising=False)
     monkeypatch.delenv("BRIDGE_EMAIL_MAILBOX", raising=False)
-    kw = dict(board=make_board(), seam=LocalEmailIngress(tmp_path),
-              extraction=extractor(), artifact_store=InMemoryArtifactService())
+    kw = dict(
+        board=make_board(),
+        seam=LocalEmailIngress(tmp_path),
+        extraction=extractor(),
+        artifact_store=InMemoryArtifactService(),
+    )
     with pytest.raises(RuntimeError, match="BRIDGE_EMAIL_MAILBOX"):
         EmailProcessor(secret=SECRET, **kw)
     with pytest.raises(RuntimeError, match="BRIDGE_EMAIL_TOKEN_SECRET"):
         EmailProcessor(mailbox=MAILBOX, **kw)
     proc = EmailProcessor(mailbox=MAILBOX, secret=SECRET, **kw)
     token = mint_token(SECRET, RFP_ID, "carrier-a")
-    assert proc.reply_address(RFP_ID, "carrier-a") == f"rfp-quotes+{token}@broker.example"
+    assert (
+        proc.reply_address(RFP_ID, "carrier-a") == f"rfp-quotes+{token}@broker.example"
+    )
     assert proc.reply_subject_tag(RFP_ID, "carrier-a") == f"[ref:{token}]"
 
 
@@ -270,12 +317,16 @@ def test_processor_refuses_without_secret_or_mailbox(tmp_path, monkeypatch):
     os.environ.get("BRIDGE_TEST_GEMINI") != "1",
     reason="set BRIDGE_TEST_GEMINI=1 (+ Vertex creds) to run the live Gemini engine",
 )
-async def test_live_gemini_files_the_emailed_quote(tmp_path, monkeypatch):  # pragma: no cover
+async def test_live_gemini_files_the_emailed_quote(
+    tmp_path, monkeypatch
+):  # pragma: no cover
     from bridge.extraction.gemini import GeminiExtractor
 
     monkeypatch.setenv("BRIDGE_ALLOW_FILE_URI", "1")
     rig = Rig(tmp_path, extraction=GeminiExtractor())
-    rig.land(rig.reply(attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")]))
+    rig.land(
+        rig.reply(attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")])
+    )
     (outcome,) = await rig.proc.drain()
     assert outcome.status == "filed"
     # Terminal-outcome parity, never float equality.

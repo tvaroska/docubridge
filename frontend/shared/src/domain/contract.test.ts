@@ -1,4 +1,4 @@
-// Shared contract mapper tests (@docbride/shared, P6-5).
+// Shared contract mapper tests (@docubridge/shared, P6-5).
 //
 // Proves mapEntry / mapRequirement round-trip snake→camel over the superset wire shape and
 // RELAY reasonCode/message verbatim (content-not-pixels). Missing optional fields map to null.

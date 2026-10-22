@@ -77,7 +77,9 @@ async def _start(client, prepared_key: str) -> str:
     return sid
 
 
-async def _wait_done(client, sid: str, *, tries: int = 300, delay: float = 0.02) -> dict:
+async def _wait_done(
+    client, sid: str, *, tries: int = 300, delay: float = 0.02
+) -> dict:
     """Poll the snapshot until terminal (or fail with the last snapshot)."""
     snap = None
     for _ in range(tries):
@@ -91,9 +93,7 @@ async def _wait_done(client, sid: str, *, tries: int = 300, delay: float = 0.02)
 
 
 def _accepted(turn: dict) -> list[dict]:
-    return [
-        e for e in turn["status"]["entries"] if e["disposition"] == "accepted"
-    ]
+    return [e for e in turn["status"]["entries"] if e["disposition"] == "accepted"]
 
 
 # --------------------------------------------------------------------------- #
@@ -104,7 +104,11 @@ async def test_prepared_lists_catalog():
         resp = await client.get("/prepared")
         assert resp.status_code == 200
         keys = {e["key"] for e in resp.json()}
-        assert {"path-a-instant", "same-issuer-reject", "distinct-issuer-accept"} <= keys
+        assert {
+            "path-a-instant",
+            "same-issuer-reject",
+            "distinct-issuer-accept",
+        } <= keys
         assert all(e["label"] for e in resp.json())
 
 
@@ -118,8 +122,7 @@ async def test_new_session_from_prepared_runs_to_done_satisfied():
         assert snap["rounds"] >= 1
         accepted = _accepted(snap["turn"])
         assert any(
-            e["doctype"] == "gov-id" and e["doc_id"] == "gov-id-clean"
-            for e in accepted
+            e["doctype"] == "gov-id" and e["doc_id"] == "gov-id-clean" for e in accepted
         )
 
 
@@ -149,9 +152,7 @@ async def test_same_issuer_reject_not_satisfied():
         assert snap["satisfied"] is False
         accepted = _accepted(snap["turn"])
         assert len(accepted) == 2
-        issuers = {
-            e["issuer"] for e in accepted if e["doctype"] == "utility-bill"
-        }
+        issuers = {e["issuer"] for e in accepted if e["doctype"] == "utility-bill"}
         assert issuers == {"power-co"}
         # The gate withheld satisfaction; the Bridge's advisory outstanding is present
         # and NOT marked done (the real edge emits an empty requirements list here —
@@ -169,9 +170,7 @@ async def test_distinct_issuer_accept_satisfied():
         assert snap["status"] == "done"
         assert snap["satisfied"] is True
         accepted = _accepted(snap["turn"])
-        issuers = {
-            e["issuer"] for e in accepted if e["doctype"] == "utility-bill"
-        }
+        issuers = {e["issuer"] for e in accepted if e["doctype"] == "utility-bill"}
         assert issuers == {"power-co", "aqua-util"}
 
 
@@ -190,9 +189,7 @@ async def test_sse_stream_frames_and_terminates():
         final = frames[-1]
         assert final["status"] == "done"
         assert final["satisfied"] is True
-        assert any(
-            e["doctype"] == "gov-id" for e in _accepted(final["turn"])
-        )
+        assert any(e["doctype"] == "gov-id" for e in _accepted(final["turn"]))
 
 
 async def test_unknown_session_404():

@@ -1,4 +1,5 @@
 """Address driver tests — CLI, ``run_collection``, and resume helpers."""
+
 from __future__ import annotations
 
 import json
@@ -74,7 +75,9 @@ async def test_run_collection_path_a_instant_returns_terminal_gov_id():
     app = build_mock_bridge_app(url=BASE + "/")
     hc = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=BASE)
     try:
-        turn = await run_collection(CARD_URL, scenario="path-a-instant", httpx_client=hc)
+        turn = await run_collection(
+            CARD_URL, scenario="path-a-instant", httpx_client=hc
+        )
     finally:
         await hc.aclose()
 
@@ -90,9 +93,7 @@ async def test_run_collection_path_a_instant_returns_terminal_gov_id():
 # --------------------------------------------------------------------------- #
 # CLI wiring (main) — no network, monkeypatched host                          #
 # --------------------------------------------------------------------------- #
-def test_main_prints_terminal_turn_json_and_returns_zero(
-    capsys, monkeypatch
-):
+def test_main_prints_terminal_turn_json_and_returns_zero(capsys, monkeypatch):
     """Monkeypatch ``run_collection`` returning a terminal turn → stdout JSON."""
     terminal_turn = ExchangeTurn(
         context_id="ctx-test",
@@ -103,9 +104,7 @@ def test_main_prints_terminal_turn_json_and_returns_zero(
     async def stub_run_collection(*args, **kwargs):
         return terminal_turn
 
-    monkeypatch.setattr(
-        "agents.address.driver.run_collection", stub_run_collection
-    )
+    monkeypatch.setattr("agents.address.driver.run_collection", stub_run_collection)
 
     exit_code = main(["--scenario", "path-a-instant"])
     captured = capsys.readouterr()
@@ -122,9 +121,7 @@ def test_main_returns_one_on_none_turn(capsys, monkeypatch):
     async def stub_run_collection(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(
-        "agents.address.driver.run_collection", stub_run_collection
-    )
+    monkeypatch.setattr("agents.address.driver.run_collection", stub_run_collection)
 
     exit_code = main(["--scenario", "path-a-instant"])
     captured = capsys.readouterr()
@@ -145,9 +142,7 @@ def test_main_forwards_parsed_args_to_run_collection(monkeypatch):
             status={"entries": []},
         )
 
-    monkeypatch.setattr(
-        "agents.address.driver.run_collection", stub_run_collection
-    )
+    monkeypatch.setattr("agents.address.driver.run_collection", stub_run_collection)
 
     main(
         [
@@ -193,6 +188,7 @@ async def test_feed_function_response_builds_correct_response_content():
     a shape test to keep the resume capability from bit-rotting. A fake runner
     whose ``run_async`` yields a synthetic ``event.output``.
     """
+
     # Fake event with an output attribute.
     class FakeEvent:
         def __init__(self, output):
@@ -235,6 +231,7 @@ async def test_feed_function_response_builds_correct_response_content():
 
 async def test_latest_parked_call_returns_most_recent_call():
     """Unit test for ``latest_parked_call`` helper."""
+
     # Fake session with events.
     class FakeEvent:
         def __init__(self, calls):

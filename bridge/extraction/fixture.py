@@ -11,7 +11,9 @@ from pathlib import Path
 from contract.extraction import ExtractionResult
 
 # Default corpus path (from bridge/extraction/fixture.py: parents[0]=extraction, [1]=bridge, [2]=repo root)
-DEFAULT_CORPUS = Path(__file__).resolve().parents[2] / "wiki/evals/address/expected.json"
+DEFAULT_CORPUS = (
+    Path(__file__).resolve().parents[2] / "wiki/evals/address/expected.json"
+)
 
 # Supported image/document suffixes for key normalization
 _KEY_SUFFIXES = (".svg", ".png", ".jpg", ".jpeg", ".pdf")
@@ -50,7 +52,7 @@ def _normalize_key(artifact_name: str) -> str:
     key = Path(artifact_name).name
     for suffix in _KEY_SUFFIXES:
         if key.endswith(suffix):
-            key = key[:-len(suffix)]
+            key = key[: -len(suffix)]
             break
     return key
 

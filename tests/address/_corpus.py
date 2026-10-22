@@ -3,6 +3,7 @@
 See wiki/evals/address/description.md — this module provides the
 design-doc-named helpers: load_corpus, build_extraction_table, load_timeline.
 """
+
 import json
 from pathlib import Path
 

@@ -17,6 +17,7 @@ outcome under a replayed extraction. The live tests are gated on
 
 Parity is **terminal-outcome, never ledger-identical** (CLAUDE.md; design/seams.md).
 """
+
 from __future__ import annotations
 
 import ast
@@ -81,7 +82,9 @@ class _ScriptedModels:
         self.calls: list[dict] = []
 
     def generate_content(self, *, model, contents, config):
-        self.calls.append({"model": model, "contents": list(contents), "config": config})
+        self.calls.append(
+            {"model": model, "contents": list(contents), "config": config}
+        )
         return _FakeResponse(self._texts[min(len(self.calls), len(self._texts)) - 1])
 
 
@@ -249,7 +252,10 @@ async def test_gs_reference_rides_as_gcs_document_with_no_download():
 
 
 def test_build_process_request_is_none_for_an_unsupported_mime():
-    assert build_process_request(PROCESSOR, mime_type="image/svg+xml", data=b"<svg/>") is None
+    assert (
+        build_process_request(PROCESSOR, mime_type="image/svg+xml", data=b"<svg/>")
+        is None
+    )
 
 
 def test_build_process_request_needs_exactly_one_source():
@@ -362,9 +368,7 @@ async def test_async_client_is_awaited():
 
 
 def _text_block(text: str, *children) -> SimpleNamespace:
-    return SimpleNamespace(
-        text_block=SimpleNamespace(text=text, blocks=list(children))
-    )
+    return SimpleNamespace(text_block=SimpleNamespace(text=text, blocks=list(children)))
 
 
 def test_document_text_prefers_document_text():

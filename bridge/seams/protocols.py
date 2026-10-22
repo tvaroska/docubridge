@@ -19,11 +19,13 @@ if TYPE_CHECKING:
 
 class SeamABC(abc.ABC):
     """Common base for all seam adapters."""
+
     seam: ClassVar[Seam]
 
 
 class SessionsSeam(SeamABC):
     """Agent Platform Sessions (Vertex Agent Engine ``VertexAiSessionService`` or Cloud SQL ``DatabaseSessionService``)."""
+
     seam = Seam.sessions
 
     @abc.abstractmethod
@@ -34,6 +36,7 @@ class SessionsSeam(SeamABC):
 
 class TaskStoreSeam(SeamABC):
     """Task store (Cloud SQL)."""
+
     seam = Seam.task_store
 
     @abc.abstractmethod
@@ -64,6 +67,7 @@ class ExchangeStoreSeam(SeamABC):
     memory, or sqlite when ``BRIDGE_EXCHANGE_DB_URL`` is set; GCP = Cloud SQL over the
     shared ``DATABASE_URL`` (never in memory — the session-affinity trap).
     """
+
     seam = Seam.exchange_store
 
     @abc.abstractmethod
@@ -75,6 +79,7 @@ class ExchangeStoreSeam(SeamABC):
 class SkillRegistrySeam(SeamABC):
     """Skill registry. Local = a directory of Agent Skills folders; GCP = managed
     Skill Registry (GCS) at P7."""
+
     seam = Seam.skill_registry
 
     @abc.abstractmethod
@@ -122,18 +127,18 @@ class SkillRegistrySeam(SeamABC):
 
 class MemoryBankSeam(SeamABC):
     """Memory bank (Vertex Agent Engine ``VertexAiMemoryBankService`` or local ``SqliteMemoryService`` / ``InMemoryMemoryService``)."""
+
     seam = Seam.memory_bank
 
     @abc.abstractmethod
-    def build_memory_service(
-        self, db_path: str | None = None
-    ) -> "BaseMemoryService":
+    def build_memory_service(self, db_path: str | None = None) -> "BaseMemoryService":
         """Return an ADK ``BaseMemoryService`` (Vertex AI Memory Bank on GCP; SQLite or in-memory locally)."""
         raise NotImplementedError
 
 
 class SchedulerSeam(SeamABC):
     """Scheduler (Cloud Tasks)."""
+
     seam = Seam.scheduler
 
     @abc.abstractmethod
@@ -144,6 +149,7 @@ class SchedulerSeam(SeamABC):
 
 class A2AClientSeam(SeamABC):
     """A2A client (outbound). Local = injected fake transport; GCP = Agent-Identity (P7)."""
+
     seam = Seam.a2a_client
 
     @abc.abstractmethod
@@ -154,6 +160,7 @@ class A2AClientSeam(SeamABC):
 
 class ExtractionSeam(SeamABC):
     """Extraction (Gemini / Document AI)."""
+
     seam = Seam.extraction
 
     @abc.abstractmethod
@@ -221,6 +228,7 @@ class EmailIngressSeam(SeamABC):
     filename is validated before any I/O (``validate_landing_key`` /
     ``validate_attachment_slot``).
     """
+
     seam = Seam.email_ingress
 
     @abc.abstractmethod

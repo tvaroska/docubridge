@@ -201,12 +201,8 @@ class TestDeterminism:
             "effective_date": "2026-01-01",
             "expiry_date": "2026-12-31",
         }
-        q1 = normalize_quote(
-            party="c", currency="EUR", language="fr", key_fields=kf
-        )
-        q2 = normalize_quote(
-            party="c", currency="EUR", language="fr", key_fields=kf
-        )
+        q1 = normalize_quote(party="c", currency="EUR", language="fr", key_fields=kf)
+        q2 = normalize_quote(party="c", currency="EUR", language="fr", key_fields=kf)
         assert q1 == q2
 
 
@@ -218,7 +214,9 @@ class TestCorpusOracle:
         docs = data["documents"]
         # 4 base carrier quotes + carrier-b's revised v2 quote (S1-benefits-5); every
         # document (base or revised) must reproduce its own expected_normalized block.
-        assert len(docs) == 5, "expected 4 carrier quotes + 1 revised in the benefits corpus"
+        assert len(docs) == 5, (
+            "expected 4 carrier quotes + 1 revised in the benefits corpus"
+        )
 
         extractor = FixtureExtractor(corpus_path=BENEFITS_CORPUS)
         for doc in docs:

@@ -184,19 +184,25 @@ def test_guard_detects_a_synthetic_violation():
     )
 
     # (b) `param or InMemory…()` — the injectable idiom (gated).
-    assert _scan_source("def f(param):\n    return param or InMemoryTaskStore()\n") == [], (
-        "the `param or InMemory…()` idiom must be allowed"
-    )
+    assert (
+        _scan_source("def f(param):\n    return param or InMemoryTaskStore()\n") == []
+    ), "the `param or InMemory…()` idiom must be allowed"
 
     # (c) `if not dsn: return InMemory…()` — DSN-gated branch body (gated).
-    assert _scan_source(
-        "def f(dsn):\n    if not dsn:\n        return InMemoryTaskStore()\n    return db(dsn)\n"
-    ) == [], "an if-branch body construction must be allowed"
+    assert (
+        _scan_source(
+            "def f(dsn):\n    if not dsn:\n        return InMemoryTaskStore()\n    return db(dsn)\n"
+        )
+        == []
+    ), "an if-branch body construction must be allowed"
 
     # (d) `else: return InMemory…()` — else-branch body (gated).
-    assert _scan_source(
-        "def f(b):\n    if b:\n        g()\n    else:\n        return InMemoryArtifactService()\n"
-    ) == [], "an else-branch body construction must be allowed"
+    assert (
+        _scan_source(
+            "def f(b):\n    if b:\n        g()\n    else:\n        return InMemoryArtifactService()\n"
+        )
+        == []
+    ), "an else-branch body construction must be allowed"
 
     # (e) A class *definition* named InMemory* is not a Call — never flagged.
     assert _scan_source("class InMemoryPortalStore:\n    pass\n") == [], (
@@ -214,15 +220,20 @@ def test_guard_detects_a_synthetic_violation():
     )
 
     # (h) Attribute-form unconditional construction — `mod.InMemoryTaskStore()`.
-    violations = _scan_source("def f(mod):\n    x = mod.InMemoryTaskStore()\n    return x\n")
+    violations = _scan_source(
+        "def f(mod):\n    x = mod.InMemoryTaskStore()\n    return x\n"
+    )
     assert violations == [("InMemoryTaskStore", 2)], (
         f"attribute-form unconditional construction should flag once, got {violations}"
     )
 
     # (i) Early-return guard clause then fall-through — the build_artifact_store shape.
-    assert _scan_source(
-        "def f(bucket):\n"
-        "    if bucket:\n"
-        "        return GcsArtifactService(bucket)\n"
-        "    return InMemoryArtifactService()\n"
-    ) == [], "a construction after an early-return guard clause must be allowed"
+    assert (
+        _scan_source(
+            "def f(bucket):\n"
+            "    if bucket:\n"
+            "        return GcsArtifactService(bucket)\n"
+            "    return InMemoryArtifactService()\n"
+        )
+        == []
+    ), "a construction after an early-return guard clause must be allowed"

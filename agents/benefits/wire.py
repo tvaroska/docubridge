@@ -46,7 +46,9 @@ def encode_quote(result: ExtractionResult) -> list[Part]:
     off (D5). Same encode idiom both carriers use, so the wire shape is framework-neutral.
     """
     part = ph.new_data_part(result.model_dump(mode="json"), media_type=JSON_MIME)
-    part.metadata.CopyFrom(ParseDict({META_KIND: KIND_BENEFITS_QUOTE}, struct_pb2.Struct()))
+    part.metadata.CopyFrom(
+        ParseDict({META_KIND: KIND_BENEFITS_QUOTE}, struct_pb2.Struct())
+    )
     return [part]
 
 

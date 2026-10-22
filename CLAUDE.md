@@ -120,8 +120,8 @@ it during `/implement`.
 4. **Wire `Disposition` Enum vs. `"parked"` Intake Status:**
    - `contract.enums.Disposition` only defines `accepted`, `rejected`, and `pending` (there is no `Disposition.parked`). Endpoints accepting `status="parked"` (`IngestSubmissionRequest`) must map `"parked"` to `Disposition.pending` (`Gate.hitl_review`), and Day-2 Agent Gym auto-promotion upgrades `Disposition.pending` → `Disposition.accepted` (`Gate.auto_approve`).
 5. **Cloud Build `uv.lock` Index & Headless Chrome DevTools Proxy Bypass:**
-   - If regenerating `uv.lock` before `gcloud builds submit`, always pass `--default-index https://pypi.org/simple` so external Cloud Build workers resolve wheels from `https://files.pythonhosted.org` rather than internal `airlock-proxy.uplink.goog:999`.
+   - If regenerating `uv.lock` before `gcloud builds submit`, always pass `--default-index https://pypi.org/simple` so external Cloud Build workers resolve wheels from `https://files.pythonhosted.org` rather than a local workstation mirror.
    - In `demo/record_gcp_demo.py`, always pass `--no-proxy-server` to headless Chrome and `trust_env=False` to `httpx.AsyncClient(trust_env=False)` when polling `http://127.0.0.1:<port>/json`, otherwise environment proxy variables intercept localhost DevTools connections.
 6. **Cloud Run Warm Instances & Terraform Auth:**
-   - Both `documents001-bridge` and `documents001-bridge-rfp-board` run with `min_instances = 1` (`terraform/modules/runtime/main.tf`) so live `/demo` showcase sessions have zero cold-start latency.
-   - When running `/usr/local/google/home/tvaroska/.local/bin/terraform` outside GCE metadata environments, export `GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` or update Cloud Run services directly via `gcloud run services update`.
+   - Both `docubridge-showcase-bridge` and `docubridge-showcase-bridge-rfp-board` run with `min_instances = 1` (`terraform/modules/runtime/main.tf`) so live `/demo` showcase sessions have zero cold-start latency.
+   - When running `terraform` outside GCE metadata environments, export `GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` or update Cloud Run services directly via `gcloud run services update`.

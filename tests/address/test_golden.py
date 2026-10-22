@@ -37,6 +37,7 @@ call on a fresh ``Runner`` over the same DB to surface the fresh terminal turn.
 The Gemini extraction adapter (TEST-3's other half) is P7; this suite runs the real
 edge on the **fixture** extractor only.
 """
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -113,7 +114,9 @@ def real_app(request):
         return _real_edge_app(request.param, llm)
 
     yield factory
-    assert llm.call_count == 0, f"the Address driver reached the LLM leg ({request.param})"
+    assert llm.call_count == 0, (
+        f"the Address driver reached the LLM leg ({request.param})"
+    )
 
 
 @asynccontextmanager
@@ -186,7 +189,8 @@ async def _assert_cuj1(app):
 
 
 @pytest.mark.parametrize(
-    "target", ["mock", "deterministic", "hybrid"],
+    "target",
+    ["mock", "deterministic", "hybrid"],
     ids=["mock", "real-deterministic", "real-hybrid"],
 )
 async def test_cuj1_path_a_instant_parity_mock_and_real(target):
@@ -210,9 +214,7 @@ async def test_cuj1_path_a_instant_parity_mock_and_real(target):
 # --------------------------------------------------------------------------- #
 async def test_cuj10_distinct_issuer_accept_real_edge(real_app):
     """Real edge, both bills at once → one terminal turn, two distinct issuers."""
-    turn, gate_rounds = await _run(
-        real_app(), documents=[BILL_POWERCO, BILL_AQUAUTIL]
-    )
+    turn, gate_rounds = await _run(real_app(), documents=[BILL_POWERCO, BILL_AQUAUTIL])
 
     assert turn is not None
     assert turn.terminal is True
@@ -290,9 +292,7 @@ async def test_cuj4_resubmit_first_turn_reject_real_edge(real_app):
 
     assert turn is not None
     assert gate_rounds == 1
-    rejected = [
-        e for e in turn.status.entries if e.disposition is Disposition.rejected
-    ]
+    rejected = [e for e in turn.status.entries if e.disposition is Disposition.rejected]
     assert len(rejected) == 1
     entry = rejected[0]
     assert entry.doc_id == "bill-aquautil-blurry"
@@ -370,12 +370,8 @@ async def test_cuj4_resubmit_to_escalate_boundary_mock(tmp_path):
 
     # Escalate ≠ reject (§2a): the terminal entry is PENDING (route-to-human), never
     # rejected — the document was not judged wrong, it just could not be read.
-    assert not [
-        e for e in turn.status.entries if e.disposition is Disposition.rejected
-    ]
-    pending = [
-        e for e in turn.status.entries if e.disposition is Disposition.pending
-    ]
+    assert not [e for e in turn.status.entries if e.disposition is Disposition.rejected]
+    pending = [e for e in turn.status.entries if e.disposition is Disposition.pending]
     assert len(pending) == 1
     assert pending[0].reason_code == REASON_ESCALATED
     # Only reachable after the three resubmit parks → the cap was crossed on the wire.

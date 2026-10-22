@@ -24,6 +24,7 @@ passes the adk >=2.7 same-origin validation.
 are both set (a provisioned project + a deployed edge — a P7-9 operator input). Credential
 -free it skips cleanly, naming both envs (`uv run pytest tests/test_deployed_parity.py -rs`).
 """
+
 from __future__ import annotations
 
 import os
@@ -204,9 +205,7 @@ async def test_cuj4_resubmit_first_turn_reject_deployed():
 
     assert turn is not None
     assert gate_rounds == 1
-    rejected = [
-        e for e in turn.status.entries if e.disposition is Disposition.rejected
-    ]
+    rejected = [e for e in turn.status.entries if e.disposition is Disposition.rejected]
     assert len(rejected) == 1
     entry = rejected[0]
     assert entry.doc_id == "bill-aquautil-blurry"

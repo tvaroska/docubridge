@@ -15,6 +15,7 @@ resumed by a second ``message/send`` whose ``Message`` carries BOTH the parked
 looks the task up by ``message.task_id``; ``context_id`` alone would mint a new task).
 The harness threads both on the resume leg.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -222,9 +223,7 @@ async def test_path_b_two_bills_park_then_resume():
         assert turn1.status.outstanding.done is False
 
         # Turn 2: resume on the SAME context_id + task_id (SDK continuation model).
-        resume = _collect_message(
-            None, context_id=parked.context_id, task_id=parked.id
-        )
+        resume = _collect_message(None, context_id=parked.context_id, task_id=parked.id)
         resume_task_id, _events2 = await _send(client, resume)
         completed = await client.get_task(GetTaskRequest(id=resume_task_id))
         assert completed.status.state == TaskState.TASK_STATE_COMPLETED
@@ -256,9 +255,7 @@ async def test_resubmit_reject_then_accept():
         assert turn1.status.outstanding is not None
         assert len(turn1.status.outstanding.requirements) == 1
 
-        resume = _collect_message(
-            None, context_id=parked.context_id, task_id=parked.id
-        )
+        resume = _collect_message(None, context_id=parked.context_id, task_id=parked.id)
         resume_task_id, _events2 = await _send(client, resume)
         completed = await client.get_task(GetTaskRequest(id=resume_task_id))
         assert completed.status.state == TaskState.TASK_STATE_COMPLETED
@@ -399,7 +396,9 @@ async def test_parity_smoke_terminal_outcome_matches_real_edge():
         from google.protobuf import struct_pb2
         from google.protobuf.json_format import ParseDict
 
-        doc.metadata.CopyFrom(ParseDict({"doc_id": "gov-id-clean"}, struct_pb2.Struct()))
+        doc.metadata.CopyFrom(
+            ParseDict({"doc_id": "gov-id-clean"}, struct_pb2.Struct())
+        )
         msg = Message(
             role=Role.ROLE_USER, message_id=uuid.uuid4().hex, parts=[*parts, doc]
         )
@@ -408,7 +407,11 @@ async def test_parity_smoke_terminal_outcome_matches_real_edge():
         real_turn = _exchange_turn_from_artifacts(real_task)
 
     # Terminal-outcome tuple equality (state + accepted-issuer set).
-    assert mock_task.status.state == real_task.status.state == TaskState.TASK_STATE_COMPLETED
+    assert (
+        mock_task.status.state
+        == real_task.status.state
+        == TaskState.TASK_STATE_COMPLETED
+    )
     assert _accepted_set(mock_turn) == _accepted_set(real_turn) == {("gov-id", None)}
 
 

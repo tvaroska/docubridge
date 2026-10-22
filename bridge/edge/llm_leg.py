@@ -62,6 +62,7 @@ re-accepts an already-answered one).
 
 **Isolation guard:** ``bridge/edge/`` must NEVER import ``agents/``.
 """
+
 from __future__ import annotations
 
 import os
@@ -111,7 +112,9 @@ REVIEW_TOOL = "request_human_review"
 DELETE_TOOL = "handle_deletion_request"
 REJECT_TOOL = "reject_submission"
 ESCALATE_TOOL = "escalate_submission"
-PROJECTED_TOOLS = frozenset({GATE_TOOL, REVIEW_TOOL, DELETE_TOOL, REJECT_TOOL, ESCALATE_TOOL})
+PROJECTED_TOOLS = frozenset(
+    {GATE_TOOL, REVIEW_TOOL, DELETE_TOOL, REJECT_TOOL, ESCALATE_TOOL}
+)
 # The AgentTool's response carries extraction signals only — NEVER projected (D4).
 EXTRACTION_TOOL = "extraction_agent"
 
@@ -227,7 +230,11 @@ def _review_target(
             if e.artifact is not None and e.artifact.name == artifact_name:
                 return e
         for e in entries.values():
-            if e.artifact is not None and e.artifact.uri and _basename(e.artifact.uri) == artifact_name:
+            if (
+                e.artifact is not None
+                and e.artifact.uri
+                and _basename(e.artifact.uri) == artifact_name
+            ):
                 return e
     hitl = [e for e in entries.values() if e.gate is Gate.hitl_review]
     return hitl[0] if len(hitl) == 1 else None
@@ -283,18 +290,24 @@ def project_from_events(
     pins: dict[str, Any] = {}
 
     def _candidate(rank: int, reason: str, text: Any) -> None:
-        candidates.append((rank, len(candidates), reason, text if isinstance(text, str) else None))
+        candidates.append(
+            (rank, len(candidates), reason, text if isinstance(text, str) else None)
+        )
 
     def _park(call_id: str, artifact_name: Any, message: str | None) -> None:
         pending.append(call_id)
-        base = _review_target(entries, artifact_name if isinstance(artifact_name, str) else "")
+        base = _review_target(
+            entries, artifact_name if isinstance(artifact_name, str) else ""
+        )
         if base is not None:
-            entries[base.doc_id] = base.model_copy(update={
-                "disposition": Disposition.pending,
-                "gate": Gate.hitl_review,
-                "reason_code": REASON_HUMAN_REVIEW,
-                "message": message,
-            })
+            entries[base.doc_id] = base.model_copy(
+                update={
+                    "disposition": Disposition.pending,
+                    "gate": Gate.hitl_review,
+                    "reason_code": REASON_HUMAN_REVIEW,
+                    "message": message,
+                }
+            )
         _candidate(_RANK_REVIEW, REASON_HUMAN_REVIEW, message)
 
     for event in events:
@@ -322,7 +335,11 @@ def project_from_events(
                     calls[fc.id] = (fc.name, args, event)
                 continue
             fr = part.function_response
-            if fr is None or event.author == _USER_AUTHOR or fr.name not in PROJECTED_TOOLS:
+            if (
+                fr is None
+                or event.author == _USER_AUTHOR
+                or fr.name not in PROJECTED_TOOLS
+            ):
                 continue
             args = calls.get(fr.id or "", (None, {}, None))[1]
             resp = dict(fr.response or {})
@@ -366,7 +383,11 @@ def project_from_events(
                 )
             elif fr.name == REVIEW_TOOL:
                 msg = resp.get("message")
-                _park(fr.id or "", args.get("artifact_name"), msg if isinstance(msg, str) else None)
+                _park(
+                    fr.id or "",
+                    args.get("artifact_name"),
+                    msg if isinstance(msg, str) else None,
+                )
             elif fr.name == ESCALATE_TOOL:
                 escalated = True
                 _candidate(_RANK_ESCALATE, REASON_ESCALATED, resp.get("message"))
@@ -376,7 +397,9 @@ def project_from_events(
                     _candidate(_RANK_OFFSCRIPT, reason, resp.get("message"))
             elif fr.name == REJECT_TOOL:
                 # Off-script reject: a status only — NEVER a disposition=rejected entry.
-                _candidate(_RANK_OFFSCRIPT, REASON_OFF_SCRIPT_REJECT, resp.get("message"))
+                _candidate(
+                    _RANK_OFFSCRIPT, REASON_OFF_SCRIPT_REJECT, resp.get("message")
+                )
 
     # Paused-LRFT shape: the framework-flagged, unanswered request_human_review call.
     for call_id, (name, args, event) in calls.items():
@@ -415,7 +438,9 @@ def project_turn_from_events(
 ) -> ExchangeTurn:
     """The ``ExchangeTurn`` of :func:`project_from_events` (``context_id`` is required:
     an ADK ``Event`` carries no session id)."""
-    return project_from_events(events, context_id=context_id, seed_entries=seed_entries).turn
+    return project_from_events(
+        events, context_id=context_id, seed_entries=seed_entries
+    ).turn
 
 
 # --------------------------------------------------------------------------- #
@@ -558,12 +583,14 @@ def project_review_turn(
             entries[target.doc_id] = entry
             resolved[cid] = entry
         elif cid in pending_all:
-            entries[target.doc_id] = target.model_copy(update={
-                "disposition": Disposition.pending,
-                "gate": Gate.hitl_review,
-                "reason_code": REASON_HUMAN_REVIEW,
-                "message": PAUSED_REVIEW_MESSAGE,
-            })
+            entries[target.doc_id] = target.model_copy(
+                update={
+                    "disposition": Disposition.pending,
+                    "gate": Gate.hitl_review,
+                    "reason_code": REASON_HUMAN_REVIEW,
+                    "message": PAUSED_REVIEW_MESSAGE,
+                }
+            )
 
     pending = tuple(cid for cid in pending_all if cid in task_calls)
     escalated = projection.turn.lifecycle is LifecycleStatus.escalated
@@ -683,9 +710,12 @@ class LlmLeg:
         remote_engine: Any | None = None,
     ) -> None:
         self._app = app or build_app(model)
-        self._sessions = session_service or get_adapter(
-            Seam.sessions, resolve_mode(Seam.sessions)
-        ).build_session_service()
+        self._sessions = (
+            session_service
+            or get_adapter(
+                Seam.sessions, resolve_mode(Seam.sessions)
+            ).build_session_service()
+        )
         self._store = artifact_store or artifacts.build_artifact_store()
         self._memory = (
             memory_service if memory_service is not None else _default_memory_service()
@@ -841,7 +871,9 @@ class LlmLeg:
         content = (
             message
             if isinstance(message, genai_types.Content)
-            else genai_types.Content(role="user", parts=[genai_types.Part(text=message)])
+            else genai_types.Content(
+                role="user", parts=[genai_types.Part(text=message)]
+            )
         )
         events = await self._stream_events(
             session=session,
@@ -873,9 +905,7 @@ class LlmLeg:
             app_name=key.app_name, user_id=key.user_id, session_id=key.session_id
         )
 
-    async def pending_for(
-        self, key: SessionKey, call_ids: Iterable[str]
-    ) -> list[str]:
+    async def pending_for(self, key: SessionKey, call_ids: Iterable[str]) -> list[str]:
         """The task's still-pending review call ids, in call order: ``call_ids`` ∩
         :func:`pending_review_calls` over the durable session. A session read only —
         never builds a Runner, never calls the model (the G guard's zero compute)."""
@@ -946,9 +976,7 @@ class LlmLeg:
         return LlmResumeResult(key=key, events=tuple(events), review=review)
 
 
-def _stored_review_entries(
-    state: Mapping[str, Any], task_id: str
-) -> list[LedgerEntry]:
+def _stored_review_entries(state: Mapping[str, Any], task_id: str) -> list[LedgerEntry]:
     """The Collector entries persisted at park for ``task_id`` (malformed → skipped)."""
     raw = (state.get(REVIEW_TASKS_KEY) or {}).get(task_id) or []
     entries: list[LedgerEntry] = []

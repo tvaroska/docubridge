@@ -68,7 +68,9 @@ def _has_correction(call) -> bool:
 # -- short documents: unchanged single call ----------------------------------------
 
 
-@pytest.mark.parametrize("record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS])
+@pytest.mark.parametrize(
+    "record", CORPUS_RECORDS, ids=[r["id"] for r in CORPUS_RECORDS]
+)
 async def test_address_corpus_records_are_one_call_prompt_document(record):
     """The real corpus SVGs through the default resolver: ONE call, ``[prompt, doc]``."""
     calls = []
@@ -240,13 +242,19 @@ async def test_non_paged_document_truncation_raises():
 
         def generate_content(self, *, model, contents, config):
             self.calls += 1
-            return type("R", (), {
-                "text": '{"fields": {"doc',
-                "candidates": [type("C", (), {"finish_reason": "MAX_TOKENS"})()],
-            })()
+            return type(
+                "R",
+                (),
+                {
+                    "text": '{"fields": {"doc',
+                    "candidates": [type("C", (), {"finish_reason": "MAX_TOKENS"})()],
+                },
+            )()
 
     client = _Cut()
-    extractor = GeminiExtractor(client=client, resolver=lambda n: (b"<svg/>", "image/svg+xml"))
+    extractor = GeminiExtractor(
+        client=client, resolver=lambda n: (b"<svg/>", "image/svg+xml")
+    )
     with pytest.raises(ExtractionTruncated, match="not paged"):
         await extractor.extract("x.svg")
     assert client.calls == 1
@@ -260,11 +268,20 @@ async def test_genai_enum_finish_reason_is_detected():
             self.models = self
 
         def generate_content(self, *, model, contents, config):
-            return type("R", (), {
-                "text": "{",
-                "candidates": [type("C", (), {
-                    "finish_reason": genai_types.FinishReason.MAX_TOKENS})()],
-            })()
+            return type(
+                "R",
+                (),
+                {
+                    "text": "{",
+                    "candidates": [
+                        type(
+                            "C",
+                            (),
+                            {"finish_reason": genai_types.FinishReason.MAX_TOKENS},
+                        )()
+                    ],
+                },
+            )()
 
     extractor = GeminiExtractor(
         client=_Cut(), resolver=lambda n: (b"<svg/>", "image/svg+xml"), chunk_pages=0
@@ -276,8 +293,9 @@ async def test_genai_enum_finish_reason_is_detected():
 async def test_by_reference_pdf_is_surveyed_then_windowed():
     doc = rate_sheet_1000()
     resolver = _CountingResolver(
-        ResolvedDocument(uri="gs://synthetic-bucket/rate-sheet-1000.pdf",
-                         mime_type="application/pdf")
+        ResolvedDocument(
+            uri="gs://synthetic-bucket/rate-sheet-1000.pdf", mime_type="application/pdf"
+        )
     )
     extractor, client, _ = _extractor(doc, resolver=resolver)
     result = await extractor.extract("gs://synthetic-bucket/rate-sheet-1000.pdf")
@@ -304,14 +322,20 @@ async def test_a_failed_survey_raises_extraction_truncated():
             self.calls.append(contents)
             if contents[0] == SURVEY_PROMPT:
                 return type("R", (), {"text": '{"page_count": "many"}'})()
-            return type("R", (), {
-                "text": "{",
-                "candidates": [type("C", (), {"finish_reason": "MAX_TOKENS"})()],
-            })()
+            return type(
+                "R",
+                (),
+                {
+                    "text": "{",
+                    "candidates": [type("C", (), {"finish_reason": "MAX_TOKENS"})()],
+                },
+            )()
 
     extractor = GeminiExtractor(
         client=_Client(),
-        resolver=lambda n: ResolvedDocument(uri="gs://b/x.pdf", mime_type="application/pdf"),
+        resolver=lambda n: ResolvedDocument(
+            uri="gs://b/x.pdf", mime_type="application/pdf"
+        ),
     )
     with pytest.raises(ExtractionTruncated, match="survey failed"):
         await extractor.extract("gs://b/x.pdf")
@@ -384,8 +408,16 @@ def test_defaults(monkeypatch):
     for env in (MAX_OUTPUT_TOKENS_ENV, CHUNK_PAGES_ENV, CHUNK_CONCURRENCY_ENV):
         monkeypatch.delenv(env, raising=False)
     e = GeminiExtractor(client=object())
-    assert (e._max_output_tokens, e._chunk_pages, e._chunk_concurrency, e._max_windows) == (
-        32768, 8, 4, 128,
+    assert (
+        e._max_output_tokens,
+        e._chunk_pages,
+        e._chunk_concurrency,
+        e._max_windows,
+    ) == (
+        32768,
+        8,
+        4,
+        128,
     )
 
 
@@ -422,8 +454,13 @@ def test_a_bad_env_value_refuses_naming_the_env(monkeypatch, env, raw):
 
 @pytest.mark.parametrize(
     "kwargs",
-    [{"max_output_tokens": 0}, {"chunk_pages": -1}, {"chunk_concurrency": 0},
-     {"max_windows": 0}, {"chunk_pages": True}],
+    [
+        {"max_output_tokens": 0},
+        {"chunk_pages": -1},
+        {"chunk_concurrency": 0},
+        {"max_windows": 0},
+        {"chunk_pages": True},
+    ],
 )
 def test_a_bad_kwarg_refuses(kwargs):
     with pytest.raises(ValueError, match=next(iter(kwargs))):

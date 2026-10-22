@@ -220,8 +220,7 @@ def _field_value(quote: NormalizedQuote, field: str) -> str:
     if field not in NormalizedQuote.model_fields:
         known = sorted(NormalizedQuote.model_fields)
         raise ValueError(
-            f"unknown field {field!r} in standard rule; "
-            f"NormalizedQuote fields: {known}"
+            f"unknown field {field!r} in standard rule; NormalizedQuote fields: {known}"
         )
     return str(getattr(quote, field))
 
@@ -298,7 +297,9 @@ def flag_quote(quote: NormalizedQuote, standard: ProgramStandard) -> StandardGap
     when any gap is present, else ``ROUTE_NONE``. NEVER returns accept / reject / bind —
     the Bridge surfaces the gap; the deal is the agent's (sense B).
     """
-    gaps = [gap for rule in standard.rules if (gap := _evaluate(quote, rule)) is not None]
+    gaps = [
+        gap for rule in standard.rules if (gap := _evaluate(quote, rule)) is not None
+    ]
     conformant = not gaps
     route = ROUTE_NONE if conformant else ROUTE_NEGOTIATE
     return StandardGapVerdict(

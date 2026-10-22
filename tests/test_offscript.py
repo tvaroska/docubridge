@@ -40,7 +40,9 @@ async def test_erase_artifact_deletes_existing():
     svc = InMemoryArtifactService()
 
     # Save an artifact
-    artifact_part = types.Part.from_bytes(data=b"fake bill image", mime_type="image/png")
+    artifact_part = types.Part.from_bytes(
+        data=b"fake bill image", mime_type="image/png"
+    )
     await svc.save_artifact(
         app_name="test_app",
         user_id="test_user",
@@ -51,7 +53,9 @@ async def test_erase_artifact_deletes_existing():
 
     # Verify it exists
     keys_before = await svc.list_artifact_keys(
-        app_name="test_app", user_id="test_user", session_id="test_session",
+        app_name="test_app",
+        user_id="test_user",
+        session_id="test_session",
     )
     assert "bill.png" in keys_before
 
@@ -68,7 +72,9 @@ async def test_erase_artifact_deletes_existing():
     assert erased is True
 
     keys_after = await svc.list_artifact_keys(
-        app_name="test_app", user_id="test_user", session_id="test_session",
+        app_name="test_app",
+        user_id="test_user",
+        session_id="test_session",
     )
     assert "bill.png" not in keys_after
 
@@ -93,7 +99,9 @@ async def test_erase_artifact_missing_file():
 
     # Keys should still be empty
     keys = await svc.list_artifact_keys(
-        app_name="test_app", user_id="test_user", session_id="test_session",
+        app_name="test_app",
+        user_id="test_user",
+        session_id="test_session",
     )
     assert len(keys) == 0
 
@@ -112,7 +120,9 @@ async def test_erase_artifact_refuses_user_namespace():
     )
     # The hole this closes: ADK lists the user: key under every session of the party.
     assert "user:bill.pdf" in await svc.list_artifact_keys(
-        app_name="test_app", user_id="test_user", session_id="s2",
+        app_name="test_app",
+        user_id="test_user",
+        session_id="s2",
     )
 
     for session_id in ("s2", "s1"):
@@ -126,7 +136,9 @@ async def test_erase_artifact_refuses_user_namespace():
         assert erased is False
 
     still = await svc.load_artifact(
-        app_name="test_app", user_id="test_user", session_id="s1",
+        app_name="test_app",
+        user_id="test_user",
+        session_id="s1",
         filename="user:bill.pdf",
     )
     assert still is not None and still.inline_data.data == b"bill"
@@ -168,13 +180,15 @@ def test_instruction_mentions_offscript_tools_and_preserves_guardrail():
 
     # Should still forbid the LLM from overruling the gate
     instruction_lower = instruction.lower()
-    has_prohibition = any([
-        "never" in instruction_lower and "accept" in instruction_lower,
-        "never" in instruction_lower and "approve" in instruction_lower,
-        "cannot" in instruction_lower and "accept" in instruction_lower,
-        "may not" in instruction_lower and "accept" in instruction_lower,
-        "must not" in instruction_lower and "accept" in instruction_lower,
-    ])
+    has_prohibition = any(
+        [
+            "never" in instruction_lower and "accept" in instruction_lower,
+            "never" in instruction_lower and "approve" in instruction_lower,
+            "cannot" in instruction_lower and "accept" in instruction_lower,
+            "may not" in instruction_lower and "accept" in instruction_lower,
+            "must not" in instruction_lower and "accept" in instruction_lower,
+        ]
+    )
 
     assert has_prohibition, (
         "Instruction must still forbid the LLM from overruling the gate "
@@ -230,11 +244,16 @@ def test_instruction_routes_hitl_review_and_preserves_inversion():
 
     # Should still forbid overruling the gate (same check as the existing test)
     instruction_lower = instruction.lower()
-    has_prohibition = any([
-        "never" in instruction_lower and ("accept" in instruction_lower or "approve" in instruction_lower),
-        "may never overrule" in instruction_lower,
-    ])
-    assert has_prohibition, "Instruction must still forbid overruling run_disposition_gate"
+    has_prohibition = any(
+        [
+            "never" in instruction_lower
+            and ("accept" in instruction_lower or "approve" in instruction_lower),
+            "may never overrule" in instruction_lower,
+        ]
+    )
+    assert has_prohibition, (
+        "Instruction must still forbid overruling run_disposition_gate"
+    )
 
 
 def test_id_matched_resume_shape():
@@ -242,7 +261,11 @@ def test_id_matched_resume_shape():
     # Build the reviewer's FunctionResponse Content (the resume message)
     call_id = "call-123"
     call_name = "request_human_review"
-    resolution = {"resolution": "accepted", "reviewer": "ops@example.com", "notes": "Document verified"}
+    resolution = {
+        "resolution": "accepted",
+        "reviewer": "ops@example.com",
+        "notes": "Document verified",
+    }
 
     resume_content = types.Content(
         role="user",
@@ -254,7 +277,7 @@ def test_id_matched_resume_shape():
                     response=resolution,
                 )
             )
-        ]
+        ],
     )
 
     # Verify it round-trips

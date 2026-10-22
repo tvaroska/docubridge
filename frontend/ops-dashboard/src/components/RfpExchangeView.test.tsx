@@ -7,7 +7,7 @@
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { RfpCarrier, RfpCell, RfpStatus } from "@docbride/shared";
+import type { RfpCarrier, RfpCell, RfpStatus } from "@docubridge/shared";
 import { RfpExchangeView } from "./RfpExchangeView";
 
 const LINES = ["CRITICAL_ILLNESS", "HOSPITAL_INDEMNITY"] as const;

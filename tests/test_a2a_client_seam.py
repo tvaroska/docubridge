@@ -50,8 +50,13 @@ def test_a2a_client_builds_outbound_client(adapter):
     assert isinstance(client, A2AClient)
 
     # Nudge — the party-channel chase (OUT-1/2).
-    nudge = Nudge(context_id="x", party="jordan-lee",
-                  step=LifecycleStatus.overdue, channel="email", message="hi")
+    nudge = Nudge(
+        context_id="x",
+        party="jordan-lee",
+        step=LifecycleStatus.overdue,
+        channel="email",
+        message="hi",
+    )
     receipt = client.send(nudge)
     assert receipt.resent is False
     assert receipt.nudge is nudge
@@ -60,16 +65,23 @@ def test_a2a_client_builds_outbound_client(adapter):
     directory = FakePeerDirectory(
         {card_url: PeerCard("carrier-a", card_url, ("benefits-procurement",))}
     )
-    dialout = DialOut(context_id="ctx-a", party="carrier-a",
-                      process="benefits-procurement", card_url=card_url,
-                      message="request benefits-quote")
+    dialout = DialOut(
+        context_id="ctx-a",
+        party="carrier-a",
+        process="benefits-procurement",
+        card_url=card_url,
+        message="request benefits-quote",
+    )
     dial_receipt = client.dial(dialout, directory=directory)
     assert dial_receipt.resent is False
     assert dial_receipt.dialout is dialout
 
     # Deliver — push a by-reference artifact outward (OUT-4).
-    delivery = Delivery(context_id="ctx-a", recipient="broker",
-                        artifact=ArtifactRef(uri="bridge://comparison/x"))
+    delivery = Delivery(
+        context_id="ctx-a",
+        recipient="broker",
+        artifact=ArtifactRef(uri="bridge://comparison/x"),
+    )
     deliver_receipt = client.deliver(delivery)
     assert deliver_receipt.resent is False
     assert deliver_receipt.delivery is delivery

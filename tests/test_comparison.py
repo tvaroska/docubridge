@@ -21,7 +21,9 @@ from bridge.extraction.fixture import FixtureExtractor
 from bridge.normalize import normalize_from_extraction
 from bridge.standard import ROUTE_NEGOTIATE, ROUTE_NONE, load_program_standard
 
-BENEFITS_CORPUS = Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+BENEFITS_CORPUS = (
+    Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+)
 
 
 async def _corpus_quotes():
@@ -54,13 +56,17 @@ class TestBuildComparison:
             assert leg.quote.language == "en"
 
         # carrier-b is the sole flagged leg — the coverage gap.
-        flagged = [leg.party for leg in comparison.legs if leg.verdict.route == ROUTE_NEGOTIATE]
+        flagged = [
+            leg.party for leg in comparison.legs if leg.verdict.route == ROUTE_NEGOTIATE
+        ]
         assert flagged == ["carrier-b"]
 
         by_party = {leg.party: leg for leg in comparison.legs}
         carrier_b = by_party["carrier-b"]
         assert carrier_b.verdict.conformant is False
-        assert [g.rule_id for g in carrier_b.verdict.gaps] == ["no_orthodontics_exclusion"]
+        assert [g.rule_id for g in carrier_b.verdict.gaps] == [
+            "no_orthodontics_exclusion"
+        ]
 
         for party in ("carrier-a", "carrier-c", "carrier-d"):
             leg = by_party[party]
@@ -106,4 +112,6 @@ def test_build_comparison_is_pure_no_corpus():
     standard = load_program_standard("benefits-procurement")
     comparison = build_comparison("p1", [quote], standard)
     assert comparison.legs[0].verdict.route == ROUTE_NEGOTIATE  # excludes orthodontics
-    assert [g.rule_id for g in comparison.legs[0].verdict.gaps] == ["no_orthodontics_exclusion"]
+    assert [g.rule_id for g in comparison.legs[0].verdict.gaps] == [
+        "no_orthodontics_exclusion"
+    ]

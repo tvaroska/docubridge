@@ -112,6 +112,7 @@ class _RfpMapping(Mapping[str, RfpCollection]):
         return rfp
 
     def get(self, rfp_id: str, default: RfpCollection | None = None):  # type: ignore[override]
+        """Return the RFP state for a given key, or the default value if absent."""
         rfp = self._board._get(rfp_id)
         return default if rfp is None else rfp
 
@@ -129,9 +130,11 @@ class _RfpMapping(Mapping[str, RfpCollection]):
         return len(self._board.store.list(KIND_RFP))
 
     def values(self) -> list[RfpCollection]:  # type: ignore[override]
+        """Return an iterable view of all stored RFP state records."""
         return self._board._all()
 
     def items(self) -> list[tuple[str, RfpCollection]]:  # type: ignore[override]
+        """Return an iterable view of all (rfp_id, state) pairs."""
         return [(rfp.rfp_id, rfp) for rfp in self._board._all()]
 
 

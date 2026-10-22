@@ -6,6 +6,7 @@ terminal-write retry wrapper, the async-Postgres driver guard, and the
 refuse-in-memory (session-affinity trap) guard. The end-to-end Cloud SQL roundtrip
 is in ``test_durable_seams.py`` (gcp params, P7-9).
 """
+
 from __future__ import annotations
 
 import logging
@@ -32,9 +33,7 @@ from bridge.seams.gcp import (
 def _task(terminal: bool):
     from a2a.types import Task, TaskState, TaskStatus
 
-    state = (
-        TaskState.TASK_STATE_COMPLETED if terminal else TaskState.TASK_STATE_WORKING
-    )
+    state = TaskState.TASK_STATE_COMPLETED if terminal else TaskState.TASK_STATE_WORKING
     return Task(id="t-1", context_id="c-1", status=TaskStatus(state=state))
 
 

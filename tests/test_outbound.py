@@ -46,7 +46,7 @@ def test_idempotent_redrive_no_double_send():
     r2 = c.send(nudge)
     assert r1.resent is False
     assert r2.resent is True
-    assert len(t.outbox) == 1       # no double delivery
+    assert len(t.outbox) == 1  # no double delivery
     assert len(c.sent()) == 1
 
 
@@ -94,7 +94,10 @@ def test_notifier_sends_only_on_nudge_steps():
 
     # Only overdue and reminder should have sent
     assert len(t.outbox) == 2
-    assert [n.step for n in t.outbox] == [LifecycleStatus.overdue, LifecycleStatus.reminder]
+    assert [n.step for n in t.outbox] == [
+        LifecycleStatus.overdue,
+        LifecycleStatus.reminder,
+    ]
     assert (LifecycleStatus.overdue, LifecycleStatus.reminder) == NUDGE_STEPS
 
 
@@ -117,7 +120,10 @@ def test_ladder_with_nudge_notifier_end_to_end():
 
     # Assert exactly two real nudges (== policy.max_nudges)
     assert len(t.outbox) == 2
-    assert [n.step for n in t.outbox] == [LifecycleStatus.overdue, LifecycleStatus.reminder]
+    assert [n.step for n in t.outbox] == [
+        LifecycleStatus.overdue,
+        LifecycleStatus.reminder,
+    ]
     assert policy.max_nudges == 2
 
     # Assert each nudge has the correct attributes

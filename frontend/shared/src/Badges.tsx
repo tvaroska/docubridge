@@ -1,4 +1,4 @@
-// Badges — labelled MUI Chips for the shared domain vocabularies (@docbride/shared, P6-5).
+// Badges — labelled MUI Chips for the shared domain vocabularies (@docubridge/shared, P6-5).
 //
 // CONTENT-NOT-PIXELS (A2UI-1): these components ARRANGE + LABEL only. They render the value
 // the graph produced (a Disposition / RequirementStatus / LifecycleStatus) as a coloured

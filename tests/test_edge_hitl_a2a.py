@@ -195,7 +195,9 @@ def _submission(docs, *, ctx: str, process: str = "address-proof"):
         CollectRequest(process=process, party=PARTY, context_id=ctx)
     )
     for doc_id, uri in docs:
-        part = ph.new_url_part(uri, media_type="image/svg+xml", filename=f"{doc_id}.svg")
+        part = ph.new_url_part(
+            uri, media_type="image/svg+xml", filename=f"{doc_id}.svg"
+        )
         part.metadata.CopyFrom(ParseDict({"doc_id": doc_id}, struct_pb2.Struct()))
         parts.append(part)
     return parts
@@ -283,13 +285,19 @@ async def test_hitl_park_input_required_with_call_id():
         events, task = await _park(client, ctx="ctx-park")
 
     status_meta = _meta(task.status.message)
-    assert status_meta[META_REASON_CODE] == REASON_HUMAN_REVIEW == "awaiting_human_review"
+    assert (
+        status_meta[META_REASON_CODE] == REASON_HUMAN_REVIEW == "awaiting_human_review"
+    )
     call_id = status_meta[META_REVIEW_CALL_ID]
     assert call_id
     assert ph.get_message_text(task.status.message) == PAUSED_REVIEW_MESSAGE
     # server-authored task metadata scopes the review to THIS task
     session = MessageToDict(task.metadata)[META_REVIEW_SESSION]
-    assert session == {"user_id": PARTY, "session_id": "ctx-park", "call_ids": [call_id]}
+    assert session == {
+        "user_id": PARTY,
+        "session_id": "ctx-park",
+        "call_ids": [call_id],
+    }
 
     turn = _turn(task)
     assert turn.terminal is False
@@ -299,7 +307,10 @@ async def test_hitl_park_input_required_with_call_id():
     assert entry.reason_code == REASON_HUMAN_REVIEW
 
     states = _states(events)
-    assert states[-2:] == [TaskState.TASK_STATE_WORKING, TaskState.TASK_STATE_INPUT_REQUIRED]
+    assert states[-2:] == [
+        TaskState.TASK_STATE_WORKING,
+        TaskState.TASK_STATE_INPUT_REQUIRED,
+    ]
     final = events[-1].status_update.status
     assert _meta(final.message)[META_REVIEW_CALL_ID] == call_id
     # D6: model text never reaches the wire
@@ -355,7 +366,9 @@ async def test_resume_after_rebuild_reaches_timeline_resolution(tmp_path):
     await sessions.db_engine.dispose()
     del app, _leg, llm, task_store, sessions  # the restart boundary: nothing survives
 
-    task_store2 = get_adapter(Seam.task_store, "local").build_task_store(db_url=task_dsn)
+    task_store2 = get_adapter(Seam.task_store, "local").build_task_store(
+        db_url=task_dsn
+    )
     sessions2 = DatabaseSessionService(db_url=session_dsn)
     llm2 = _review_llm(AQUA[0])
     app2, _leg2 = _app(llm2, session_service=sessions2, task_store=task_store2)
@@ -364,9 +377,9 @@ async def test_resume_after_rebuild_reaches_timeline_resolution(tmp_path):
             restored = await client.get_task(GetTaskRequest(id=parked.id))
             assert restored.status.state == TaskState.TASK_STATE_INPUT_REQUIRED
             # DatabaseTaskStore round-trips the server-authored task metadata
-            assert MessageToDict(restored.metadata)[META_REVIEW_SESSION]["call_ids"] == [
-                call_id
-            ]
+            assert MessageToDict(restored.metadata)[META_REVIEW_SESSION][
+                "call_ids"
+            ] == [call_id]
             events, task = await _send(
                 client,
                 _resolution(call_id, message=reviewer_message),
@@ -401,16 +414,19 @@ async def test_resume_after_rebuild_reaches_timeline_resolution(tmp_path):
         app_name=APP_NAME, user_id=PARTY, session_id=ctx
     )
     call_event = next(
-        e for e in session.events
+        e
+        for e in session.events
         if e.long_running_tool_ids and call_id in e.long_running_tool_ids
     )
     idx = session.events.index(call_event)
-    resumed = session.events[idx + 1:]
+    resumed = session.events[idx + 1 :]
     assert resumed, "no events after the parked call"
     assert all(e.invocation_id == call_event.invocation_id for e in resumed)
     assert any(
         p.function_response is not None and p.function_response.id == call_id
-        for e in resumed if e.content for p in e.content.parts or []
+        for e in resumed
+        if e.content
+        for p in e.content.parts or []
     )
     await sessions2.db_engine.dispose()
 
@@ -426,8 +442,10 @@ async def test_resume_mismatched_call_id_refused():
         calls = llm.call_count
         before = await client.get_task(GetTaskRequest(id=task.id))
         err = await _send_error(
-            client, _resolution("not-a-real-call-id"),
-            context_id=task.context_id, task_id=task.id,
+            client,
+            _resolution("not-a-real-call-id"),
+            context_id=task.context_id,
+            task_id=task.id,
         )
         assert isinstance(err, InvalidParamsError)
         assert _code(err) == -32602
@@ -435,7 +453,8 @@ async def test_resume_mismatched_call_id_refused():
 
         # the same refusal over a raw JSON-RPC post: the literal error code
         msg = _message(
-            _resolution("not-a-real-call-id"), context_id=task.context_id,
+            _resolution("not-a-real-call-id"),
+            context_id=task.context_id,
             task_id=task.id,
         )
         resp = await hc.post(
@@ -487,8 +506,10 @@ async def test_resume_already_resolved_id_refused():
         _events, task = await _park(client, (GOV, AQUA), ctx="ctx-resolved")
         first = _meta(task.status.message)[META_REVIEW_CALL_ID]
         _events, task = await _send(
-            client, _resolution(first, message="ID checked by a person."),
-            context_id=task.context_id, task_id=task.id,
+            client,
+            _resolution(first, message="ID checked by a person."),
+            context_id=task.context_id,
+            task_id=task.id,
         )
         assert task.status.state == TaskState.TASK_STATE_INPUT_REQUIRED
         calls = llm.call_count
@@ -558,8 +579,10 @@ async def test_resume_cross_task_call_id_refused():
         still_b = await client.get_task(GetTaskRequest(id=task_b.id))
         assert still_b.status.state == TaskState.TASK_STATE_INPUT_REQUIRED
         _e, done_b = await _send(
-            client, _resolution(call_b, resolution="rejected", message="Expired ID."),
-            context_id=ctx, task_id=task_b.id,
+            client,
+            _resolution(call_b, resolution="rejected", message="Expired ID."),
+            context_id=ctx,
+            task_id=task_b.id,
         )
         assert done_b.status.state == TaskState.TASK_STATE_COMPLETED
         assert _entry(done_b, GOV[0]).disposition is Disposition.rejected
@@ -586,14 +609,18 @@ async def test_resume_non_reviewer_rejected(monkeypatch, principal, reviewers):
         before = await client.get_task(GetTaskRequest(id=task.id))
         # the payload's reviewer="alice" is an audit label — it never authorizes
         err = await _send_error(
-            client, _resolution(call_id, reviewer=REVIEWER),
-            context_id=task.context_id, task_id=task.id,
+            client,
+            _resolution(call_id, reviewer=REVIEWER),
+            context_id=task.context_id,
+            task_id=task.id,
         )
         assert isinstance(err, InvalidRequestError)
         assert "reviewer_not_authorized" in str(err)
         # authorization precedes the id check: a wrong id leaks nothing either
         err = await _send_error(
-            client, _resolution("wrong-id"), context_id=task.context_id,
+            client,
+            _resolution("wrong-id"),
+            context_id=task.context_id,
             task_id=task.id,
         )
         assert isinstance(err, InvalidRequestError)
@@ -615,8 +642,10 @@ async def test_resume_from_foreign_principal_cannot_see_task():
     calls = llm.call_count
     async with _client(app, "bob") as (_hc, client):
         err = await _send_error(
-            client, _resolution(call_id, reviewer="bob"),
-            context_id=task.context_id, task_id=task.id,
+            client,
+            _resolution(call_id, reviewer="bob"),
+            context_id=task.context_id,
+            task_id=task.id,
         )
         assert isinstance(err, TaskNotFoundError)
     async with _client(app, REVIEWER) as (_hc, client):
@@ -641,8 +670,10 @@ async def test_two_reviews_input_required_then_completed():
         }
 
         _events, task = await _send(
-            client, _resolution(first, resolution="rejected", message="Expired ID."),
-            context_id=task.context_id, task_id=task.id,
+            client,
+            _resolution(first, resolution="rejected", message="Expired ID."),
+            context_id=task.context_id,
+            task_id=task.id,
         )
         assert task.status.state == TaskState.TASK_STATE_INPUT_REQUIRED
         assert _meta(task.status.message)[META_REVIEW_CALL_ID] == second
@@ -675,7 +706,8 @@ async def test_rejected_resolution():
         _events, task = await _send(
             client,
             _resolution(call_id, resolution="rejected", message="Not a match."),
-            context_id=task.context_id, task_id=task.id,
+            context_id=task.context_id,
+            task_id=task.id,
         )
     assert task.status.state == TaskState.TASK_STATE_COMPLETED
     entry = _entry(task, AQUA[0])

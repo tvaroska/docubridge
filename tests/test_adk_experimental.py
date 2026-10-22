@@ -8,6 +8,7 @@ Four tests:
    that is not in registered_symbols().
 4. Positive control — proves the guard detector bites.
 """
+
 from __future__ import annotations
 
 import ast
@@ -52,7 +53,9 @@ def test_registered_surfaces_are_still_experimental():
         )
 
         # Sanity: every entry carries owner + revisit_trigger + pinned_config.
-        assert isinstance(s.pinned_config, dict), f"{s.symbol}: pinned_config not a dict"
+        assert isinstance(s.pinned_config, dict), (
+            f"{s.symbol}: pinned_config not a dict"
+        )
         assert s.owner, f"{s.symbol}: missing owner"
         assert s.revisit_trigger, f"{s.symbol}: missing revisit_trigger"
 
@@ -130,7 +133,7 @@ def test_guard_detects_unregistered_and_ignores_registered(tmp_path):
     # Case 4: comment and string literal → NOT flagged
     comment_case = tmp_path / "comment.py"
     comment_case.write_text(
-        '# from google.adk.agents.remote_a2a_agent import RemoteA2aAgent\n'
+        "# from google.adk.agents.remote_a2a_agent import RemoteA2aAgent\n"
         's = "from google.adk.apps.app import ResumabilityConfig"\n'
     )
 
@@ -139,15 +142,25 @@ def test_guard_detects_unregistered_and_ignores_registered(tmp_path):
     relative_case.write_text("from .foo import ResumabilityConfig\n")
 
     # Test each case
-    unregistered_hits = _experimental_imports(unregistered_case, KNOWN_EXPERIMENTAL_ADK_SYMBOLS)
-    registered_hits = _experimental_imports(registered_case, KNOWN_EXPERIMENTAL_ADK_SYMBOLS)
-    non_experimental_hits = _experimental_imports(non_experimental_case, KNOWN_EXPERIMENTAL_ADK_SYMBOLS)
+    unregistered_hits = _experimental_imports(
+        unregistered_case, KNOWN_EXPERIMENTAL_ADK_SYMBOLS
+    )
+    registered_hits = _experimental_imports(
+        registered_case, KNOWN_EXPERIMENTAL_ADK_SYMBOLS
+    )
+    non_experimental_hits = _experimental_imports(
+        non_experimental_case, KNOWN_EXPERIMENTAL_ADK_SYMBOLS
+    )
     comment_hits = _experimental_imports(comment_case, KNOWN_EXPERIMENTAL_ADK_SYMBOLS)
     relative_hits = _experimental_imports(relative_case, KNOWN_EXPERIMENTAL_ADK_SYMBOLS)
 
     # Only the unregistered case should be flagged
-    assert unregistered_hits == ["google.adk.a2a.executor.a2a_agent_executor.A2aAgentExecutor"]
-    assert registered_hits == ["google.adk.apps.app.ResumabilityConfig"]  # detected but will be filtered by registered_symbols
+    assert unregistered_hits == [
+        "google.adk.a2a.executor.a2a_agent_executor.A2aAgentExecutor"
+    ]
+    assert registered_hits == [
+        "google.adk.apps.app.ResumabilityConfig"
+    ]  # detected but will be filtered by registered_symbols
     assert non_experimental_hits == []
     assert comment_hits == []
     assert relative_hits == []

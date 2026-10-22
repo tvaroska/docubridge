@@ -6,6 +6,7 @@ ADK's native ``events[-1].author == "user"`` resume detection, and proves the
 ordering-robust ``pending_resume_target`` + ``before_request`` re-stamps the parked
 ``task_id``/``context_id``.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -41,7 +42,11 @@ def _fc_event(call_id, *, task_id=None, context_id=None, author=AGENT):
         author=author,
         content=types.Content(
             role="model",
-            parts=[types.Part(function_call=types.FunctionCall(id=call_id, name=AGENT, args={}))],
+            parts=[
+                types.Part(
+                    function_call=types.FunctionCall(id=call_id, name=AGENT, args={})
+                )
+            ],
         ),
         custom_metadata=metadata or None,
     )

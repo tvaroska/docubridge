@@ -16,6 +16,7 @@ Scope boundaries: the whole-journey A2A conformance run is S0-arch-9, and a LIVE
 ``gs://`` read needs a provisioned bucket + Vertex credentials (gated below, skipped
 by default).
 """
+
 from __future__ import annotations
 
 import http.server

@@ -8,6 +8,7 @@ skill_registry seam), a GET of the **same app's** card now advertises
 ``doctype:gov-id`` — no app rebuild between the two GETs, no HTTP write surface
 (the unauthenticated install endpoint was removed, S0-sec-1).
 """
+
 from __future__ import annotations
 
 import shutil

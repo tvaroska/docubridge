@@ -1,8 +1,8 @@
-"""Record the live GCP end-to-end demo video for DocuBridge Enterprise (documents001).
+"""Record the live GCP end-to-end demo video for DocuBridge Enterprise (docubridge-showcase).
 
-Exercises the live deployed Cloud Run v2 services in GCP project ``documents001``:
-  1. ``https://documents001-bridge-sf6etnew5q-uc.a.run.app`` (A2A Edge)
-  2. ``https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app`` (Dashboard, Zone 5 A2UI,
+Exercises the live deployed Cloud Run v2 services in GCP project ``docubridge-showcase``:
+  1. ``https://docubridge-showcase-bridge-100000000000.us-central1.run.app`` (A2A Edge)
+  2. ``https://docubridge-showcase-bridge-rfp-board-100000000000.us-central1.run.app`` (Dashboard, Zone 5 A2UI,
      Zone 6 Knowledge Catalog, SPIFFE Registry, and Cloud SQL Agent Gym)
 
 Drives headless Chrome (1920x1080) over Chrome DevTools Protocol, captures frames at 8 fps
@@ -24,8 +24,10 @@ from typing import Any
 import httpx
 import websockets
 
-BRIDGE_URI = "https://documents001-bridge-sf6etnew5q-uc.a.run.app"
-BOARD_URI = "https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app"
+BRIDGE_URI = "https://docubridge-showcase-bridge-100000000000.us-central1.run.app"
+BOARD_URI = (
+    "https://docubridge-showcase-bridge-rfp-board-100000000000.us-central1.run.app"
+)
 CACHE_PATH = Path("/tmp/docubridge_live_telemetry.json")
 
 DEMO_DIR = Path(__file__).resolve().parent
@@ -50,7 +52,9 @@ class CdpSession:
         self._ws = ws
         self._msg_id = 0
 
-    async def send(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def send(
+        self, method: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         self._msg_id += 1
         target_id = self._msg_id
         payload = {"id": target_id, "method": method, "params": params or {}}
@@ -94,7 +98,9 @@ async def main() -> None:
         token = get_id_token()
         headers = {"Authorization": f"Bearer {token}"}
 
-        print("1. Fetching live telemetry & executing Agent Gym loop on GCP Cloud Run (documents001)...")
+        print(
+            "1. Fetching live telemetry & executing Agent Gym loop on GCP Cloud Run (docubridge-showcase)..."
+        )
         async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
             card_resp = await client.get(f"{BRIDGE_URI}/.well-known/agent-card.json")
             card_resp.raise_for_status()
@@ -156,7 +162,9 @@ async def main() -> None:
                     },
                 )
 
-            policies_initial_resp = await client.get(f"{BOARD_URI}/v1/gym/trust-policies")
+            policies_initial_resp = await client.get(
+                f"{BOARD_URI}/v1/gym/trust-policies"
+            )
             policies_initial_resp.raise_for_status()
             policies_initial = policies_initial_resp.json()
 
@@ -253,11 +261,15 @@ async def main() -> None:
             )
             dial_resp.raise_for_status()
 
-            policies_promoted_resp = await client.get(f"{BOARD_URI}/v1/gym/trust-policies")
+            policies_promoted_resp = await client.get(
+                f"{BOARD_URI}/v1/gym/trust-policies"
+            )
             policies_promoted_resp.raise_for_status()
             policies_promoted = policies_promoted_resp.json()
 
-            analytics_resp = await client.get(f"{BOARD_URI}/v1/telemetry/analytics?limit=200")
+            analytics_resp = await client.get(
+                f"{BOARD_URI}/v1/telemetry/analytics?limit=200"
+            )
             analytics_resp.raise_for_status()
             analytics = analytics_resp.json()
 
@@ -290,7 +302,9 @@ async def main() -> None:
 
     chrome_bin = "/opt/google/chrome/google-chrome"
     if not Path(chrome_bin).exists():
-        chrome_bin = shutil.which("google-chrome-stable") or shutil.which("google-chrome") or ""
+        chrome_bin = (
+            shutil.which("google-chrome-stable") or shutil.which("google-chrome") or ""
+        )
     if not chrome_bin:
         raise RuntimeError("google-chrome binary not found")
 
@@ -361,15 +375,21 @@ async def main() -> None:
             # Hydrate live GCP data into the page
             card_preview_text = (
                 f'name="{agent_card["name"]}" · version="{agent_card["version"]}" · '
-                f'skills={len(agent_card.get("skills", []))} (address-proof, benefits-procurement, benefits-rfp, ...) · '
+                f"skills={len(agent_card.get('skills', []))} (address-proof, benefits-procurement, benefits-rfp, ...) · "
                 f'url="{BRIDGE_URI}"'
             )
             await cdp.eval_js(
                 f"document.getElementById('agent-card-preview').textContent = {json.dumps(card_preview_text)};"
             )
-            await cdp.eval_js(f"window.renderCatalogAssets({json.dumps(catalog_assets)});")
-            await cdp.eval_js(f"window.renderSpiffeAgents({json.dumps(spiffe_agents)});")
-            await cdp.eval_js(f"window.renderTrustPolicies({json.dumps(policies_initial)});")
+            await cdp.eval_js(
+                f"window.renderCatalogAssets({json.dumps(catalog_assets)});"
+            )
+            await cdp.eval_js(
+                f"window.renderSpiffeAgents({json.dumps(spiffe_agents)});"
+            )
+            await cdp.eval_js(
+                f"window.renderTrustPolicies({json.dumps(policies_initial)});"
+            )
 
             # =================================================================
             # SCENE 1.1: External Zone — Provider Portal & A2A Edge Agent Card
@@ -380,7 +400,7 @@ async def main() -> None:
                 window.setCaption(
                   'PART 1 · STEP 1: EXTERNAL PROVIDER PORTAL (A2A EDGE)',
                   'Carrier opens External Zone Provider Portal connected to live Document Bridge A2A Edge in GCP.',
-                  'GET https://documents001-bridge-sf6etnew5q-uc.a.run.app/.well-known/agent-card.json -> 18 Agent Skills in gs://documents001-bridge-skills'
+                  'GET https://docubridge-showcase-bridge-100000000000.us-central1.run.app/.well-known/agent-card.json -> 18 Agent Skills in gs://docubridge-showcase-bridge-skills'
                 );
                 """
             )
@@ -394,7 +414,7 @@ async def main() -> None:
                 window.setCaption(
                   'PART 1 · STEP 2: DUAL-PATH SUBMISSION (PATH A + PATH B)',
                   'Submitting structured SOV schedule (Path A, 0 AI tokens) and Chubb PDF quote (Path B, layout + gate).',
-                  'POST https://documents001-bridge-sf6etnew5q-uc.a.run.app/ -> WORM Audit Vault + Review Quarantine'
+                  'POST https://docubridge-showcase-bridge-100000000000.us-central1.run.app/ -> WORM Audit Vault + Review Quarantine'
                 );
                 """
             )
@@ -409,7 +429,7 @@ async def main() -> None:
                 window.setCaption(
                   'PART 1 · STEP 3: TWO-ZONE CLOUD STORAGE & 4-SIGNAL GATE',
                   'Path A SOV locks in 7-year WORM Audit Vault; Chubb PDF parks in Review Quarantine on Schedule B conflict.',
-                  'gs://documents001-bridge-audit-vault (7-yr WORM) · gs://documents001-bridge-artifacts (Quarantine)'
+                  'gs://docubridge-showcase-bridge-audit-vault (7-yr WORM) · gs://docubridge-showcase-bridge-artifacts (Quarantine)'
                 );
                 """
             )
@@ -421,7 +441,7 @@ async def main() -> None:
                 window.setCaption(
                   'PART 1 · STEP 4: ZONE 6 GOVERNED STORAGE & ASSET MAP',
                   'Every physical GCS bucket, Cloud SQL table, BigQuery Iceberg sink, and Agent Gym store is cataloged.',
-                  'GET https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app/v1/catalog/assets -> 10 Governed Assets'
+                  'GET https://docubridge-showcase-bridge-rfp-board-100000000000.us-central1.run.app/v1/catalog/assets -> 10 Governed Assets'
                 );
                 """
             )
@@ -569,7 +589,7 @@ async def main() -> None:
                 window.setCaption(
                   'PART 4 · STEP 1: AGENT GYM — "EXAMPLE OF ONE" SIGNAL DISTILLATION',
                   'Single expert correction ($50,000 -> $100,000 on Chubb page 4) distills into candidate Tribal Knowledge Rule.',
-                  'POST https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app/v1/gym/signals/from-quarantine -> Cloud SQL ({rule_id})'
+                  'POST https://docubridge-showcase-bridge-rfp-board-100000000000.us-central1.run.app/v1/gym/signals/from-quarantine -> Cloud SQL ({rule_id})'
                 );
                 """
             )
@@ -585,7 +605,7 @@ async def main() -> None:
                 window.setCaption(
                   'PART 4 · STEP 2: SYNTHETIC STRESS SUITE & QUALITY REPORT CARD GATE',
                   'Candidate rule passes 4/4 perturbation stress tests & 12/12 historical benchmarks (+50% slice gain, 0 regressions).',
-                  'POST https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app/v1/gym/rules/{rule_id}/evaluate -> Status: PROMOTED'
+                  'POST https://docubridge-showcase-bridge-rfp-board-100000000000.us-central1.run.app/v1/gym/rules/{rule_id}/evaluate -> Status: PROMOTED'
                 );
                 """
             )
@@ -602,7 +622,7 @@ async def main() -> None:
                 window.setCaption(
                   'PART 4 · STEP 3: PROGRAMMABLE TRUST DIAL (GRADUATED AUTONOMY)',
                   'Slice hits 5/5 exact matches (100% accuracy) and promotes from Guided Review to Trusted Auto-Approve.',
-                  'POST https://documents001-bridge-rfp-board-sf6etnew5q-uc.a.run.app/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial'
+                  'POST https://docubridge-showcase-bridge-rfp-board-100000000000.us-central1.run.app/v1/gym/trust-policies/slice:aig:endorsement:MEDIUM/dial'
                 );
                 """
             )

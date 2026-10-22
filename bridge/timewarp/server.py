@@ -51,7 +51,9 @@ class AdvanceBody(BaseModel):
     to: int | None = None
 
 
-def build_timewarp_app(*, store: PortalStore | None = None, clock: Scheduler | None = None) -> FastAPI:
+def build_timewarp_app(
+    *, store: PortalStore | None = None, clock: Scheduler | None = None
+) -> FastAPI:
     """Build the time-warp FastAPI host.
 
     ``store`` is the **shared PortalStore** the running Provider Portal writes to and the
@@ -73,7 +75,9 @@ def build_timewarp_app(*, store: PortalStore | None = None, clock: Scheduler | N
         try:
             return host.arm(body.session_id)
         except KeyError as e:
-            raise HTTPException(status_code=404, detail=f"unknown session {body.session_id!r}") from e
+            raise HTTPException(
+                status_code=404, detail=f"unknown session {body.session_id!r}"
+            ) from e
 
     @app.post("/timewarp/advance")
     def post_advance(body: AdvanceBody) -> dict:

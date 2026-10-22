@@ -7,6 +7,7 @@ sessions come from the seam (durable, no hardcoded InMemory); the
 ``ResumabilityConfig`` import is the registered TEST-4 FQN; Decision 2 holds (no
 ``google.adk.a2a`` import in ``bridge/``).
 """
+
 from __future__ import annotations
 
 import ast
@@ -72,7 +73,9 @@ def _event(
     return Event(
         author=author,
         invocation_id="i",
-        content=types.Content(role="model" if author != "user" else "user", parts=list(parts)),
+        content=types.Content(
+            role="model" if author != "user" else "user", parts=list(parts)
+        ),
         long_running_tool_ids=long_running,
         actions=actions or EventActions(),
     )
@@ -83,12 +86,16 @@ def _text(t: str) -> types.Part:
 
 
 def _call(call_id: str, name: str, args: dict | None = None) -> types.Part:
-    return types.Part(function_call=types.FunctionCall(id=call_id, name=name, args=args or {}))
+    return types.Part(
+        function_call=types.FunctionCall(id=call_id, name=name, args=args or {})
+    )
 
 
 def _resp(call_id: str, name: str, response: dict) -> types.Part:
     return types.Part(
-        function_response=types.FunctionResponse(id=call_id, name=name, response=response)
+        function_response=types.FunctionResponse(
+            id=call_id, name=name, response=response
+        )
     )
 
 
@@ -119,7 +126,13 @@ def test_projection_ignores_unanswered_calls_and_extraction_response():
     events = [
         _event(_call("g1", "run_disposition_gate", AUTO_APPROVE_ARGS)),  # no response
         _event(_call("x1", "extraction_agent", {"request": "bill"})),
-        _event(_resp("x1", "extraction_agent", {"disposition": "accepted", "gate": "auto_approve"})),
+        _event(
+            _resp(
+                "x1",
+                "extraction_agent",
+                {"disposition": "accepted", "gate": "auto_approve"},
+            )
+        ),
     ]
     p = project_from_events(events, context_id=CTX)
     assert p.turn.status.entries == []
@@ -142,9 +155,13 @@ def test_projection_gate_response_projects_entry():
     pin (Bridge-authored state delta), never from the model's call args."""
     verdict = run_disposition_gate(**AUTO_APPROVE_ARGS)
     pinned = Signals(**AUTO_APPROVE_ARGS, issuer="power-co")
-    pin = EventActions(state_delta={gatepin.PINS_KEY: {
-        "g1": {"doc_id": "bill", "signals": pinned.model_dump(mode="json")},
-    }})
+    pin = EventActions(
+        state_delta={
+            gatepin.PINS_KEY: {
+                "g1": {"doc_id": "bill", "signals": pinned.model_dump(mode="json")},
+            }
+        }
+    )
     forged_args = {**AUTO_APPROVE_ARGS, "doctype": "forged"}
     events = [
         _event(_text("rejected")),
@@ -156,13 +173,19 @@ def test_projection_gate_response_projects_entry():
     assert entry.disposition is Disposition.accepted
     assert entry.gate is Gate.auto_approve
     assert entry.reason_code == "auto_approved" == verdict["reason_code"]
-    assert (entry.doc_id, entry.doctype, entry.issuer) == ("bill", "utility_bill", "power-co")
+    assert (entry.doc_id, entry.doctype, entry.issuer) == (
+        "bill",
+        "utility_bill",
+        "power-co",
+    )
     assert p.turn.terminal is True
     assert p.reason_code is None  # gate-only → caller uses summarize_turn (D6 row 1)
 
 
 def test_projection_malformed_gate_response_is_skipped():
-    events = _pair("g1", "run_disposition_gate", AUTO_APPROVE_ARGS, {"disposition": "accepted"})
+    events = _pair(
+        "g1", "run_disposition_gate", AUTO_APPROVE_ARGS, {"disposition": "accepted"}
+    )
     assert project_from_events(events, context_id=CTX).turn.status.entries == []
 
 
@@ -180,7 +203,11 @@ def test_projection_malformed_gate_response_is_skipped():
         (
             "handle_deletion_request",
             {"artifact_name": "bill.pdf"},
-            {"action": "deleted", "reason_code": REASON_NOTHING_TO_DELETE, "message": "none"},
+            {
+                "action": "deleted",
+                "reason_code": REASON_NOTHING_TO_DELETE,
+                "message": "none",
+            },
             REASON_NOTHING_TO_DELETE,
             True,
             LifecycleStatus.on_track,
@@ -223,7 +250,9 @@ def _seed() -> list[LedgerEntry]:
             issuer="power-co",
             reason_code="flagged_fields",
             message="The following fields require human review: name.",
-            artifact=ArtifactRef(uri="http://bridge/artifacts/ctx-1/bill.pdf?v=0", name="bill.pdf"),
+            artifact=ArtifactRef(
+                uri="http://bridge/artifacts/ctx-1/bill.pdf?v=0", name="bill.pdf"
+            ),
         ),
         LedgerEntry(
             doc_id="id",
@@ -249,7 +278,12 @@ def _legacy_review_ack(reason: str) -> dict:
 def test_projection_review_pending_from_seed():
     seed = _seed()
     response = _legacy_review_ack("flagged name")
-    events = _pair("r1", "request_human_review", {"reason": "flagged name", "artifact_name": "bill.pdf"}, response)
+    events = _pair(
+        "r1",
+        "request_human_review",
+        {"reason": "flagged name", "artifact_name": "bill.pdf"},
+        response,
+    )
     p = project_from_events(events, context_id=CTX, seed_entries=seed)
     bill, other = p.turn.status.entries
     assert bill.doc_id == "bill"
@@ -266,9 +300,20 @@ def test_projection_review_pending_from_seed():
 
 
 def test_projection_review_matches_artifact_uri_basename():
-    seed = [_seed()[0].model_copy(update={"artifact": ArtifactRef(uri="http://h/x/bill.pdf")})]
-    events = _pair("r1", "request_human_review", {"reason": "r", "artifact_name": "bill.pdf"}, _legacy_review_ack("r"))
-    (bill,) = project_from_events(events, context_id=CTX, seed_entries=seed).turn.status.entries
+    seed = [
+        _seed()[0].model_copy(
+            update={"artifact": ArtifactRef(uri="http://h/x/bill.pdf")}
+        )
+    ]
+    events = _pair(
+        "r1",
+        "request_human_review",
+        {"reason": "r", "artifact_name": "bill.pdf"},
+        _legacy_review_ack("r"),
+    )
+    (bill,) = project_from_events(
+        events, context_id=CTX, seed_entries=seed
+    ).turn.status.entries
     assert bill.reason_code == REASON_HUMAN_REVIEW
 
 
@@ -291,16 +336,24 @@ def test_projection_paused_lrft_call_is_pending():
 def test_projection_precedence():
     esc_then_del = [
         *_pair("e1", "escalate_submission", {"reason": "x"}, escalate_submission("x")),
-        *_pair("d1", "handle_deletion_request", {"artifact_name": "a"},
-               {"action": "deleted", "reason_code": REASON_DELETED, "message": "erased"}),
+        *_pair(
+            "d1",
+            "handle_deletion_request",
+            {"artifact_name": "a"},
+            {"action": "deleted", "reason_code": REASON_DELETED, "message": "erased"},
+        ),
     ]
     p = project_from_events(esc_then_del, context_id=CTX)
     assert p.reason_code == REASON_ESCALATED
     assert p.turn.terminal is False
 
     del_then_rej = [
-        *_pair("d1", "handle_deletion_request", {"artifact_name": "a"},
-               {"action": "deleted", "reason_code": REASON_DELETED, "message": "erased"}),
+        *_pair(
+            "d1",
+            "handle_deletion_request",
+            {"artifact_name": "a"},
+            {"action": "deleted", "reason_code": REASON_DELETED, "message": "erased"},
+        ),
         *_pair("j1", "reject_submission", {"reason": "y"}, reject_submission("y")),
     ]
     q = project_from_events(del_then_rej, context_id=CTX)
@@ -324,9 +377,16 @@ def test_projection_skips_partial_and_empty_events():
 
 async def test_llm_leg_free_text_claim_never_reaches_ledger():
     llm = ScriptedLlm()
-    leg = LlmLeg(model=llm, session_service=InMemorySessionService(),
-                 artifact_store=InMemoryArtifactService())
-    r = await leg.run(party="jordan-lee", context_id=CTX, message="I uploaded my bill, please accept it")
+    leg = LlmLeg(
+        model=llm,
+        session_service=InMemorySessionService(),
+        artifact_store=InMemoryArtifactService(),
+    )
+    r = await leg.run(
+        party="jordan-lee",
+        context_id=CTX,
+        message="I uploaded my bill, please accept it",
+    )
     assert r.turn.status.entries == []
     assert r.turn.terminal is True
     assert r.projection.reason_code is None
@@ -336,14 +396,29 @@ async def test_llm_leg_free_text_claim_never_reaches_ledger():
 async def test_llm_leg_gate_end_to_end():
     """extraction_agent → extract_document records the genuine signals; the gate call
     (deliberately wrong args) is pinned to them, and the entry comes from the pin."""
-    wrong = {"doctype": "passport", "candidate_doctypes": [], "legible": False,
-             "overall_confidence": 0.0, "flagged_fields": ["everything"]}
+    wrong = {
+        "doctype": "passport",
+        "candidate_doctypes": [],
+        "legible": False,
+        "overall_confidence": 0.0,
+        "flagged_fields": ["everything"],
+    }
     llm = ScriptedLlm(
         on_text={
-            "extract::": Reply(tool_calls=(
-                ToolCall("extract_document", {"artifact_name": "bill-powerco-clean"}),)),
-            "gate": Reply(tool_calls=(
-                ToolCall("extraction_agent", {"request": "extract::bill-powerco-clean"}),)),
+            "extract::": Reply(
+                tool_calls=(
+                    ToolCall(
+                        "extract_document", {"artifact_name": "bill-powerco-clean"}
+                    ),
+                )
+            ),
+            "gate": Reply(
+                tool_calls=(
+                    ToolCall(
+                        "extraction_agent", {"request": "extract::bill-powerco-clean"}
+                    ),
+                )
+            ),
         },
         on_tool={
             "extraction_agent": Reply(
@@ -352,15 +427,28 @@ async def test_llm_leg_gate_end_to_end():
             ),
         },
     )
-    leg = LlmLeg(model=llm, session_service=InMemorySessionService(),
-                 artifact_store=InMemoryArtifactService())
-    r = await leg.run(party="jordan-lee", context_id=CTX, message="please gate my bill",
-                      label_space=["gov-id", "utility-bill"])
+    leg = LlmLeg(
+        model=llm,
+        session_service=InMemorySessionService(),
+        artifact_store=InMemoryArtifactService(),
+    )
+    r = await leg.run(
+        party="jordan-lee",
+        context_id=CTX,
+        message="please gate my bill",
+        label_space=["gov-id", "utility-bill"],
+    )
     (entry,) = r.turn.status.entries
     assert (entry.disposition, entry.gate, entry.reason_code) == (
-        Disposition.accepted, Gate.auto_approve, "auto_approved")
+        Disposition.accepted,
+        Gate.auto_approve,
+        "auto_approved",
+    )
     assert (entry.doc_id, entry.doctype, entry.issuer) == (
-        "bill-powerco-clean", "utility-bill", "power-co")
+        "bill-powerco-clean",
+        "utility-bill",
+        "power-co",
+    )
     assert r.turn.terminal is True
     # root: extraction call, gate call, final text; sub-agent: extract call, final text
     assert llm.call_count == 5
@@ -373,11 +461,23 @@ async def test_llm_leg_review_end_to_end_parks_zero_compute():
     pauses after the call event — one model call, no tool response, and the
     Bridge-authored paused text (never model text).
     """
-    llm = ScriptedLlm(on_text={"review": Reply(tool_calls=(
-        ToolCall("request_human_review", {"reason": "flagged", "artifact_name": "bill.pdf"}),
-    ))})
-    leg = LlmLeg(model=llm, session_service=InMemorySessionService(),
-                 artifact_store=InMemoryArtifactService())
+    llm = ScriptedLlm(
+        on_text={
+            "review": Reply(
+                tool_calls=(
+                    ToolCall(
+                        "request_human_review",
+                        {"reason": "flagged", "artifact_name": "bill.pdf"},
+                    ),
+                )
+            )
+        }
+    )
+    leg = LlmLeg(
+        model=llm,
+        session_service=InMemorySessionService(),
+        artifact_store=InMemoryArtifactService(),
+    )
     r = await leg.run(party="jordan-lee", context_id=CTX, message="needs review")
     assert r.turn.terminal is False
     assert len(r.projection.review_call_ids) == 1
@@ -388,8 +488,11 @@ async def test_llm_leg_review_end_to_end_parks_zero_compute():
 
 async def test_scripted_llm_rejects_unoffered_tool():
     llm = ScriptedLlm(on_text={"x": Reply(tool_calls=(ToolCall("no_such_tool"),))})
-    leg = LlmLeg(model=llm, session_service=InMemorySessionService(),
-                 artifact_store=InMemoryArtifactService())
+    leg = LlmLeg(
+        model=llm,
+        session_service=InMemorySessionService(),
+        artifact_store=InMemoryArtifactService(),
+    )
     with pytest.raises(ValueError, match="not offered"):
         await leg.run(party="p", context_id=CTX, message="x")
 
@@ -400,16 +503,21 @@ async def test_scripted_llm_rejects_unoffered_tool():
 
 
 def test_app_name_lockstep():
-    assert build_app().name == artifacts.APP_NAME == llm_leg.APP_NAME == "document_bridge"
+    assert (
+        build_app().name == artifacts.APP_NAME == llm_leg.APP_NAME == "document_bridge"
+    )
 
 
-async def _persist_bill(store, *, party: str = "jordan-lee", context_id: str = CTX) -> None:
+async def _persist_bill(
+    store, *, party: str = "jordan-lee", context_id: str = CTX
+) -> None:
     version = await artifacts.persist_submission(
         store,
         party=party,
         context_id=context_id,
         submission=DocumentSubmission(
-            doc_id="bill", artifact_name="bill.pdf",
+            doc_id="bill",
+            artifact_name="bill.pdf",
             artifact=ArtifactRef(uri="bill.pdf", name="bill.pdf"),
         ),
         resolver=lambda uri: (b"%PDF-1.4 synthetic", "application/pdf"),
@@ -418,14 +526,23 @@ async def _persist_bill(store, *, party: str = "jordan-lee", context_id: str = C
 
 
 def _delete_llm() -> ScriptedLlm:
-    return ScriptedLlm(on_text={"delete": Reply(
-        tool_calls=(ToolCall("handle_deletion_request", {"artifact_name": "bill.pdf"}),),
-    )})
+    return ScriptedLlm(
+        on_text={
+            "delete": Reply(
+                tool_calls=(
+                    ToolCall("handle_deletion_request", {"artifact_name": "bill.pdf"}),
+                ),
+            )
+        }
+    )
 
 
-async def _keys(store, *, user_id: str = "jordan-lee", session_id: str = CTX) -> list[str]:
+async def _keys(
+    store, *, user_id: str = "jordan-lee", session_id: str = CTX
+) -> list[str]:
     return await store.list_artifact_keys(
-        app_name="document_bridge", user_id=user_id, session_id=session_id)
+        app_name="document_bridge", user_id=user_id, session_id=session_id
+    )
 
 
 async def test_session_key_equals_artifact_key_and_deletion_erases():
@@ -434,10 +551,16 @@ async def test_session_key_equals_artifact_key_and_deletion_erases():
     await _persist_bill(store)
     assert await _keys(store) == ["bill.pdf"]
     leg = LlmLeg(model=_delete_llm(), artifact_store=store, session_service=sessions)
-    r = await leg.run(party="jordan-lee", context_id=CTX, message="please delete bill.pdf")
+    r = await leg.run(
+        party="jordan-lee", context_id=CTX, message="please delete bill.pdf"
+    )
     assert r.key == SessionKey("document_bridge", "jordan-lee", CTX)
-    assert await sessions.get_session(
-        app_name="document_bridge", user_id="jordan-lee", session_id=CTX) is not None
+    assert (
+        await sessions.get_session(
+            app_name="document_bridge", user_id="jordan-lee", session_id=CTX
+        )
+        is not None
+    )
     assert await _keys(store) == []
     assert r.projection.reason_code == REASON_DELETED
     assert r.turn.status.entries == []
@@ -447,8 +570,11 @@ async def test_session_key_equals_artifact_key_and_deletion_erases():
 async def test_party_resolved_from_store_when_absent():
     store = InMemoryArtifactService()
     await _persist_bill(store)
-    leg = LlmLeg(model=_delete_llm(), artifact_store=store,
-                 session_service=InMemorySessionService())
+    leg = LlmLeg(
+        model=_delete_llm(),
+        artifact_store=store,
+        session_service=InMemorySessionService(),
+    )
     r = await leg.run(party=None, context_id=CTX, message="delete bill.pdf")
     assert r.key == SessionKey("document_bridge", "jordan-lee", CTX)
     assert r.projection.reason_code == REASON_DELETED
@@ -459,8 +585,11 @@ async def test_party_resolved_from_store_when_absent():
 async def test_cannot_erase_another_contexts_artifact(party):
     store = InMemoryArtifactService()
     await _persist_bill(store)
-    leg = LlmLeg(model=_delete_llm(), artifact_store=store,
-                 session_service=InMemorySessionService())
+    leg = LlmLeg(
+        model=_delete_llm(),
+        artifact_store=store,
+        session_service=InMemorySessionService(),
+    )
     r = await leg.run(party=party, context_id="ctx-2", message="delete bill.pdf")
     expected_user = party or artifacts.UNSCOPED_USER
     assert r.key == SessionKey("document_bridge", expected_user, "ctx-2")
@@ -475,7 +604,10 @@ async def test_resolve_party_fails_closed_on_ambiguity():
     assert artifacts.owning_parties(store, CTX) == {"jordan-lee", "someone-else"}
     assert resolve_party(store, party=None, context_id=CTX) == artifacts.UNSCOPED_USER
     assert resolve_party(store, party="jordan-lee", context_id=CTX) == "jordan-lee"
-    assert resolve_party(store, party=None, context_id="ctx-none") == artifacts.UNSCOPED_USER
+    assert (
+        resolve_party(store, party=None, context_id="ctx-none")
+        == artifacts.UNSCOPED_USER
+    )
 
 
 def test_session_key_requires_context_id():
@@ -495,15 +627,19 @@ async def test_session_service_from_seam(monkeypatch, tmp_path):
     other = LlmLeg()  # same env, nothing injected — never run (no model call)
     assert isinstance(other.session_service, DatabaseSessionService)
     session = await other.session_service.get_session(
-        app_name="document_bridge", user_id="jordan-lee", session_id=CTX)
+        app_name="document_bridge", user_id="jordan-lee", session_id=CTX
+    )
     assert session is not None
     authors = [e.author for e in session.events]
     assert "user" in authors and "document_bridge" in authors
 
 
 async def test_ensure_session_is_idempotent():
-    leg = LlmLeg(model=ScriptedLlm(), session_service=InMemorySessionService(),
-                 artifact_store=InMemoryArtifactService())
+    leg = LlmLeg(
+        model=ScriptedLlm(),
+        session_service=InMemorySessionService(),
+        artifact_store=InMemoryArtifactService(),
+    )
     key = SessionKey("document_bridge", "jordan-lee", CTX)
     first = await leg.ensure_session(key, state={"k": 1})
     second = await leg.ensure_session(key)
@@ -517,8 +653,10 @@ async def test_ensure_session_is_idempotent():
 
 
 def test_llm_leg_app_is_resumable():
-    leg = LlmLeg(session_service=InMemorySessionService(),
-                 artifact_store=InMemoryArtifactService())
+    leg = LlmLeg(
+        session_service=InMemorySessionService(),
+        artifact_store=InMemoryArtifactService(),
+    )
     assert leg.app.resumability_config.is_resumable is True
     r1, r2 = leg.runner(), leg.runner()
     assert r1.resumability_config.is_resumable is True
@@ -528,8 +666,10 @@ def test_llm_leg_app_is_resumable():
 
 
 def test_bind_store_shares_the_edge_store():
-    leg = LlmLeg(session_service=InMemorySessionService(),
-                 artifact_store=InMemoryArtifactService())
+    leg = LlmLeg(
+        session_service=InMemorySessionService(),
+        artifact_store=InMemoryArtifactService(),
+    )
     shared = InMemoryArtifactService()
     leg.bind_store(shared)
     assert leg.artifact_store is shared

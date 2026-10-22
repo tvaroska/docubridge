@@ -138,7 +138,7 @@ def test_skill_registry_install_is_directory_backed(adapter, tmp_path, monkeypat
         "description: A pay stub used as proof of income.\n"
         "metadata:\n"
         "  bridge-kind: doctype\n"
-        "  bridge-tags: \"doctype income\"\n"
+        '  bridge-tags: "doctype income"\n'
         "---\n\n"
         "Extract issuer, employee, gross pay, pay period.\n"
     )

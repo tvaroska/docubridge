@@ -207,10 +207,16 @@ def load_negotiate_policy(
     doc = _load_policy_doc(skill_name, skills_dir=skills_dir)
     negotiate = doc.get("negotiate")
     if not negotiate:
-        raise ValueError(f"skill {skill_name!r} policy.yaml missing a 'negotiate:' block")
+        raise ValueError(
+            f"skill {skill_name!r} policy.yaml missing a 'negotiate:' block"
+        )
 
     revise_cap = negotiate.get("revise_cap")
-    if not isinstance(revise_cap, int) or isinstance(revise_cap, bool) or revise_cap < 1:
+    if (
+        not isinstance(revise_cap, int)
+        or isinstance(revise_cap, bool)
+        or revise_cap < 1
+    ):
         raise ValueError(
             f"skill {skill_name!r} negotiate.revise_cap must be an int >= 1; "
             f"got {revise_cap!r}"
@@ -337,9 +343,7 @@ def revise(
         version=version_no,
         detail=f"route={verdict.route}",
     )
-    return NegotiationProgram(
-        program_id=program.program_id, legs=new_legs, audit=audit
-    )
+    return NegotiationProgram(program_id=program.program_id, legs=new_legs, audit=audit)
 
 
 def comparison_from_negotiation(
@@ -389,9 +393,7 @@ def bind_leg(
         version=bound_version,
         detail=f"bound version {bound_version}",
     )
-    return NegotiationProgram(
-        program_id=program.program_id, legs=new_legs, audit=audit
-    )
+    return NegotiationProgram(program_id=program.program_id, legs=new_legs, audit=audit)
 
 
 def roll_up(program: NegotiationProgram) -> ProgramRollup:

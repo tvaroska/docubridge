@@ -469,9 +469,7 @@ def consolidate_entry(
         try:
             parsed_d = datetime.fromisoformat(entry.key_fields["effective_date"])
             eff_ts = (
-                parsed_d.replace(tzinfo=UTC)
-                if parsed_d.tzinfo is None
-                else parsed_d
+                parsed_d.replace(tzinfo=UTC) if parsed_d.tzinfo is None else parsed_d
             )
         except ValueError:
             eff_ts = rec_ts
@@ -487,7 +485,7 @@ def consolidate_entry(
     skill_rev = entry.skill_revision_id or "rev-v1-0-baseline"
     skill_urn = (
         entry.skill_urn
-        or f"urn:skill:projects-documents001:locations:global:private-{entry.doctype}"
+        or f"urn:skill:projects-{os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('BRIDGE_GCP_PROJECT') or 'docubridge-showcase'}:locations:global:private-{entry.doctype}"
     )
     proc_skill_rev = entry.process_skill_revision_id or "rev-v1-0-baseline"
     rule_ids = tuple(entry.compiled_rule_ids or ())
@@ -602,7 +600,10 @@ def resolve_active_facts(
         # Flag a conflict if another distinct document at the same or different source
         # asserts a different value for the same field_path.
         for other in candidates[1:]:
-            if other.doc_id != winner.doc_id and other.field_value != winner.field_value:
+            if (
+                other.doc_id != winner.doc_id
+                and other.field_value != winner.field_value
+            ):
                 why = (
                     f"{winner.doctype} ({winner.doc_id}) asserts {winner.field_value!r} "
                     f"(priority {winner.source_priority}, learned {winner.recorded_at.isoformat()}), "
@@ -691,10 +692,16 @@ def compute_financial_summary(facts: list[ConsolidatedFact]) -> FinancialSummary
         )
         span.set_attribute("docubridge.total_premium", summary.total_premium)
         span.set_attribute("docubridge.total_deductible", summary.total_deductible)
-        span.set_attribute("docubridge.total_coverage_limit", summary.total_coverage_limit)
-        span.set_attribute("docubridge.total_insured_value", summary.total_insured_value)
+        span.set_attribute(
+            "docubridge.total_coverage_limit", summary.total_coverage_limit
+        )
+        span.set_attribute(
+            "docubridge.total_insured_value", summary.total_insured_value
+        )
         if summary.deductible_to_limit_pct is not None:
-            span.set_attribute("docubridge.deductible_to_limit_pct", summary.deductible_to_limit_pct)
+            span.set_attribute(
+                "docubridge.deductible_to_limit_pct", summary.deductible_to_limit_pct
+            )
         return summary
 
 
@@ -760,7 +767,9 @@ class OperationalStore(abc.ABC):
             span.set_attribute("docubridge.appended_fact_count", len(facts))
             span.set_attribute(
                 "docubridge.source_priority",
-                facts[0].source_priority if facts else source_priority_for_doctype(entry.doctype),
+                facts[0].source_priority
+                if facts
+                else source_priority_for_doctype(entry.doctype),
             )
             return facts
 
@@ -778,8 +787,12 @@ class OperationalStore(abc.ABC):
             {
                 "docubridge.zone": "3_alloydb_operational_store",
                 "docubridge.entity_id": entity_id,
-                "docubridge.learned_as_of": learned_as_of.isoformat() if learned_as_of else None,
-                "docubridge.effective_on": effective_on.isoformat() if effective_on else None,
+                "docubridge.learned_as_of": learned_as_of.isoformat()
+                if learned_as_of
+                else None,
+                "docubridge.effective_on": effective_on.isoformat()
+                if effective_on
+                else None,
             },
         ) as span:
             filtered_facts = self.list_facts(
@@ -842,7 +855,8 @@ class OperationalStore(abc.ABC):
                         doctype=first.doctype,
                         premium=kv.get("premium"),
                         deductible=kv.get("deductible"),
-                        coverage_limits=kv.get("coverage_limits") or kv.get("coverage_limit"),
+                        coverage_limits=kv.get("coverage_limits")
+                        or kv.get("coverage_limit"),
                         exclusions=kv.get("exclusions"),
                         effective_from=max(f.effective_from for f in doc_facts),
                         recorded_at=max(f.recorded_at for f in doc_facts),
@@ -1013,6 +1027,7 @@ class InMemoryOperationalStore(OperationalStore):
         self._seen_ids: set[str] = set()
 
     def append_facts(self, facts: list[ConsolidatedFact]) -> int:
+        """Append extracted canonical fact rows to the in-memory operational store."""
         for f in facts:
             if f.fact_id in self._seen_ids:
                 raise ValueError(
@@ -1031,6 +1046,7 @@ class InMemoryOperationalStore(OperationalStore):
         effective_on: datetime | None = None,
         since_recorded_at: datetime | None = None,
     ) -> list[ConsolidatedFact]:
+        """List canonical fact rows filtered by entity ID, domain, document ID, or fact key."""
         out: list[ConsolidatedFact] = []
         for f in self._facts:
             if entity_id is not None and f.entity_id != entity_id:
@@ -1143,6 +1159,7 @@ class SqlOperationalStore(OperationalStore):
         return fut.result(timeout=_OP_TIMEOUT_S)
 
     def append_facts(self, facts: list[ConsolidatedFact]) -> int:
+        """Persist extracted canonical fact rows into the SQL operational store."""
         if not facts:
             return 0
         self._ensure_ready()
@@ -1191,6 +1208,7 @@ class SqlOperationalStore(OperationalStore):
         effective_on: datetime | None = None,
         since_recorded_at: datetime | None = None,
     ) -> list[ConsolidatedFact]:
+        """Query canonical fact rows from SQL filtered by entity, domain, document, or key."""
         self._ensure_ready()
         from sqlalchemy import select
 
@@ -1231,7 +1249,9 @@ class SqlOperationalStore(OperationalStore):
                             currency=row["currency"],
                             source_priority=row["source_priority"],
                             recorded_at=datetime.fromisoformat(row["recorded_at"]),
-                            effective_from=datetime.fromisoformat(row["effective_from"]),
+                            effective_from=datetime.fromisoformat(
+                                row["effective_from"]
+                            ),
                             version=row["version"],
                             source_anchor=anchor,
                             vault_uri=row["vault_uri"],
@@ -1243,6 +1263,7 @@ class SqlOperationalStore(OperationalStore):
         return self._run(_query())
 
     def close(self) -> None:
+        """Dispose of the underlying SQLAlchemy engine and connection pool."""
         with self._init_lock:
             if self._engine is None:
                 return

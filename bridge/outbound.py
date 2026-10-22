@@ -34,6 +34,7 @@ Imports contract + bridge.followup only. NO google.adk, NO a2a, NEVER agents/.
 Synchronous (no asyncio). NO outbound message carries a long-lived party bearer token —
 workload auth (Agent Identity) is the P7 GCP transport's job, never a field on the message.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -60,8 +61,11 @@ class OutboundMessage(Protocol):
     prefixes never collide across activities), so one transport + one client handle all
     three activities with identical crash-safe re-drive semantics.
     """
+
     @property
-    def idempotency_key(self) -> str: ...
+    def idempotency_key(self) -> str:
+        """Return the deterministic idempotency key for this outbound message."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -74,15 +78,17 @@ class Nudge:
     (step-independent), so a second chase at the same step is a new send, while a re-drive
     of the same chase after a crash still dedupes even if the ladder stepped meanwhile.
     """
+
     context_id: str
     party: str
-    step: LifecycleStatus            # overdue | reminder (a manual chase: the carrier's step)
-    channel: str                     # delivery channel; callers pass a fixed default ("email")
+    step: LifecycleStatus  # overdue | reminder (a manual chase: the carrier's step)
+    channel: str  # delivery channel; callers pass a fixed default ("email")
     message: str
-    seq: int | None = None           # manual chase sequence (None = ladder nudge)
+    seq: int | None = None  # manual chase sequence (None = ladder nudge)
 
     @property
     def idempotency_key(self) -> str:
+        """Return the deterministic idempotency key for this follow-up nudge."""
         if self.seq is None:
             return f"nudge:{self.context_id}:{self.step.value}"
         return f"nudge:{self.context_id}:chase-{self.seq}"
@@ -97,14 +103,16 @@ class DialOut:
     Bridge needs (e.g. the ``benefits-procurement`` process skill). NO bearer token field —
     workload auth (Agent Identity) is the P7 transport's job, never a field here.
     """
+
     context_id: str
     party: str
-    process: str                     # the capability requested (must be advertised)
-    card_url: str                    # the peer Agent Card URL (discovery target)
-    message: str                     # the request payload (e.g. "request benefits-quote …")
+    process: str  # the capability requested (must be advertised)
+    card_url: str  # the peer Agent Card URL (discovery target)
+    message: str  # the request payload (e.g. "request benefits-quote …")
 
     @property
     def idempotency_key(self) -> str:
+        """Return the deterministic idempotency key for this outbound A2A dial-out."""
         return f"dial:{self.context_id}"
 
 
@@ -115,6 +123,7 @@ class Delivery:
     ``artifact`` is a contract.wire.ArtifactRef — a by-reference doc handle; bytes NEVER
     travel on the wire (ART discipline). NO bearer token field.
     """
+
     context_id: str
     recipient: str
     artifact: ArtifactRef
@@ -123,6 +132,7 @@ class Delivery:
 
     @property
     def idempotency_key(self) -> str:
+        """Return the deterministic idempotency key for this delivery record."""
         return f"deliver:{self.context_id}:{self.recipient}"
 
 
@@ -133,6 +143,7 @@ class PeerCard:
     ``processes`` is the tuple of process/doctype capabilities the peer advertises — what
     ``dial()`` checks the requested ``process`` against.
     """
+
     party: str
     card_url: str
     processes: tuple[str, ...]
@@ -141,16 +152,21 @@ class PeerCard:
 @runtime_checkable
 class PeerDirectory(Protocol):
     """Agent-Card discovery. Local = injected FakePeerDirectory; GCP = P7 resolver."""
-    def resolve(self, card_url: str) -> PeerCard: ...
+
+    def resolve(self, card_url: str) -> PeerCard:
+        """Resolve a logical peer identifier into its A2A endpoint URL."""
+        ...
 
 
 class FakePeerDirectory:
     """In-memory card resolver — the local adapter's injected directory (mirrors
     FakeTransport)."""
+
     def __init__(self, cards: dict[str, PeerCard] | None = None) -> None:
         self.cards: dict[str, PeerCard] = dict(cards or {})
 
     def resolve(self, card_url: str) -> PeerCard:
+        """Resolve a logical peer identifier from the in-memory test peer map."""
         try:
             return self.cards[card_url]
         except KeyError:
@@ -163,14 +179,16 @@ class FakePeerDirectory:
 @dataclass(frozen=True)
 class NudgeReceipt:
     """Proof a nudge was sent — or was already sent (idempotent re-drive)."""
+
     idempotency_key: str
     nudge: Nudge
-    resent: bool = False             # True when a re-driven send returned the prior receipt
+    resent: bool = False  # True when a re-driven send returned the prior receipt
 
 
 @dataclass(frozen=True)
 class DialReceipt:
     """Proof a dial-out was sent — or was already sent (idempotent re-drive)."""
+
     idempotency_key: str
     dialout: DialOut
     resent: bool = False
@@ -179,6 +197,7 @@ class DialReceipt:
 @dataclass(frozen=True)
 class DeliveryReceipt:
     """Proof a Delivery was pushed — or was already pushed (idempotent re-drive)."""
+
     idempotency_key: str
     delivery: Delivery
     resent: bool = False
@@ -190,7 +209,10 @@ OutboundReceipt = NudgeReceipt | DialReceipt | DeliveryReceipt
 @runtime_checkable
 class OutboundTransport(Protocol):
     """The injectable wire. Local = FakeTransport; GCP = Agent-Identity transport (P7)."""
-    def deliver(self, message: OutboundMessage) -> None: ...
+
+    def deliver(self, message: OutboundMessage) -> None:
+        """Deliver a serialized outbound payload to a resolved peer endpoint."""
+        ...
 
 
 class FakeTransport:
@@ -199,20 +221,34 @@ class FakeTransport:
     Holds any outbound message (Nudge / DialOut / Delivery); existing ``outbox == [nudge]``
     assertions still hold because a nudge-only run appends only nudges.
     """
+
     def __init__(self) -> None:
         self.outbox: list[OutboundMessage] = []
 
     def deliver(self, message: OutboundMessage) -> None:
+        """Record an outbound payload delivery in memory for deterministic testing."""
         self.outbox.append(message)
 
 
 @runtime_checkable
 class A2AClient(Protocol):
     """The a2a_client seam's outbound abstraction. Local = OutboundClient; GCP = P7."""
-    def send(self, nudge: Nudge) -> NudgeReceipt: ...
-    def dial(self, dialout: DialOut, *, directory: PeerDirectory) -> DialReceipt: ...
-    def deliver(self, delivery: Delivery) -> DeliveryReceipt: ...
-    def sent(self) -> list[OutboundReceipt]: ...
+
+    def send(self, nudge: Nudge) -> NudgeReceipt:
+        """Enqueue and deliver an outbound message or nudge with idempotency protection."""
+        ...
+
+    def dial(self, dialout: DialOut, *, directory: PeerDirectory) -> DialReceipt:
+        """Initiate an outbound A2A dial-out exchange with a remote peer agent."""
+        ...
+
+    def deliver(self, delivery: Delivery) -> DeliveryReceipt:
+        """Deliver a final verified package or status notification to the caller peer."""
+        ...
+
+    def sent(self) -> list[OutboundReceipt]:
+        """Return the chronological tuple of all outbound messages delivered by this client."""
+        ...
 
 
 class OutboundClient:
@@ -225,6 +261,7 @@ class OutboundClient:
     ``nudge:`` / ``dial:`` / ``deliver:`` prefixes namespace the receipt store so keys
     never collide across activities.
     """
+
     def __init__(self, transport: OutboundTransport | None = None) -> None:
         self._transport: OutboundTransport = transport or FakeTransport()
         self._receipts: dict[str, OutboundReceipt] = {}
@@ -236,12 +273,15 @@ class OutboundClient:
         send), False if the message was delivered now. The per-activity method wraps this
         to mint / return the typed receipt.
         """
-        if message.idempotency_key in self._receipts:   # crash-safe re-drive: no double send
+        if (
+            message.idempotency_key in self._receipts
+        ):  # crash-safe re-drive: no double send
             return True
         self._transport.deliver(message)
         return False
 
     def send(self, nudge: Nudge) -> NudgeReceipt:
+        """Send an outbound notification through the configured transport."""
         key = nudge.idempotency_key
         if self._dispatch(nudge):
             prior = self._receipts[key]
@@ -282,6 +322,7 @@ class OutboundClient:
         return receipt
 
     def sent(self) -> list[OutboundReceipt]:
+        """Return the chronological tuple of all sent outbound notifications."""
         return list(self._receipts.values())
 
 
@@ -304,15 +345,21 @@ def build_nudge_notifier(
     builds a Nudge and sends it through `client`. Plugged into FollowupLadder(..., notifier=…),
     it makes the P5-2 chase send real. escalated fires the ladder event but sends nothing.
     """
+
     def notify(event: FollowupEvent) -> None:
         if event.step not in steps:
-            return                                       # escalated etc.: internal only, no send
-        message = message_for(event) if message_for else default_nudge_message(event, party)
-        client.send(Nudge(
-            context_id=event.context_id,
-            party=party,
-            step=event.step,
-            channel=channel,
-            message=message,
-        ))
+            return  # escalated etc.: internal only, no send
+        message = (
+            message_for(event) if message_for else default_nudge_message(event, party)
+        )
+        client.send(
+            Nudge(
+                context_id=event.context_id,
+                party=party,
+                step=event.step,
+                channel=channel,
+                message=message,
+            )
+        )
+
     return notify

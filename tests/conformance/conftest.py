@@ -18,6 +18,8 @@ from tests.conformance import journey
 @pytest.fixture(params=["deterministic", "hybrid"])
 def edge_mode(request, monkeypatch):
     llm = ScriptedLlm(max_calls=0)
-    monkeypatch.setattr(journey, "EDGE", journey.EdgeConfig(mode=request.param, llm=llm))
+    monkeypatch.setattr(
+        journey, "EDGE", journey.EdgeConfig(mode=request.param, llm=llm)
+    )
     yield request.param
     assert llm.call_count == 0, "structured conformance traffic reached the LLM leg"

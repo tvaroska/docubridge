@@ -40,6 +40,7 @@ from contract.enums import ReviewReason
 
 class GovIdKeyFields(BaseModel):
     """Typed key fields for gov-id documents."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -51,6 +52,7 @@ class GovIdKeyFields(BaseModel):
 
 class UtilityBillKeyFields(BaseModel):
     """Typed key fields for utility-bill documents."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -60,6 +62,7 @@ class UtilityBillKeyFields(BaseModel):
 
 class SourceAnchor(BaseModel):
     """Exact document page and bounding-box location for an extracted value."""
+
     model_config = ConfigDict(extra="forbid")
 
     page_number: int = Field(ge=1)
@@ -81,11 +84,14 @@ class SourceAnchor(BaseModel):
 
 class ExtractionFields(BaseModel):
     """Wire shape for extraction.fields carried in ExtractionResult."""
+
     model_config = ConfigDict(extra="forbid")
 
     doctype: str  # Free string; label-space enforcement is bridge-side
     issuer: str | None = None
-    key_fields: dict[str, str] = {}  # Dict, not typed union; key sets differ per doctype
+    key_fields: dict[
+        str, str
+    ] = {}  # Dict, not typed union; key sets differ per doctype
     # Row-shaped data (S0-arch-10): table name -> rows, each row column -> text.
     # Additive + defaulted, so every existing payload validates unchanged.
     tables: dict[str, list[dict[str, str]]] = {}
@@ -99,12 +105,15 @@ class FieldReview(BaseModel):
     ``path`` is a dotted path into the *Bridge* extraction result (see the module
     docstring's mapping table), not into a consumer's schema.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     path: str
     reason: ReviewReason
-    confidence: float | None = None  # The engine's own number for that field, when known
-    detail: str | None = None        # One short free-text note
+    confidence: float | None = (
+        None  # The engine's own number for that field, when known
+    )
+    detail: str | None = None  # One short free-text note
 
 
 class ExtractionResult(BaseModel):
@@ -115,6 +124,7 @@ class ExtractionResult(BaseModel):
     ``bridge/edge/pathroute.py`` can keep using this model as a Path-A shape selector.
     Never add a REQUIRED field here — that silently reroutes Path A to Path B.
     """
+
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     fields: ExtractionFields
@@ -193,7 +203,9 @@ def field_reviews_for(result: ExtractionResult) -> list[FieldReview]:
         if path in seen:
             continue
         seen.add(path)
-        reviews.append(review if path == review.path else review.model_copy(update={"path": path}))
+        reviews.append(
+            review if path == review.path else review.model_copy(update={"path": path})
+        )
     for name in result.flagged_fields:
         path = review_path(name, result.fields)
         if path in seen:
@@ -208,11 +220,15 @@ def field_reviews_for(result: ExtractionResult) -> list[FieldReview]:
             and name not in result.fields.tables
             and name not in ("doctype", "issuer")
         )
-        reviews.append(FieldReview(
-            path=path,
-            reason=ReviewReason.absent_from_document if absent else ReviewReason.model_flagged,
-            confidence=result.field_confidence.get(name),
-        ))
+        reviews.append(
+            FieldReview(
+                path=path,
+                reason=ReviewReason.absent_from_document
+                if absent
+                else ReviewReason.model_flagged,
+                confidence=result.field_confidence.get(name),
+            )
+        )
     return reviews
 
 

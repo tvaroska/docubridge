@@ -22,6 +22,7 @@ CONTRACT_VERSION = "1.4"
 
 class ArtifactRef(BaseModel):
     """By-reference document handle; bytes never travel on the wire."""
+
     model_config = ConfigDict(extra="forbid")
 
     uri: str
@@ -31,6 +32,7 @@ class ArtifactRef(BaseModel):
 
 class LedgerEntry(BaseModel):
     """One classified document in the ledger."""
+
     model_config = ConfigDict(extra="forbid")
 
     doc_id: str
@@ -72,6 +74,7 @@ class LedgerEntry(BaseModel):
 
 class Requirement(BaseModel):
     """A single requirement in the app-owned requirements list."""
+
     model_config = ConfigDict(extra="forbid")
 
     item: str
@@ -86,6 +89,7 @@ class Requirement(BaseModel):
 
 class RequirementsList(BaseModel):
     """App-owned requirements view (what's needed / done)."""
+
     model_config = ConfigDict(extra="forbid")
 
     requirements: list[Requirement] = []
@@ -94,20 +98,28 @@ class RequirementsList(BaseModel):
 
 class CollectionStatus(BaseModel):
     """Bridge-owned classified ledger (what we have)."""
+
     model_config = ConfigDict(extra="forbid")
 
     entries: list[LedgerEntry] = []
-    outstanding: RequirementsList | None = None  # Bridge's best-effort still-needed proposal (advisory)
+    outstanding: RequirementsList | None = (
+        None  # Bridge's best-effort still-needed proposal (advisory)
+    )
 
 
 class CollectRequest(BaseModel):
     """Top-level wire type: what the collect node sends to the Bridge."""
+
     model_config = ConfigDict(extra="forbid")
 
     contract_version: str = CONTRACT_VERSION
     process: str  # Process-skill key, e.g. 'address-proof'
-    party: str | None = None  # Counterparty reference; falls back to exchange context when absent
-    context_id: str | None = None  # Exchange/A2A context; None on first turn, minted by Bridge
+    party: str | None = (
+        None  # Counterparty reference; falls back to exchange context when absent
+    )
+    context_id: str | None = (
+        None  # Exchange/A2A context; None on first turn, minted by Bridge
+    )
     message: str | None = None  # Optional free-text instruction
     # The app's requirements for this turn (the "app -> Bridge" leg of the Collect loop),
     # e.g. an RFP's carrier distribution list x product lines; and the due date that
@@ -118,6 +130,7 @@ class CollectRequest(BaseModel):
 
 class ExchangeTurn(BaseModel):
     """Top-level wire type: the Bridge's per-turn deliverable."""
+
     model_config = ConfigDict(extra="forbid")
 
     contract_version: str = CONTRACT_VERSION
@@ -129,7 +142,7 @@ class ExchangeTurn(BaseModel):
         description=(
             "Bridge transport turn state (COMPLETED vs INPUT_REQUIRED). "
             "NOT the app's sense-B 'done' — that lives on RequirementsList.done."
-        )
+        ),
     )
     lifecycle: LifecycleStatus = LifecycleStatus.on_track
 
@@ -145,6 +158,7 @@ class HumanReviewResolution(BaseModel):
     Bridge authorizes the reviewer from the authenticated A2A call-context principal,
     never from this payload.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     contract_version: str = CONTRACT_VERSION
@@ -167,6 +181,7 @@ class HumanReviewResolution(BaseModel):
 # before validating — so an added field degrades gracefully instead of         #
 # hard-failing. Same- or older-version decode is unchanged (strict).           #
 # --------------------------------------------------------------------------- #
+
 
 def _major(version: object) -> str:
     """Major component of a ``contract_version`` string (``"1.4"`` -> ``"1"``)."""
@@ -224,7 +239,11 @@ def _strip_to_known(annotation: Any, value: Any) -> Any:
     if origin is dict:
         return value  # open-ended mapping (e.g. key_fields) — a leaf, keep as-is
 
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel) and isinstance(value, dict):
+    if (
+        isinstance(annotation, type)
+        and issubclass(annotation, BaseModel)
+        and isinstance(value, dict)
+    ):
         by_key: dict[str, tuple[str, Any]] = {}
         for name, field in annotation.model_fields.items():
             by_key[name] = (name, field.annotation)

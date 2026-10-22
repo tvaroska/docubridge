@@ -17,7 +17,7 @@ tags: [bridge, layout]
 ## Top-level layout
 
 ```
-docbride3/
+docubridge/
 ├── contract/        shared Pydantic wire types — the ONLY package both bridge/ and agents/ import
 ├── bridge/          the reusable Bridge CORE (the platform showcase) — never imports agents/
 │   ├── edge/        A2A server, Agent Card, executor router, LlmAgent leg, artifact fetch, email webhook
@@ -47,7 +47,7 @@ docbride3/
 │   └── benefits-rfp (emergent-Collect process)
 ├── frontend/        four apps (provider portal = A2UI Path-B; console + dashboard = SSE; timewarp)
 │   ├── provider-portal/, agent-console/, ops-dashboard/, timewarp/
-│   ├── shared/      @docbride/shared: theme, Panel, Badges, contract mirror
+│   ├── shared/      @docubridge/shared: theme, Panel, Badges, contract mirror
 │   └── e2e/         Playwright, network-stubbed
 ├── terraform/       IaC, organized by GCP substrate primitive
 ├── scripts/         local run-*.sh launchers, deploy.sh, parity.sh
@@ -103,7 +103,7 @@ The eval corpus is the enforced source of truth for field names + expected dispo
 ### `frontend/` — four apps, three actor surfaces
 `provider-portal/` (external zone), `agent-console/` + `ops-dashboard/` (internal zone), `timewarp/` (presenter control, local-only).
 
-`shared/` (`@docbride/shared`) holds the shared theme (`theme.ts`), `Panel.tsx`, `Badges.tsx`, `domain/contract.ts` (snake_case → camelCase mirror) and `domain/rfp.ts`, with vitest tests. The apps import it.
+`shared/` (`@docubridge/shared`) holds the shared theme (`theme.ts`), `Panel.tsx`, `Badges.tsx`, `domain/contract.ts` (snake_case → camelCase mirror) and `domain/rfp.ts`, with vitest tests. The apps import it.
 
 `e2e/` holds Playwright end-to-end tests, stubbed at the network boundary. See [frontend](frontend.md).
 

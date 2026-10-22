@@ -18,7 +18,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { LifecycleBadge, Panel, RfpStatusBadge } from "@docbride/shared";
+import { LifecycleBadge, Panel, RfpStatusBadge } from "@docubridge/shared";
 import { useState } from "react";
 import type { RfpChecklist as Checklist, RfpChecklistItem } from "../domain/rfp";
 

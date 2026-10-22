@@ -11,6 +11,7 @@ pending alarm and no work runs.
 Imports contract + bridge.scheduler/bridge.sla only. NO google.adk, NO a2a,
 NEVER agents/. Synchronous (tick math, no asyncio).
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -32,9 +33,10 @@ def followup_key(context_id: str) -> str:
 @dataclass(frozen=True)
 class FollowupEvent:
     """A recorded ladder firing (the 'each event recorded' of CUJ-6)."""
+
     context_id: str
-    step: LifecycleStatus   # overdue | reminder | escalated
-    tick: int               # clock.now() when it fired
+    step: LifecycleStatus  # overdue | reminder | escalated
+    tick: int  # clock.now() when it fired
 
 
 # P5-3 plugs the real party-channel send here; default is a no-op.
@@ -48,14 +50,15 @@ class FollowupLadder:
         self, context_id: str, policy: SlaPolicy, *, notifier: Notifier | None = None
     ) -> None:
         self.context_id = context_id
-        self._schedule = policy.schedule()      # [(1,overdue),(2,reminder),(3,escalated)]
+        self._schedule = policy.schedule()  # [(1,overdue),(2,reminder),(3,escalated)]
         self._notifier = notifier
         self.lifecycle: LifecycleStatus = LifecycleStatus.on_track
-        self.events: list[FollowupEvent] = []   # P5-4: persist across restart
-        self._idx = 0                           # index of the NEXT step to fire
+        self.events: list[FollowupEvent] = []  # P5-4: persist across restart
+        self._idx = 0  # index of the NEXT step to fire
 
     @property
     def key(self) -> str:
+        """Build the deterministic scheduler key for a follow-up rung on an exchange."""
         return followup_key(self.context_id)
 
     @property
@@ -76,15 +79,17 @@ class FollowupLadder:
         notify, and re-arm the next step (zero compute between). Do NOT re-arm past
         escalated (the durable stall). Raises ValueError if `alarm` isn't ours."""
         if alarm.key != self.key:
-            raise ValueError(f"alarm {alarm.key!r} does not belong to ladder {self.key!r}")
+            raise ValueError(
+                f"alarm {alarm.key!r} does not belong to ladder {self.key!r}"
+            )
         step: LifecycleStatus = alarm.payload
         self.lifecycle = step
         event = FollowupEvent(context_id=self.context_id, step=step, tick=clock.now())
-        self.events.append(event)          # P5-4: persist
+        self.events.append(event)  # P5-4: persist
         self._idx += 1
         if self._notifier is not None:
-            self._notifier(event)          # P5-3: the real send
-        self.arm(clock)                    # re-arm next (no-op when done)
+            self._notifier(event)  # P5-3: the real send
+        self.arm(clock)  # re-arm next (no-op when done)
         return event
 
     def cancel(self, clock: Scheduler) -> bool:

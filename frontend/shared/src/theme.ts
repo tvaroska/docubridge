@@ -1,4 +1,4 @@
-// Shared MUI theme factory (@docbride/shared, P6-5).
+// Shared MUI theme factory (@docubridge/shared, P6-5).
 //
 // The four apps (portal, console, dashboard, timewarp) share the SAME theme shape
 // (borderRadius, success/warning) but each carries a DIFFERENT primary accent by design —

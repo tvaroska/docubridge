@@ -34,7 +34,9 @@ from bridge.program import fan_out
 from bridge.standard import load_program_standard
 
 BASE = "http://dash"
-BENEFITS_CORPUS = Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+BENEFITS_CORPUS = (
+    Path(__file__).resolve().parents[1] / "wiki/evals/benefits/expected.json"
+)
 PROCESS = "benefits-procurement"
 PROGRAM_ID = "acme-2026"
 

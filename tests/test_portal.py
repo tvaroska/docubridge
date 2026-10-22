@@ -61,7 +61,9 @@ def _no_pixel_fields(view: dict) -> None:
             for k, v in obj.items():
                 lowered = k.lower()
                 for token in _PIXEL_TOKENS:
-                    assert token not in lowered, f"pixel-ish key {k!r} in transported view"
+                    assert token not in lowered, (
+                        f"pixel-ish key {k!r} in transported view"
+                    )
                 walk(v)
         elif isinstance(obj, list):
             for item in obj:
@@ -324,12 +326,18 @@ async def test_seam_extracts_once_per_upload():
     store = InMemoryPortalStore()
     rec = engine.start_session(store, process=PROCESS)
     await engine.upload(
-        store, rec.session_id, doc_id="d1", artifact_name="bill-aquautil-blurry",
+        store,
+        rec.session_id,
+        doc_id="d1",
+        artifact_name="bill-aquautil-blurry",
         extractor=spy,
     )
     assert len(spy.calls) == 1
     await engine.upload(
-        store, rec.session_id, doc_id="d1", artifact_name="bill-aquautil-clear",
+        store,
+        rec.session_id,
+        doc_id="d1",
+        artifact_name="bill-aquautil-clear",
         extractor=spy,
     )
     assert len(spy.calls) == 2
@@ -356,7 +364,11 @@ def test_portal_never_imports_agents():
         tree = ast.parse(py.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                assert not node.module.startswith("agents"), f"{py} imports {node.module}"
+                assert not node.module.startswith("agents"), (
+                    f"{py} imports {node.module}"
+                )
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert not alias.name.startswith("agents"), f"{py} imports {alias.name}"
+                    assert not alias.name.startswith("agents"), (
+                        f"{py} imports {alias.name}"
+                    )

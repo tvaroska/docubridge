@@ -32,20 +32,28 @@ def _turn() -> ExchangeTurn:
     """A turn with one accepted entry, one rejected entry (reason+message), and one
     outstanding required requirement (reason+message)."""
     accepted = LedgerEntry(
-        doc_id="a1", doctype="gov-id", disposition=Disposition.accepted,
-        gate=Gate.auto_approve, reason_code="auto_approved",
+        doc_id="a1",
+        doctype="gov-id",
+        disposition=Disposition.accepted,
+        gate=Gate.auto_approve,
+        reason_code="auto_approved",
         message="The document was automatically approved.",
     )
     rejected = LedgerEntry(
-        doc_id="r1", doctype="utility-bill", disposition=Disposition.rejected,
-        gate=Gate.resubmit, reason_code="illegible",
+        doc_id="r1",
+        doctype="utility-bill",
+        disposition=Disposition.rejected,
+        gate=Gate.resubmit,
+        reason_code="illegible",
         message="The document was unreadable — please resubmit a clearer copy.",
     )
     outstanding = RequirementsList(
         requirements=[
             Requirement(
-                item="utility-bill", status=RequirementStatus.required,
-                doctype_hint="utility-bill", reason_code="illegible",
+                item="utility-bill",
+                status=RequirementStatus.required,
+                doctype_hint="utility-bill",
+                reason_code="illegible",
                 message="The document was unreadable — please resubmit a clearer copy.",
             )
         ],
@@ -101,7 +109,9 @@ def test_no_action_when_nothing_outstanding():
         status=CollectionStatus(
             entries=[
                 LedgerEntry(
-                    doc_id="a", doctype="gov-id", disposition=Disposition.accepted,
+                    doc_id="a",
+                    doctype="gov-id",
+                    disposition=Disposition.accepted,
                     gate=Gate.auto_approve,
                 )
             ],
@@ -118,7 +128,9 @@ def test_a2ui_models_have_no_pixel_fields():
         for field_name in model.model_fields:
             lowered = field_name.lower()
             for token in _PIXEL_TOKENS:
-                assert token not in lowered, f"{model.__name__}.{field_name} looks like a pixel field"
+                assert token not in lowered, (
+                    f"{model.__name__}.{field_name} looks like a pixel field"
+                )
 
 
 def test_render_upload_prompt():
@@ -130,14 +142,19 @@ def test_render_upload_prompt():
     assert view.actions[0].kind == "upload"
     assert view.actions[0].accept == ["utility-bill"]
     # Requirement relayed verbatim.
-    assert view.outstanding[0].message == turn.status.outstanding.requirements[0].message
+    assert (
+        view.outstanding[0].message == turn.status.outstanding.requirements[0].message
+    )
 
 
 def test_render_hitl_review():
     """hitl_review renders the parked entry verbatim + a form action for resolution."""
     entry = LedgerEntry(
-        doc_id="p1", doctype="utility-bill", disposition=Disposition.pending,
-        gate=Gate.hitl_review, reason_code="needs_review",
+        doc_id="p1",
+        doctype="utility-bill",
+        disposition=Disposition.pending,
+        gate=Gate.hitl_review,
+        reason_code="needs_review",
         message="The document requires human review (confidence: 0.72).",
     )
     turn = ExchangeTurn(context_id="ctx-h", status=CollectionStatus(entries=[entry]))

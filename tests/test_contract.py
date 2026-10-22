@@ -221,22 +221,26 @@ class TestExtraForbid:
 
     def test_ledger_entry_rejects_unknown_field(self):
         with pytest.raises(ValidationError):
-            LedgerEntry.model_validate({
-                "doc_id": "test",
-                "doctype": "gov-id",
-                "disposition": "accepted",
-                "gate": "auto_approve",
-                "unknown_key": "should fail",
-            })
+            LedgerEntry.model_validate(
+                {
+                    "doc_id": "test",
+                    "doctype": "gov-id",
+                    "disposition": "accepted",
+                    "gate": "auto_approve",
+                    "unknown_key": "should fail",
+                }
+            )
 
     def test_extraction_result_rejects_unknown_field(self):
         with pytest.raises(ValidationError):
-            ExtractionResult.model_validate({
-                "fields": {"doctype": "gov-id"},
-                "overall_confidence": 0.9,
-                "legible": True,
-                "extra_field": "bad",
-            })
+            ExtractionResult.model_validate(
+                {
+                    "fields": {"doctype": "gov-id"},
+                    "overall_confidence": 0.9,
+                    "legible": True,
+                    "extra_field": "bad",
+                }
+            )
 
 
 class TestRequiredFields:
@@ -248,17 +252,21 @@ class TestRequiredFields:
 
     def test_ledger_entry_requires_disposition(self):
         with pytest.raises(ValidationError):
-            LedgerEntry.model_validate({
-                "doc_id": "test",
-                "doctype": "gov-id",
-                "gate": "auto_approve",
-            })
+            LedgerEntry.model_validate(
+                {
+                    "doc_id": "test",
+                    "doctype": "gov-id",
+                    "gate": "auto_approve",
+                }
+            )
 
     def test_exchange_turn_requires_context_id(self):
         with pytest.raises(ValidationError):
-            ExchangeTurn.model_validate({
-                "status": {"entries": []},
-            })
+            ExchangeTurn.model_validate(
+                {
+                    "status": {"entries": []},
+                }
+            )
 
 
 class TestContractVersionDefault:
@@ -353,7 +361,9 @@ class TestCorpusParity:
     @pytest.fixture
     def corpus(self):
         """Load wiki/evals/address/expected.json."""
-        corpus_path = Path(__file__).resolve().parents[1] / "wiki/evals/address/expected.json"
+        corpus_path = (
+            Path(__file__).resolve().parents[1] / "wiki/evals/address/expected.json"
+        )
         with open(corpus_path) as f:
             return json.load(f)
 
@@ -371,7 +381,9 @@ class TestCorpusParity:
             extraction = doc["extraction"]
             parsed = ExtractionResult.model_validate(extraction)
             # Round-trip through model_dump → model_validate
-            round_tripped = ExtractionResult.model_validate(parsed.model_dump(mode="json"))
+            round_tripped = ExtractionResult.model_validate(
+                parsed.model_dump(mode="json")
+            )
             assert parsed == round_tripped
 
     def test_corpus_disposition_enum_coverage(self, corpus):
@@ -392,7 +404,9 @@ class TestCorpusParity:
 
     def test_passport_without_field_confidence(self, corpus):
         """Passport doc omits field_confidence; model fills default."""
-        passport_doc = next(d for d in corpus["documents"] if d["id"] == "passport-unsupported")
+        passport_doc = next(
+            d for d in corpus["documents"] if d["id"] == "passport-unsupported"
+        )
         extraction = passport_doc["extraction"]
         assert "field_confidence" not in extraction
 
@@ -401,7 +415,9 @@ class TestCorpusParity:
 
     def test_blurry_without_key_fields(self, corpus):
         """Blurry doc omits key_fields; model fills default."""
-        blurry_doc = next(d for d in corpus["documents"] if d["id"] == "bill-aquautil-blurry")
+        blurry_doc = next(
+            d for d in corpus["documents"] if d["id"] == "bill-aquautil-blurry"
+        )
         extraction = blurry_doc["extraction"]
         assert "key_fields" not in extraction["fields"]
 
@@ -437,11 +453,13 @@ class TestReviewVocabulary:
 
     def test_field_review_rejects_unknown_field(self):
         with pytest.raises(ValidationError):
-            FieldReview.model_validate({
-                "path": "fields.key_fields.name",
-                "reason": "derived",
-                "bogus": 1,
-            })
+            FieldReview.model_validate(
+                {
+                    "path": "fields.key_fields.name",
+                    "reason": "derived",
+                    "bogus": 1,
+                }
+            )
 
     def test_field_review_rejects_unknown_reason(self):
         with pytest.raises(ValidationError):
@@ -457,11 +475,16 @@ class TestReviewVocabulary:
     def test_top_level_names_map_to_their_own_paths(self):
         result = self._result(flagged_fields=["issuer", "doctype"])
         assert fields_requiring_review(result) == ["fields.issuer", "fields.doctype"]
-        assert {r.reason for r in field_reviews_for(result)} == {ReviewReason.model_flagged}
+        assert {r.reason for r in field_reviews_for(result)} == {
+            ReviewReason.model_flagged
+        }
 
     def test_already_dotted_name_passes_through(self):
         result = self._result(flagged_fields=["commission.rate_pct", "rates[0].amount"])
-        assert fields_requiring_review(result) == ["commission.rate_pct", "rates[0].amount"]
+        assert fields_requiring_review(result) == [
+            "commission.rate_pct",
+            "rates[0].amount",
+        ]
 
     def test_flag_for_a_field_the_document_lacks_is_absent_from_document(self):
         result = self._result(flagged_fields=["expiry"])
@@ -483,7 +506,9 @@ class TestReviewVocabulary:
         """An engine answering with the bare key name collapses onto its own flag."""
         result = self._result(
             flagged_fields=["name"],
-            field_reviews=[{"path": "name", "reason": "low_confidence", "confidence": 0.3}],
+            field_reviews=[
+                {"path": "name", "reason": "low_confidence", "confidence": 0.3}
+            ],
         )
         reviews = field_reviews_for(result)
         assert [r.path for r in reviews] == ["fields.key_fields.name"]
@@ -530,7 +555,9 @@ class TestReviewVocabulary:
             fields=ExtractionFields(doctype="gov-id"),
             overall_confidence=0.9,
             legible=True,
-            field_reviews=[FieldReview(path="fields.doctype", reason=ReviewReason.derived)],
+            field_reviews=[
+                FieldReview(path="fields.doctype", reason=ReviewReason.derived)
+            ],
         )
         assert ExtractionResult.model_validate(inst.model_dump(mode="json")) == inst
 
@@ -551,24 +578,32 @@ class TestReviewVocabulary:
         stripped = _strip_to_known(ExtractionResult, payload)
         assert stripped["fields_requiring_review"] == ["commission.rate_pct"]
         assert "some_v2_field" not in stripped
-        assert ExtractionResult.model_validate(stripped).flagged_fields == ["commission.rate_pct"]
+        assert ExtractionResult.model_validate(stripped).flagged_fields == [
+            "commission.rate_pct"
+        ]
 
     def test_ledger_entry_carries_field_reviews_across_a_major_bump(self):
         """LedgerEntry.field_reviews is additive: decode_wire recurses into it."""
         payload = {
             "contract_version": "2",
             "context_id": "ctx-1",
-            "status": {"entries": [{
-                "doc_id": "d1",
-                "doctype": "gov-id",
-                "disposition": "pending",
-                "gate": "hitl_review",
-                "field_reviews": [{
-                    "path": "fields.key_fields.expiry",
-                    "reason": "absent_from_document",
-                    "v2_extra": "future",
-                }],
-            }]},
+            "status": {
+                "entries": [
+                    {
+                        "doc_id": "d1",
+                        "doctype": "gov-id",
+                        "disposition": "pending",
+                        "gate": "hitl_review",
+                        "field_reviews": [
+                            {
+                                "path": "fields.key_fields.expiry",
+                                "reason": "absent_from_document",
+                                "v2_extra": "future",
+                            }
+                        ],
+                    }
+                ]
+            },
         }
         turn = decode_wire(ExchangeTurn, payload)
         review = turn.status.entries[0].field_reviews[0]
@@ -577,7 +612,9 @@ class TestReviewVocabulary:
 
     def test_corpus_blocks_need_no_reviews(self):
         """The oracle is untouched by this vocabulary: derivation covers it."""
-        corpus_path = Path(__file__).resolve().parents[1] / "wiki/evals/address/expected.json"
+        corpus_path = (
+            Path(__file__).resolve().parents[1] / "wiki/evals/address/expected.json"
+        )
         with open(corpus_path) as f:
             corpus = json.load(f)
         for doc in corpus["documents"]:

@@ -34,7 +34,7 @@ import {
   type RfpCarrier,
   type RfpCell,
   type RfpStatus,
-} from "@docbride/shared";
+} from "@docubridge/shared";
 
 export type ChaseHandler = (rfpId: string, party: string | null) => void;
 

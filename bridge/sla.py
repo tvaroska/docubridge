@@ -31,6 +31,7 @@ def skills_root(skills_dir: Path | None = None) -> Path:
         return skills_dir
     return Path(os.environ.get("BRIDGE_SKILLS_DIR", "").strip() or SKILLS_DIR)
 
+
 # The three ladder steps, in escalation order (on_track is the base state, not a step).
 LADDER_STEPS: tuple[LifecycleStatus, ...] = (
     LifecycleStatus.overdue,
@@ -46,6 +47,7 @@ class SlaPolicy:
     ``cadence``/``deadline``/``max_nudges`` are the policy knobs; ``*_ticks`` give each
     ladder step's fire tick; ``ladder`` is the ordered step vocabulary.
     """
+
     cadence: int
     deadline: int
     max_nudges: int
@@ -111,7 +113,9 @@ def _load_policy_doc(skill_name: str, *, skills_dir: Path | None = None) -> dict
     frontmatter = _load_skill_frontmatter(skill_name, skills_dir=skills_dir)
 
     # Resolve policy file path (default assets/policy.yaml)
-    policy_rel = frontmatter.get("metadata", {}).get("bridge-policy", "assets/policy.yaml")
+    policy_rel = frontmatter.get("metadata", {}).get(
+        "bridge-policy", "assets/policy.yaml"
+    )
     policy_path = skill_dir / policy_rel
     if not policy_path.exists():
         raise ValueError(f"policy file {policy_path} not found")
