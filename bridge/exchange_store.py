@@ -187,7 +187,15 @@ class InMemoryExchangeStore(ExchangeStore):
             recs = [r for r in self._records.values() if r.kind == kind]
         return [self._copy(r) for r in recs]
 
-    def put(self, kind, ref, *, context_id, doc, expected_version) -> int:
+    def put(
+        self,
+        kind: str,
+        ref: str,
+        *,
+        context_id: str,
+        doc: dict[str, Any],
+        expected_version: int,
+    ) -> int:
         """Save or update an exchange state snapshot in memory."""
         _check_put(kind, ref, expected_version)
         stored = _json_roundtrip(doc)
@@ -209,7 +217,7 @@ class InMemoryExchangeStore(ExchangeStore):
 
 
 @functools.cache
-def _table():
+def _table() -> Any:
     """The ``bridge_exchange_records`` table (built lazily: SQLAlchemy is not a top import)."""
     import sqlalchemy as sa
 
@@ -329,7 +337,7 @@ class SqlExchangeStore(ExchangeStore):
         _check_key(kind, ref)
         t = _table()
 
-        async def op(engine):
+        async def op(engine: Any) -> ExchangeRecord | None:
             import sqlalchemy as sa
 
             async with engine.begin() as conn:
@@ -346,7 +354,7 @@ class SqlExchangeStore(ExchangeStore):
         """List all exchange state snapshots stored in the SQL database."""
         t = _table()
 
-        async def op(engine):
+        async def op(engine: Any) -> list[ExchangeRecord]:
             import sqlalchemy as sa
 
             async with engine.begin() as conn:
@@ -359,13 +367,21 @@ class SqlExchangeStore(ExchangeStore):
 
         return self._call(op)
 
-    def put(self, kind, ref, *, context_id, doc, expected_version) -> int:
+    def put(
+        self,
+        kind: str,
+        ref: str,
+        *,
+        context_id: str,
+        doc: dict[str, Any],
+        expected_version: int,
+    ) -> int:
         """Persist or update an exchange state snapshot in the SQL database."""
         _check_put(kind, ref, expected_version)
         stored = _json_roundtrip(doc)
         t = _table()
 
-        async def op(engine):
+        async def op(engine: Any) -> int:
             import sqlalchemy as sa
             from sqlalchemy.exc import IntegrityError
 

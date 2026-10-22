@@ -18,7 +18,9 @@ tests/      the shared seam suite (local + gcp adapters) + enterprise architectu
 ```
 
 - **Isolation Invariant (`tests/test_isolation_guard.py`):** `bridge/` **never imports** `agents/`, and `agents/` **never imports** `bridge/`. Both import `contract/`.
+- **Ports & Adapters (`bridge/ports/` & `bridge/seams/`):** All 13 managed-service boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`) resolve through `resolve_port_mode(port)` (`BRIDGE_PORT_<NAME>` → `BRIDGE_SEAM_<NAME>` → `BRIDGE_PORT_MODE` → `BRIDGE_SEAM_MODE` → `local`) and `get_port_adapter(port, mode)`.
 - **Skill-Name Literal Guard (`test_core_names_no_skill`):** `tests/test_isolation_guard.py` scans every Python AST string literal in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring literal equals an installed folder name in `skills/` (`address-proof`, `gov-id`, `utility-bill`, `benefits-procurement`, `benefits-quote`, `benefits-rfp`). Never hardcode an installed skill folder name inside `bridge/` core modules.
+
 - **Protected Spec (`CRITICAL.md`):** Never edit `spec/` during implementation tasks; propose spec changes in `DECISIONS.md` instead.
 
 ## 2. Verification Ladder

@@ -32,7 +32,7 @@ stdlib only; NEVER ``agents/``.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -161,7 +161,7 @@ def build_dashboard_app(
     lifespan = None
     if processor is not None and interval > 0:
 
-        def lifespan(_app: FastAPI):
+        def lifespan(_app: FastAPI) -> Any:
             return email_drain_loop(processor, interval)
 
     app = FastAPI(

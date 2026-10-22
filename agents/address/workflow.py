@@ -24,6 +24,8 @@ durability is P4, not wired here.
 
 from __future__ import annotations
 
+from typing import Any
+
 from google.adk.workflow import START, Edge, FunctionNode, Workflow
 
 from agents.address.collect import build_bridge_remote_agent
@@ -31,7 +33,7 @@ from agents.address.gate import DEFAULT_MAX_ROUNDS, make_gate_node_fn
 from agents.address.turn_reader import read_latest_exchange_turn
 
 
-def present_node_fn(ctx) -> dict | None:
+def present_node_fn(ctx: Any) -> dict | None:
     """Presenter node (AGENT-4): return the terminal ``ExchangeTurn`` as graph output.
 
     Reads the latest terminal turn off the shared session (falling back to the
@@ -47,8 +49,8 @@ def build_address_workflow(
     card_url: str,
     *,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
-    httpx_client=None,
-    collect_node=None,
+    httpx_client: Any = None,
+    collect_node: Any = None,
 ) -> Workflow:
     """Build the Address ``Workflow`` (the four-edge conditional cycle).
 

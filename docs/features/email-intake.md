@@ -5,8 +5,7 @@ correlation to open RFPs, attachment extraction + filing into collection cells, 
 deployed infrastructure to drain the landing bucket.
 
 Completed-work archive for this feature area (`docs/features/`). This holds the
-plan **substance**, not links — `.claude/plans/*` are local and gitignored, so
-their reasoning must be captured HERE (and decisions logged in `DECISIONS.md`).
+implementation **substance** and rationale (with architectural decisions logged in `DECISIONS.md`).
 
 **Requirements (THE WHAT) live in `design/`, already authored — do not duplicate here:**
 - `design/email-intake.md` — email processor architecture, three-phase processing

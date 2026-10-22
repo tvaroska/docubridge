@@ -11,10 +11,7 @@ from typing import Any
 from bridge.agent_gym.engine import AgentGymEngine, InMemoryAgentGymEngine
 from bridge.agent_gym.models import (
     _OP_TIMEOUT_S,
-    DATABASE_URL_ENV,
     DEFAULT_TRUST_POLICIES,
-    GYM_DB_ENV,
-    OPERATIONAL_DB_ENV,
     PROCESS_SKILL_LINEAGE_TABLE_NAME,
     REPORTS_TABLE_NAME,
     RULES_TABLE_NAME,
@@ -505,39 +502,16 @@ _DEFAULT_GYM_ENGINE: InMemoryAgentGymEngine | None = None
 def agent_gym_from_env(
     existing: AgentGymEngine | None = None,
 ) -> AgentGymEngine:
-    """Resolve the Agent Gym engine from environment.
-
-    - When `BRIDGE_GYM_DB_URL`, `BRIDGE_OPERATIONAL_DB_URL`, or `DATABASE_URL` is set,
-      returns a durable :class:`SqlAgentGymEngine` shared across Cloud Run replicas
-      and Vertex AI Agent Engine (`reasoningEngines`) workers.
-    - When `BRIDGE_SEAM_MODE=gcp` (or `ADP_AGENT_RUNTIME=gcp`) and no database DSN is
-      configured, raises `RuntimeError` refusing an in-memory fallback (preventing the
-      session-affinity trap).
-    - Otherwise returns a local :class:`InMemoryAgentGymEngine` for unit tests.
-    """
-    global _DEFAULT_GYM_ENGINE
+    """Resolve the Agent Gym engine via the ``Port.agent_gym`` port adapter."""
     if existing is not None:
         return existing
-    dsn = (
-        os.environ.get(GYM_DB_ENV, "").strip()
-        or os.environ.get(OPERATIONAL_DB_ENV, "").strip()
-        or os.environ.get(DATABASE_URL_ENV, "").strip()
-    )
-    if dsn:
-        with _SQL_GYM_LOCK:
-            cached = _SQL_GYM_CACHE.get(dsn)
-            if cached is None:
-                cached = SqlAgentGymEngine(dsn)
-                _SQL_GYM_CACHE[dsn] = cached
-        return cached
-    seam_mode = os.environ.get("BRIDGE_SEAM_MODE", "").strip().lower()
-    agent_runtime = os.environ.get("ADP_AGENT_RUNTIME", "").strip().lower()
-    if seam_mode == "gcp" or agent_runtime == "gcp":
-        raise RuntimeError(
-            "AgentGym in GCP / Vertex AI Agent Engine mode requires a durable SQL DSN "
-            "(DATABASE_URL, BRIDGE_OPERATIONAL_DB_URL, or BRIDGE_GYM_DB_URL); "
-            "refusing an in-memory fallback (the session-affinity trap)."
-        )
-    if _DEFAULT_GYM_ENGINE is None:
-        _DEFAULT_GYM_ENGINE = InMemoryAgentGymEngine()
-    return _DEFAULT_GYM_ENGINE
+    from bridge.ports import Port, PortMode, get_adapter, resolve_mode
+
+    mode = resolve_mode(Port.agent_gym)
+    if (
+        mode is PortMode.local
+        and os.environ.get("ADP_AGENT_RUNTIME", "").strip().lower() == "gcp"
+    ):
+        mode = PortMode.gcp
+    adapter = get_adapter(Port.agent_gym, mode)
+    return adapter.build_agent_gym()

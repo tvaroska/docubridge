@@ -4,11 +4,12 @@ This document captures the foundational architectural decisions and milestone re
 
 ---
 
-## ADR-01: Nine-Seam Dual-Mode Infrastructure (`local` vs. `gcp`) (`S0-arch-13`, `P7-2`–`P7-5`)
+## ADR-01: Hexagonal Ports & Adapters Across All 13 Boundaries (`local` vs. `gcp`) (`S0-arch-13`, `P7-2`–`P7-5`)
 
 - **Context:** Enterprise document workflows require managed cloud durability and zero-trust security in production (Cloud Run v2, Vertex AI Agent Engine, Cloud SQL for PostgreSQL 16 / AlloyDB, Cloud Storage WORM, Document AI, and Cloud Tasks), while local development and CI require fast, credential-free execution.
-- **Decision:** Factor external infrastructure behind nine explicit seam protocols (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, and `email_ingress`, plus `vault` in `bridge/vault.py`). Each seam provides a deterministic `local` adapter (`bridge/seams/local/`) and a production `gcp` adapter (`bridge/seams/gcp/`) that fails fast with an actionable `RuntimeError` if required environment variables (`DATABASE_URL`, `BRIDGE_SKILLS_BUCKET`, `BRIDGE_VAULT_BUCKET`) are missing.
-- **Consequence:** Every scenario in `tests/` runs against `local` seams in milliseconds and against `gcp` seams via `@pytest.mark.seam(...)` without code changes.
+- **Decision:** Factor all 13 external infrastructure boundaries behind explicit Hexagonal **Ports & Adapters** in `bridge/ports/` (with backwards-compatible `bridge/seams/` aliases): the 9 core boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`) plus the 4 Zone 3–6 Enterprise Data Architecture stores (`audit_vault`, `operational_store`, `action_inbox`, `agent_gym`). Each port provides a deterministic `local` adapter (`bridge/ports/local.py`) and a production `gcp` adapter (`bridge/ports/gcp.py`) resolved via `BRIDGE_PORT_<NAME>` / `BRIDGE_PORT_MODE` (falling back to `BRIDGE_SEAM_<NAME>` / `BRIDGE_SEAM_MODE`) that fails fast with an actionable `RuntimeError` if required environment variables (`DATABASE_URL`, `BRIDGE_SKILLS_BUCKET`, `BRIDGE_VAULT_BUCKET`) are missing.
+- **Consequence:** Every scenario in `tests/` runs against `local` adapters in milliseconds and against `gcp` adapters via `@pytest.mark.port(...)` / `@pytest.mark.seam(...)` without code changes, and hybrid local+cloud debugging can flip any individual boundary (`BRIDGE_PORT_EXTRACTION=gcp`, `BRIDGE_PORT_OPERATIONAL_STORE=local`).
+
 
 ---
 
@@ -95,7 +96,8 @@ This document captures the foundational architectural decisions and milestone re
 - **Context:** Two recurring cloud failure modes are (a) accidentally constructing an `InMemory*` store unconditionally on a multi-replica Cloud Run path (the session-affinity trap), and (b) opening redundant per-store event-loop threads and connection pools against the same Cloud SQL instance.
 - **Decision:**
   1. Enforce `tests/test_service_wiring_guard.py` (`2026-09-07`), an AST check guaranteeing that every `InMemory*()` construction in `bridge/` sits behind an explicit parameter or environment guard, paired with `BRIDGE_SEAM_MODE=gcp` fail-fast checks across all SQL stores.
-  2. Multiplex synchronous-facade SQL stores (`SqlExchangeStore`, `SqlOperationalStore`, `SqlAgentGymEngine`, `SqlActionInboxStore`) over a refcounted per-DSN async SQLAlchemy runtime (`bridge/sql_runtime.py`) so stores sharing `DATABASE_URL` share one event-loop thread and one bounded `AsyncEngine` connection pool.
+  2. Multiplex synchronous-facade SQL stores (`SqlExchangeStore`, `SqlOperationalStore`, `SqlAgentGymEngine`, `SqlActionInboxStore`) over a refcounted per-DSN async SQLAlchemy runtime (`bridge/sql_runtime.py`) so stores sharing `DATABASE_URL` share one event-loop thread and one bounded `AsyncEngine` connection pool, with opt-in zero-secret Cloud SQL IAM token injection (`BRIDGE_DB_IAM_AUTH=1` via `enable_iam_auth` + `roles/cloudsql.instanceUser` + `CLOUD_IAM_SERVICE_ACCOUNT`).
+
   3. Deploy via a two-phase Terraform apply (`scripts/deploy.sh`, `P7-4`/`P7-5`/`P7-9`) that resolves Cloud Run self-referential URLs cleanly and pipes `DATABASE_URL` directly to Secret Manager via `stdin` (never written to disk or Terraform state).
 - **Consequence:** Multi-replica Cloud Run and Agent Engine workers share durable state safely without connection pool exhaustion or secret leakage.
 

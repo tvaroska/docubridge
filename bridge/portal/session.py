@@ -23,6 +23,7 @@ Isolation: imports ``contract/`` + ``bridge.*`` + stdlib only; NEVER ``agents/``
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from bridge import pathb
@@ -84,7 +85,7 @@ async def upload(
     doc_id: str,
     artifact_name: str,
     artifact: ArtifactRef | None = None,
-    extractor=None,
+    extractor: Any = None,
 ) -> PortalSessionRecord:
     """Feed one uploaded document into the active slot's Path-B graph.
 

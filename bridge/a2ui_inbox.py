@@ -27,7 +27,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
-import os
 import threading
 import uuid
 from collections.abc import Coroutine
@@ -1689,36 +1688,14 @@ _SQL_INBOX_LOCK = threading.Lock()
 def action_inbox_store_from_env(
     inbox_store: ActionInboxStore | None = None,
 ) -> ActionInboxStore:
-    """Resolve `ActionInboxStore` from env: AlloyDB/Cloud SQL when a DSN is configured,
-    else the local in-memory singleton (refuses in-memory fallback when `BRIDGE_SEAM_MODE=gcp`)."""
-    global _DEFAULT_INBOX_STORE
+    """Resolve `ActionInboxStore` via the ``Port.action_inbox`` port adapter."""
     if inbox_store is not None:
         return inbox_store
-    mode = os.environ.get("BRIDGE_INBOX_STORE_MODE", "").strip().lower()
-    if mode == "memory":
-        if _DEFAULT_INBOX_STORE is None:
-            _DEFAULT_INBOX_STORE = InMemoryActionInboxStore()
-        return _DEFAULT_INBOX_STORE
-    dsn = (
-        os.environ.get(INBOX_DB_ENV, "").strip()
-        or os.environ.get("BRIDGE_OPERATIONAL_DB_URL", "").strip()
-        or os.environ.get("DATABASE_URL", "").strip()
-    )
-    if dsn:
-        with _SQL_INBOX_LOCK:
-            cached = _SQL_INBOX_CACHE.get(dsn)
-            if cached is None:
-                cached = SqlActionInboxStore(dsn)
-                _SQL_INBOX_CACHE[dsn] = cached
-        return cached
-    if os.environ.get("BRIDGE_SEAM_MODE", "").strip().lower() == "gcp":
-        raise RuntimeError(
-            "GCP seam mode requires DATABASE_URL or BRIDGE_INBOX_DB_URL for "
-            "ActionInboxStore; refusing an in-memory fallback (the session-affinity trap)."
-        )
-    if _DEFAULT_INBOX_STORE is None:
-        _DEFAULT_INBOX_STORE = InMemoryActionInboxStore()
-    return _DEFAULT_INBOX_STORE
+    from bridge.ports import Port, get_adapter, resolve_mode
+
+    mode = resolve_mode(Port.action_inbox)
+    adapter = get_adapter(Port.action_inbox, mode)
+    return adapter.build_action_inbox_store()
 
 
 def format_a2ui_sse_frames(

@@ -19,6 +19,54 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 DEFAULT_OP_TIMEOUT_S = 30.0
+IAM_AUTH_ENV = "BRIDGE_DB_IAM_AUTH"
+
+
+def is_iam_auth_enabled() -> bool:
+    """Return ``True`` when Cloud SQL IAM database authentication is enabled via ``BRIDGE_DB_IAM_AUTH``."""
+    return os.environ.get(IAM_AUTH_ENV, "").strip().lower() in ("1", "true", "yes")
+
+
+def fetch_cloud_sql_iam_token() -> str:
+    """Mint a short-lived Cloud SQL IAM OAuth2 access token from Application Default Credentials."""
+    import google.auth
+    import google.auth.transport.requests
+
+    creds, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/sqlservice.admin"]
+    )
+    creds.refresh(google.auth.transport.requests.Request())
+    if not creds.token:
+        raise RuntimeError(
+            "failed to mint Cloud SQL IAM token from Application Default Credentials"
+        )
+    return str(creds.token)
+
+
+def enable_iam_auth(
+    engine: Any,
+    *,
+    token_fetcher: Callable[[], str] | None = None,
+) -> Any:
+    """Attach a SQLAlchemy ``do_connect`` hook that injects a short-lived Cloud SQL IAM token.
+
+    When ``cparams`` has no password (or an empty password), injects ``cparams['password']``
+    from ``token_fetcher`` (defaults to :func:`fetch_cloud_sql_iam_token`).
+    """
+    from sqlalchemy import event
+
+    fetcher = token_fetcher or fetch_cloud_sql_iam_token
+    sync_engine = getattr(engine, "sync_engine", engine)
+
+    @event.listens_for(sync_engine, "do_connect")
+    def _inject_iam_token(
+        dialect: Any, conn_rec: Any, cargs: Any, cparams: dict[str, Any]
+    ) -> None:
+        del dialect, conn_rec, cargs
+        if not cparams.get("password"):
+            cparams["password"] = fetcher()
+
+    return engine
 
 
 def _engine_kwargs_for_dsn(dsn: str) -> dict[str, Any]:
@@ -30,6 +78,25 @@ def _engine_kwargs_for_dsn(dsn: str) -> dict[str, Any]:
         kwargs["pool_size"] = int(os.environ.get("BRIDGE_SQL_POOL_SIZE", "5"))
         kwargs["max_overflow"] = int(os.environ.get("BRIDGE_SQL_MAX_OVERFLOW", "10"))
     return kwargs
+
+
+def create_async_engine_with_iam(
+    dsn: str,
+    *,
+    token_fetcher: Callable[[], str] | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Create a SQLAlchemy ``AsyncEngine`` and attach Cloud SQL IAM auth when enabled."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    merged = {**_engine_kwargs_for_dsn(dsn), **kwargs}
+    engine = create_async_engine(dsn, **merged)
+    lowered = dsn.lower()
+    if (lowered.startswith("postgresql") or lowered.startswith("postgres")) and (
+        token_fetcher is not None or is_iam_auth_enabled()
+    ):
+        enable_iam_auth(engine, token_fetcher=token_fetcher)
+    return engine
 
 
 class DsnSqlRuntime:
@@ -51,9 +118,7 @@ class DsnSqlRuntime:
         )
         self.thread.start()
         try:
-            from sqlalchemy.ext.asyncio import create_async_engine
-
-            self.engine: Any = create_async_engine(dsn, **_engine_kwargs_for_dsn(dsn))
+            self.engine: Any = create_async_engine_with_iam(dsn)
         except BaseException:
             self.loop.call_soon_threadsafe(self.loop.stop)
             self.thread.join(timeout=5.0)

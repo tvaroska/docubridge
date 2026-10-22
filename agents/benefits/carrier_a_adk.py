@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from a2a.helpers import proto_helpers as ph
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -49,7 +50,7 @@ class CarrierAAgent(BaseAgent):
     stateless: it emits the same quote for a first request and for a revise pushback.
     """
 
-    async def _run_async_impl(self, ctx) -> AsyncGenerator[Event, None]:
+    async def _run_async_impl(self, ctx: Any) -> AsyncGenerator[Event, None]:
         quote = load_quote(CARRIER_A_DOC)
         payload = json.dumps(quote.model_dump(mode="json"))
         yield Event(
@@ -129,7 +130,7 @@ class CarrierAExecutor(AgentExecutor):
         await updater.cancel()
 
 
-def build_carrier_a_app(url: str = "http://carrier-a/"):
+def build_carrier_a_app(url: str = "http://carrier-a/") -> Any:
     """Build Carrier A's A2A Starlette app (Google ADK internal)."""
     card = build_carrier_card(url, party=_CARRIER_PARTY)
     return build_carrier_app(url, CarrierAExecutor(), card)

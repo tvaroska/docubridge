@@ -75,3 +75,10 @@ variable "labels" {
   description = "Resource labels."
   default     = {}
 }
+
+variable "iam_service_account_email" {
+  type        = string
+  description = "Optional runtime service account email to provision as a passwordless CLOUD_IAM_SERVICE_ACCOUNT PostgreSQL user."
+  default     = ""
+}
+

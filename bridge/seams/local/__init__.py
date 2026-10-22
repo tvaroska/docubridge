@@ -1,15 +1,23 @@
 """Placeholder local adapters — filled in per-phase."""
 
+from __future__ import annotations
+
 import os
+from pathlib import Path
+from typing import Any
 
 from bridge.extraction.fixture import FixtureExtractor
 
 from ..protocols import (
     A2AClientSeam,
+    ActionInboxPort,
+    AgentGymPort,
+    AuditVaultPort,
     EmailIngressSeam,
     ExchangeStoreSeam,
     ExtractionSeam,
     MemoryBankSeam,
+    OperationalStorePort,
     SchedulerSeam,
     SeamABC,
     SessionsSeam,
@@ -18,7 +26,7 @@ from ..protocols import (
     validate_attachment_slot,
     validate_landing_key,
 )
-from ..seam import Seam
+from ..seam import Port, Seam
 
 # The landing directory of the local email_ingress adapter (S0-arch-13). No silent
 # default: an unset dir fails loud at first use (never at construction).
@@ -64,7 +72,7 @@ class LocalSessions(SessionsSeam):
     in-memory service (keeps the default test/dev path file-free).
     """
 
-    def build_session_service(self, db_url: str | None = None):
+    def build_session_service(self, db_url: str | None = None) -> Any:
         """Construct an in-memory ADK session service for local execution."""
         dsn = db_url or os.environ.get("BRIDGE_SESSION_DB_URL", "").strip()
         if not dsn:
@@ -87,7 +95,7 @@ class LocalTaskStore(TaskStoreSeam):
     store. Note ``DatabaseTaskStore`` takes an engine, not a URL.
     """
 
-    def build_task_store(self, db_url: str | None = None):
+    def build_task_store(self, db_url: str | None = None) -> Any:
         """Construct an in-memory A2A task store for local execution."""
         dsn = db_url or os.environ.get("BRIDGE_TASK_DB_URL", "").strip()
         if not dsn:
@@ -102,7 +110,7 @@ class LocalTaskStore(TaskStoreSeam):
         kwargs = {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
         return DatabaseTaskStore(engine=create_async_engine(dsn, **kwargs))
 
-    def build_push_config_store(self, db_url: str | None = None):
+    def build_push_config_store(self, db_url: str | None = None) -> Any:
         """Build a push notification config store (in-memory or durable).
 
         Mirrors ``build_task_store`` exactly (Decision 1): both are a2a-sdk
@@ -133,7 +141,7 @@ class LocalExchangeStore(ExchangeStoreSeam):
     ``LocalSessions``). The SQL store opens nothing until its first operation.
     """
 
-    def build_exchange_store(self, db_url: str | None = None):
+    def build_exchange_store(self, db_url: str | None = None) -> Any:
         """Construct an in-memory or SQLite-backed exchange store for local execution."""
         from bridge.exchange_store import InMemoryExchangeStore, SqlExchangeStore
 
@@ -158,14 +166,12 @@ class LocalSkillRegistry(SkillRegistrySeam):
     write, so a bad re-upload never overwrites a good skill.
     """
 
-    def _root(self):
-        from pathlib import Path
-
+    def _root(self) -> Path:
         from bridge.sla import SKILLS_DIR
 
         return Path(os.environ.get("BRIDGE_SKILLS_DIR", "").strip() or SKILLS_DIR)
 
-    def list_skills(self):
+    def list_skills(self) -> list[Any]:
         """List all skill packages discovered in the local filesystem skills directory."""
         from bridge.edge.skills import listed_skill_meta
 
@@ -179,7 +185,7 @@ class LocalSkillRegistry(SkillRegistrySeam):
                         skills.append(meta)
         return skills
 
-    def get_skill(self, name: str):
+    def get_skill(self, name: str) -> Any:
         """Load a single skill package definition from the local filesystem by name."""
         from bridge.edge.skills import skill_meta_from_dir
 
@@ -188,7 +194,9 @@ class LocalSkillRegistry(SkillRegistrySeam):
             raise KeyError(name)
         return skill_meta_from_dir(skill_dir)
 
-    def install_skill(self, name, skill_md, assets=None):
+    def install_skill(
+        self, name: str, skill_md: str, assets: dict[str, str] | None = None
+    ) -> Any:
         """Copy and register a skill package directory into the local skills root."""
         import re
 
@@ -250,7 +258,7 @@ class LocalMemoryBank(MemoryBankSeam):
     ``LocalSessions``).
     """
 
-    def build_memory_service(self, db_path: str | None = None):
+    def build_memory_service(self, db_path: str | None = None) -> Any:
         """Construct an in-memory ADK memory service for local execution."""
         path = (db_path or os.environ.get(MEMORY_DB_PATH_ENV, "")).strip()
         if not path:
@@ -265,7 +273,7 @@ class LocalMemoryBank(MemoryBankSeam):
 class LocalScheduler(SchedulerSeam):
     """Local scheduler adapter (SEAM-6): an in-process VirtualClock."""
 
-    def build_scheduler(self):
+    def build_scheduler(self) -> Any:
         """Construct a deterministic virtual-clock scheduler for local execution."""
         from bridge.scheduler import VirtualClock
 
@@ -275,7 +283,7 @@ class LocalScheduler(SchedulerSeam):
 class LocalA2AClient(A2AClientSeam):
     """Local a2a_client adapter (SEAM-7, OUT-1): outbound client over an injected fake transport."""
 
-    def build_client(self, transport=None):
+    def build_client(self, transport: Any = None) -> Any:
         """Construct an in-memory outbound A2A client and transport for local execution."""
         from bridge.outbound import OutboundClient
 
@@ -288,7 +296,7 @@ class LocalExtraction(ExtractionSeam):
     def __init__(self) -> None:
         self._engine = FixtureExtractor()
 
-    async def extract(self, artifact_name: str):
+    async def extract(self, artifact_name: str) -> Any:
         """Run deterministic local document extraction over bytes and filename."""
         return await self._engine.extract(artifact_name)
 
@@ -308,12 +316,10 @@ class LocalEmailIngress(EmailIngressSeam):
     re-checked for containment (the S0-sec-1 ``read_asset`` posture).
     """
 
-    def __init__(self, root: str | os.PathLike | None = None) -> None:
+    def __init__(self, root: str | os.PathLike[str] | None = None) -> None:
         self._root_arg = root
 
-    def _root(self):
-        from pathlib import Path
-
+    def _root(self) -> Path:
         raw = self._root_arg or os.environ.get(EMAIL_DIR_ENV, "").strip()
         if not raw:
             raise RuntimeError(
@@ -322,7 +328,7 @@ class LocalEmailIngress(EmailIngressSeam):
             )
         return Path(raw).resolve()
 
-    def _contained(self, *parts: str):
+    def _contained(self, *parts: str) -> Path:
         root = self._root()
         path = root.joinpath(*parts).resolve()
         if root not in path.parents:
@@ -330,7 +336,7 @@ class LocalEmailIngress(EmailIngressSeam):
         return path
 
     @staticmethod
-    def _create_only(path, data: bytes) -> bool:
+    def _create_only(path: Path, data: bytes) -> bool:
         import tempfile
 
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -389,7 +395,9 @@ class LocalEmailIngress(EmailIngressSeam):
             raise KeyError(key)
         return path.read_bytes()
 
-    def put_attachment(self, key, index, filename, data, mime_type) -> str:
+    def put_attachment(
+        self, key: str, index: int, filename: str, data: bytes, mime_type: str
+    ) -> str:
         """Store an extracted MIME attachment in the local ingress attachment store."""
         validate_landing_key(key)
         validate_attachment_slot(index, filename)
@@ -418,14 +426,142 @@ class LocalEmailIngress(EmailIngressSeam):
         return json.loads(path.read_text())
 
 
-LOCAL_ADAPTERS: dict[Seam, type[SeamABC]] = {
-    Seam.sessions: LocalSessions,
-    Seam.task_store: LocalTaskStore,
-    Seam.exchange_store: LocalExchangeStore,
-    Seam.skill_registry: LocalSkillRegistry,
-    Seam.memory_bank: LocalMemoryBank,
-    Seam.scheduler: LocalScheduler,
-    Seam.a2a_client: LocalA2AClient,
-    Seam.extraction: LocalExtraction,
-    Seam.email_ingress: LocalEmailIngress,
+class LocalAuditVault(AuditVaultPort):
+    """Local audit_vault adapter (Zone 3): in-memory WORM vault or GCS when bucket is supplied."""
+
+    def build_vault(self, bucket_name: str | None = None) -> Any:
+        """Construct an in-memory Audit Vault (or GCS vault when a bucket is explicitly configured)."""
+        from bridge.vault import (
+            VAULT_BUCKET_ENV,
+            GcpAuditVaultStore,
+            InMemoryAuditVaultStore,
+        )
+
+        bucket = (bucket_name or os.environ.get(VAULT_BUCKET_ENV, "")).strip()
+        if bucket:
+            return GcpAuditVaultStore(bucket)
+        return InMemoryAuditVaultStore()
+
+
+class LocalOperationalStore(OperationalStorePort):
+    """Local operational_store adapter (Zone 3–4): in-memory or SQLite-backed bi-temporal store."""
+
+    def build_operational_store(self, db_url: str | None = None) -> Any:
+        """Construct an in-memory or SQL-backed OperationalStore for local execution."""
+        from bridge.operational_store import (
+            _SQL_CACHE_LOCK,
+            _SQL_STORE_CACHE,
+            OPERATIONAL_DB_ENV,
+            InMemoryOperationalStore,
+            SqlOperationalStore,
+        )
+
+        dsn = (
+            db_url
+            or os.environ.get(OPERATIONAL_DB_ENV, "").strip()
+            or os.environ.get("DATABASE_URL", "").strip()
+        )
+        if not dsn:
+            return InMemoryOperationalStore()
+        require_async_driver(dsn)
+        with _SQL_CACHE_LOCK:
+            cached = _SQL_STORE_CACHE.get(dsn)
+            if cached is None:
+                cached = SqlOperationalStore(dsn)
+                _SQL_STORE_CACHE[dsn] = cached
+        return cached
+
+
+class LocalActionInbox(ActionInboxPort):
+    """Local action_inbox adapter (Zone 5): in-memory singleton or SQLite-backed inbox store."""
+
+    def build_action_inbox_store(self, db_url: str | None = None) -> Any:
+        """Construct an in-memory or SQL-backed ActionInboxStore for local execution."""
+        import bridge.a2ui_inbox as inbox_mod
+        from bridge.a2ui_inbox import (
+            _SQL_INBOX_CACHE,
+            _SQL_INBOX_LOCK,
+            INBOX_DB_ENV,
+            InMemoryActionInboxStore,
+            SqlActionInboxStore,
+        )
+
+        mode = os.environ.get("BRIDGE_INBOX_STORE_MODE", "").strip().lower()
+        if mode == "memory" and not db_url:
+            if inbox_mod._DEFAULT_INBOX_STORE is None:
+                inbox_mod._DEFAULT_INBOX_STORE = InMemoryActionInboxStore()
+            return inbox_mod._DEFAULT_INBOX_STORE
+
+        dsn = (
+            db_url
+            or os.environ.get(INBOX_DB_ENV, "").strip()
+            or os.environ.get("BRIDGE_OPERATIONAL_DB_URL", "").strip()
+            or os.environ.get("DATABASE_URL", "").strip()
+        )
+        if dsn:
+            require_async_driver(dsn)
+            with _SQL_INBOX_LOCK:
+                cached = _SQL_INBOX_CACHE.get(dsn)
+                if cached is None:
+                    cached = SqlActionInboxStore(dsn)
+                    _SQL_INBOX_CACHE[dsn] = cached
+            return cached
+
+        if inbox_mod._DEFAULT_INBOX_STORE is None:
+            inbox_mod._DEFAULT_INBOX_STORE = InMemoryActionInboxStore()
+        return inbox_mod._DEFAULT_INBOX_STORE
+
+
+class LocalAgentGym(AgentGymPort):
+    """Local agent_gym adapter (Zone 6): in-memory singleton or SQLite-backed Agent Gym engine."""
+
+    def build_agent_gym(self, db_url: str | None = None) -> Any:
+        """Construct an in-memory or SQL-backed AgentGymEngine for local execution."""
+        import bridge.agent_gym.sql_store as gym_sql
+        from bridge.agent_gym.engine import InMemoryAgentGymEngine
+        from bridge.agent_gym.models import (
+            DATABASE_URL_ENV,
+            GYM_DB_ENV,
+            OPERATIONAL_DB_ENV,
+        )
+        from bridge.agent_gym.sql_store import (
+            _SQL_GYM_CACHE,
+            _SQL_GYM_LOCK,
+            SqlAgentGymEngine,
+        )
+
+        dsn = (
+            db_url
+            or os.environ.get(GYM_DB_ENV, "").strip()
+            or os.environ.get(OPERATIONAL_DB_ENV, "").strip()
+            or os.environ.get(DATABASE_URL_ENV, "").strip()
+        )
+        if dsn:
+            require_async_driver(dsn)
+            with _SQL_GYM_LOCK:
+                cached = _SQL_GYM_CACHE.get(dsn)
+                if cached is None:
+                    cached = SqlAgentGymEngine(dsn)
+                    _SQL_GYM_CACHE[dsn] = cached
+            return cached
+
+        if gym_sql._DEFAULT_GYM_ENGINE is None:
+            gym_sql._DEFAULT_GYM_ENGINE = InMemoryAgentGymEngine()
+        return gym_sql._DEFAULT_GYM_ENGINE
+
+
+LOCAL_ADAPTERS: dict[Port, type[SeamABC]] = {
+    Port.sessions: LocalSessions,
+    Port.task_store: LocalTaskStore,
+    Port.exchange_store: LocalExchangeStore,
+    Port.skill_registry: LocalSkillRegistry,
+    Port.memory_bank: LocalMemoryBank,
+    Port.scheduler: LocalScheduler,
+    Port.a2a_client: LocalA2AClient,
+    Port.extraction: LocalExtraction,
+    Port.email_ingress: LocalEmailIngress,
+    Port.audit_vault: LocalAuditVault,
+    Port.operational_store: LocalOperationalStore,
+    Port.action_inbox: LocalActionInbox,
+    Port.agent_gym: LocalAgentGym,
 }

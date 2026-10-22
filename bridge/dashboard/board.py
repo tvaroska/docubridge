@@ -111,7 +111,9 @@ class _RfpMapping(Mapping[str, RfpCollection]):
             raise KeyError(rfp_id)
         return rfp
 
-    def get(self, rfp_id: str, default: RfpCollection | None = None):  # type: ignore[override]
+    def get(
+        self, rfp_id: str, default: RfpCollection | None = None
+    ) -> RfpCollection | None:  # type: ignore[override]
         """Return the RFP state for a given key, or the default value if absent."""
         rfp = self._board._get(rfp_id)
         return default if rfp is None else rfp

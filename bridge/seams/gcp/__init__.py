@@ -27,13 +27,18 @@ the optional ``gcp`` extra, installed by the P7-9 provisioned run.
 
 import logging
 import os
+from typing import Any
 
 from ..protocols import (
     A2AClientSeam,
+    ActionInboxPort,
+    AgentGymPort,
+    AuditVaultPort,
     EmailIngressSeam,
     ExchangeStoreSeam,
     ExtractionSeam,
     MemoryBankSeam,
+    OperationalStorePort,
     SchedulerSeam,
     SeamABC,
     SessionsSeam,
@@ -42,7 +47,7 @@ from ..protocols import (
     validate_attachment_slot,
     validate_landing_key,
 )
-from ..seam import Seam
+from ..seam import Port, Seam
 
 _LOG = logging.getLogger("bridge.seams.gcp")
 
@@ -184,8 +189,8 @@ class GcpSessions(SessionsSeam):
         agent_engine_id: str | None = None,
         project: str | None = None,
         location: str | None = None,
-        vertex_factory=None,
-    ):
+        vertex_factory: Any = None,
+    ) -> Any:
         """Construct the ADK session service backed by Vertex AI Agent Engine Sessions."""
         raw_engine_id = (
             agent_engine_id
@@ -239,8 +244,8 @@ class GcpMemoryBank(MemoryBankSeam):
         agent_engine_id: str | None = None,
         project: str | None = None,
         location: str | None = None,
-        vertex_factory=None,
-    ):
+        vertex_factory: Any = None,
+    ) -> Any:
         """Construct the ADK memory service backed by Vertex AI Agent Engine Memory Bank."""
         del db_path  # local-only SQLite path parameter; unused on Vertex Memory Bank
         proj, loc, eid = parse_agent_engine_resource(
@@ -265,25 +270,29 @@ class GcpTaskStore(TaskStoreSeam):
     terminal-state writes retry with loud logging (design/seams.md).
     """
 
-    def build_task_store(self, db_url: str | None = None):
+    def build_task_store(self, db_url: str | None = None) -> Any:
         """Construct the durable A2A task store backed by Cloud SQL Postgres with terminal-write retry."""
         from a2a.server.tasks import DatabaseTaskStore
-        from sqlalchemy.ext.asyncio import create_async_engine
 
-        inner = DatabaseTaskStore(engine=create_async_engine(_resolve_dsn(db_url)))
+        from bridge.sql_runtime import create_async_engine_with_iam
+
+        inner = DatabaseTaskStore(
+            engine=create_async_engine_with_iam(_resolve_dsn(db_url))
+        )
         return _TerminalRetryTaskStore(inner)
 
-    def build_push_config_store(self, db_url: str | None = None):
+    def build_push_config_store(self, db_url: str | None = None) -> Any:
         """Build the Cloud SQL ``DatabasePushNotificationConfigStore``.
 
         Mirrors the local adapter (rides the same DSN); the terminal-write retry
         concern is the task store, so this is not wrapped.
         """
         from a2a.server.tasks import DatabasePushNotificationConfigStore
-        from sqlalchemy.ext.asyncio import create_async_engine
+
+        from bridge.sql_runtime import create_async_engine_with_iam
 
         return DatabasePushNotificationConfigStore(
-            engine=create_async_engine(_resolve_dsn(db_url)), create_table=True
+            engine=create_async_engine_with_iam(_resolve_dsn(db_url)), create_table=True
         )
 
 
@@ -298,14 +307,14 @@ class GcpExchangeStore(ExchangeStoreSeam):
     (engine, asyncpg) is opened or imported until the first operation.
     """
 
-    def build_exchange_store(self, db_url: str | None = None):
+    def build_exchange_store(self, db_url: str | None = None) -> Any:
         """Construct the durable exchange store backed by Cloud SQL Postgres (`SqlExchangeStore`)."""
         from bridge.exchange_store import SqlExchangeStore
 
         return SqlExchangeStore(_resolve_dsn(db_url))
 
 
-def _terminal_retry_task_store():
+def _terminal_retry_task_store() -> Any:
     """Lazily build the ``_TerminalRetryTaskStore`` class over the a2a-sdk
     ``TaskStore`` base.
 
@@ -327,12 +336,12 @@ def _terminal_retry_task_store():
         delegate unchanged. Unit-testable without GCP: inject a fake inner store.
         """
 
-        def __init__(self, inner, *, attempts: int = 3, log=_LOG) -> None:
+        def __init__(self, inner: Any, *, attempts: int = 3, log: Any = _LOG) -> None:
             self._inner = inner
             self._attempts = attempts
             self._log = log
 
-        async def save(self, task, context) -> None:
+        async def save(self, task: Any, context: Any) -> None:
             terminal = task.status.state in TERMINAL_TASK_STATES
             attempts = self._attempts if terminal else 1
             last: Exception | None = None
@@ -358,19 +367,21 @@ def _terminal_retry_task_store():
                 )
             raise last
 
-        async def get(self, task_id, context):
+        async def get(self, task_id: Any, context: Any) -> Any:
             return await self._inner.get(task_id, context)
 
-        async def delete(self, task_id, context) -> None:
+        async def delete(self, task_id: Any, context: Any) -> None:
             return await self._inner.delete(task_id, context)
 
-        async def list(self, params, context):
+        async def list(self, params: Any, context: Any) -> Any:
             return await self._inner.list(params, context)
 
     return _TerminalRetryStore
 
 
-def _TerminalRetryTaskStore(inner, **kwargs):  # class-like factory name
+def _TerminalRetryTaskStore(
+    inner: Any, **kwargs: Any
+) -> Any:  # class-like factory name
     """Construct the terminal-retry task-store wrapper around ``inner``.
 
     A thin factory over the lazily-built ``_TerminalRetryStore`` class so the
@@ -398,7 +409,7 @@ def _resolve_bucket(
     return name
 
 
-def _validate_skill_paths(name: str, rels) -> None:
+def _validate_skill_paths(name: str, rels: Any) -> None:
     """Reject a traversing skill name / asset path BEFORE any storage I/O.
 
     The identical S0-sec-1 traversal defense as ``LocalSkillRegistry.install_skill``
@@ -422,7 +433,7 @@ def _validate_skill_paths(name: str, rels) -> None:
             raise ValueError(f"asset path {rel!r} escapes skill dir")
 
 
-def _download_prefix(bucket, prefix: str, dest) -> None:
+def _download_prefix(bucket: Any, prefix: str, dest: Any) -> None:
     """Download every blob under ``prefix`` into ``dest`` preserving relative paths.
 
     ``prefix`` is ``<name>/``; a blob ``<name>/SKILL.md`` lands at
@@ -464,7 +475,7 @@ class GcpSkillRegistry(SkillRegistrySeam):
     def __init__(self, bucket_name: str | None = None) -> None:
         self._bucket_name = bucket_name
 
-    def _bucket(self):
+    def _bucket(self) -> Any:
         # Resolve (refuse-without-bucket) BEFORE importing the client, so a
         # misconfigured registry fails loud with the clear RuntimeError even when
         # google-cloud-storage is not installed (the default non-gcp suite).
@@ -473,7 +484,7 @@ class GcpSkillRegistry(SkillRegistrySeam):
 
         return Client().bucket(name)
 
-    def list_skills(self):
+    def list_skills(self) -> list[Any]:
         """List all skill packages discovered in the Cloud Storage skills bucket."""
         import tempfile
         from pathlib import Path
@@ -498,7 +509,7 @@ class GcpSkillRegistry(SkillRegistrySeam):
                 metas.append(meta)
         return metas
 
-    def get_skill(self, name: str):
+    def get_skill(self, name: str) -> Any:
         """Retrieve a single skill package definition by skill name."""
         import tempfile
         from pathlib import Path
@@ -513,7 +524,9 @@ class GcpSkillRegistry(SkillRegistrySeam):
                 raise KeyError(name)
             return skill_meta_from_dir(dest)
 
-    def install_skill(self, name, skill_md, assets=None):
+    def install_skill(
+        self, name: str, skill_md: str, assets: dict[str, str] | None = None
+    ) -> Any:
         """Upload and register a skill directory into the Cloud Storage skills bucket."""
         import tempfile
         from pathlib import Path
@@ -534,7 +547,7 @@ class GcpSkillRegistry(SkillRegistrySeam):
             _download_prefix(bucket, f"{name}/", dest)
             return skill_meta_from_dir(dest)
 
-    def read_asset(self, name, rel):
+    def read_asset(self, name: str, rel: str) -> str:
         # Traversal defense BEFORE any I/O (no client built for a bad request) —
         # the same defense install_skill applies, on the read side.
         """Read a raw asset file belonging to an installed skill package."""
@@ -608,7 +621,7 @@ def _task_id(key: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "_", key)
 
 
-def _schedule_seconds(schedule_time) -> int:
+def _schedule_seconds(schedule_time: Any) -> int:
     """Best-effort epoch-seconds from a task's ``schedule_time`` (dict, datetime, or
     protobuf ``Timestamp``) — used by ``pending()`` to round-trip ``fire_at``."""
     if schedule_time is None:
@@ -637,14 +650,19 @@ class _GcpCloudTasksScheduler:
     """
 
     def __init__(
-        self, *, queue_path: str, callback_url: str, oidc_sa_email: str, client=None
+        self,
+        *,
+        queue_path: str,
+        callback_url: str,
+        oidc_sa_email: str,
+        client: Any = None,
     ) -> None:
         self._queue_path = queue_path
         self._callback_url = callback_url
         self._oidc_sa_email = oidc_sa_email
         self._client_obj = client  # injected fake wins; else built lazily
 
-    def _client(self):
+    def _client(self) -> Any:
         # Lazy: importing this package must not pull google.cloud.tasks (a structural
         # test enforces it). An injected client (the credential-free tests) wins.
         if self._client_obj is None:
@@ -656,7 +674,7 @@ class _GcpCloudTasksScheduler:
     def _task_name(self, key: str) -> str:
         return f"{self._queue_path}/tasks/{_task_id(key)}"
 
-    def _delete_quietly(self, client, name: str) -> None:
+    def _delete_quietly(self, client: Any, name: str) -> None:
         import contextlib
 
         from google.api_core.exceptions import NotFound
@@ -670,7 +688,7 @@ class _GcpCloudTasksScheduler:
 
         return int(time.time())
 
-    def schedule(self, key: str, fire_at: int, payload=None):
+    def schedule(self, key: str, fire_at: int, payload: Any = None) -> Any:
         """Mint a Cloud Task firing at ``fire_at`` (absolute epoch seconds).
 
         The task POSTs a compact JSON body ``{"key", "payload"}`` to the callback
@@ -727,7 +745,7 @@ class _GcpCloudTasksScheduler:
         except NotFound:
             return False
 
-    def pending(self):
+    def pending(self) -> list[Any]:
         """List armed tasks as ``Alarm``s (best-effort: ``fire_at`` round-trips from
         ``schedule_time``, ``key``/``payload`` from the JSON body; parity is
         terminal-outcome, not ledger-identical). Used by the gated live roundtrip
@@ -754,11 +772,11 @@ class _GcpCloudTasksScheduler:
             )
         return alarms
 
-    def advance(self, ticks: int):
+    def advance(self, ticks: int) -> list[Any]:
         """Advance the scheduler clock by a relative duration and fire due callbacks."""
         raise NotImplementedError(_ADVANCE_UNSUPPORTED)
 
-    def advance_to(self, tick: int):
+    def advance_to(self, tick: int) -> list[Any]:
         """Advance the scheduler clock to a target UTC timestamp and fire due callbacks."""
         raise NotImplementedError(_ADVANCE_UNSUPPORTED)
 
@@ -808,12 +826,12 @@ class GcpScheduler(SchedulerSeam):
 
     def build_scheduler(
         self,
-        client=None,
+        client: Any = None,
         *,
         queue_path: str | None = None,
         callback_url: str | None = None,
         oidc_sa_email: str | None = None,
-    ):
+    ) -> Any:
         """Build the Cloud Tasks scheduler (injectable-seam idiom, P7-8 wiring-guard).
 
         An **injected fake ``client`` wins** (the credential-free tests); when
@@ -951,7 +969,12 @@ class _AgentIdentityTransport:
     """
 
     def __init__(
-        self, *, gateway_host: str, sa_email: str, id_token_fetcher=None, sender=None
+        self,
+        *,
+        gateway_host: str,
+        sa_email: str,
+        id_token_fetcher: Any = None,
+        sender: Any = None,
     ) -> None:
         self._gateway_host = gateway_host
         self._sa_email = sa_email
@@ -977,7 +1000,7 @@ class _AgentIdentityTransport:
         # The real network send — the DEFERRED live half (P7-9 provisioned run).
         httpx.Client().post(url, headers=headers, content=body)
 
-    def deliver(self, message) -> None:
+    def deliver(self, message: Any) -> None:
         """Deliver a signed A2A envelope to a remote peer endpoint with Cloud Run OIDC credentials."""
         target_url = getattr(message, "card_url", None)
         if not target_url:
@@ -1042,9 +1065,9 @@ class GcpA2AClient(A2AClientSeam):
         *,
         gateway_host: str | None = None,
         sa_email: str | None = None,
-        id_token_fetcher=None,
-        sender=None,
-    ):
+        id_token_fetcher: Any = None,
+        sender: Any = None,
+    ) -> Any:
         """Build the Agent-Identity outbound client (injectable-seam idiom).
 
         Injected ``id_token_fetcher``/``sender`` win (the credential-free tests);
@@ -1106,7 +1129,7 @@ class GcpExtraction(ExtractionSeam):
     def __init__(self, engine: str | None = None) -> None:
         self._engine_name = engine
 
-    def _resolve_engine(self):
+    def _resolve_engine(self) -> Any:
         """Select the extraction engine: arg wins, else env, else gemini default.
 
         ``gemini`` → the deployed ``GeminiExtractor``; ``docai`` →
@@ -1137,7 +1160,7 @@ class GcpExtraction(ExtractionSeam):
             f"unknown extraction engine {name!r}: expected fixture|gemini|docai"
         )
 
-    async def extract(self, artifact_name: str):
+    async def extract(self, artifact_name: str) -> Any:
         """Run structured document extraction via Document AI and Gemini schema mapping."""
         return await self._resolve_engine().extract(artifact_name)
 
@@ -1182,14 +1205,14 @@ class GcpEmailIngress(EmailIngressSeam):
             )
         return name
 
-    def _bucket(self):
+    def _bucket(self) -> Any:
         name = self._name()
         from google.cloud.storage import Client
 
         return Client().bucket(name)
 
     @staticmethod
-    def _create_only(blob, data: bytes, content_type: str) -> bool:
+    def _create_only(blob: Any, data: bytes, content_type: str) -> bool:
         from google.api_core.exceptions import Forbidden, PreconditionFailed
 
         try:
@@ -1244,7 +1267,9 @@ class GcpEmailIngress(EmailIngressSeam):
             raise KeyError(key)
         return blob.download_as_bytes()
 
-    def put_attachment(self, key, index, filename, data, mime_type) -> str:
+    def put_attachment(
+        self, key: str, index: int, filename: str, data: bytes, mime_type: str
+    ) -> str:
         """Upload an extracted MIME attachment to the Cloud Storage attachment prefix."""
         validate_landing_key(key)
         validate_attachment_slot(index, filename)
@@ -1273,8 +1298,168 @@ class GcpEmailIngress(EmailIngressSeam):
         return json.loads(blob.download_as_bytes())
 
 
-GCP_ADAPTERS: dict[Seam, type[SeamABC]] = {
-    # All nine seams are wired to their GCP adapters:
+# ---------------------------------------------------------------------------
+# Zone 3-6 Enterprise Data Architecture GCP Adapters
+# ---------------------------------------------------------------------------
+
+
+def _require_async_store_driver(dsn: str) -> str:
+    """Validate that a SQL store DSN uses an async driver (asyncpg or aiosqlite)."""
+    if dsn.startswith("sqlite:///") or dsn == "sqlite://":
+        raise ValueError(
+            f"SQL store port requires an async driver; use 'sqlite+aiosqlite:///…' not {dsn!r}"
+        )
+    if (
+        dsn.startswith("postgresql://") or dsn.startswith("postgres://")
+    ) and not dsn.startswith(_ASYNC_PG_PREFIX):
+        raise ValueError(
+            f"Cloud SQL port requires an async Postgres driver; use 'postgresql+asyncpg://…' not {dsn!r}"
+        )
+    return dsn
+
+
+class GcpAuditVault(AuditVaultPort):
+    """GCP audit_vault adapter (Zone 3) — Cloud Storage write-once WORM Audit Vault."""
+
+    def __init__(
+        self, bucket_name: str | None = None, *, storage_client: Any = None
+    ) -> None:
+        self._bucket_name = bucket_name
+        self._storage_client = storage_client
+
+    def build_vault(
+        self, bucket_name: str | None = None, *, storage_client: Any = None
+    ) -> Any:
+        """Construct a Cloud Storage-backed :class:`GcpAuditVaultStore` (refuses in-memory fallback)."""
+        from bridge.vault import VAULT_BUCKET_ENV, GcpAuditVaultStore
+
+        bucket = (
+            bucket_name or self._bucket_name or os.environ.get(VAULT_BUCKET_ENV, "")
+        ).strip()
+        if not bucket:
+            raise RuntimeError(
+                f"GCP seam mode requires {VAULT_BUCKET_ENV} for AuditVaultStore; "
+                "refusing an in-memory fallback (the session-affinity trap)."
+            )
+        return GcpAuditVaultStore(bucket, client=storage_client or self._storage_client)
+
+
+class GcpOperationalStore(OperationalStorePort):
+    """GCP operational_store adapter (Zone 3–4) — Cloud SQL / AlloyDB bi-temporal store."""
+
+    def __init__(self, db_url: str | None = None) -> None:
+        self._db_url = db_url
+
+    def build_operational_store(self, db_url: str | None = None) -> Any:
+        """Construct a durable :class:`SqlOperationalStore` (refuses in-memory fallback)."""
+        from bridge.operational_store import (
+            _SQL_CACHE_LOCK,
+            _SQL_STORE_CACHE,
+            OPERATIONAL_DB_ENV,
+            SqlOperationalStore,
+        )
+
+        dsn = (
+            db_url
+            or self._db_url
+            or os.environ.get(OPERATIONAL_DB_ENV, "").strip()
+            or os.environ.get(DATABASE_URL_ENV, "").strip()
+        )
+        if not dsn:
+            raise RuntimeError(
+                "GCP seam mode requires DATABASE_URL or BRIDGE_OPERATIONAL_DB_URL for "
+                "OperationalStore; refusing an in-memory fallback (the session-affinity trap)."
+            )
+        _require_async_store_driver(dsn)
+        with _SQL_CACHE_LOCK:
+            cached = _SQL_STORE_CACHE.get(dsn)
+            if cached is None:
+                cached = SqlOperationalStore(dsn)
+                _SQL_STORE_CACHE[dsn] = cached
+        return cached
+
+
+class GcpActionInbox(ActionInboxPort):
+    """GCP action_inbox adapter (Zone 5) — Cloud SQL / AlloyDB A2UI Action Inbox store."""
+
+    def __init__(self, db_url: str | None = None) -> None:
+        self._db_url = db_url
+
+    def build_action_inbox_store(self, db_url: str | None = None) -> Any:
+        """Construct a durable :class:`SqlActionInboxStore` (refuses in-memory fallback)."""
+        from bridge.a2ui_inbox import (
+            _SQL_INBOX_CACHE,
+            _SQL_INBOX_LOCK,
+            INBOX_DB_ENV,
+            SqlActionInboxStore,
+        )
+
+        dsn = (
+            db_url
+            or self._db_url
+            or os.environ.get(INBOX_DB_ENV, "").strip()
+            or os.environ.get("BRIDGE_OPERATIONAL_DB_URL", "").strip()
+            or os.environ.get(DATABASE_URL_ENV, "").strip()
+        )
+        if not dsn:
+            raise RuntimeError(
+                "GCP seam mode requires DATABASE_URL or BRIDGE_INBOX_DB_URL for "
+                "ActionInboxStore; refusing an in-memory fallback (the session-affinity trap)."
+            )
+        _require_async_store_driver(dsn)
+        with _SQL_INBOX_LOCK:
+            cached = _SQL_INBOX_CACHE.get(dsn)
+            if cached is None:
+                cached = SqlActionInboxStore(dsn)
+                _SQL_INBOX_CACHE[dsn] = cached
+        return cached
+
+
+class GcpAgentGym(AgentGymPort):
+    """GCP agent_gym adapter (Zone 6) — Cloud SQL / AlloyDB Agent Gym engine."""
+
+    def __init__(self, db_url: str | None = None) -> None:
+        self._db_url = db_url
+
+    def build_agent_gym(self, db_url: str | None = None) -> Any:
+        """Construct a durable :class:`SqlAgentGymEngine` (refuses in-memory fallback)."""
+        from bridge.agent_gym.models import (
+            DATABASE_URL_ENV as GYM_DATABASE_URL_ENV,
+        )
+        from bridge.agent_gym.models import (
+            GYM_DB_ENV,
+            OPERATIONAL_DB_ENV,
+        )
+        from bridge.agent_gym.sql_store import (
+            _SQL_GYM_CACHE,
+            _SQL_GYM_LOCK,
+            SqlAgentGymEngine,
+        )
+
+        dsn = (
+            db_url
+            or self._db_url
+            or os.environ.get(GYM_DB_ENV, "").strip()
+            or os.environ.get(OPERATIONAL_DB_ENV, "").strip()
+            or os.environ.get(GYM_DATABASE_URL_ENV, "").strip()
+        )
+        if not dsn:
+            raise RuntimeError(
+                "AgentGym in GCP / Vertex AI Agent Engine mode requires a durable SQL DSN "
+                "(DATABASE_URL, BRIDGE_OPERATIONAL_DB_URL, or BRIDGE_GYM_DB_URL); "
+                "refusing an in-memory fallback (the session-affinity trap)."
+            )
+        _require_async_store_driver(dsn)
+        with _SQL_GYM_LOCK:
+            cached = _SQL_GYM_CACHE.get(dsn)
+            if cached is None:
+                cached = SqlAgentGymEngine(dsn)
+                _SQL_GYM_CACHE[dsn] = cached
+        return cached
+
+
+GCP_ADAPTERS: dict[Port, type[SeamABC]] = {
+    # All 13 ports are wired to their GCP adapters:
     # - sessions: VertexAiSessionService (BRIDGE_AGENT_ENGINE_ID) or Cloud SQL (DATABASE_URL)
     # - memory_bank: VertexAiMemoryBankService (BRIDGE_AGENT_ENGINE_ID)
     # - task_store / exchange_store: Cloud SQL (P7-2 / S0-arch-14)
@@ -1283,14 +1468,21 @@ GCP_ADAPTERS: dict[Seam, type[SeamABC]] = {
     # - a2a_client: Agent-Identity transport (P7-5)
     # - extraction: Gemini / Document AI pre-pass (P7-6)
     # - email_ingress: GCS landing bucket (S0-arch-13)
-    Seam.sessions: GcpSessions,
-    Seam.task_store: GcpTaskStore,
-    Seam.exchange_store: GcpExchangeStore,
-    Seam.skill_registry: GcpSkillRegistry,
-    Seam.memory_bank: GcpMemoryBank,
-    Seam.scheduler: GcpScheduler,
-    Seam.a2a_client: GcpA2AClient,
-    Seam.extraction: GcpExtraction,
-    # The GCS mailbox landing bucket (S0-arch-13).
-    Seam.email_ingress: GcpEmailIngress,
+    # - audit_vault: GCS 7-year WORM Audit Vault (Zone 3)
+    # - operational_store: Cloud SQL / AlloyDB bi-temporal store (Zone 3-4)
+    # - action_inbox: Cloud SQL / AlloyDB A2UI Action Inbox store (Zone 5)
+    # - agent_gym: Cloud SQL / AlloyDB Agent Gym engine (Zone 6)
+    Port.sessions: GcpSessions,
+    Port.task_store: GcpTaskStore,
+    Port.exchange_store: GcpExchangeStore,
+    Port.skill_registry: GcpSkillRegistry,
+    Port.memory_bank: GcpMemoryBank,
+    Port.scheduler: GcpScheduler,
+    Port.a2a_client: GcpA2AClient,
+    Port.extraction: GcpExtraction,
+    Port.email_ingress: GcpEmailIngress,
+    Port.audit_vault: GcpAuditVault,
+    Port.operational_store: GcpOperationalStore,
+    Port.action_inbox: GcpActionInbox,
+    Port.agent_gym: GcpAgentGym,
 }

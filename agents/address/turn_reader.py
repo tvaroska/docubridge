@@ -19,11 +19,13 @@ observability seam, and the stub tests).
 
 from __future__ import annotations
 
+from typing import Any
+
 from agents.address.wire import extract_exchange_turn
 from contract.wire import ExchangeTurn, decode_wire
 
 
-def read_latest_exchange_turn(ctx) -> ExchangeTurn | None:
+def read_latest_exchange_turn(ctx: Any) -> ExchangeTurn | None:
     """Return the most-recent ``ExchangeTurn`` on the shared session, or ``None``.
 
     Primary path: scan ``ctx.session.events`` newest-first, skip ``partial``

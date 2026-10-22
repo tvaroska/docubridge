@@ -10,9 +10,9 @@ live status + sequencing is [`TODO.md`](TODO.md); the feature catalog is
   All tests must pass before a task is considered done. Never declare success with a
   failing or convenience-skipped test.
 - **Lint (T1 gate):** `uv run ruff check` must be clean. Config in `pyproject.toml`
-  (`[tool.ruff]`): select `E4/E7/E9,F,I,UP,B,SIM,RUF`, line-length 88. `ruff format`
-  owns line width — **E501 is intentionally not lint-enforced** (long prompt strings /
-  docstrings). Fix findings or `--fix`; don't blanket-`noqa`. `UP042`/`RUF002` are
+  (`[tool.ruff]`): select `E4/E7/E9,F,I,UP,B,SIM,ANN001,ANN201,ANN202,RUF`, line-length 88.
+  `ruff format` owns line width — **E501 is intentionally not lint-enforced** (long prompt
+  strings / docstrings). Fix findings or `--fix`; don't blanket-`noqa`. `UP042`/`RUF002` are
   ignored (wire-enum `__str__` semantics; intentional docstring unicode).
 - **Frontend**: pnpm workspaces (`frontend/*`), React + TS + Vite + MUI; `frontend/shared`
   is the shared lib, `frontend/e2e` the Playwright suite.
@@ -35,10 +35,14 @@ docs/       planning/ops — roadmap, feature catalog, local-dev, upstream ADK i
 scripts/    local run-*.sh hosts + _dev-env.sh; deploy.sh / parity.sh (live GCP apply)
 ```
 - `bridge/` **never imports** `agents/`. An isolation-guard test enforces this.
-- Every managed-service boundary is a **seam**: an ABC/Protocol with a **local** adapter
-  and a **GCP** adapter, exercised by one shared parametrized test
-  (`@pytest.mark.seam`, `adapter` fixture over `("local","gcp")`, GCP gated on
+- Every managed-service boundary is a **Port** (`bridge/ports/`, aliased as `bridge/seams/`):
+  an ABC/Protocol across all 13 boundaries (`sessions`, `task_store`, `exchange_store`,
+  `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`,
+  `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`) with a **local** adapter
+  and a **GCP** adapter, exercised by shared parametrized tests (`@pytest.mark.port` /
+  `@pytest.mark.seam`, `adapter` fixture over `("local","gcp")`, GCP gated on
   `BRIDGE_TEST_GCP`). Parity is **terminal-outcome**, never ledger-identical.
+
 
 ## Planning Workflow (gen-3)
 
@@ -55,11 +59,9 @@ Live status lives in ONE place (`TODO.md`); `spec/` and `design/` stay status-fr
 | `spec/` | THE WHAT — requirements. Forkable, status-free, **protected**. `cujs.md`, `standards.md`, `demos/*.md`, `open-questions.md` |
 | `design/` | THE HOW (as built) — `architecture.md`, `seams.md`, `zones.md`, `patterns.md` + per-atom design notes; the design source of truth |
 | `docs/` | Planning/ops — `roadmap.md`, `features.md`, `upstream-adk-issues.md` |
-| `wiki/evals/` | The eval corpus (Address oracle) — a runtime fixture, referenced by code + tests |
-| `.claude/plans/` | Per-task plans — LOCAL, gitignored, named `{task-id}-{slug}.md` |
+| `wiki/evals/` | The eval corpus (Address + Benefits oracles) — a runtime fixture, referenced by code + tests |
 
 Committed: `TODO.md`, `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL.md`.
-Gitignored: `.claude/` (including `.claude/plans/`).
 
 ### Commands
 

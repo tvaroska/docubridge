@@ -56,7 +56,7 @@ steps:
       - |
         set -euo pipefail
         uv sync --frozen --extra dev --extra gcp --no-install-project
-        uv pip install pytest-cov pytest-xdist
+        uv pip install "pytest-cov==7.0.0" "pytest-xdist==3.8.0"
         /workspace/.venv/bin/ruff check .
         /workspace/.venv/bin/ruff format --check .
 

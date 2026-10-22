@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import importlib
 import re
+import tomllib
 from pathlib import Path
 
 import yaml
+from fastapi.testclient import TestClient
 
 from bridge.a2ui_inbox import SqlActionInboxStore
 from bridge.agent_gym.models import DEFAULT_TRUST_POLICIES
@@ -253,3 +255,123 @@ def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
         "frontend-tests-and-typecheck",
         "terraform-plan-tests",
     }
+
+
+def test_enterprise_demo_console_assets_and_api_contract() -> None:
+    """``/demo`` HTML/JS/CSS assets serve cleanly and all JS ``/v1/`` routes exist."""
+    app = build_dashboard_app()
+    client = TestClient(app)
+
+    for route in ("/demo", "/console"):
+        resp = client.get(route)
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers.get("content-type", "")
+
+    js_resp = client.get("/demo/enterprise-demo.js")
+    assert js_resp.status_code == 200
+    assert "javascript" in js_resp.headers.get("content-type", "")
+
+    css_resp = client.get("/demo/enterprise-demo.css")
+    assert css_resp.status_code == 200
+    assert "text/css" in css_resp.headers.get("content-type", "")
+
+    html_text = (REPO_ROOT / "demo/enterprise-demo.html").read_text(encoding="utf-8")
+    for required_id in (
+        'id="scene-portal"',
+        'id="scene-intake"',
+        'id="scene-consolidation"',
+        'id="scene-inbox"',
+        'id="scene-gym"',
+        'id="scene-telemetry"',
+        'id="domain-btn-banking"',
+        'id="domain-btn-mortgage"',
+        'id="domain-btn-insurance"',
+        'id="bq-sql-tab-rule0"',
+        'id="bq-sql-tab-judge"',
+        'id="bq-sql-tab-rogan"',
+        'id="source-proof-modal"',
+    ):
+        assert required_id in html_text, (
+            f"demo/enterprise-demo.html missing required element {required_id}"
+        )
+
+    js_text = (REPO_ROOT / "demo/enterprise-demo.js").read_text(encoding="utf-8")
+    for fn_name in (
+        "window.switchDomain",
+        "window.switchScene",
+        "window.selectRegistryTab",
+        "window.switchBqSqlQueryTab",
+        "window.runBqSqlTraceEval",
+        "window.openSourceProofModal",
+        "window.runVerifyDay2Payoff",
+    ):
+        assert fn_name in js_text, (
+            f"demo/enterprise-demo.js missing controller function {fn_name}"
+        )
+
+    # Every onclick="window.<fn>(...)" in enterprise-demo.html is defined in enterprise-demo.js
+    onclick_fns = set(re.findall(r"window\.([a-zA-Z0-9_]+)\s*\(", html_text))
+    assert len(onclick_fns) >= 8
+    for fn in onclick_fns:
+        assert f"window.{fn}" in js_text, (
+            f"demo/enterprise-demo.html invokes undefined window.{fn}() in enterprise-demo.js"
+        )
+
+    # Every static document.getElementById("...") in enterprise-demo.js exists in HTML or JS templates
+    combined_dom_source = html_text + "\n" + js_text
+    dom_ids_queried = set(
+        re.findall(r'document\.getElementById\(\s*"([a-zA-Z0-9_-]+)"\s*\)', js_text)
+    )
+    assert len(dom_ids_queried) >= 30
+    for dom_id in dom_ids_queried:
+        assert f'id="{dom_id}"' in combined_dom_source, (
+            f"demo/enterprise-demo.js queries document.getElementById({dom_id!r}), "
+            "but no matching id attribute exists in enterprise-demo.html or JS templates"
+        )
+
+    openapi_paths = list(app.openapi()["paths"].keys())
+    route_regexes = [
+        re.compile("^" + re.sub(r"\{[^/]+\}", r"[^/?]+", path) + "$")
+        for path in openapi_paths
+    ]
+
+    # Match every `apiFetch("...")` or `apiFetch(\`...\`)` call in enterprise-demo.js
+    api_calls = re.findall(r'apiFetch\(\s*[`"](/v1/[^`"]+)[`"]', js_text)
+    assert len(api_calls) >= 10
+    for raw_call in api_calls:
+        # Strip JS string concatenation or template expressions (`${...}`) and query params
+        interpolated = re.sub(r"\$\{[^}]+\}", "sample-id", raw_call)
+        interpolated = re.sub(r'"\s*\+\s*[^"]+\+\s*"', "sample-id", interpolated)
+        interpolated = re.sub(r'"\s*\+.*$', "sample-id", interpolated)
+        path_only = interpolated.split("?", 1)[0].rstrip("/")
+        assert any(r.match(path_only) for r in route_regexes), (
+            f"demo/enterprise-demo.js calls unmounted API path {raw_call!r} "
+            f"(normalized: {path_only!r})"
+        )
+
+
+def test_zero_stale_firestore_or_broken_claude_plan_references() -> None:
+    """No ``Firestore`` strings in Python packages, no ``.claude/`` in docs, and ANN enforced."""
+    for pkg in ("bridge", "contract", "agents"):
+        for py_path in (REPO_ROOT / pkg).rglob("*.py"):
+            content = py_path.read_text(encoding="utf-8")
+            assert "Firestore" not in content, (
+                f"{py_path.relative_to(REPO_ROOT)} contains stale 'Firestore' reference"
+            )
+
+    for md_path in REPO_ROOT.rglob("*.md"):
+        if ".venv" in md_path.parts or "node_modules" in md_path.parts:
+            continue
+        text = md_path.read_text(encoding="utf-8")
+        assert ".claude/" not in text, (
+            f"{md_path.relative_to(REPO_ROOT)} contains broken '.claude/' reference"
+        )
+
+    pyproject = tomllib.loads(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    ruff_select = set(pyproject["tool"]["ruff"]["lint"]["select"])
+    for rule in ("ANN001", "ANN201", "ANN202"):
+        assert rule in ruff_select, (
+            f"pyproject.toml [tool.ruff.lint] select missing {rule!r}"
+        )

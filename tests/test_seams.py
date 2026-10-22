@@ -13,7 +13,7 @@ from bridge.seams import (
 
 
 def test_seam_enum_is_the_nine_names():
-    """The Seam enum is exactly the nine seam names (email_ingress = S0-arch-13)."""
+    """The Port / Seam enum contains all 13 managed-service boundaries (9 core + 4 Zone 3–6 stores)."""
     expected_names = {
         "sessions",
         "task_store",
@@ -24,9 +24,13 @@ def test_seam_enum_is_the_nine_names():
         "a2a_client",
         "extraction",
         "email_ingress",
+        "audit_vault",
+        "operational_store",
+        "action_inbox",
+        "agent_gym",
     }
     assert {s.value for s in Seam} == expected_names
-    assert len(Seam) == 9
+    assert len(Seam) == 13
 
 
 def test_env_var_mapping():
@@ -87,9 +91,9 @@ def test_resolve_mode_invalid_value_raises(monkeypatch):
 
 
 def test_local_adapters_instantiate_and_are_typed():
-    """Local adapters instantiate and carry their seam identity."""
-    # Check all nine are in LOCAL_ADAPTERS
-    assert len(LOCAL_ADAPTERS) == 9
+    """Local adapters instantiate and carry their port/seam identity."""
+    # Check all 13 are in LOCAL_ADAPTERS
+    assert len(LOCAL_ADAPTERS) == 13
     for seam in Seam:
         assert seam in LOCAL_ADAPTERS
 
@@ -97,20 +101,22 @@ def test_local_adapters_instantiate_and_are_typed():
     for seam in Seam:
         instance = get_adapter(seam, SeamMode.local)
         assert instance.seam is seam
+        assert instance.port is seam
         # Instance should be of the correct ABC type
         assert hasattr(instance, "seam")
+        assert hasattr(instance, "port")
 
 
 def test_all_gcp_adapters_instantiate_and_are_typed():
-    """All nine seams have registered GCP adapters (`GcpMemoryBank` landed with Option A
-    Vertex AI Agent Engine migration)."""
+    """All 13 ports/seams have registered GCP adapters."""
     from bridge.seams import GCP_ADAPTERS
     from bridge.seams.gcp import GcpMemoryBank
 
-    assert len(GCP_ADAPTERS) == 9
+    assert len(GCP_ADAPTERS) == 13
     for seam in Seam:
         instance = get_adapter(seam, SeamMode.gcp)
         assert instance.seam is seam
+        assert instance.port is seam
     assert isinstance(get_adapter(Seam.memory_bank, SeamMode.gcp), GcpMemoryBank)
 
 

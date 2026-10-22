@@ -19,7 +19,7 @@ import argparse
 import asyncio
 import json
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -139,7 +139,7 @@ def _resume_content(
     )
 
 
-def _pending_long_running_call(session):
+def _pending_long_running_call(session: Any) -> Any:
     """Return the newest **unanswered** function call on the session, or None.
 
     A parked ``LongRunningFunctionTool`` leaves a function *call* on the session with
@@ -159,7 +159,14 @@ def _pending_long_running_call(session):
     return None
 
 
-async def _run_once(runner, *, user_id, session_id, new_message, remote_engine=None):
+async def _run_once(
+    runner: Any,
+    *,
+    user_id: str,
+    session_id: str,
+    new_message: Any,
+    remote_engine: Any = None,
+) -> Any:
     """Run one turn on ``runner`` (or ``remote_engine`` when deployed to Vertex AI
     Agent Engine) and return the last ``event.output`` (raw dict|None).
 
@@ -192,7 +199,7 @@ async def _run_once(runner, *, user_id, session_id, new_message, remote_engine=N
 
 
 async def _resume_parked(
-    session_service,
+    session_service: Any,
     *,
     app_name: str,
     user_id: str,
@@ -202,10 +209,10 @@ async def _resume_parked(
     process: str = "address-proof",
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     max_resumes: int | None = None,
-    artifact_service=None,
+    artifact_service: Any = None,
     req: CollectRequest | None = None,
     documents: list[DocRef] | None = None,
-    remote_engine=None,
+    remote_engine: Any = None,
 ) -> ExchangeTurn | None:
     """Drive an already-parked durable session to terminal (shared restore path).
 
@@ -227,7 +234,7 @@ async def _resume_parked(
     if req is None:
         req = open_request(process=process)
 
-    def _new_runner():
+    def _new_runner() -> Runner:
         # A FRESH Runner per turn over the SAME durable session service — the
         # process-restart shape (durable state lives in the DB, not the Runner).
         return Runner(
@@ -276,10 +283,10 @@ async def run_collection(
     httpx_client: httpx.AsyncClient | None = None,  # test seam (in-process mock)
     user_id: str = "address-driver",
     session_id: str | None = None,
-    session_service=None,  # default InMemorySessionService()
-    artifact_service=None,  # default InMemoryArtifactService()
+    session_service: Any = None,  # default InMemorySessionService()
+    artifact_service: Any = None,  # default InMemoryArtifactService()
     durable: bool = False,  # opt-in: App-path + ResumabilityConfig (P4-1)
-    session_index=None,  # P5-4: optional SessionIndex; on park, record peer task_id
+    session_index: Any = None,  # P5-4: optional SessionIndex; on park, record peer task_id
 ) -> ExchangeTurn | None:
     """Run a collection to a terminal ``ExchangeTurn``.
 
@@ -332,7 +339,7 @@ async def run_collection(
             app_name="address", user_id=user_id, session_id=session_id
         )
 
-        def _new_runner():
+        def _new_runner() -> Runner:
             # A FRESH Runner per turn over the SAME durable session service — the
             # process-restart shape (durable state lives in the DB, not the Runner).
             return Runner(
@@ -423,7 +430,7 @@ async def run_collection(
     return decode_wire(ExchangeTurn, final_output)
 
 
-def latest_parked_call(session):
+def latest_parked_call(session: Any) -> Any:
     """Return the most-recent function-call on the session (the parked LRFT call).
 
     This is a helper for callers of ``feed_function_response`` to find the parked
@@ -437,7 +444,7 @@ def latest_parked_call(session):
 
 
 async def feed_function_response(
-    runner,
+    runner: Any,
     *,
     user_id: str,
     session_id: str,

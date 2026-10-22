@@ -19,7 +19,7 @@ External zone: imports ``a2a.*``, ``langgraph.*``, ``contract.*`` and the siblin
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from a2a.helpers import proto_helpers as ph
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -61,7 +61,7 @@ def _revise_v2(state: CarrierBState) -> dict:
     return {"doc_id": CARRIER_B_V2_DOC}
 
 
-def _build_graph():
+def _build_graph() -> Any:
     """Compile Carrier B's StateGraph (classify → quote_v0 | revise_v2)."""
     graph = StateGraph(CarrierBState)
     graph.add_node(_NODE_QUOTE_V0, _quote_v0)
@@ -80,7 +80,7 @@ CARRIER_B_GRAPH = _build_graph()
 class CarrierBExecutor(AgentExecutor):
     """A2A executor that invokes the LangGraph Carrier B graph and emits a quote."""
 
-    def __init__(self, graph=None) -> None:
+    def __init__(self, graph: Any = None) -> None:
         self._graph = graph if graph is not None else CARRIER_B_GRAPH
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
@@ -122,7 +122,7 @@ class CarrierBExecutor(AgentExecutor):
         await updater.cancel()
 
 
-def build_carrier_b_app(url: str = "http://carrier-b/"):
+def build_carrier_b_app(url: str = "http://carrier-b/") -> Any:
     """Build Carrier B's A2A Starlette app (LangGraph internal)."""
     card = build_carrier_card(url, party=_CARRIER_PARTY)
     return build_carrier_app(url, CarrierBExecutor(), card)

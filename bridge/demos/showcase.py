@@ -79,7 +79,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from starlette.applications import Starlette
 from starlette.routing import Mount
@@ -218,7 +218,7 @@ def build_showcase_app(
     lifespan = None
     if processor is not None and interval > 0:
 
-        def lifespan(_app: Starlette):
+        def lifespan(_app: Starlette) -> Any:
             return email_drain_loop(processor, interval)
 
     app = Starlette(

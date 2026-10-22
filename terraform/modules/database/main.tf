@@ -86,3 +86,13 @@ resource "google_sql_user" "bridge" {
   # rides the Secret Manager secret env (the secrets module), not plaintext HCL.
   password = var.db_password
 }
+
+resource "google_sql_user" "iam_runtime" {
+  count = var.iam_service_account_email != "" ? 1 : 0
+
+  project  = var.project_id
+  name     = trimsuffix(var.iam_service_account_email, ".gserviceaccount.com")
+  instance = google_sql_database_instance.bridge.name
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+}
+

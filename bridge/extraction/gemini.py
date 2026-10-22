@@ -250,7 +250,7 @@ def _int_setting(
     return parsed
 
 
-def _is_truncated(response) -> bool:
+def _is_truncated(response: Any) -> bool:
     """True when the response was cut at ``max_output_tokens`` (``MAX_TOKENS``).
 
     Reads ``candidates[0].finish_reason`` as either the genai enum (``.name``) or a
@@ -549,7 +549,7 @@ def _corpus_resolver(corpus_root: Path) -> Resolver:
     return _resolve
 
 
-def _coerce_resolved(value) -> ResolvedDocument:
+def _coerce_resolved(value: Any) -> ResolvedDocument:
     """Accept a ``ResolvedDocument`` or a legacy ``(bytes, mime_type)`` 2-tuple.
 
     The 2-tuple is the shape every injected test resolver uses and the shape
@@ -567,7 +567,7 @@ def _coerce_resolved(value) -> ResolvedDocument:
     )
 
 
-def _prune_nulls(payload):
+def _prune_nulls(payload: Any) -> Any:
     """Drop null-valued ``key_fields`` / ``field_confidence`` entries and table cells.
 
     A direct consequence of pinning the UNION of every installed doctype's fields as
@@ -668,7 +668,7 @@ class GeminiExtractor:
     def __init__(
         self,
         *,
-        client=None,
+        client: Any = None,
         resolver: Resolver | None = None,
         model: str | None = None,
         corpus_root: Path | str = DEFAULT_CORPUS_ROOT,
@@ -680,7 +680,7 @@ class GeminiExtractor:
         chunk_concurrency: int | None = None,
         max_windows: int = DEFAULT_MAX_WINDOWS,
         agent_gym: Any = None,
-        log=_LOG,
+        log: Any = _LOG,
     ) -> None:
         import os
 
@@ -760,7 +760,7 @@ class GeminiExtractor:
             self._response_schema = build_response_schema(schemas)
         return self._prompt, self._response_schema
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         # Lazy: importing this module must not pull google.genai / build a real
         # Client (no creds). An injected client (the credential-free tests) wins.
         if self._client is None:
@@ -769,7 +769,7 @@ class GeminiExtractor:
             self._client = genai.Client()
         return self._client
 
-    def _document_part(self, resolved: ResolvedDocument, *, client=None):
+    def _document_part(self, resolved: ResolvedDocument, *, client: Any = None) -> Any:
         """Build the document content part for the request from a resolved reference.
 
         Three branches:
@@ -932,7 +932,7 @@ class GeminiExtractor:
             label=artifact_name,
         )
 
-    async def _call(self, client, contents: list, config: dict):
+    async def _call(self, client: Any, contents: list, config: dict) -> Any:
         """One ``generate_content`` call, OFF the event loop (``asyncio.to_thread``).
 
         The genai call is sync; run inline it would block the shared loop (SSE /
@@ -974,7 +974,7 @@ class GeminiExtractor:
             return response
 
     async def _generate_validated(
-        self, client, base: list, config: dict, *, label: str
+        self, client: Any, base: list, config: dict, *, label: str
     ) -> ExtractionResult:
         """The bounded schema-validated retry loop (S0-bug-2) for one request.
 
@@ -1045,7 +1045,7 @@ class GeminiExtractor:
                 f"{self._max_windows} cap",
             )
 
-    async def _survey_page_count(self, client, document, label: str) -> int:
+    async def _survey_page_count(self, client: Any, document: Any, label: str) -> int:
         """One tiny call asking the model for the page count (unknown-count PDFs only).
 
         ``[SURVEY_PROMPT, document]`` under ``SURVEY_SCHEMA`` with a 256-token budget.
@@ -1077,7 +1077,7 @@ class GeminiExtractor:
 
     async def _extract_windows(
         self,
-        client,
+        client: Any,
         base: list,
         config: dict,
         windows: list[tuple[int, int]],

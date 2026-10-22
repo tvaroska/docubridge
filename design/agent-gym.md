@@ -29,58 +29,15 @@ tags: [bridge, agent-gym, hitl, governance]
 
 ---
 
-## 2. Two-Sided Calibration & Human-Oversight Literature Note
+## 2. Two-Sided Calibration & Human-Oversight Architecture
 
-> **Status (`v1.14.0-agent-gateway`):** Two-Sided Oversight (`oversight_rsr_score` computed from `citation_verified` and `review_dwell_ms`, rejecting rubber-stamps with `RSR < 0.50`), the 3-Tier Evaluation Gate (Tier 1 `Rule 0` deterministic `dispose` + `Decimal` math firewall, Tier 2 `gemini-4-argon` pointwise judge, and Tier 3 `threshold_corridor()` `FA=0` check), `compile_rules_to_skill()` (`SkillRevision` `v1.0.0 -> v1.1.0` + 1-click rollback), and Bi-Temporal Process-Instance Skill Lineage (`ProcessSkillLineageRecord`) are now implemented in `bridge/agent_gym.py` and `bridge/user_interaction.py`. The academic literature below grounds why naive human-in-the-loop (HITL) designs degrade human judgment over time without two-sided verification.
-
-### 2.1 The Empirical Consensus: Why Naive HITL Fails
-
-1. **Structural Erosion of Human Oversight in Agent Workflows** — Mitchell, Ghosh, & Passi (2026), [*AI Agents Push Humans Out of the Loop*](https://arxiv.org/pdf/2608.23642) (`arXiv:2608.23642`):
-   - **Section 3 ("The oversight oversight"):** Current agent oversight discussions treat "human-in-the-loop" as a static, plug-and-play safety alibi while ignoring how agent architectures actively impede situational awareness.
-   - **Section 4 ("The irony of automation"):** Extended reliance on autonomous agents degrades critical thinking and induces skill atrophy, creating a feedback loop that passively incentivizes rubber-stamping.
-   - **Section 5 / Table 1 ("Organizing device behind solutions inventory"):** Maps interventions across two implementation stages (**Development / design-level affordances** vs. **Deployment / organizational protocols**) and two cognitive targets:
-     - *Engaging oversight in the moment:* Pre-commitment mechanisms, delay-and-choice mechanisms, and inline reasoning probes.
-     - *Maintaining skills over long-term capacity:* Behavioral monitoring, workload/scheduling pacing, active training/simulations, and role/audit redesign.
-2. **Meta-Analysis of Human-AI Complementarity** — Vaccaro, Almaatouq, & Malone (2024), *When combinations of humans and AI are useful: A systematic review and meta-analysis* (*Nature Human Behaviour*, 106 experimental studies / 370 effect sizes):
-   - Shows that human–AI combinations perform **significantly worse** on average than the single strongest partner alone ($\text{Hedges' } g = -0.23$) on **decision-making tasks** (whereas open-ended *content creation* sees gains).
-   - When the AI baseline outperforms the human baseline, combining them yields net losses because humans either anchor on wrong AI outputs (over-reliance) or erratically override right ones (under-reliance).
-3. **Ironies of Automation & Out-of-the-Loop (OOTL) Syndrome** — Bainbridge (1983), *Ironies of Automation* (*Automatica*); Endsley (2023), *Ironies of Artificial Intelligence* (*Ergonomics*):
-   - **The Residue & Cold-Handback Problem:** Automating the routine 90%–95% of cases (`trusted_auto_approve`) starves human operators of daily practice (*skill atrophy*) and strips away situational context (*context blindness*). When the agent hits a complex failure or carrier format drift and abruptly dials back to `guided_review`, it drops the hardest 5%–10% of edge cases onto a deskilled, cold-started human operator.
-4. **Failure of Passive XAI & Confidence Badges** — Bansal et al. (2021), *Does the Whole Exceed its Parts? The Effect of AI Explanations on Complementary Team Performance* (*CHI*); Green & Chen (2019), *The Principles and Limits of Algorithm-in-the-Loop Decision Making* (*CSCW*):
-   - Displaying high confidence scores (`confidenceScore: 0.95` on `ApprovalCard`) and static explanations alongside a pre-selected recommendation increases human agreement with the AI **even when the AI is wrong**, functioning as a persuasive anchor rather than a verification aid.
-5. **Surface Fluency ("Epistemia") & Multi-Layer Trust Calibration** — 2024–2026 Systematic Reviews (*Collaboration Convergence Framework*; *Social Trust Calibration Framework [STCF]*):
-   - Fluent, structured agent outputs induce *epistemia* (false attribution of deep verification to clean presentation). Moreover, attitudinal trust diverges from behavioral reliance over time: fatigued operators can intellectually distrust an agent while still rubber-stamping its queue.
-   - STCF separates calibration across four layers: **Capability trust** (slice accuracy), **Process trust** (transparent step lineage), **Institutional trust** (WORM vault + math firewall), and **Identity trust** (cryptographic SPIFFE SVID + OBO role bounds).
-6. **Regulatory Mandate for Anti-Automation-Bias Controls** — *EU AI Act Article 14 (Human Oversight)*:
-   - Explicitly requires high-risk human-machine interfaces (`InboxAuditRecord` in `bridge/a2ui_inbox.py`) to equip human overseers to remain aware of and counteract **automation bias** (over-reliance), interpret outputs against source evidence, and intervene or halt execution (`dial_trust_policy`).
+> **Canonical Literature & Math Source:** General HCI & MRM literature on Why Passive HITL Fails (`Vaccaro et al. 2024`, $\text{Hedges' } g = -0.23$; `Mitchell et al. arXiv:2608.23642`; `Bainbridge 1983`; `Endsley 2023`), Cognitive Forcing Functions (`Buçinca et al. 2021`), Evaluative AI (`Miller 2023`), Appropriate Reliance (`RAIR` & `RSR`, `Schemmer et al. 2023`), and Dawid-Skene honeypots has been consolidated into [`~/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md`](file:///usr/local/google/home/tvaroska/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md) and [`~/projects/agent-evals/agent_evals/calibration.py`](file:///usr/local/google/home/tvaroska/projects/agent-evals/agent_evals/calibration.py).
+>
+> **DocuBridge Implementation Status (`v1.14.0-agent-gateway`):** Two-Sided Oversight (`oversight_rsr_score` computed from `citation_verified` and `review_dwell_ms`, rejecting rubber-stamps with `RSR < 0.50`), the 3-Tier Evaluation Gate (Tier 1 `Rule 0` deterministic `dispose` + `Decimal` math firewall, Tier 2 `gemini-4-argon` pointwise judge, and Tier 3 `threshold_corridor()` `FA=0` check), `compile_rules_to_skill()` (`SkillRevision` `v1.0.0 -> v1.1.0` + 1-click rollback), and Bi-Temporal Process-Instance Skill Lineage (`ProcessSkillLineageRecord`) are implemented in `bridge/agent_gym.py` and `bridge/user_interaction.py`.
 
 ---
 
-### 2.2 Recommended Approaches from the Literature
-
-1. **Cognitive Forcing Functions (CFFs) & Selective Friction** — Buçinca, Malaya, & Gajos (2021), *To Trust or to Think: Cognitive Forcing Functions Can Reduce Overreliance on AI* (*CSCW*); Vasconcelos et al. (2023), *Explanations Can Reduce Overreliance on AI Systems During Decision-Making* (*CHI*):
-   - **Dual-Process Theory (System 1 vs. System 2):** Reviewers default to fast, lazy System 1 heuristics unless the interface alters the **cost-benefit equation** (Vasconcelos et al.)—either by lowering the cognitive cost of inspecting the source PDF (`SourceCitationPill` bounding-box deep links) or raising the friction of blind acceptance.
-   - **Three CFF Archetypes (Buçinca et al.):**
-     1. *Update / Pre-Commitment ("Don't label the labels"):* The human records an independent judgment *before* the AI's recommendation is revealed.
-     2. *On-Demand / Delay-and-Choice:* The AI's extracted value or recommendation is hidden until the reviewer explicitly clicks to request it or opens the source document.
-     3. *Wait / Deliberation Pause:* A brief mandatory inspection window before approval controls unlock on high-stakes items.
-   - **Selective / Adaptive Friction (2024–2026 CSCW/CHI):** Because universal CFFs lower subjective user satisfaction and cause fatigue, friction must be triggered **selectively** (only on `HIGH`/`CRITICAL` risk tiers, conflicting signals, or when behavioral monitoring detects rapid clicking) and account for individual variance (*Need for Cognition*).
-2. **Evaluative AI (Hypothesis-Driven vs. Recommendation-Driven Support)** — Tim Miller (2023), *Explainable AI is dead, long live explainable AI! Hypothesis-driven decision support using evaluative AI* (*FAccT*); Le, Miller, Singh, & Sonenberg (2024, *ECAI* — Weight of Evidence):
-   - Rather than recommending a single pre-selected winner (`initial_model["resolution"]["selectedValue"] = options[0]["value"]`), the UI should present **competing hypotheses with pro and con evidence** side by side (`FactConflictTable` + `SourceCitationPill`), preserving human cognitive agency to weigh the evidence and choose.
-3. **Two-Dimensional Appropriate Reliance Metrics (`RAIR` & `RSR`)** — Schemmer et al. (2023), *Appropriate Reliance on AI Advice: Conceptualization and the Effect of Explanations* (*CHI*):
-   - Raw `% agreement` (`ProgrammableTrustPolicy.accuracy_rate = total_exact_matches / total_evaluated`) cannot distinguish a vigilant expert verifying a strong model from a fatigued reviewer rubber-stamping everything.
-   - Appropriate Reliance decomposes human-AI transitions into two conditional metrics:
-     $$\text{RAIR (Relative AI Reliance)} = P(\text{Human final correct} \mid \text{Human initial wrong}, \text{AI correct})$$
-     $$\text{RSR (Relative Self-Reliance)} = P(\text{Human final correct} \mid \text{Human initial correct or unassisted}, \text{AI wrong})$$
-   - Promoting a policy slice to `trusted_auto_approve` requires verifying both high model accuracy and high reviewer **$\text{RSR}$** (the reviewer actually overrides the AI when the AI is wrong).
-4. **Gold-Standard Injection ("Honeypots"), Dawid-Skene Calibration & SME Agreement** — Dawid & Skene (1979, *Applied Statistics*); Enterprise Autorater Calibration (`Krippendorff's` $\alpha \ge 0.80$, `Gwet's AC2`, Human/Agent Swap):
-   - **Seeded Honeypots & Attention Checks:** Periodically inject known-discrepancy items (e.g., synthetic perturbations from `generate_synthetic_stress_suite`) into the live review queue to measure each reviewer's live confusion matrix and $\text{RSR}$.
-   - **Continuous Stratified Spot-Checks:** Never drop human review to 0% on `trusted_auto_approve` slices; route a 2%–5% stratified sample to `guided_review` so reviewers retain domain familiarity and situational awareness.
-   - **Blind Multi-Rater & Dawid-Skene Weighting:** Weight expert feedback signals by reviewer reliability and require blind agreement ($\alpha \ge 0.80$, Gwet's AC2 on skewed distributions) rather than raw `% agreement` before auto-promoting rules across tenants.
-
----
-
-### 2.3 Architectural Roadmap for Agent Gym v2 (Design Candidates mapped to Code)
+### 2.1 DocuBridge-Specific Roadmap & Code Mapping (`bridge/agent_gym.py` & `bridge/a2ui_inbox.py`)
 
 | Mechanism | Literature Anchor | Current Gap in `bridge/agent_gym.py` & `bridge/a2ui_inbox.py` | Candidate Design Pattern |
 | :--- | :--- | :--- | :--- |

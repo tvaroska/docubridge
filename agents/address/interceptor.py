@@ -136,7 +136,9 @@ def resume_stamping_interceptor(agent_name: str) -> RequestInterceptor:
     non-resume turn is left blank (never force-reused).
     """
 
-    async def before_request(ctx: Any, a2a_request: Any, params: Any):
+    async def before_request(
+        ctx: Any, a2a_request: Any, params: Any
+    ) -> tuple[Any, Any]:
         task_id, context_id = pending_resume_target(ctx, agent_name)
 
         # AGENT-6: re-stamp the parked task so the peer resumes the SAME task

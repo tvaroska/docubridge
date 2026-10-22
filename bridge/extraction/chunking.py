@@ -276,7 +276,9 @@ def merge_window_results(
     # -- whole-document scalars: first wins, a later disagreement is flagged ----------
     conflicts: dict[str, list[str]] = {}  # flag name -> detail fragments (ordered)
 
-    def _conflict(name: str, kept: str, kept_span: str, other: str, other_span: str):
+    def _conflict(
+        name: str, kept: str, kept_span: str, other: str, other_span: str
+    ) -> None:
         notes = conflicts.setdefault(name, [f"{kept_span} report {kept!r}"])
         notes.append(f"{other_span} report {other!r}")
 
@@ -322,7 +324,13 @@ def merge_window_results(
     for w, (a, b, result) in enumerate(windows):
         window_rows = {t: len(rows) for t, rows in result.fields.tables.items()}
 
-        def _rebase(path: str, *, _a=a, _b=b, _rows=window_rows) -> str:
+        def _rebase(
+            path: str,
+            *,
+            _a: int = a,
+            _b: int = b,
+            _rows: dict[str, int] = window_rows,
+        ) -> str:
             rebased, coarse = rebase_path(
                 path, offsets=offsets, window_rows=_rows, tables=tables
             )

@@ -272,7 +272,13 @@ class EmailProcessor:
             return outcomes
 
     async def _quarantine(
-        self, key: str, reason: str, *, sender=None, subject=None, skipped_inline=0
+        self,
+        key: str,
+        reason: str,
+        *,
+        sender: str | None = None,
+        subject: str | None = None,
+        skipped_inline: int = 0,
     ) -> MailOutcome:
         outcome = MailOutcome(
             key=key,
@@ -613,12 +619,12 @@ def mount_email_drain_routes(
     marker_seam = seam if seam is not None else processor.seam
 
     @app.post("/email/drain")
-    async def drain():
+    async def drain() -> list[dict[str, Any]]:
         outcomes = await processor.drain()
         return [o.model_dump(mode="json") for o in outcomes]
 
     @app.get("/email/outcomes/{key}")
-    async def outcome(key: str):
+    async def outcome(key: str) -> Any:
         if not _KEY_RE.fullmatch(key):
             return Response(status_code=404)
         marker = await run_in_threadpool(marker_seam.processed, key)
@@ -662,7 +668,7 @@ def build_email_app(
         request: Request,
         background: BackgroundTasks,
         validationToken: str | None = None,
-    ):
+    ) -> Response:
         if graph is None:
             return Response(status_code=404)
         if validationToken is not None:

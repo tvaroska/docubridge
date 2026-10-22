@@ -1,21 +1,23 @@
-"""Seam adapter registry."""
+"""Port / Seam adapter registry."""
 
 from .gcp import GCP_ADAPTERS
 from .local import LOCAL_ADAPTERS
-from .protocols import SeamABC
-from .seam import Seam, SeamMode
+from .protocols import PortABC
+from .seam import Port, PortMode
 
 
-def get_adapter(seam: Seam, mode: SeamMode | str) -> SeamABC:
-    """Get an adapter instance for the given seam and mode.
+def get_adapter(seam: Port, mode: PortMode | str) -> PortABC:
+    """Get an adapter instance for the given port/seam and mode.
 
-    ``local`` and ``gcp`` resolve all nine seams through ``LOCAL_ADAPTERS`` and
-    ``GCP_ADAPTERS`` respectively (including ``GcpSessions`` on Agent Engine or
-    Cloud SQL, and ``GcpMemoryBank`` on Agent Engine Memory Bank).
+    ``local`` and ``gcp`` resolve all 13 ports through ``LOCAL_ADAPTERS`` and
+    ``GCP_ADAPTERS`` respectively.
     """
-    mode = SeamMode(mode)
-    if mode is SeamMode.local:
+    mode = PortMode(mode)
+    if mode is PortMode.local:
         return LOCAL_ADAPTERS[seam]()
     if seam in GCP_ADAPTERS:
         return GCP_ADAPTERS[seam]()
     raise NotImplementedError(f"gcp adapter for {seam.value} lands at P7")
+
+
+get_port_adapter = get_adapter

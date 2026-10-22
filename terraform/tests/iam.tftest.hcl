@@ -28,6 +28,11 @@ run "base_role_set_and_token_creator" {
   }
 
   assert {
+    condition     = contains(output.granted_roles, "roles/cloudsql.instanceUser")
+    error_message = "bridge-runtime SA must be granted roles/cloudsql.instanceUser for IAM DB authentication"
+  }
+
+  assert {
     condition     = contains(output.granted_roles, "roles/cloudtasks.enqueuer")
     error_message = "bridge-runtime SA must be granted roles/cloudtasks.enqueuer"
   }

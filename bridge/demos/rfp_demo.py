@@ -226,7 +226,7 @@ def build_rfp_demo_app(
     lifespan = None
     if processor is not None and interval > 0:
 
-        def lifespan(_app: FastAPI):
+        def lifespan(_app: FastAPI) -> Any:
             return email_drain_loop(processor, interval)
 
     app = FastAPI(

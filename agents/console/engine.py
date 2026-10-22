@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from agents.address.driver import run_collection
@@ -145,7 +145,7 @@ def _apply_turn(rec: ConsoleSessionRecord, turn: ExchangeTurn) -> None:
 # --------------------------------------------------------------------------- #
 # The background run + its launch.                                             #
 # --------------------------------------------------------------------------- #
-async def _read_rounds(session_service, rec: ConsoleSessionRecord) -> int:
+async def _read_rounds(session_service: Any, rec: ConsoleSessionRecord) -> int:
     """Read the gate round counter back off the shared session state."""
     session = await session_service.get_session(
         app_name=rec.app_name, user_id=rec.user_id, session_id=rec.session_id
@@ -155,7 +155,7 @@ async def _read_rounds(session_service, rec: ConsoleSessionRecord) -> int:
     return int(session.state.get(STATE_GATE_ROUNDS, rec.rounds))
 
 
-async def _read_live_turn(session_service, rec: ConsoleSessionRecord) -> None:
+async def _read_live_turn(session_service: Any, rec: ConsoleSessionRecord) -> None:
     """Best-effort mid-run read of the gate-written state (live rounds/turn).
 
     Optional live-status nuance (§4.2): while the run is in flight the gate writes
@@ -185,8 +185,8 @@ async def _run(
     session_id: str,
     pr: PreparedRequest,
     card_url: str,
-    httpx_client=None,
-    session_service,
+    httpx_client: Any = None,
+    session_service: Any,
 ) -> None:
     """The background coroutine: drive ``run_collection`` and store the projection.
 
@@ -227,8 +227,8 @@ def start_session(
     *,
     prepared_key: str,
     card_url: str,
-    httpx_client=None,
-    session_service,
+    httpx_client: Any = None,
+    session_service: Any,
 ) -> ConsoleSessionRecord:
     """Start a run from a prepared-request key. Must be called inside the event loop.
 
@@ -269,7 +269,7 @@ async def sse_frames(
     session_id: str,
     interval: float = 0.02,
     max_ticks: int = 2000,
-):
+) -> Any:
     """Yield SSE frames for a session until it terminates (§2e).
 
     Emits the current snapshot immediately, then re-reads on each tick and yields a

@@ -436,7 +436,7 @@ class CollectExecutor(AgentExecutor):
         return resolution
 
     async def _execute_collect(
-        self, context: RequestContext, event_queue: EventQueue, message
+        self, context: RequestContext, event_queue: EventQueue, message: Any
     ) -> None:
         """R2: the deterministic, model-free Collector path."""
         # WIRE-5 dual-mode intake: content-route JSON or text to CollectRequest
@@ -526,7 +526,7 @@ class CollectExecutor(AgentExecutor):
         self,
         context: RequestContext,
         event_queue: EventQueue,
-        message,
+        message: Any,
         request: CollectRequest,
     ) -> None:
         """S0-arch-19: open / update / read the RFP of this exchange on the durable board.
@@ -582,7 +582,7 @@ class CollectExecutor(AgentExecutor):
         self,
         context: RequestContext,
         event_queue: EventQueue,
-        message,
+        message: Any,
         *,
         turn: ExchangeTurn,
         party: str,
@@ -766,7 +766,7 @@ class CollectExecutor(AgentExecutor):
         await updater.update_status(state, message=status_message)
 
     async def _execute_llm_leg(
-        self, context: RequestContext, event_queue: EventQueue, message
+        self, context: RequestContext, event_queue: EventQueue, message: Any
     ) -> None:
         """R4: hand a text-only intent to the ``document_bridge`` LlmAgent leg.
 
@@ -828,7 +828,7 @@ class CollectExecutor(AgentExecutor):
         else:
             await updater.update_status(state, message=status_message)
 
-    def _build_path_a_turn(self, message) -> ExchangeTurn:
+    def _build_path_a_turn(self, message: Any) -> ExchangeTurn:
         """PATH-A validate-only: schema-validate the structured assertion + dispose it
         into a one-entry terminal turn — NO extraction seam call, NO artifact persistence
         (a structured response carries no bytes).
@@ -867,7 +867,7 @@ class CollectExecutor(AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
         turn: ExchangeTurn,
-        message,
+        message: Any,
     ) -> None:
         """Enqueue the task (if new), add the ExchangeTurn artifact, set task state.
 

@@ -35,6 +35,7 @@ import hashlib
 import os
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -323,7 +324,7 @@ class InMemoryAuditVaultStore(AuditVaultStore):
 class GcpAuditVaultStore(AuditVaultStore):
     """Cloud Storage Audit Vault adapter using ``if_generation_match=0`` (write-once)."""
 
-    def __init__(self, bucket_name: str, *, client=None) -> None:
+    def __init__(self, bucket_name: str, *, client: Any = None) -> None:
         bucket = (bucket_name or "").strip()
         if not bucket:
             raise ValueError("GcpAuditVaultStore requires a non-empty bucket_name")
@@ -331,7 +332,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         self._client = client
         self._index: dict[tuple[str, str, int], VaultRecord] = {}
 
-    def _get_bucket(self):
+    def _get_bucket(self) -> Any:
         if self._client is None:  # pragma: no cover - live GCP client lazy import
             from google.cloud import storage
 
@@ -349,7 +350,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         mime_type: str = "application/pdf",
         locked_at: datetime | None = None,
     ) -> VaultRecord:
-        """Write an immutable object to Cloud Storage and persist its audit record in Firestore."""
+        """Write an immutable object to Cloud Storage with write-once precondition (`if_generation_match=0`) and object metadata."""
         key = (context_id, doc_id, version)
         if key in self._index:
             raise VaultImmutabilityError(
@@ -400,7 +401,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         self._index[key] = rec
         return rec
 
-    def _record_from_blob(self, blob) -> VaultRecord | None:
+    def _record_from_blob(self, blob: Any) -> VaultRecord | None:
         """Reconstruct a ``VaultRecord`` from a GCS blob across stateless replicas."""
         match = _VAULT_KEY_RE.match(getattr(blob, "name", ""))
         if not match:
@@ -444,7 +445,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         return rec
 
     def get_record(self, context_id: str, doc_id: str, version: int = 1) -> VaultRecord:
-        """Fetch an immutable vault audit record by vault ID from Firestore."""
+        """Fetch an immutable vault audit record by vault ID from Cloud Storage blob metadata."""
         key = (context_id, doc_id, version)
         if key in self._index:
             return self._index[key]
@@ -463,7 +464,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         return blob.download_as_bytes()
 
     def list_records(self, context_id: str | None = None) -> list[VaultRecord]:
-        """List locked vault audit records from Firestore, optionally filtered by exchange ID."""
+        """List locked vault audit records from Cloud Storage blob metadata, optionally filtered by exchange ID."""
         prefix = f"vault/{context_id}/" if context_id is not None else "vault/"
         for blob in self._get_bucket().list_blobs(prefix=prefix):
             key_match = _VAULT_KEY_RE.match(getattr(blob, "name", ""))
@@ -482,12 +483,12 @@ class GcpAuditVaultStore(AuditVaultStore):
 
 
 def vault_from_env() -> AuditVaultStore:
-    """Build the Audit Vault store from env: GCS when ``BRIDGE_VAULT_BUCKET`` is set,
-    else :class:`InMemoryAuditVaultStore` (follows the host-controlled wiring guard)."""
-    bucket = os.environ.get(VAULT_BUCKET_ENV, "").strip()
-    if bucket:
-        return GcpAuditVaultStore(bucket)
-    return InMemoryAuditVaultStore()
+    """Build the Audit Vault store via the ``Port.audit_vault`` port adapter."""
+    from bridge.ports import Port, get_adapter, resolve_mode
+
+    mode = resolve_mode(Port.audit_vault)
+    adapter = get_adapter(Port.audit_vault, mode)
+    return adapter.build_vault()
 
 
 def promote_accepted_to_vault(

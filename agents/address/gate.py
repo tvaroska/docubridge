@@ -16,6 +16,7 @@ pin.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from google.adk.events import Event
 
@@ -71,7 +72,7 @@ def make_gate_node_fn(max_rounds: int = DEFAULT_MAX_ROUNDS) -> Callable:
     ``parameter_binding="state"`` machinery stays out of the way).
     """
 
-    def gate_node_fn(ctx) -> None:
+    def gate_node_fn(ctx: Any) -> Any:
         turn = read_latest_exchange_turn(ctx)
 
         rounds = ctx.state.get(STATE_GATE_ROUNDS, 0) + 1

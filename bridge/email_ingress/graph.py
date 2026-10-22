@@ -34,6 +34,7 @@ import re
 import threading
 import time
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import quote
 
 from bridge.email_ingress.mime import max_mail_bytes
@@ -102,7 +103,7 @@ class GraphMailClient:
         client_id: str,
         client_secret: str,
         mailbox: str,
-        transport=None,
+        transport: Any = None,
         timeout: float = DEFAULT_TIMEOUT_S,
     ) -> None:
         for name, value in (
@@ -134,7 +135,7 @@ class GraphMailClient:
             **kwargs,
         )
 
-    def _http(self):
+    def _http(self) -> Any:
         import httpx
 
         return httpx.Client(

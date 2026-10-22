@@ -79,3 +79,32 @@ run "postgres16_private_ip_psa" {
     error_message = "Cloud SQL instance must enable cloudsql.iam_authentication = on"
   }
 }
+
+run "postgres16_iam_service_account_user" {
+  command = plan
+
+  module {
+    source = "./modules/database"
+  }
+
+  variables {
+    project_id                = "test-project"
+    region                    = "us-central1"
+    vpc_network               = "projects/test-project/global/networks/bridge-vpc"
+    db_name                   = "bridge"
+    db_user                   = "bridge"
+    deletion_protection       = false
+    iam_service_account_email = "bridge-runtime@test-project.iam.gserviceaccount.com"
+  }
+
+  assert {
+    condition     = google_sql_user.iam_runtime[0].type == "CLOUD_IAM_SERVICE_ACCOUNT"
+    error_message = "IAM SQL user must use type = CLOUD_IAM_SERVICE_ACCOUNT"
+  }
+
+  assert {
+    condition     = google_sql_user.iam_runtime[0].name == "bridge-runtime@test-project.iam"
+    error_message = "Cloud SQL PostgreSQL IAM user name must strip .gserviceaccount.com suffix"
+  }
+}
+

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from bridge.offscript import REASON_ESCALATED
 from bridge.pathb import PathBAction
@@ -219,7 +219,7 @@ async def sse_frames(
     rfps: RfpBoard | None = None,
     interval: float = 0.02,
     max_ticks: int = 2000,
-):
+) -> Any:
     """Yield SSE frames for the cross-exchange read-model until ``max_ticks`` deadline.
 
     Emits the current snapshot immediately, then re-reads on each tick and yields a frame

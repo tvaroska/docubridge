@@ -1,26 +1,44 @@
-"""Seam ABCs — placeholder interfaces, domain methods added per-phase."""
+"""Port ABCs (Hexagonal Ports & Adapters) across all 13 managed-service boundaries."""
 
 import abc
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from .seam import Seam
+from .seam import Port, Seam
 
 if TYPE_CHECKING:
     from a2a.server.tasks import PushNotificationConfigStore, TaskStore
     from google.adk.memory import BaseMemoryService
     from google.adk.sessions import BaseSessionService
 
+    from bridge.a2ui_inbox import ActionInboxStore
+    from bridge.agent_gym import AgentGymEngine
     from bridge.edge.skills import SkillMeta
     from bridge.exchange_store import ExchangeStore
+    from bridge.operational_store import OperationalStore
     from bridge.outbound import A2AClient
     from bridge.scheduler import Scheduler
+    from bridge.vault import AuditVaultStore
     from contract.extraction import ExtractionResult
 
 
-class SeamABC(abc.ABC):
-    """Common base for all seam adapters."""
+class PortABC(abc.ABC):
+    """Common abstract base for all port adapters."""
 
+    port: ClassVar[Port]
     seam: ClassVar[Seam]
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Keep ``cls.port`` and ``cls.seam`` synchronized on every Port/Adapter subclass."""
+        super().__init_subclass__(**kwargs)
+        has_port = "port" in cls.__dict__
+        has_seam = "seam" in cls.__dict__
+        if has_port and not has_seam:
+            cls.seam = cls.port
+        elif has_seam and not has_port:
+            cls.port = cls.seam
+
+
+SeamABC = PortABC
 
 
 class SessionsSeam(SeamABC):
@@ -265,3 +283,91 @@ class EmailIngressSeam(SeamABC):
     def processed(self, key: str) -> dict | None:
         """The stored outcome marker, or ``None`` when the key is not processed."""
         raise NotImplementedError
+
+
+# --------------------------------------------------------------------------- #
+# Zone 3-6 Enterprise Data Architecture Ports                                 #
+# --------------------------------------------------------------------------- #
+
+
+class AuditVaultPort(PortABC):
+    """Zone 3 Audit Vault port — write-once WORM document archive.
+
+    Local = :class:`bridge.vault.InMemoryAuditVaultStore` (or GCS when ``BRIDGE_VAULT_BUCKET``
+    is explicitly provided); GCP = :class:`bridge.vault.GcpAuditVaultStore` over Cloud Storage
+    with ``if_generation_match=0`` write-once precondition (refusing in-memory fallback).
+    """
+
+    port = Port.audit_vault
+
+    @abc.abstractmethod
+    def build_vault(self, bucket_name: str | None = None) -> "AuditVaultStore":
+        """Return an :class:`AuditVaultStore` (refuses in-memory fallback on GCP)."""
+        raise NotImplementedError
+
+
+class OperationalStorePort(PortABC):
+    """Zone 3–4 Operational Store port — append-only bi-temporal fact store.
+
+    Local = :class:`bridge.operational_store.InMemoryOperationalStore` (or SQLite
+    :class:`bridge.operational_store.SqlOperationalStore` when a DSN is configured);
+    GCP = :class:`bridge.operational_store.SqlOperationalStore` over Cloud SQL / AlloyDB
+    PostgreSQL (refusing in-memory fallback).
+    """
+
+    port = Port.operational_store
+
+    @abc.abstractmethod
+    def build_operational_store(self, db_url: str | None = None) -> "OperationalStore":
+        """Return an :class:`OperationalStore` (refuses in-memory fallback on GCP)."""
+        raise NotImplementedError
+
+
+class ActionInboxPort(PortABC):
+    """Zone 5 A2UI Action Inbox port — human-in-the-loop review queue & RFC 6902 audit trail.
+
+    Local = :class:`bridge.a2ui_inbox.InMemoryActionInboxStore` (or SQLite
+    :class:`bridge.a2ui_inbox.SqlActionInboxStore` when a DSN is configured);
+    GCP = :class:`bridge.a2ui_inbox.SqlActionInboxStore` over Cloud SQL / AlloyDB
+    PostgreSQL (refusing in-memory fallback).
+    """
+
+    port = Port.action_inbox
+
+    @abc.abstractmethod
+    def build_action_inbox_store(self, db_url: str | None = None) -> "ActionInboxStore":
+        """Return an :class:`ActionInboxStore` (refuses in-memory fallback on GCP)."""
+        raise NotImplementedError
+
+
+class AgentGymPort(PortABC):
+    """Zone 6 Agent Gym port — Continuous Learning ('Example of One'), Registry & Programmable Trust.
+
+    Local = :class:`bridge.agent_gym.InMemoryAgentGymEngine` (or SQLite
+    :class:`bridge.agent_gym.SqlAgentGymEngine` when a DSN is configured);
+    GCP = :class:`bridge.agent_gym.SqlAgentGymEngine` over Cloud SQL / AlloyDB
+    PostgreSQL (refusing in-memory fallback).
+    """
+
+    port = Port.agent_gym
+
+    @abc.abstractmethod
+    def build_agent_gym(self, db_url: str | None = None) -> "AgentGymEngine":
+        """Return an :class:`AgentGymEngine` (refuses in-memory fallback on GCP)."""
+        raise NotImplementedError
+
+
+# Canonical Port aliases alongside legacy *Seam names
+SessionsPort = SessionsSeam
+TaskStorePort = TaskStoreSeam
+ExchangeStorePort = ExchangeStoreSeam
+SkillRegistryPort = SkillRegistrySeam
+MemoryBankPort = MemoryBankSeam
+SchedulerPort = SchedulerSeam
+A2AClientPort = A2AClientSeam
+ExtractionPort = ExtractionSeam
+EmailIngressPort = EmailIngressSeam
+AuditVaultSeam = AuditVaultPort
+OperationalStoreSeam = OperationalStorePort
+ActionInboxSeam = ActionInboxPort
+AgentGymSeam = AgentGymPort

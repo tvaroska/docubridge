@@ -53,6 +53,7 @@ import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 from bridge import netguard
@@ -121,7 +122,7 @@ def mime_for(name: str) -> str:
     return SUFFIX_MIME.get(Path(name).suffix.lower(), "application/octet-stream")
 
 
-async def maybe_await(value):
+async def maybe_await(value: Any) -> Any:
     """Await ``value`` when the resolver is async; pass a sync result straight through.
 
     The resolver became a coroutine when it grew a network leg, but every injected
@@ -206,7 +207,7 @@ async def _fetch_http(
     allowlist: frozenset[str] = frozenset(),
     timeout: float = FETCH_TIMEOUT_S,
     max_bytes: int = MAX_FETCH_BYTES,
-    client=None,
+    client: Any = None,
 ) -> ResolvedDocument:
     """GET an http(s) artifact under the egress guard; return its bytes + mime.
 
@@ -251,7 +252,7 @@ async def _fetch_http(
 
 
 async def _fetch_hops(
-    client,
+    client: Any,
     url: str,
     *,
     allowlist: frozenset[str],
@@ -302,7 +303,7 @@ async def _fetch_hops(
     )
 
 
-def _mime_from_response(headers, url: str) -> str:
+def _mime_from_response(headers: Any, url: str) -> str:
     """``Content-Type`` (parameters stripped), falling back to the URL suffix."""
     raw = (headers.get("content-type") or "").split(";")[0].strip().lower()
     if not raw or raw == "application/octet-stream":

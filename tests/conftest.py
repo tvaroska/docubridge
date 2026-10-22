@@ -43,15 +43,16 @@ def adapter(request) -> SeamMode:
 
 
 def pytest_collection_modifyitems(config, items):
-    """Abort collection on invalid @pytest.mark.seam names."""
+    """Abort collection on invalid @pytest.mark.port or @pytest.mark.seam names."""
     bad = []
     for item in items:
-        for marker in item.iter_markers(name="seam"):
-            name = marker.args[0] if marker.args else None
-            if not (isinstance(name, str) and is_valid_seam(name)):
-                bad.append((item.nodeid, name))
+        for marker_name in ("port", "seam"):
+            for marker in item.iter_markers(name=marker_name):
+                name = marker.args[0] if marker.args else None
+                if not (isinstance(name, str) and is_valid_seam(name)):
+                    bad.append((item.nodeid, f"{marker_name}={name!r}"))
     if bad:
-        lines = "\n".join(f"  {nodeid}: seam={name!r}" for nodeid, name in bad)
+        lines = "\n".join(f"  {nodeid}: {entry}" for nodeid, entry in bad)
         raise pytest.UsageError(
-            f"invalid @pytest.mark.seam name(s); valid seams are {sorted(SEAM_NAMES)}:\n{lines}"
+            f"invalid @pytest.mark.port / @pytest.mark.seam name(s); valid ports are {sorted(SEAM_NAMES)}:\n{lines}"
         )

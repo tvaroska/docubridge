@@ -17,6 +17,7 @@ variable "base_roles" {
   description = "Base project roles granted to the bridge-runtime SA."
   default = [
     "roles/cloudsql.client",
+    "roles/cloudsql.instanceUser",
     "roles/cloudtasks.enqueuer",
     "roles/aiplatform.user",
   ]

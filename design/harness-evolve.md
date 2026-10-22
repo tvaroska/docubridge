@@ -12,6 +12,8 @@ tags: [bridge, agent-gym, harness-evolve, extraction, docai, optimization]
 
 # Agent Gym × Harness Evolve — Continual Learning & Multi-Tier Extraction Evolution
 
+> **Canonical Methodology Source:** General OCTO Agent Gym, OCTO Harness Evolve (`arXiv:2609.00829`), and Harness² (`arXiv:2610.14224`, 8 editable harness surfaces `c1..c8` and Cheapest-Lever Gate) patterns are maintained in [`~/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md`](file:///usr/local/google/home/tvaroska/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md). This document specifies the DocuBridge-specific implementation (`bridge/agent_gym.py`, `bridge/extraction/gemini.py`, `skills/<doctype>/`).
+>
 > **Architecture & As-Built Status (`v1.14.0-agent-gateway`):** Unifies **OCTO Agent Gym** (online, SME-in-the-loop "Example of One" tacit knowledge capture with Two-Sided Oversight `RSR`) with **OCTO Harness Evolve (`HaE`)** (`compile_rules_to_skill()` / `POST /v1/gym/compile-skill` folding promoted rules into immutable `SkillRevision` packages in the Gemini platform Skill Registry with 1-click rollback and Bi-Temporal Process-Instance Skill Lineage) across all three extraction tiers: **Gemini (`gemini-3.8-flash` workhorse + `gemini-4-argon` teacher/judge)**, **Document AI Standard Extractors**, and **Document AI Custom Extractors**.
 
 ---

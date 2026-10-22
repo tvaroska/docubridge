@@ -2,7 +2,7 @@
 
 Feature area for the Bridge's **best-effort satisfaction proposal** — the model-interpreted, advisory completeness assessment that reads the process skill's prose rule and proposes outstanding/satisfied requirements in the status vocabulary. COLL-2: "1 gov-ID → 'looks done'; 1 bill → chases a 2nd distinct-issuer; app can always override; Bridge never enforces."
 
-Completed-work archive for this feature area (`docs/features/`). This holds the plan **substance**, not links — `.claude/plans/*` are local and gitignored, so their reasoning must be captured HERE (and decisions logged in `DECISIONS.md`).
+Completed-work archive for this feature area (`docs/features/`). This holds the implementation **substance** and rationale (with architectural decisions logged in `DECISIONS.md`).
 
 **Supports CUJs:** CUJ-10 (Collect), CUJ-1 (Request).
 

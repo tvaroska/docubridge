@@ -7,8 +7,7 @@ compare/standard-gap → negotiate → bind → rollup), plus **Bridge-as-client
 Deliver** and **cross-framework ADK↔LangGraph A2A interop**.
 
 Completed-work archive for this feature area (`docs/features/`). This holds the
-plan **substance**, not links — `.claude/plans/*` are local and gitignored, so
-their reasoning must be captured HERE (and decisions logged in `DECISIONS.md`).
+implementation **substance** and rationale (with architectural decisions logged in `DECISIONS.md`).
 When `/implement` finishes a task, it appends a completed entry below.
 
 **Supports CUJs:** CUJ-3 (Deliver), CUJ-11 (Negotiate over a program), CUJ-12

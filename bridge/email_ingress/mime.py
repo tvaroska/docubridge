@@ -36,6 +36,7 @@ import email.policy
 import hashlib
 import os
 import unicodedata
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
 from email.message import Message
@@ -147,7 +148,7 @@ def _date(msg: Message) -> datetime | None:
         return None
 
 
-def _leaves(part: Message, depth: int):
+def _leaves(part: Message, depth: int) -> Iterator[tuple[str, Message]]:
     """Yield ``(kind, part)``: ``leaf`` parts, or ``opaque`` for a 2nd-level forward."""
     if part.get_content_type() == "message/rfc822":
         if depth == 0:

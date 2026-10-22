@@ -4,8 +4,7 @@ Security, correctness, architecture, and debt findings from the whole-project au
 (`/review`), tracked in `TODO.md` "Sprint 0" and archived here.
 
 Completed-work archive for this feature area (`docs/features/`). This holds the
-plan **substance**, not links — `.claude/plans/*` are local and gitignored, so
-their reasoning must be captured HERE (and decisions logged in `DECISIONS.md`).
+implementation **substance** and rationale (with architectural decisions logged in `DECISIONS.md`).
 
 **Supports CUJs:** cross-cutting (wire contract underpins all A2A CUJs — 1,2,4,5,6,7,8,10)
 

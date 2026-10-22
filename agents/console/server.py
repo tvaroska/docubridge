@@ -22,6 +22,7 @@ injected ``httpx_client``.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
 from fastapi import FastAPI, HTTPException
@@ -66,9 +67,9 @@ class StartSessionBody(BaseModel):
 def build_console_app(
     *,
     card_url: str | None = None,
-    httpx_client=None,
+    httpx_client: Any = None,
     store: ConsoleStore | None = None,
-    session_service=None,
+    session_service: Any = None,
 ) -> FastAPI:
     """Build the Agent-Console FastAPI host.
 

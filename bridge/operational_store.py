@@ -1355,22 +1355,9 @@ _SQL_CACHE_LOCK = threading.Lock()
 
 
 def operational_store_from_env() -> OperationalStore:
-    """Resolve the OperationalStore from env: AlloyDB/Cloud SQL when a DSN is configured,
-    else :class:`InMemoryOperationalStore` in local mode (refuses in-memory on GCP)."""
-    dsn = (
-        os.environ.get(OPERATIONAL_DB_ENV, "").strip()
-        or os.environ.get("DATABASE_URL", "").strip()
-    )
-    if dsn:
-        with _SQL_CACHE_LOCK:
-            cached = _SQL_STORE_CACHE.get(dsn)
-            if cached is None:
-                cached = SqlOperationalStore(dsn)
-                _SQL_STORE_CACHE[dsn] = cached
-        return cached
-    if os.environ.get("BRIDGE_SEAM_MODE", "").strip().lower() == "gcp":
-        raise RuntimeError(
-            "GCP seam mode requires DATABASE_URL or BRIDGE_OPERATIONAL_DB_URL for "
-            "OperationalStore; refusing an in-memory fallback (the session-affinity trap)."
-        )
-    return InMemoryOperationalStore()
+    """Resolve the OperationalStore via the ``Port.operational_store`` port adapter."""
+    from bridge.ports import Port, get_adapter, resolve_mode
+
+    mode = resolve_mode(Port.operational_store)
+    adapter = get_adapter(Port.operational_store, mode)
+    return adapter.build_operational_store()

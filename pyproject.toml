@@ -67,8 +67,8 @@ line-length = 88
 [tool.ruff.lint]
 # Pragmatic core: pyflakes (F) + a curated subset of pycodestyle (E4 imports, E7
 # statements, E9 syntax — NOT E501), isort (I), pyupgrade (UP), bugbear (B),
-# flake8-simplify (SIM), ruff-native (RUF). High signal, low churn.
-select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF"]
+# flake8-simplify (SIM), flake8-annotations (ANN001, ANN201, ANN202), ruff-native (RUF).
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "ANN001", "ANN201", "ANN202", "RUF"]
 ignore = [
     # str+Enum → enum.StrEnum: changes __str__/wire-string behavior of the shared
     # contract/ enums (StrEnum stringifies to the value, (str, Enum) to "Cls.name").
@@ -86,9 +86,15 @@ known-first-party = ["contract", "bridge", "agents", "skills", "tests"]
 [tool.ruff.lint.per-file-ignores]
 # Package re-exports: names imported for the public surface, not used in-module.
 "**/__init__.py" = ["F401"]
+# Test fixtures, fake doubles, parametrized tests, and recording scripts omit verbose annotations.
+"tests/**" = ["ANN"]
+"**/tests/**" = ["ANN"]
+"demo/**" = ["ANN"]
+"**/demo/**" = ["ANN"]
 
 [tool.pytest.ini_options]
 markers = [
+    "port: shared port-parity tests parametrized over local/gcp adapters (Hexagonal Ports & Adapters)",
     "seam: shared seam-parity tests parametrized over local/gcp adapters",
 ]
 asyncio_mode = "auto"

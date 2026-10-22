@@ -51,6 +51,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from bridge.extraction.resolve import ResolvedDocument, maybe_await
 from contract.extraction import SourceAnchor
@@ -172,7 +173,7 @@ def build_process_request(
     }
 
 
-def _block_text(block) -> list[str]:
+def _block_text(block: Any) -> list[str]:
     """Text of one Layout Parser block, depth-first, in reading order."""
     out: list[str] = []
     text_block = getattr(block, "text_block", None)
@@ -203,7 +204,7 @@ def _block_text(block) -> list[str]:
     return out
 
 
-def document_text(document) -> str:
+def document_text(document: Any) -> str:
     """The plain text layer of a Document AI ``Document``.
 
     OCR and Form Parser fill ``document.text``. A Layout Parser response leaves it
@@ -232,7 +233,7 @@ def build_ocr_context(text: str) -> str:
     return OCR_CONTEXT.format(truncated=truncated, text=body)
 
 
-def _bbox_from_poly(poly) -> tuple[float, float, float, float] | None:
+def _bbox_from_poly(poly: Any) -> tuple[float, float, float, float] | None:
     """Convert a Document AI ``bounding_poly.normalized_vertices`` list to ``(x0, y0, x1, y1)``."""
     verts = getattr(poly, "normalized_vertices", None) or []
     if not verts:
@@ -243,7 +244,7 @@ def _bbox_from_poly(poly) -> tuple[float, float, float, float] | None:
 
 
 def extract_docai_source_anchors(
-    document, *, artifact_uri: str | None = None
+    document: Any, *, artifact_uri: str | None = None
 ) -> dict[str, SourceAnchor]:
     """Extract ``SourceAnchor`` (page number + normalized bounding box) per field from a
     Document AI ``Document`` response (``entities`` and ``pages[*].form_fields``)."""
@@ -318,7 +319,9 @@ class DocAIPrepass:
     the processor's regional endpoint, built lazily on first use.
     """
 
-    def __init__(self, processor: str | None = None, *, client=None, log=_LOG) -> None:
+    def __init__(
+        self, processor: str | None = None, *, client: Any = None, log: Any = _LOG
+    ) -> None:
         self._ref = resolve_processor(processor)
         self._client = client  # injected fake wins; else built lazily on first use
         self._log = log
@@ -333,7 +336,7 @@ class DocAIPrepass:
         """Return the regional Document AI API endpoint hostname."""
         return self._ref.endpoint
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         if self._client is None:
             from google.cloud import documentai
 

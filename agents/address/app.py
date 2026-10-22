@@ -20,6 +20,7 @@ ADK class, not a shared object (§1.4). Keep the two identical.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from google.adk.apps.app import App, ResumabilityConfig
 
@@ -81,8 +82,8 @@ def build_durable_session_service(
     agent_engine_id: str | None = None,
     project: str | None = None,
     location: str | None = None,
-    vertex_factory=None,
-):
+    vertex_factory: Any = None,
+) -> Any:
     """Build the Address consumer's session service.
 
     Precedence:
@@ -131,8 +132,8 @@ def build_address_app(
     card_url: str,
     *,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
-    httpx_client=None,
-    collect_node=None,
+    httpx_client: Any = None,
+    collect_node: Any = None,
     is_resumable: bool = True,
 ) -> App:
     """Build the Address ``Workflow`` wrapped in a resumable ADK ``App``.

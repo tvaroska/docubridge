@@ -25,6 +25,8 @@ private range are the SSRF risk this guard blocks.
 
 from __future__ import annotations
 
+from typing import Any
+
 from a2a.server.tasks import PushNotificationConfigStore
 from a2a.utils.errors import A2AError, InvalidParamsError
 
@@ -56,7 +58,9 @@ class SsrfGuardPushConfigStore(PushNotificationConfigStore):
         self._inner = inner
         self._allowlist = allowlist if allowlist is not None else allowlist_from_env()
 
-    async def set_info(self, task_id, notification_config, context):
+    async def set_info(
+        self, task_id: str, notification_config: Any, context: Any
+    ) -> Any:
         """Validate the webhook destination against SSRF rules and store the push notification config."""
         url = getattr(notification_config, "url", "") or ""
         allowed, reason = webhook_url_allowed(url, allowlist=self._allowlist)
@@ -66,15 +70,17 @@ class SsrfGuardPushConfigStore(PushNotificationConfigStore):
             )
         return await self._inner.set_info(task_id, notification_config, context)
 
-    async def get_info(self, task_id, context):
+    async def get_info(self, task_id: str, context: Any) -> Any:
         """Retrieve the stored push notification configuration for a task ID."""
         return await self._inner.get_info(task_id, context)
 
-    async def delete_info(self, task_id, context, config_id=None):
+    async def delete_info(
+        self, task_id: str, context: Any, config_id: str | None = None
+    ) -> Any:
         """Delete the stored push notification configuration for a task ID."""
         return await self._inner.delete_info(task_id, context, config_id)
 
-    async def get_info_for_dispatch(self, task_id):
+    async def get_info_for_dispatch(self, task_id: str) -> Any:
         """Re-validate the target webhook URL immediately before outbound push dispatch."""
         return await self._inner.get_info_for_dispatch(task_id)
 

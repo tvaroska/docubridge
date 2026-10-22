@@ -4,9 +4,8 @@ The agent-to-agent edge routing that combines deterministic collection with LlmA
 intent handling. Supports structured document submissions, off-script requests, HITL
 parks, and reviewer resolutions over the same A2A surface.
 
-Completed-work archive for this feature area. This holds the plan **substance**, not
-links — `.claude/plans/*` are local and gitignored, so their reasoning must be captured
-HERE (and decisions logged in `DECISIONS.md`).
+Completed-work archive for this feature area. This holds the full implementation
+**substance** and engineering rationale (cross-referenced with `DECISIONS.md`).
 
 **Supports CUJs:** CUJ-1 (Path-A assertion), CUJ-2/4/10 (structured collect), CUJ-5
 (HITL park/resume), CUJ-6 (SLA), plus off-script intents (deletion/escalate/reject).

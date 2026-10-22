@@ -301,7 +301,9 @@ def build_fetch_app(
     app = FastAPI()
 
     @app.get("/{context_id}/{filename}")
-    async def fetch_artifact(context_id: str, filename: str, v: int | None = None):
+    async def fetch_artifact(
+        context_id: str, filename: str, v: int | None = None
+    ) -> Response:
         # Real per-turn Gateway re-auth / bearer scoping is DUR-7 / P7-5; the leg
         # boundary here is structural (the store key = context_id + filename),
         # not authenticated. The URI carries no party, so probe known parties.

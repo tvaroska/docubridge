@@ -6,8 +6,7 @@ deployed-path parity so the Address golden runs reproduce the same terminal outc
 on the provisioned substrate, not just local.
 
 Completed-work archive for this feature area (`docs/features/`). This holds the
-plan **substance**, not links — `.claude/plans/*` are local and gitignored, so
-their reasoning must be captured HERE (and decisions logged in `DECISIONS.md`).
+implementation **substance** and rationale (with architectural decisions logged in `DECISIONS.md`).
 When `/implement` finishes a task, it appends a completed entry below.
 
 **Requirements (THE WHAT) live in `spec/` and `design/`, already authored — do not duplicate here:**

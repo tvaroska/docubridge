@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -86,7 +87,7 @@ class SessionIndex:
         os.replace(tmp, self._path)  # atomic-ish; a crash mid-write can't corrupt
 
 
-def extract_task_id(body) -> str | None:
+def extract_task_id(body: Any) -> str | None:
     """Recover the changed task id from a ``PushNotificationEvent`` doorbell body.
 
     Accepts ``bytes | str | dict``. The doorbell carries only "task X changed"
@@ -124,7 +125,7 @@ def extract_task_id(body) -> str | None:
     return None
 
 
-def peer_task_id_for(session) -> str | None:
+def peer_task_id_for(session: Any) -> str | None:
     """Read the parked peer (Bridge) task id off the session (``custom_metadata``).
 
     ``RemoteA2aAgent`` stamps ``a2a:task_id`` onto every relayed event's
@@ -150,13 +151,13 @@ async def wake_task(
     *,
     index: SessionIndex,
     card_url: str,
-    session_service=None,  # test seam; else built from BRIDGE_AGENT_ENGINE_ID / BRIDGE_SESSION_DB_URL
-    httpx_client=None,  # test seam: in-process mock to the Bridge
+    session_service: Any = None,  # test seam; else built from BRIDGE_AGENT_ENGINE_ID / BRIDGE_SESSION_DB_URL
+    httpx_client: Any = None,  # test seam: in-process mock to the Bridge
     process: str = "address-proof",
     max_rounds: int | None = None,
     max_resumes: int | None = None,
-    remote_engine=None,  # optional Agent Engine ReasoningEngine handle
-):
+    remote_engine: Any = None,  # optional Agent Engine ReasoningEngine handle
+) -> Any:
     """Wake a parked leg on a "task X changed" doorbell (restore, then run_async).
 
     Look up the ``SessionRef``, restore the durable session, find the pending
@@ -199,8 +200,8 @@ def build_wake_app(
     card_url: str,
     *,
     path: str = DEFAULT_WAKE_PATH,
-    httpx_client=None,
-    session_service=None,
+    httpx_client: Any = None,
+    session_service: Any = None,
 ) -> Starlette:
     """The webhook RECEIVER (the custom inbound surface a2a-sdk doesn't ship).
 
