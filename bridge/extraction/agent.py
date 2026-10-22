@@ -12,7 +12,9 @@ from bridge import gatepin
 from bridge.classification import canonicalize_issuer
 from bridge.seams import Seam, get_adapter, resolve_mode
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
+WORKHORSE_MODEL = DEFAULT_MODEL
+REASONING_MODEL = "gemini-4-argon"
 
 EXTRACTION_INSTRUCTION = """You are the extraction agent. Given a document artifact, call the extract_document tool and return its structured result. Do not judge acceptance — that is the gate's job."""
 
@@ -52,15 +54,26 @@ async def extract_document(
 
 
 def resolve_model(model: str | BaseLlm | None = None) -> str | BaseLlm:
-    """Resolve the effective model: an explicit name or ``BaseLlm`` wins.
+    """Resolve the effective workhorse model: an explicit name or ``BaseLlm`` wins.
 
-    ``None`` / ``""`` fall back to ``BRIDGE_MODEL`` env, else ``DEFAULT_MODEL``. A
-    ``BaseLlm`` instance (e.g. the model-free test double) is returned unchanged —
-    tested with ``is None`` / ``== ""``, never truthiness, so an instance is never
-    re-routed to a model name.
+    ``None`` / ``""`` fall back to ``BRIDGE_MODEL`` env, else ``DEFAULT_MODEL``
+    (``gemini-3.8-flash``). A ``BaseLlm`` instance (e.g. the model-free test double) is
+    returned unchanged — tested with ``is None`` / ``== ""``, never truthiness, so an
+    instance is never re-routed to a model name.
     """
     if model is None or (isinstance(model, str) and model == ""):
         return os.environ.get("BRIDGE_MODEL", DEFAULT_MODEL)
+    return model
+
+
+def resolve_reasoning_model(model: str | BaseLlm | None = None) -> str | BaseLlm:
+    """Resolve the high-reasoning specialist model (``gemini-4-argon`` by default).
+
+    Used for cross-document conflict adjudication, Agent Gym rule synthesis,
+    independent autorater evaluation, and nightly ``SKILL.md`` compilation.
+    """
+    if model is None or (isinstance(model, str) and model == ""):
+        return os.environ.get("BRIDGE_REASONING_MODEL", REASONING_MODEL)
     return model
 
 

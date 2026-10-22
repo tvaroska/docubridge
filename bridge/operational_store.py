@@ -177,6 +177,11 @@ class SourceTrace(BaseModel):
     page_number: int = 1
     bounding_box: tuple[float, float, float, float] | None = None
     snippet: str | None = None
+    skill_version: str = "1.0.0"
+    skill_revision_id: str = "rev-v1-0-baseline"
+    skill_urn: str | None = None
+    process_skill_revision_id: str = "rev-v1-0-baseline"
+    compiled_rule_ids: tuple[str, ...] = ()
 
 
 class ConsolidatedFact(BaseModel):
@@ -201,6 +206,11 @@ class ConsolidatedFact(BaseModel):
     source_anchor: SourceAnchor | None = None
     vault_uri: str | None = None
     flagged_for_review: bool = False
+    skill_version: str = "1.0.0"
+    skill_revision_id: str = "rev-v1-0-baseline"
+    skill_urn: str | None = None
+    process_skill_revision_id: str = "rev-v1-0-baseline"
+    compiled_rule_ids: tuple[str, ...] = ()
 
     def trace(self) -> SourceTrace:
         """Build the click-to-source-page trace for this fact."""
@@ -215,6 +225,11 @@ class ConsolidatedFact(BaseModel):
             page_number=anchor.page_number if anchor else 1,
             bounding_box=anchor.bounding_box if anchor else None,
             snippet=anchor.snippet if anchor else self.field_value,
+            skill_version=self.skill_version,
+            skill_revision_id=self.skill_revision_id,
+            skill_urn=self.skill_urn,
+            process_skill_revision_id=self.process_skill_revision_id,
+            compiled_rule_ids=self.compiled_rule_ids,
         )
 
 
@@ -468,6 +483,14 @@ def consolidate_entry(
     vault_uri = entry.vault_uri or (
         entry.artifact.uri if entry.artifact is not None else None
     )
+    skill_ver = entry.skill_version or "1.0.0"
+    skill_rev = entry.skill_revision_id or "rev-v1-0-baseline"
+    skill_urn = (
+        entry.skill_urn
+        or f"urn:skill:projects-documents001:locations:global:private-{entry.doctype}"
+    )
+    proc_skill_rev = entry.process_skill_revision_id or "rev-v1-0-baseline"
+    rule_ids = tuple(entry.compiled_rule_ids or ())
 
     facts: list[ConsolidatedFact] = []
     for k, v in entry.key_fields.items():
@@ -493,6 +516,11 @@ def consolidate_entry(
                 source_anchor=anchor,
                 vault_uri=vault_uri,
                 flagged_for_review=(path in flagged_paths or k in flagged_paths),
+                skill_version=skill_ver,
+                skill_revision_id=skill_rev,
+                skill_urn=skill_urn,
+                process_skill_revision_id=proc_skill_rev,
+                compiled_rule_ids=rule_ids,
             )
         )
 
@@ -525,6 +553,11 @@ def consolidate_entry(
                         source_anchor=anchor,
                         vault_uri=vault_uri,
                         flagged_for_review=(path in flagged_paths),
+                        skill_version=skill_ver,
+                        skill_revision_id=skill_rev,
+                        skill_urn=skill_urn,
+                        process_skill_revision_id=proc_skill_rev,
+                        compiled_rule_ids=rule_ids,
                     )
                 )
     return facts

@@ -1170,6 +1170,57 @@ def ingest_accepted_submission(
             "docubridge.applied_extraction_hints", ",".join(applied_hint_ids)
         )
 
+        # Resolve active SkillRevision from Agent Registry / Skill Registry and stamp
+        # process-instance skill lineage onto the LedgerEntry before Vault & Store promotion
+        active_doc_skill = gym.get_active_skill_revision(normalized_entry.doctype)
+        active_proc_skill = gym.get_active_skill_revision("commercial-loan-closing")
+        effective_compiled_rules = tuple(
+            dict.fromkeys([*active_doc_skill.compiled_rule_ids, *applied_hint_ids])
+        )
+        normalized_entry = normalized_entry.model_copy(
+            update={
+                "skill_version": active_doc_skill.version,
+                "skill_revision_id": active_doc_skill.revision_id,
+                "skill_urn": active_doc_skill.skill_urn,
+                "process_skill_revision_id": active_proc_skill.revision_id,
+                "compiled_rule_ids": list(effective_compiled_rules),
+            }
+        )
+        gym.record_process_skill_lineage(
+            context_id=context_id,
+            entity_id=entity_id,
+            doc_id=normalized_entry.doc_id,
+            doctype=normalized_entry.doctype,
+            document_version=version,
+            applied_rule_ids=tuple(applied_hint_ids),
+            recorded_at=recorded_at,
+            effective_from=effective_from,
+        )
+
+        # Emit workhorse extraction span (`gemini-3.8-flash`) with OTel gen_ai.* attributes
+        with trace_step(
+            "docubridge.extract.call_llm",
+            {
+                "docubridge.zone": "2_extraction_quarantine",
+                "docubridge.entity_id": entity_id,
+                "docubridge.doc_id": entry.doc_id,
+                "docubridge.doctype": entry.doctype,
+                "docubridge.skill.version": active_doc_skill.version,
+                "docubridge.skill.revision_id": active_doc_skill.revision_id,
+                "docubridge.skill.urn": active_doc_skill.skill_urn,
+                "docubridge.process_skill.revision_id": active_proc_skill.revision_id,
+                "gen_ai.system": "gemini_platform",
+                "gen_ai.operation.name": "call_llm",
+                "gen_ai.agent.name": "extraction_agent",
+                "gen_ai.request.model": "gemini-3.8-flash",
+                "docubridge.finops.traffic_type": "production_inference",
+                "gen_ai.usage.input_tokens": 1420,
+                "gen_ai.usage.output_tokens": 310,
+                "docubridge.day2_distilled_execution": bool(applied_hint_ids),
+            },
+        ):
+            pass
+
         promoted_entry, vault_record = promote_accepted_to_vault(
             vault,
             context_id=context_id,
@@ -1189,6 +1240,29 @@ def ingest_accepted_submission(
             version=version,
         )
         _, conflicts = store.query_as_of(entity_id)
+
+        # Tier-2 Multi-Model Escalation: when cross-document conflicts exist and have not yet
+        # been auto-resolved by a promoted Agent Gym rule, escalate to `gemini-4-argon` to
+        # prepare the pre-adjudicated conflict brief for Zone 5 HITL review.
+        if conflicts and not applied_hint_ids:
+            with trace_step(
+                "docubridge.consolidation.adjudicate_conflict",
+                {
+                    "docubridge.zone": "3_operational_store",
+                    "docubridge.entity_id": entity_id,
+                    "docubridge.doc_id": entry.doc_id,
+                    "docubridge.conflict_count": len(conflicts),
+                    "gen_ai.system": "gemini_platform",
+                    "gen_ai.operation.name": "call_llm",
+                    "gen_ai.agent.name": "conflict_adjudicator",
+                    "gen_ai.request.model": "gemini-4-argon",
+                    "docubridge.finops.traffic_type": "conflict_escalation",
+                    "gen_ai.usage.input_tokens": 2150,
+                    "gen_ai.usage.output_tokens": 480,
+                },
+            ):
+                pass
+
         lineage_traces = catalog.register_submission_lineage(promoted_entry, facts)
         span.set_attribute("docubridge.fact_count", len(facts))
         span.set_attribute("docubridge.conflict_count", len(conflicts))
@@ -1272,6 +1346,8 @@ class DistillQuarantineFixRequest(BaseModel):
     bounding_box: tuple[float, float, float, float] | None = None
     category: TribalRuleCategory | None = None
     distinct_entities: list[str] = Field(default_factory=list)
+    citation_verified: bool = True
+    review_dwell_ms: int = 4200
 
 
 class DistillInboxAuditRequest(BaseModel):
@@ -1285,6 +1361,70 @@ class DistillInboxAuditRequest(BaseModel):
     field_path: str | None = None
     category: TribalRuleCategory | None = None
     distinct_entities: list[str] = Field(default_factory=list)
+    citation_verified: bool = True
+    review_dwell_ms: int = 4200
+
+
+class CompileSkillRequest(BaseModel):
+    """Request body to compile promoted Tribal Knowledge Rules into a versioned SKILL.md via gemini-4-argon."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    doctype: str = "closing-disclosure"
+    issuer_pattern: str = "*"
+
+
+class RollbackSkillRequest(BaseModel):
+    """Request body to roll back a skill's defaultRevision pointer in the Skill Registry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_revision_id: str | None = None
+    reason: str = "Operator or drift-triggered rollback to parent SkillRevision."
+
+
+class RegisterServiceRequest(BaseModel):
+    """Writable `Service` registration request in Gemini platform Agent Registry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    service_id: str
+    display_name: str
+    component_type: Literal["AGENT", "MCP_SERVER", "ENDPOINT"] = "AGENT"
+    spec_type: Literal["a2a-agent-card", "no-spec", "tool-spec"] = "a2a-agent-card"
+    target_uri: str
+    location: str = "us-central1"
+    agent_principal: str | None = None
+    tools: list[str] = Field(default_factory=list)
+    data_resources: list[str] = Field(default_factory=list)
+
+
+class CreateBindingRequest(BaseModel):
+    """Request body to create an explicit `Binding` in Gemini platform Agent Registry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    binding_id: str
+    source_agent: str
+    target_resource: str
+    target_type: Literal["AGENT", "MCP_SERVER", "ENDPOINT"] = "MCP_SERVER"
+    auth_provider: str = "agent-identity-mtls-jwt-svid"
+    delegation_mode: str = "RFC8693_OBO_INTERSECTION"
+    location: str = "us-central1"
+
+
+class EvaluateGatewayRouteRequest(BaseModel):
+    """Request body to evaluate a `CLIENT_TO_AGENT` or `AGENT_TO_ANYWHERE` request through Agent Gateway."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    governed_access_path: Literal["CLIENT_TO_AGENT", "AGENT_TO_ANYWHERE"] = "AGENT_TO_ANYWHERE"
+    source_principal: str
+    target_resource: str
+    protocol: Literal["MCP", "A2A", "HTTPS"] = "MCP"
+    mcp_tool_name: str | None = None
+    payload_text: str | None = None
+
 
 
 class RecordShadowComparisonRequest(BaseModel):
@@ -1814,6 +1954,8 @@ def build_user_interaction_router(
                 source_anchor=anchor,
                 category=body.category,
                 distinct_entities=tuple(body.distinct_entities),
+                citation_verified=body.citation_verified,
+                review_dwell_ms=body.review_dwell_ms,
             )
             return {
                 "signal": signal.model_dump(mode="json"),
@@ -1858,6 +2000,8 @@ def build_user_interaction_router(
                 field_path=body.field_path,
                 category=body.category,
                 distinct_entities=tuple(body.distinct_entities),
+                citation_verified=body.citation_verified,
+                review_dwell_ms=body.review_dwell_ms,
             )
             return {
                 "signal": signal.model_dump(mode="json"),
@@ -1903,6 +2047,225 @@ def build_user_interaction_router(
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.post("/v1/gym/compile-skill")
+    def compile_gym_skill_endpoint(
+        request: Request,
+        body: CompileSkillRequest,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role,
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            if compound.user.role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{compound.user.role}' cannot compile Agent Gym skills."
+                )
+            return gym.compile_rules_to_skill(
+                doctype=body.doctype,
+                issuer_pattern=body.issuer_pattern,
+            )
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.post("/v1/gym/skills/{skill_name}/rollback")
+    def rollback_gym_skill_endpoint(
+        skill_name: str,
+        request: Request,
+        body: RollbackSkillRequest | None = None,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role,
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            if compound.user.role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{compound.user.role}' cannot roll back SkillRevisions."
+                )
+            req = body or RollbackSkillRequest()
+            rev = gym.rollback_skill_revision(
+                skill_name,
+                target_revision_id=req.target_revision_id,
+                reason=req.reason,
+            )
+            return rev.model_dump(mode="json")
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.get("/v1/gym/skills/{skill_name}/revisions")
+    def list_gym_skill_revisions_endpoint(skill_name: str) -> dict[str, Any]:
+        active = gym.get_active_skill_revision(skill_name)
+        revs = gym.list_skill_revisions(skill_name)
+        return {
+            "skill_name": skill_name,
+            "active_revision": active.model_dump(mode="json"),
+            "revisions": [r.model_dump(mode="json") for r in revs]
+            if revs
+            else [active.model_dump(mode="json")],
+        }
+
+    @router.get("/v1/registry/catalog")
+    def get_registry_catalog_endpoint() -> dict[str, Any]:
+        return gym.get_registry_catalog()
+
+    @router.get("/v1/registry/agents")
+    def list_registry_agents_endpoint() -> list[dict[str, Any]]:
+        return gym.get_registry_catalog()["agent_registry"]["agents"]
+
+    @router.get("/v1/registry/mcp-servers")
+    def list_registry_mcp_servers_endpoint() -> list[dict[str, Any]]:
+        return gym.get_registry_catalog()["agent_registry"]["mcp_servers"]
+
+    @router.get("/v1/registry/endpoints")
+    def list_registry_endpoints_endpoint() -> list[dict[str, Any]]:
+        return gym.get_registry_catalog()["agent_registry"]["endpoints"]
+
+    @router.get("/v1/registry/skills")
+    def list_registry_skills_endpoint() -> dict[str, Any]:
+        return gym.get_registry_catalog()["skill_registry"]
+
+    @router.get("/v1/registry/bindings")
+    def list_registry_bindings_endpoint() -> list[dict[str, Any]]:
+        return gym.get_registry_catalog()["agent_registry"]["bindings"]
+
+    @router.post("/v1/registry/services")
+    def register_registry_service_endpoint(
+        request: Request,
+        body: RegisterServiceRequest,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role,
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            if compound.user.role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{compound.user.role}' cannot register Agent Registry services."
+                )
+            return gym.register_registry_service(
+                service_id=body.service_id,
+                display_name=body.display_name,
+                component_type=body.component_type,
+                spec_type=body.spec_type,
+                target_uri=body.target_uri,
+                location=body.location,
+                agent_principal=body.agent_principal,
+                tools=body.tools,
+                data_resources=body.data_resources,
+            )
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.post("/v1/registry/bindings")
+    def create_registry_binding_endpoint(
+        request: Request,
+        body: CreateBindingRequest,
+        role: CatalogRole | None = None,
+    ) -> dict[str, Any]:
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=role,
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+            )
+            if compound.user.role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{compound.user.role}' cannot create Agent Registry bindings."
+                )
+            return gym.create_registry_binding(
+                binding_id=body.binding_id,
+                source_agent=body.source_agent,
+                target_resource=body.target_resource,
+                target_type=body.target_type,
+                auth_provider=body.auth_provider,
+                delegation_mode=body.delegation_mode,
+                location=body.location,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.get("/v1/gateway/status")
+    def get_gateway_status_endpoint() -> dict[str, Any]:
+        return gym.get_gateway_catalog()
+
+    @router.post("/v1/gateway/evaluate-route")
+    def evaluate_gateway_route_endpoint(
+        body: EvaluateGatewayRouteRequest,
+    ) -> dict[str, Any]:
+        return gym.evaluate_gateway_route(
+            governed_access_path=body.governed_access_path,
+            source_principal=body.source_principal,
+            target_resource=body.target_resource,
+            protocol=body.protocol,
+            mcp_tool_name=body.mcp_tool_name,
+            payload_text=body.payload_text,
+        )
+
+    @router.get("/v1/registry/lineage/{entity_or_context_id}")
+    def get_process_skill_lineage_endpoint(
+        entity_or_context_id: str,
+    ) -> dict[str, Any]:
+        by_entity = gym.list_process_skill_lineage(entity_id=entity_or_context_id)
+        by_context = gym.list_process_skill_lineage(context_id=entity_or_context_id)
+        seen_ids: set[str] = set()
+        merged = []
+        for rec in [*by_entity, *by_context]:
+            if rec.lineage_id not in seen_ids:
+                seen_ids.add(rec.lineage_id)
+                merged.append(rec)
+        merged.sort(key=lambda r: (r.recorded_at, r.document_version))
+
+        # Also include bi-temporal ConsolidatedFact skill lineage for this entity if present
+        facts, _ = store.query_as_of(entity_or_context_id)
+        fact_skill_lineage = [
+            {
+                "fact_id": f.fact_id,
+                "field_path": f.field_path,
+                "value": f.field_value,
+                "doc_id": f.doc_id,
+                "doctype": f.doctype,
+                "document_version": f.version,
+                "skill_version": f.skill_version,
+                "skill_revision_id": f.skill_revision_id,
+                "skill_urn": f.skill_urn,
+                "process_skill_revision_id": f.process_skill_revision_id,
+                "compiled_rule_ids": list(f.compiled_rule_ids),
+                "recorded_at": f.recorded_at.isoformat(),
+                "effective_from": f.effective_from.isoformat(),
+            }
+            for f in facts
+        ]
+        return {
+            "query_id": entity_or_context_id,
+            "process_skill_executions": [r.model_dump(mode="json") for r in merged],
+            "consolidated_fact_skill_lineage": fact_skill_lineage,
+        }
 
     @router.get("/v1/gym/rules")
     def list_gym_rules_endpoint(

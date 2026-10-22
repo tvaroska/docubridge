@@ -514,14 +514,19 @@ def compute_trace_analytics(
         step_latency.append(
             {
                 "span_name": span_name,
+                "step_name": span_name,
                 "zone": zone,
                 "invocation_count": inv_count,
+                "span_count": inv_count,
                 "error_count": err_count,
                 "error_rate_pct": round(100.0 * err_count / inv_count, 2) if inv_count else 0.0,
                 "avg_duration_ms": avg_dur,
                 "p50_duration_ms": _percentile(durations, 50),
                 "p95_duration_ms": _percentile(durations, 95),
                 "p99_duration_ms": _percentile(durations, 99),
+                "p50_ms": _percentile(durations, 50),
+                "p95_ms": _percentile(durations, 95),
+                "p99_ms": _percentile(durations, 99),
                 "max_duration_ms": round(max(durations), 3) if durations else 0.0,
             }
         )
@@ -543,21 +548,65 @@ def compute_trace_analytics(
         parsed_epochs.append((sp, epoch_ms))
 
     trace_waterfall: list[dict[str, Any]] = []
+    workhorse_calls = 0
+    workhorse_in_tokens = 0
+    workhorse_out_tokens = 0
+    reasoning_calls = 0
+    reasoning_in_tokens = 0
+    reasoning_out_tokens = 0
+    deterministic_zero_token_spans = 0
+    prod_inference_tokens = 0
+    conflict_escalation_tokens = 0
+    gym_eval_tokens = 0
+
     for sp, epoch_ms in parsed_epochs:
         tid = sp.get("trace_id", "")
         attrs = sp.get("attributes") or {}
         base_ms = trace_min_ts.get(tid, epoch_ms)
+        model_name = attrs.get("gen_ai.request.model")
+        op_name = attrs.get("gen_ai.operation.name")
+        traffic_type = attrs.get("docubridge.finops.traffic_type")
+        in_tok = int(attrs["gen_ai.usage.input_tokens"]) if "gen_ai.usage.input_tokens" in attrs else None
+        out_tok = int(attrs["gen_ai.usage.output_tokens"]) if "gen_ai.usage.output_tokens" in attrs else None
+        span_total_tok = (in_tok or 0) + (out_tok or 0)
+
+        if model_name == "gemini-3.8-flash":
+            workhorse_calls += 1
+            workhorse_in_tokens += in_tok or 0
+            workhorse_out_tokens += out_tok or 0
+        elif model_name == "gemini-4-argon":
+            reasoning_calls += 1
+            reasoning_in_tokens += in_tok or 0
+            reasoning_out_tokens += out_tok or 0
+        else:
+            deterministic_zero_token_spans += 1
+
+        if traffic_type == "production_inference":
+            prod_inference_tokens += span_total_tok
+        elif traffic_type == "conflict_escalation":
+            conflict_escalation_tokens += span_total_tok
+        elif traffic_type == "agent_gym_eval":
+            gym_eval_tokens += span_total_tok
+
         trace_waterfall.append(
             {
                 "trace_id": tid,
                 "span_id": sp.get("span_id"),
                 "parent_span_id": sp.get("parent_span_id"),
+                "name": sp.get("name"),
                 "span_name": sp.get("name"),
                 "zone": attrs.get("docubridge.zone"),
                 "entity_id": attrs.get("docubridge.entity_id"),
                 "doc_id": attrs.get("docubridge.doc_id"),
                 "actor_role": attrs.get("docubridge.actor_role") or attrs.get("docubridge.role"),
                 "agent_spiffe_id": attrs.get("docubridge.agent_spiffe_id"),
+                "gen_ai_system": attrs.get("gen_ai.system"),
+                "gen_ai_model": model_name,
+                "gen_ai_operation": op_name,
+                "gen_ai_agent": attrs.get("gen_ai.agent.name"),
+                "traffic_type": traffic_type,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
                 "start_time": sp.get("start_time"),
                 "end_time": sp.get("end_time"),
                 "duration_ms": float(sp.get("duration_ms", 0.0)),
@@ -628,6 +677,33 @@ def compute_trace_analytics(
             }
         )
 
+    finops_model_split = {
+        "workhorse_model": {
+            "model": "gemini-3.8-flash",
+            "role": "Runtime Coordinator & Multimodal PDF Extractor (Tier 1 Workhorse)",
+            "calls": workhorse_calls,
+            "call_count": workhorse_calls,
+            "input_tokens": workhorse_in_tokens,
+            "output_tokens": workhorse_out_tokens,
+            "total_tokens": workhorse_in_tokens + workhorse_out_tokens,
+        },
+        "reasoning_model": {
+            "model": "gemini-4-argon",
+            "role": "Cross-Doc Conflict Adjudicator & Agent Gym Teacher / Autorater / Skill Compiler (Tier 2 Pro)",
+            "calls": reasoning_calls,
+            "call_count": reasoning_calls,
+            "input_tokens": reasoning_in_tokens,
+            "output_tokens": reasoning_out_tokens,
+            "total_tokens": reasoning_in_tokens + reasoning_out_tokens,
+        },
+        "deterministic_zero_token_spans": deterministic_zero_token_spans,
+        "traffic_attribution": {
+            "production_inference_tokens": prod_inference_tokens,
+            "conflict_escalation_tokens": conflict_escalation_tokens,
+            "agent_gym_eval_tokens": gym_eval_tokens,
+        },
+    }
+
     return {
         "total_spans_analyzed": len(spans),
         "bigquery_target": {
@@ -641,6 +717,7 @@ def compute_trace_analytics(
                 "entity_pipeline_summary": f"{bq_proj}.{bq_ds}.v_entity_pipeline_summary",
             },
         },
+        "finops_model_split": finops_model_split,
         "step_latency": step_latency,
         "entity_pipeline_summary": entity_pipeline_summary,
         "trace_waterfall": trace_waterfall,

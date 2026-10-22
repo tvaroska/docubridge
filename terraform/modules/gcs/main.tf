@@ -76,6 +76,16 @@ resource "google_storage_bucket_iam_member" "skills_object_admin" {
   member = var.service_account_member
 }
 
+# Gemini Platform Agent Registry Service Agent (service-<PROJECT_NUMBER>@gcp-sa-agentregistry.iam.gserviceaccount.com)
+# read access so `agentregistry.googleapis.com` can read and version skill .zip archives in gs://<prefix>-skills.
+resource "google_storage_bucket_iam_member" "skills_agent_registry_viewer" {
+  count = var.agent_registry_service_agent_member != "" ? 1 : 0
+
+  bucket = google_storage_bucket.skills.name
+  role   = "roles/storage.objectViewer"
+  member = var.agent_registry_service_agent_member
+}
+
 resource "google_storage_bucket_iam_member" "artifacts_object_admin" {
   bucket = google_storage_bucket.artifacts.name
   role   = "roles/storage.objectAdmin"

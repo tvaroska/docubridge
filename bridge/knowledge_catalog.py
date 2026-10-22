@@ -167,6 +167,11 @@ class LineageTrace(BaseModel):
     recorded_at: datetime
     effective_from: datetime
     consolidation_rule: str
+    skill_version: str = "1.0.0"
+    skill_revision_id: str = "rev-v1-0-baseline"
+    skill_urn: str | None = None
+    process_skill_revision_id: str = "rev-v1-0-baseline"
+    compiled_rule_ids: tuple[str, ...] = ()
     nodes: tuple[LineageNode, ...]
     edges: tuple[LineageEdge, ...]
 
@@ -782,7 +787,15 @@ class InMemoryKnowledgeCatalog:
             label=f"Source PDF ({fact.doctype}, page {page_num})",
             uri=source_pdf_uri,
             zone=AssetLocationZone.INBOUND,
-            metadata={"page_number": page_num, "doctype": fact.doctype},
+            metadata={
+                "page_number": page_num,
+                "doctype": fact.doctype,
+                "skill_urn": fact.skill_urn,
+                "skill_version": fact.skill_version,
+                "skill_revision_id": fact.skill_revision_id,
+                "process_skill_revision_id": fact.process_skill_revision_id,
+                "compiled_rule_ids": list(fact.compiled_rule_ids),
+            },
         )
         vault_node = LineageNode(
             node_id=f"vault:{fact.entity_id}:{fact.doc_id}",
@@ -801,6 +814,11 @@ class InMemoryKnowledgeCatalog:
                 "source_priority": fact.source_priority,
                 "recorded_at": fact.recorded_at.isoformat(),
                 "effective_from": fact.effective_from.isoformat(),
+                "skill_urn": fact.skill_urn,
+                "skill_version": fact.skill_version,
+                "skill_revision_id": fact.skill_revision_id,
+                "process_skill_revision_id": fact.process_skill_revision_id,
+                "compiled_rule_ids": list(fact.compiled_rule_ids),
             },
         )
         view_node = LineageNode(
@@ -828,14 +846,17 @@ class InMemoryKnowledgeCatalog:
             LineageEdge(
                 upstream_id=src_node.node_id,
                 downstream_id=vault_node.node_id,
-                transformation="Intake validation, PII redaction & WORM promotion",
+                transformation=(
+                    f"Intake validation ({fact.doctype}@{fact.skill_revision_id} "
+                    f"v{fact.skill_version}), PII redaction & WORM promotion"
+                ),
             ),
             LineageEdge(
                 upstream_id=vault_node.node_id,
                 downstream_id=fact_node.node_id,
                 transformation=(
                     f"Consolidation Rules Engine (priority={fact.source_priority}, "
-                    "bi-temporal append)"
+                    f"skill={fact.skill_revision_id}, bi-temporal append)"
                 ),
             ),
             LineageEdge(
@@ -866,8 +887,13 @@ class InMemoryKnowledgeCatalog:
             effective_from=fact.effective_from,
             consolidation_rule=(
                 f"source_priority_hierarchy(priority={fact.source_priority}, "
-                f"doctype={fact.doctype})"
+                f"doctype={fact.doctype}, skill_revision={fact.skill_revision_id})"
             ),
+            skill_version=fact.skill_version,
+            skill_revision_id=fact.skill_revision_id,
+            skill_urn=fact.skill_urn,
+            process_skill_revision_id=fact.process_skill_revision_id,
+            compiled_rule_ids=fact.compiled_rule_ids,
             nodes=(src_node, vault_node, fact_node, view_node, bq_node, a2ui_node),
             edges=edges,
         )

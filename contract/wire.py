@@ -62,6 +62,12 @@ class LedgerEntry(BaseModel):
     recorded_at: datetime | None = None
     effective_from: datetime | None = None
     vault_uri: str | None = None
+    # Skill Registry & Process-Instance Lineage (additive + defaulted):
+    skill_version: str | None = None
+    skill_revision_id: str | None = None
+    skill_urn: str | None = None
+    process_skill_revision_id: str | None = None
+    compiled_rule_ids: list[str] = []
 
 
 class Requirement(BaseModel):

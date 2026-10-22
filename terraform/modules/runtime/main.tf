@@ -66,9 +66,12 @@ locals {
     BRIDGE_SKILLS_BUCKET        = var.skills_bucket
     BRIDGE_EXTRACTION_ENGINE    = var.extraction_engine
     BRIDGE_DOCAI_PROCESSOR      = var.docai_processor
-    BRIDGE_AGENT_ENGINE_ID      = var.agent_engine_id
-    BRIDGE_AGENT_ENGINE_REMOTE  = var.agent_engine_remote
-    BRIDGE_TELEMETRY_BQ_TABLE   = var.telemetry_bq_table
+    BRIDGE_AGENT_ENGINE_ID                     = var.agent_engine_id
+    BRIDGE_AGENT_ENGINE_REMOTE                 = var.agent_engine_remote
+    BRIDGE_TELEMETRY_BQ_TABLE                  = var.telemetry_bq_table
+    GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY = var.agent_engine_id != "" ? "true" : ""
+    BRIDGE_MODEL                               = var.agent_engine_id != "" ? "gemini-3.8-flash" : ""
+    BRIDGE_REASONING_MODEL                     = var.agent_engine_id != "" ? "gemini-4-argon" : ""
     GOOGLE_GENAI_USE_VERTEXAI   = var.seam_mode == "gcp" ? "TRUE" : ""
     GOOGLE_CLOUD_PROJECT        = var.seam_mode == "gcp" ? var.project_id : ""
     GOOGLE_CLOUD_LOCATION       = var.seam_mode == "gcp" ? var.region : ""
@@ -264,6 +267,30 @@ resource "google_cloud_run_v2_service" "bridge" {
         content {
           name  = "BRIDGE_AGENT_ENGINE_A2A"
           value = var.agent_engine_a2a
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.agent_engine_id != "" ? [1] : []
+        content {
+          name  = "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY"
+          value = "true"
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.agent_engine_id != "" ? [1] : []
+        content {
+          name  = "BRIDGE_MODEL"
+          value = "gemini-3.8-flash"
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.agent_engine_id != "" ? [1] : []
+        content {
+          name  = "BRIDGE_REASONING_MODEL"
+          value = "gemini-4-argon"
         }
       }
 

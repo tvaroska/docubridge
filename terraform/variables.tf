@@ -335,4 +335,11 @@ variable "telemetry_bq_dataset_id" {
   default     = "docubridge_telemetry"
 }
 
+variable "agent_registry_service_agent_member" {
+  type        = string
+  description = "IAM member (serviceAccount:service-<PROJECT_NUMBER>@gcp-sa-agentregistry.iam.gserviceaccount.com) granted roles/storage.objectViewer on the Skill Registry bucket for Gemini platform Agent Registry skill ingestion."
+  default     = ""
+}
+
+
 

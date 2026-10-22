@@ -138,9 +138,10 @@ module "gcs" {
   email_webhook_member = module.iam.email_webhook_member
   email_retention_days = var.email_retention_days
   # Enterprise Data Architecture — Cloud Storage Audit Vault (Zone 3 WORM store).
-  enable_audit_vault         = var.enable_audit_vault
-  vault_retention_days       = var.vault_retention_days
-  lock_audit_vault_retention = var.lock_audit_vault_retention
+  enable_audit_vault                  = var.enable_audit_vault
+  vault_retention_days                = var.vault_retention_days
+  lock_audit_vault_retention          = var.lock_audit_vault_retention
+  agent_registry_service_agent_member = var.agent_registry_service_agent_member
 }
 
 # tasks — the bridge-followups Cloud Tasks queue (P7-4). The substrate behind the

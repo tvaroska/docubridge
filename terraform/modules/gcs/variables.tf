@@ -94,3 +94,19 @@ variable "lock_audit_vault_retention" {
   description = "Permanently lock the Audit Vault bucket retention policy (true in prod; false in dev/staging so test buckets can be torn down)."
   default     = false
 }
+
+# Gemini Platform Agent Registry Service Agent (agentregistry.googleapis.com):
+# service-<PROJECT_NUMBER>@gcp-sa-agentregistry.iam.gserviceaccount.com requires
+# roles/storage.objectViewer on the Skill Registry bucket so `gcloud alpha agent-registry
+# skills create --source=gs://...` can inspect and version skill .zip archives.
+variable "agent_registry_service_agent_member" {
+  type        = string
+  description = "IAM member (serviceAccount:service-<PROJECT_NUMBER>@gcp-sa-agentregistry.iam.gserviceaccount.com) granted roles/storage.objectViewer on the Skill Registry bucket; \"\" when unset."
+  default     = ""
+
+  validation {
+    condition     = var.agent_registry_service_agent_member == "" || startswith(var.agent_registry_service_agent_member, "serviceAccount:")
+    error_message = "agent_registry_service_agent_member must be empty or a serviceAccount: member."
+  }
+}
+

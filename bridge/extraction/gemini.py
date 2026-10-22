@@ -126,15 +126,19 @@ from bridge.extraction.resolve import (
     mime_for,
     resolve_document,
 )
+from bridge.telemetry import trace_step
 from contract.enums import ReviewReason
 from contract.extraction import ExtractionResult
 
 _LOG = logging.getLogger("bridge.extraction.gemini")
 
-# The default model — reuse the constant the extraction/bridge agents already use
+# The default workhorse model — reuse the constant the extraction/bridge agents use
 # (both ``bridge/extraction/agent.py`` and ``bridge/agent.py`` default to this);
-# overridable via BRIDGE_MODEL. Do not invent a new default.
-DEFAULT_MODEL = "gemini-2.5-flash"
+# overridable via BRIDGE_MODEL. Deep reasoning / conflict adjudication / Agent Gym
+# teacher & autorater use REASONING_MODEL (``gemini-4-argon``).
+DEFAULT_MODEL = "gemini-3.8-flash"
+WORKHORSE_MODEL = DEFAULT_MODEL
+REASONING_MODEL = "gemini-4-argon"
 
 # A resolver maps an inbound artifact name/URI to a ``ResolvedDocument`` (bytes, or a
 # by-reference ``gs://`` pointer). Injectable so tests never touch disk or the
@@ -898,12 +902,38 @@ class GeminiExtractor:
         test double implements only ``.models.generate_content``, so the thread hop —
         not ``client.aio`` — is the seam-neutral fix.
         """
-        return await asyncio.to_thread(
-            client.models.generate_content,
-            model=self._model,
-            contents=contents,
-            config=config,
-        )
+        with trace_step(
+            "docubridge.extract.call_llm",
+            {
+                "docubridge.zone": "2_extraction_quarantine",
+                "gen_ai.system": "gemini_platform",
+                "gen_ai.operation.name": "call_llm",
+                "gen_ai.agent.name": "extraction_agent",
+                "gen_ai.request.model": self._model,
+                "docubridge.finops.traffic_type": "production_inference",
+            },
+        ) as span:
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=self._model,
+                contents=contents,
+                config=config,
+            )
+            usage = getattr(response, "usage_metadata", None)
+            if usage is not None:
+                in_tok = getattr(usage, "prompt_token_count", None)
+                out_tok = getattr(usage, "candidates_token_count", None)
+                tot_tok = getattr(usage, "total_token_count", None)
+                cached_tok = getattr(usage, "cached_content_token_count", None)
+                if in_tok is not None:
+                    span.set_attribute("gen_ai.usage.input_tokens", int(in_tok))
+                if out_tok is not None:
+                    span.set_attribute("gen_ai.usage.output_tokens", int(out_tok))
+                if tot_tok is not None:
+                    span.set_attribute("gen_ai.usage.total_tokens", int(tot_tok))
+                if cached_tok is not None:
+                    span.set_attribute("gen_ai.usage.cached_tokens", int(cached_tok))
+            return response
 
     async def _generate_validated(
         self, client, base: list, config: dict, *, label: str

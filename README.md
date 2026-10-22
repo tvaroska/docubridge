@@ -6,9 +6,11 @@ asks once and receives documentation already gathered, chased, normalized, and
 ready to act on.
 
 It is two things at once: a flagship showcase of the Gemini Enterprise Agent
-Platform (Google ADK, A2A, A2UI, Agent Gateway / Identity) wired into one real
-system, and a reusable mediation core that service agents call over canonical
-A2A.
+Platform (Google ADK, A2A, A2UI, Agent Gateway / Identity, OpenTelemetry `gen_ai.*`
+observability, and Agent Gym continuous improvement with a multi-model split between
+`gemini-3.8-flash` as the runtime workhorse and `gemini-4-argon` as the offline
+teacher, judge, and conflict-escalation model) wired into one real system, and a
+reusable mediation core that service agents call over canonical A2A.
 
 ## The Address demo, in three sentences
 

@@ -8,7 +8,13 @@ from google.adk.tools import FunctionTool, LongRunningFunctionTool
 from google.genai import types
 
 from bridge.disposition import run_disposition_gate
-from bridge.extraction.agent import build_extraction_agent, resolve_model
+from bridge.extraction.agent import (
+    REASONING_MODEL,
+    WORKHORSE_MODEL,
+    build_extraction_agent,
+    resolve_model,
+    resolve_reasoning_model,
+)
 from bridge.gatepin import pin_gate_args
 from bridge.offscript import (
     escalate_submission,
@@ -17,7 +23,20 @@ from bridge.offscript import (
     request_human_review,
 )
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = WORKHORSE_MODEL
+
+__all__ = [
+    "DEFAULT_MODEL",
+    "INSTRUCTION",
+    "REASONING_MODEL",
+    "WORKHORSE_MODEL",
+    "app",
+    "build_app",
+    "build_document_bridge",
+    "resolve_model",
+    "resolve_reasoning_model",
+    "root_agent",
+]
 
 INSTRUCTION = """You are the document bridge agent, responsible for routing and mediating document submissions.
 

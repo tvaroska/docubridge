@@ -199,12 +199,12 @@ async def test_extract_passes_non_svg_bytes_as_inline_part():
 
 
 def test_default_model_and_env_override(monkeypatch):
-    """The model defaults to gemini-2.5-flash; BRIDGE_MODEL overrides."""
+    """The model defaults to gemini-3.8-flash; BRIDGE_MODEL overrides."""
     monkeypatch.delenv("BRIDGE_MODEL", raising=False)
-    assert GeminiExtractor()._model == "gemini-2.5-flash"
+    assert GeminiExtractor()._model == "gemini-3.8-flash"
 
-    monkeypatch.setenv("BRIDGE_MODEL", "gemini-1.5-pro")
-    assert GeminiExtractor()._model == "gemini-1.5-pro"
+    monkeypatch.setenv("BRIDGE_MODEL", "gemini-4-argon")
+    assert GeminiExtractor()._model == "gemini-4-argon"
 
 
 # --- schema-driven prompt + pinned response schema (S0-arch-5) --------------

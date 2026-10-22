@@ -305,6 +305,9 @@ class BridgeA2aAgentEngine:
             os.environ["GOOGLE_CLOUD_LOCATION"] = location
         if project or os.environ.get("GOOGLE_CLOUD_PROJECT"):
             os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "TRUE")
+        os.environ.setdefault("GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY", "true")
+        os.environ.setdefault("BRIDGE_MODEL", "gemini-3.8-flash")
+        os.environ.setdefault("BRIDGE_REASONING_MODEL", "gemini-4-argon")
         ae_id = os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID", "").strip()
         if ae_id and not os.environ.get("BRIDGE_AGENT_ENGINE_ID"):
             os.environ["BRIDGE_AGENT_ENGINE_ID"] = ae_id

@@ -13,11 +13,15 @@
    - Remove all Aon-specific visual branding (`--aon-red: #e11b22`, `--aon-navy: #1b1c27`, `AON` header wordmark, `Aon Document Bridge`, `Aon Provider Portal`) and replace with a neutral **Enterprise / Google Cloud Blue-Slate** palette (`#0f172a` slate header, `#2563eb` / `#1a73e8` primary blue accent, `DOCUBRIDGE` wordmark).
    - Replace Aon-specific default URIs and trust domains (`agents.global.aon.net`, `https://aon.com/a2ui/...`, `gs://aon-docubridge-audit-vault`, `alloydb://aon-enterprise-data/...`, `aon_lakehouse.bq_policy_facts_iceberg`, `@aon.com`) with neutral `docubridge.io` / `docubridge-audit-vault` / `docubridge_lakehouse` identifiers.
    - Keep all demo entities 100% synthetic (`Meridian Logistics Center LLC` for Banking; `Terrepower Coastal LLC` for Insurance). Never include real customer names, logos, or PII/MNPI.
-2. **Dual-Domain Interactive Experience (Banking Default + Insurance Toggle):**
-   - Make **Banking: Commercial & Mortgage Loan Underwriting** the default scenario in the 4-stage interactive walkthrough console (`demo/enterprise-demo.html`, served live at `GET /demo` and `GET /console`), with a **1-click domain toggle** in the top navigation bar:
-     - `🏦 Banking · Loan Underwriting` *(Default)*
-     - `🛡️ Insurance · Commercial Placement`
-   - Switching the toggle dynamically updates all 4 stages (Dual-Path Intake & Vault, Consolidation & Bi-Temporal Views, SPIFFE OBO & A2UI v0.9 Inbox, and Agent Gym & Programmable Trust Dial) and executes live API calls against the FastAPI backend.
+2. **Three-Domain Interactive Experience & Multi-Model Split (`gemini-3.8-flash` + `gemini-4-argon`):**
+   - Make **Banking: Commercial Loan Underwriting (`LOAN-MERIDIAN-001`)** the default scenario in the 5-stage interactive walkthrough console (`demo/enterprise-demo.html`, served live at `GET /demo` and `GET /console`), with a **1-click domain toggle** in the top navigation bar across all 3 enterprise verticals:
+     - `🏦 Banking · Commercial Loan` *(Default — `Meridian Logistics Center LLC`)*
+     - `🏠 Mortgage · TRID Closing` *(`Westbrook Family Trust`)*
+     - `🛡️ Insurance · Commercial Placement` *(`Terrepower Coastal LLC`)*
+   - Showcase the **Gemini Platform Multi-Model Split**:
+     - **Workhorse Model (`gemini-3.8-flash`):** High-throughput layout extraction (`production_inference`) on Path B PDFs.
+     - **Reasoning / Teacher / Judge Model (`gemini-4-argon`):** Day-1 cross-document conflict escalation (`conflict_escalation`), offline Agent Gym signal distillation, 3-Tier Evaluation Judge, and `SKILL.md` Harness Evolve compiler (`agent_gym_eval`). Once an Agent Gym rule is promoted, Day-2 submissions are resolved 100% by `gemini-3.8-flash` + deterministic code with **0 `gemini-4-argon` escalation tokens**.
+   - Switching the toggle dynamically updates all 5 stages (Dual-Path Intake & Vault, Consolidation & Bi-Temporal Views, SPIFFE OBO & A2UI v0.9 Inbox with Two-Sided Oversight `RSR`, Agent Gym 3-Tier Gate & `Compile to SKILL.md`, and OpenTelemetry `gen_ai.*` Waterfall & FinOps X-Ray) and executes live API calls against the FastAPI backend.
 3. **Zero Regression on Core Isolation & Conformance Guards:**
    - **CRITICAL (`tests/test_isolation_guard.py`):**
      - `bridge/` must NEVER import `agents/`, and `agents/` must NEVER import `bridge/`.
