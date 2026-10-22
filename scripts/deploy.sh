@@ -31,6 +31,9 @@ TF_DIR="${REPO_ROOT}/terraform"
 : "${AR_REPO:=bridge}"                      # Artifact Registry repo for the image
 : "${PARTY_INVOKER_MEMBERS:=}"              # comma-separated run.invoker members (P7-5)
 : "${CALLBACK_PATH:=/followups}"            # Cloud Tasks follow-up callback route
+: "${ENABLE_RFP_BOARD:=true}"               # Deploy Internal RFP Board + 6-Zone Showcase Console
+: "${ENABLE_AUDIT_VAULT:=true}"             # Provision 7-year WORM GCS Audit Vault bucket
+: "${ENABLE_TELEMETRY_BQ:=true}"            # Provision BigQuery OTel spans dataset + SQL eval views
 
 gcloud config set project "${PROJECT_ID}" >/dev/null
 
@@ -45,7 +48,12 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   iam.googleapis.com \
   aiplatform.googleapis.com \
-  cloudscheduler.googleapis.com
+  cloudscheduler.googleapis.com \
+  cloudtrace.googleapis.com \
+  bigquery.googleapis.com \
+  documentai.googleapis.com \
+  logging.googleapis.com \
+  storage.googleapis.com
 
 # --------------------------------------------------------------------------- #
 # 2. Build + push the container image (Artifact Registry).                     #
@@ -75,6 +83,9 @@ TF_VARS=(
   -var "container_image=${IMAGE}"
   -var "enable_gateway=true"
   -var "enable_frontend=true"
+  -var "enable_rfp_board=${ENABLE_RFP_BOARD}"
+  -var "enable_audit_vault=${ENABLE_AUDIT_VAULT}"
+  -var "enable_telemetry_bq=${ENABLE_TELEMETRY_BQ}"
   -var "deletion_protection=false"
   -var "ssl_domains=[\"${SSL_DOMAIN}\"]"
   -var "frontend_ssl_domains=[\"${FRONTEND_SSL_DOMAIN}\"]"
@@ -132,19 +143,19 @@ CONSOLE_BUCKET="$(tf_out console_bucket_name)"
 DASHBOARD_BUCKET="$(tf_out dashboard_bucket_name)"
 if [[ -n "${PORTAL_BUCKET}" ]]; then
   echo "==> Building + uploading frontend apps"
-  ( cd "${REPO_ROOT}/frontend" && pnpm install --frozen-lockfile )
+  pnpm -C "${REPO_ROOT}" install --frozen-lockfile
   # provider-portal (external zone, public bucket) — VITE_PORTAL_URL = the edge/gateway.
   VITE_PORTAL_URL="${GATEWAY_URL}" \
-    pnpm -C "${REPO_ROOT}/frontend" --filter provider-portal build
+    pnpm -C "${REPO_ROOT}" --filter provider-portal build
   gcloud storage rsync -r "${REPO_ROOT}/frontend/provider-portal/dist" \
     "gs://${PORTAL_BUCKET}"
   # agent-console + ops-dashboard (internal zone, private staging buckets).
   VITE_DASHBOARD_URL="${GATEWAY_URL}" \
-    pnpm -C "${REPO_ROOT}/frontend" --filter agent-console build
+    pnpm -C "${REPO_ROOT}" --filter agent-console build
   gcloud storage rsync -r "${REPO_ROOT}/frontend/agent-console/dist" \
     "gs://${CONSOLE_BUCKET}"
   VITE_DASHBOARD_URL="${GATEWAY_URL}" \
-    pnpm -C "${REPO_ROOT}/frontend" --filter ops-dashboard build
+    pnpm -C "${REPO_ROOT}" --filter ops-dashboard build
   gcloud storage rsync -r "${REPO_ROOT}/frontend/ops-dashboard/dist" \
     "gs://${DASHBOARD_BUCKET}"
 fi

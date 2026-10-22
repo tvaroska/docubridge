@@ -60,9 +60,11 @@ class SqlAgentGymEngine(AgentGymEngine):
         self.dsn = cleaned
         self._initial_trust_policies = initial_trust_policies
         self._init_lock = threading.Lock()
+        self._runtime: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._engine: Any = None
+        self._closed = False
         self._signals_table: Any = None
         self._rules_table: Any = None
         self._reports_table: Any = None
@@ -75,6 +77,8 @@ class SqlAgentGymEngine(AgentGymEngine):
         if self._engine is not None:
             return
         with self._init_lock:
+            if self._closed:
+                raise RuntimeError("the agent gym store is closed")
             if self._engine is not None:
                 return
             from sqlalchemy import (
@@ -86,7 +90,8 @@ class SqlAgentGymEngine(AgentGymEngine):
                 Text,
                 select,
             )
-            from sqlalchemy.ext.asyncio import create_async_engine
+
+            from bridge.sql_runtime import acquire_dsn_runtime
 
             meta = MetaData()
             self._signals_table = Table(
@@ -145,19 +150,10 @@ class SqlAgentGymEngine(AgentGymEngine):
                 Column("payload_json", Text, nullable=False),
             )
 
-            loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                target=loop.run_forever,
-                name="bridge-agent-gym-store",
-                daemon=True,
-            )
-            thread.start()
-            engine = create_async_engine(self.dsn)
             trust_table = self._trust_table
             seed_policies = self._initial_trust_policies
 
-            async def _create_and_seed() -> None:
-
+            async def _create_and_seed(engine: Any) -> None:
                 async with engine.begin() as conn:
                     await conn.run_sync(meta.create_all)
                     existing_res = await conn.execute(
@@ -175,17 +171,36 @@ class SqlAgentGymEngine(AgentGymEngine):
                                 )
                             )
 
-            fut = asyncio.run_coroutine_threadsafe(_create_and_seed(), loop)
-            fut.result(timeout=_OP_TIMEOUT_S)
-            self._loop = loop
-            self._thread = thread
-            self._engine = engine
+            runtime = acquire_dsn_runtime(
+                self.dsn,
+                init_coro_factory=_create_and_seed,
+                thread_name="bridge-agent-gym-store",
+                timeout_s=_OP_TIMEOUT_S,
+            )
+            self._runtime = runtime
+            self._loop = runtime.loop
+            self._thread = runtime.thread
+            self._engine = runtime.engine
+
+    def close(self) -> None:
+        """Release the underlying per-DSN SQLAlchemy runtime lease."""
+        with self._init_lock:
+            if self._closed:
+                return
+            self._closed = True
+            runtime = self._runtime
+            self._runtime = self._loop = self._thread = self._engine = None
+        if runtime is None:
+            return
+        from bridge.sql_runtime import release_dsn_runtime
+
+        release_dsn_runtime(self.dsn, runtime, timeout_s=_OP_TIMEOUT_S)
+        _SQL_GYM_CACHE.pop(self.dsn, None)
 
     def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
         self._ensure_ready()
-        assert self._loop is not None
-        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return fut.result(timeout=_OP_TIMEOUT_S)
+        assert self._runtime is not None
+        return self._runtime.run(coro, timeout_s=_OP_TIMEOUT_S)
 
     def _save_signal(self, signal: ExpertFeedbackSignal) -> None:
         self._ensure_ready()
@@ -480,23 +495,6 @@ class SqlAgentGymEngine(AgentGymEngine):
                 await conn.execute(delete(process_skill_lineage_table))
 
         self._run(_op())
-
-    def close(self) -> None:
-        """Dispose the async SQLAlchemy engine and stop the background event loop thread."""
-        with self._init_lock:
-            if self._engine is None:
-                return
-            engine, loop, thread = self._engine, self._loop, self._thread
-            self._engine = None
-            self._loop = None
-            self._thread = None
-        if loop is not None:
-            fut = asyncio.run_coroutine_threadsafe(engine.dispose(), loop)
-            fut.result(timeout=_OP_TIMEOUT_S)
-            loop.call_soon_threadsafe(loop.stop)
-        if thread is not None:
-            thread.join(timeout=_OP_TIMEOUT_S)
-        _SQL_GYM_CACHE.pop(self.dsn, None)
 
 
 _SQL_GYM_CACHE: dict[str, SqlAgentGymEngine] = {}

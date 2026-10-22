@@ -92,7 +92,17 @@ markers = [
     "seam: shared seam-parity tests parametrized over local/gcp adapters",
 ]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["bridge", "contract", "agents"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
 
 [tool.uv]
 # dev extras installed by default in this workspace

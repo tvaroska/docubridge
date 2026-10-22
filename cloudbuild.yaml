@@ -1,8 +1,13 @@
 # Google Cloud Build pipeline for A2A Document Bridge (docubridge)
 #
-# Runs the full verification ladder (ruff lint + format check, pytest suite,
-# frontend workspace tests, and credential-free Terraform plan assertions) before
-# building and pushing the production Cloud Run container image to Artifact Registry.
+# Executes a maximally parallel DAG on E2_HIGHCPU_8:
+#   - Track A (t=0): resolve-git-metadata -> docker-build-image (BuildKit layer cache)
+#   - Track B (t=0): python-env-and-lint (uv + ruff check + ruff format --check)
+#                    -> parallel python-core-and-enterprise-tests + python-agent-and-golden-tests
+#                    -> python-coverage-gate (combines shards, enforces >=85% coverage)
+#   - Track C (t=0): frontend-tests-and-typecheck (all 5 pnpm workspaces: vitest + tsc/vite build)
+#   - Track D (t=0): terraform-plan-tests (13 credential-free .tftest.hcl suites)
+#   - Fan-in Gate  : docker-push-image pushes to Artifact Registry ONLY after all tracks pass.
 #
 # Usage:
 #   gcloud builds submit --config cloudbuild.yaml \
@@ -20,10 +25,11 @@ options:
 
 steps:
   # ------------------------------------------------------------------------- #
-  # 1. Resolve Git commit metadata (works for both triggers & manual submit)  #
+  # 1. Resolve Git commit metadata (t=0, works for triggers & manual submit)  #
   # ------------------------------------------------------------------------- #
   - id: resolve-git-metadata
     name: gcr.io/cloud-builders/git
+    waitFor: ["-"]
     entrypoint: bash
     args:
       - -c
@@ -35,46 +41,107 @@ steps:
         printf "Resolved commit=%s branch=%s\n" "${SHA}" "${BRANCH}"
 
   # ------------------------------------------------------------------------- #
-  # 2. Python Lint, Format & Full Test Suite (uv + ruff + pytest)             #
+  # 2a. Sync Python Virtualenv + Ruff Lint & Format Check (t=0)               #
   # ------------------------------------------------------------------------- #
-  - id: python-quality-and-tests
-    name: python:3.12-slim
+  - id: python-env-and-lint
+    name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+    waitFor: ["-"]
     entrypoint: bash
     env:
       - UV_COMPILE_BYTECODE=1
       - UV_LINK_MODE=copy
+      - UV_PROJECT_ENVIRONMENT=/workspace/.venv
     args:
       - -c
       - |
         set -euo pipefail
-        pip install --no-cache-dir uv
         uv sync --frozen --extra dev --extra gcp --no-install-project
-        uv run ruff check .
-        uv run ruff format --check .
-        uv run pytest -q
+        uv pip install pytest-cov pytest-xdist
+        /workspace/.venv/bin/ruff check .
+        /workspace/.venv/bin/ruff format --check .
 
   # ------------------------------------------------------------------------- #
-  # 3. Frontend Workspace Unit Tests (pnpm + vitest)                          #
+  # 2b. Python Core, Seam, Isolation & Enterprise Data Suite (Shard 1)        #
   # ------------------------------------------------------------------------- #
-  - id: frontend-unit-tests
-    name: node:22-slim
+  - id: python-core-and-enterprise-tests
+    name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+    waitFor: ["python-env-and-lint"]
     entrypoint: bash
-    waitFor: ["resolve-git-metadata"]
+    env:
+      - COVERAGE_FILE=/workspace/.coverage.core
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        /workspace/.venv/bin/pytest tests/ \
+          --ignore=tests/address \
+          --ignore=tests/conformance \
+          --ignore=tests/perf \
+          -n 4 --dist loadfile \
+          --cov=bridge --cov=contract --cov=agents --cov-report= \
+          -q
+
+  # ------------------------------------------------------------------------- #
+  # 2c. Python Multi-Agent ADK/A2A Golden, Conformance & Perf Suite (Shard 2) #
+  # ------------------------------------------------------------------------- #
+  - id: python-agent-and-golden-tests
+    name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+    waitFor: ["python-env-and-lint"]
+    entrypoint: bash
+    env:
+      - COVERAGE_FILE=/workspace/.coverage.agents
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        /workspace/.venv/bin/pytest \
+          tests/address \
+          tests/conformance \
+          tests/perf \
+          -n 4 --dist loadfile \
+          --cov=bridge --cov=contract --cov=agents --cov-report= \
+          -q
+
+  # ------------------------------------------------------------------------- #
+  # 2d. Combine Coverage Shards & Enforce >=85% Coverage Gate                 #
+  # ------------------------------------------------------------------------- #
+  - id: python-coverage-gate
+    name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+    waitFor:
+      - python-core-and-enterprise-tests
+      - python-agent-and-golden-tests
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        /workspace/.venv/bin/coverage combine /workspace/.coverage.core /workspace/.coverage.agents
+        /workspace/.venv/bin/coverage report --fail-under=85
+
+  # ------------------------------------------------------------------------- #
+  # 3. Frontend All-Workspace Unit Tests & TypeScript/Vite Builds (t=0)       #
+  # ------------------------------------------------------------------------- #
+  - id: frontend-tests-and-typecheck
+    name: node:22-slim
+    waitFor: ["-"]
+    entrypoint: bash
     args:
       - -c
       - |
         set -euo pipefail
         corepack enable
         pnpm install --frozen-lockfile
-        pnpm --filter @docubridge/shared test
+        pnpm --filter "!@docubridge/e2e" -r --parallel test
+        pnpm --filter @docubridge/shared build
+        pnpm --filter "!@docubridge/e2e" --filter "!@docubridge/shared" -r --parallel build
 
   # ------------------------------------------------------------------------- #
-  # 4. Infrastructure-as-Code Plan-Time Verification (terraform test)         #
+  # 4. Infrastructure-as-Code Plan-Time Verification (t=0, terraform test)    #
   # ------------------------------------------------------------------------- #
   - id: terraform-plan-tests
     name: hashicorp/terraform:1.9
+    waitFor: ["-"]
     entrypoint: sh
-    waitFor: ["resolve-git-metadata"]
     args:
       - -c
       - |
@@ -83,15 +150,14 @@ steps:
         terraform -chdir=terraform test
 
   # ------------------------------------------------------------------------- #
-  # 5. Build & Push Production Runtime Image to Artifact Registry             #
+  # 5a. Build Production Runtime Image Concurrently with Test Tracks          #
   # ------------------------------------------------------------------------- #
-  - id: build-and-push-image
+  - id: docker-build-image
     name: gcr.io/cloud-builders/docker
+    waitFor: ["resolve-git-metadata"]
     entrypoint: bash
-    waitFor:
-      - python-quality-and-tests
-      - frontend-unit-tests
-      - terraform-plan-tests
+    env:
+      - DOCKER_BUILDKIT=1
     args:
       - -c
       - |
@@ -101,10 +167,30 @@ steps:
         LATEST_IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:latest"
         docker pull "${LATEST_IMAGE}" || true
         docker build \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
           --cache-from "${LATEST_IMAGE}" \
           -t "${TARGET_IMAGE}" \
           -t "${LATEST_IMAGE}" \
           -f Dockerfile \
           .
+
+  # ------------------------------------------------------------------------- #
+  # 5b. Push Production Runtime Image (Gated on All Verification Tracks)      #
+  # ------------------------------------------------------------------------- #
+  - id: docker-push-image
+    name: gcr.io/cloud-builders/docker
+    waitFor:
+      - docker-build-image
+      - python-coverage-gate
+      - frontend-tests-and-typecheck
+      - terraform-plan-tests
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        SHA="$(cat /workspace/.resolved_sha)"
+        TARGET_IMAGE="${_IMAGE:-${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:${SHA}}"
+        LATEST_IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:latest"
         docker push "${TARGET_IMAGE}"
         docker push "${LATEST_IMAGE}"

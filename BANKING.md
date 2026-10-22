@@ -1,84 +1,90 @@
 # Financial Services & Regulated Industry Showcase Guide
 
-**DocuBridge** ships with three pre-seeded, multi-document enterprise workflows spanning **Institutional Banking (KYC/AML)**, **Residential Mortgage Origination (TRID / Fannie Mae)**, and **Commercial & Employee Benefits Insurance (RFP Placement)**.
+**DocuBridge** ships with three pre-seeded, multi-document enterprise workflows spanning **Commercial Banking & Real Estate Lending**, **Residential Mortgage Origination (TRID / Fannie Mae)**, and **Commercial & Sovereign Property Insurance Placement**.
 
-Each domain exercises the full 6-zone architecture:
-1. **Zone 1 — A2A v0.3 Edge & Intake:** Multi-channel document ingestion (A2A wire turns, provider upload portal, and correlated MIME email ingress).
-2. **Zone 2 — Hybrid Extraction & Disposition Gate:** Document AI layout pre-pass + `gemini-3.8-flash` structured extraction with bounding-box provenance and deterministic rule checks.
-3. **Zone 3 — Dual-Write Audit Vault & Operational Fact Store:** WORM SHA-256 evidence locking (`bridge/vault.py`) paired with relational entity and fact normalization (`bridge/operational_store.py`).
-4. **Zone 4 — Enterprise Knowledge Catalog & W3C PROV-O Lineage:** Business glossary mapping, sensitivity tagging (`CONFIDENTIAL`, `RESTRICTED_PII`), and end-to-end lineage graphs (`bridge/knowledge_catalog.py`).
-5. **Zone 5 — Declarative A2UI v0.9 Action Inbox:** Role-aware human-in-the-loop review surfaces with compound SPIFFE + human authority enforcement and cryptographic `HMAC-SHA256` resolution signatures (`bridge/a2ui_inbox.py`).
-6. **Zone 6 — Agent Gym & Closed-Loop Skill Evolution:** Golden and adversarial stress testing (`gemini-4-argon` judge), candidate skill mutation, and shadow-traffic promotion (`bridge/agent_gym/`).
-
----
-
-## 1. Institutional Banking — Corporate KYC & Beneficial Ownership (`banking`)
-
-### Regulatory Context
-- **Frameworks:** FinCEN CDD Rule (31 CFR 1010.230), FATF Recommendation 24 (Beneficial Ownership Transparency), and BSA/AML Customer Due Diligence.
-- **Collection Process:** Multi-slot corroboration across Government ID (`gov-id`), Proof of Residential Address (`address-proof`), and Corporate Utility / Operating Address (`utility-bill`).
-
-### Seeded Showcase Entities
-| Entity ID | Legal Name | Jurisdiction | Scenario Highlights |
-| :--- | :--- | :--- | :--- |
-| `ent-bank-apex-001` | **Apex Global Trade Ltd.** | `US-DE` | Cross-document beneficial ownership verification (`28.5%` UBO stake), LEI validation, and address corroboration across passport and utility statement. |
-| `ent-bank-meridian-002` | **Meridian Treasury Services Corp.** | `GB-LON` | High-value institutional treasury onboarding requiring `kyc_analyst` / `compliance_officer` sign-off in the A2UI Action Inbox. |
-
-### Key Canonical Facts & Glossary Terms
-- `ubo_ownership_pct` (`gls-bank-ubo`): Ultimate Beneficial Owner percentage stake (`>= 25%` regulatory threshold).
-- `legal_entity_identifier` (`gls-bank-lei`): 20-character ISO 17442 LEI code.
-- `kyc_risk_rating` (`gls-bank-risk`): Computed AML risk tier (`LOW`, `MEDIUM`, `HIGH`).
+Each domain exercises the full 6-zone architecture and the 4 Gemini platform pillars (**Build, Govern, Scale, Optimize**):
+1. **Zone 1 — Dual-Path Intake & A2A Edge:** Path A structured JSON/Excel schema validation (`\$0` OCR/LLM cost) and Path B multi-page PDF ingestion via Document AI OCR + `gemini-3.8-flash` extraction (`bridge/collect.py`, `bridge/extraction/`).
+2. **Zone 2 — Edge PII Redaction & Draft Quarantine:** Inline Cloud DLP / regex PII scrubbing (`redact_personal_data`) and quarantine staging (`GcsArtifactService`) with a deterministic 4-Signal Disposition Gate (`bridge/signals.py`).
+3. **Zone 3 — 7-Year WORM Audit Vault & Bi-Temporal Operational Store:** Immutable SHA-256 evidence locking in Cloud Storage (`bridge/vault.py`) paired with append-only bi-temporal `Decimal` consolidation in Cloud SQL for PostgreSQL 16 / AlloyDB (`bridge/operational_store.py`) and watermarked BigQuery Open Iceberg CDC sync.
+4. **Zone 4 — Role-Based Views & Multi-Persona Projections:** Deterministic source-priority resolution (`endorsement`/`addendum`/`closing-disclosure` `40` > `binder`/`credit-agreement` `30` > `quote`/`term-sheet`/`appraisal` `20` > `submission`/`loan-application` `10`) serving Broker, Claims, and Underwriter views with click-to-source-page bounding boxes.
+5. **Zone 5 — Declarative A2UI v0.9 & Human-in-the-Loop Action Inbox:** Security-zone-isolated surfaces (`gemini_app` internal vs. `custom_web` external) with compound SPIFFE JWT-SVID + OBO principal authorization (`bridge/identity.py`) and RFC 6902 JSON Patch audit trails (`bridge/a2ui_inbox.py`).
+6. **Zone 6 — Knowledge Catalog, Agent Registry, Agent Gateway & Agent Gym:** 6-hop W3C PROV-O lineage (`bridge/knowledge_catalog.py`), Gemini platform Agent & Skill Registry (`agentregistry.googleapis.com`), Agent Gateway (`CLIENT_TO_AGENT` Model Armor/DLP + `AGENT_TO_ANYWHERE` IAM v3 UAP CEL), and closed-loop **Agent Gym** (`bridge/agent_gym/`) with Two-Sided Oversight (`RSR`), 3-Tier evaluation (`gemini-4-argon` judge), and 1-click `SKILL.md` compilation.
 
 ---
 
-## 2. Residential Mortgage — TRID Closing & Underwriting (`mortgage`)
+## 1. Commercial Banking — CRE Term Loan Underwriting (`banking`)
 
 ### Regulatory Context
-- **Frameworks:** CFPB TILA-RESPA Integrated Disclosure (TRID / Regulation Z) and Fannie Mae Selling Guide B3-3.1 (Income & Asset Assessment).
-- **Collection Process:** Corroborates borrower identity, occupancy address, debt-to-income (DTI) ratio, and Loan Estimate vs. Closing Disclosure fee tolerances.
+- **Frameworks:** OCC Comptroller's Handbook (*Commercial Real Estate Lending*), Interagency Appraisal and Evaluation Guidelines (12 CFR Part 34), and FinCEN CDD Rule (31 CFR 1010.230).
+- **Consolidation Hierarchy:** Negotiated Fee Addendum (`40`) > Credit Agreement / Commitment Letter (`30`) > Term Sheet / MAI Appraisal (`20`) > Initial Loan Application (`10`).
 
-### Seeded Showcase Entities
-| Entity ID | Borrower / File Name | Jurisdiction | Scenario Highlights |
+### Seeded Showcase Entity (`bridge/user_interaction/demo_seed.py`)
+| Entity ID | Borrower / Facility | Facility Size | Scenario Highlights |
 | :--- | :--- | :--- | :--- |
-| `ent-mort-harborview-001` | **Harborview Estates 2026-A (Elena Rostova)** | `US-CA` | Conforming residential mortgage file with DTI check (`36.4%`), appraisal LTV corroboration (`78.0%`), and TRID zero-tolerance fee verification. |
+| `LOAN-MERIDIAN-001` | **Meridian Logistics Center LLC** | `\$45,000,000` | Multi-document CRE Term Loan consolidating Initial Application (`doc-meridian-app-v1`), Executed Term Sheet (`doc-meridian-termsheet-v1`), CBRE MAI Appraisal (`doc-meridian-appraisal-v1` at `\$62.5M` / `72.00% LTV`), and Negotiated Fee Addendum #2 (`doc-meridian-addendum-v2` overriding `origination_fee` from `\$225,000` to `\$450,000` on Page 9). |
 
-### Key Canonical Facts & Glossary Terms
-- `back_end_dti_pct` (`gls-mort-dti`): Total monthly debt obligation divided by gross monthly income.
-- `loan_to_value_pct` (`gls-mort-ltv`): Loan amount relative to appraised property value.
-- `trid_apr_variance_bps` (`gls-mort-trid`): Basis-point delta between disclosed APR and recalculated actuarial APR.
+### Key Canonical Facts, Glossary Terms & Trust Slices
+- **Canonical Facts:** `loan_amount` (`45000000.00`), `appraised_value` (`62500000.00`), `collateral_value` (`60000000.00`), `origination_fee` (`225000.00` → `450000.00`).
+- **Glossary Terms:** `term.loan_to_value_ratio` (Loan-to-Value Ratio), `term.addendum_priority_hierarchy` (Banking & Insurance Document Priority Hierarchy), `term.cross_document_conflict`.
+- **Programmable Trust Slices:** `slice:closing-disclosure:fee-schedule:LOW` (`trusted_auto_approve`), `slice:credit-agreement:addendum:MEDIUM` (`guided_review`), `slice:appraisal-report:commercial:HIGH` (`shadow_mode`).
 
 ---
 
-## 3. Commercial & Benefits Insurance — Multi-Carrier RFP Placement (`insurance`)
+## 2. Residential Mortgage — TRID Closing & Jumbo Underwriting (`mortgage`)
 
 ### Regulatory Context
-- **Frameworks:** NAIC Model Laws, ERISA Plan Sponsor Fiduciary Disclosure, and State Department of Insurance (DOI) rate/schedule filing standards.
-- **Collection Process:** Solicits, normalizes, and compares multi-line carrier quotes (`benefits-rfp`, `benefits-quote`, `benefits-procurement`) across Life, AD&D, LTD, Dental, and Vision lines.
+- **Frameworks:** CFPB TILA-RESPA Integrated Disclosure (TRID / Regulation Z, 12 CFR 1026.19(e)–(f)) and Fannie Mae Selling Guide B3-3.1.
+- **Consolidation Hierarchy:** TRID Closing Disclosure Addendum (`40`) > Commitment Letter (`30`) > Form 1004 Appraisal (`20`) > Form 1003 URLA Application (`10`).
 
-### Seeded Showcase Entities
-| Entity ID | Account / Placement Name | Jurisdiction | Scenario Highlights |
+### Seeded Showcase Entity (`bridge/user_interaction/demo_seed.py`)
+| Entity ID | Borrower / File Name | Loan Amount | Scenario Highlights |
 | :--- | :--- | :--- | :--- |
-| `ent-ins-northstar-001` | **Northstar Manufacturing Group RFP** | `US-IL` | Multi-carrier benefits placement comparing Carrier A (ADK agent) and Carrier B (LangGraph agent) rate tables, guarantee windows, and plan design deviations. |
+| `MORTGAGE-WESTBROOK-2026` | **Westbrook Family Trust (30-Year Jumbo)** | `\$1,850,000` | Combines Path A structured Form 1003 URLA + IRS 4506-C (`doc-westbrook-1003-v1`), Form 1004 Uniform Residential Appraisal (`doc-westbrook-1004-v1` at `\$2,400,000` / `77.08% LTV`), and Path B TRID Closing Disclosure Page 3 Section A rate-lock extension addendum (`doc-westbrook-cd-addendum-v2`, updating `rate_lock_fee` from `\$4,250` to `\$8,500`). |
 
-### Key Canonical Facts & Glossary Terms
-- `total_annual_premium_usd` (`gls-ins-premium`): Aggregated annual premium across quoted coverage lines.
-- `rate_guarantee_months` (`gls-ins-guarantee`): Duration of locked carrier rate guarantee (`12`, `24`, or `36` months).
-- `commission_schedule_pct` (`gls-ins-commission`): Disclosed broker commission percentage.
+### Key Canonical Facts, Glossary Terms & Trust Slices
+- **Canonical Facts:** `loan_amount` (`1850000.00`), `appraised_value` (`2400000.00`), `rate_lock_fee` (`4250.00` → `8500.00`).
+- **Glossary Terms:** `term.loan_to_value_ratio`, `term.addendum_priority_hierarchy`, `term.cross_document_conflict`.
+- **Programmable Trust Slice:** `slice:mortgage-trid:closing-disclosure:MEDIUM` (`guided_review`).
+
+---
+
+## 3. Commercial Insurance — Sovereign & Catastrophe Property Placement (`insurance`)
+
+### Regulatory Context
+- **Frameworks:** NAIC Model Laws, Surplus Lines Stamping Office filings, and Sovereign / Catastrophe Deductible Endorsement schedules.
+- **Consolidation Hierarchy:** Signed Endorsement (`40`) > Bound Policy / Binder (`30`) > Carrier Quote (`20`) > Schedule of Values (SOV) Submission (`10`).
+
+### Seeded Showcase Entity (`bridge/user_interaction/demo_seed.py`)
+| Entity ID | Account / Placement Name | Total Insured Value | Scenario Highlights |
+| :--- | :--- | :--- | :--- |
+| `terrepower-coastal-2027` | **Terrepower Coastal LLC** | `\$250,000,000` | Consolidates Schedule of Values (`doc-terrepower-sov-v1`), Primary Property Binder (`doc-terrepower-binder-v1` at `\$1,420,000` annual premium), and Sovereign Wind/Hail Deductible Endorsement (`doc-terrepower-endorsement-v2` overriding `wind_hail_deductible` from `\$100,000` to `\$250,000` on Page 14). |
+
+### Key Canonical Facts, Glossary Terms & Trust Slices
+- **Canonical Facts:** `total_insured_value` (`250000000.00`), `annual_premium` (`1420000.00`), `wind_hail_deductible` (`100000.00` → `250000.00`).
+- **Glossary Terms:** `term.premium`, `term.deductible_to_limit_ratio`, `term.active_coverage_as_of_loss`.
+- **Programmable Trust Slices:** `slice:chubb:quote:LOW` (`trusted_auto_approve`), `slice:aig:endorsement:MEDIUM` (`guided_review`), `slice:lloyds:quote:HIGH` (`shadow_mode`).
 
 ---
 
 ## Running the Interactive 3-Domain Showcase
 
 ```bash
-# Start the unified demo server locally
-.venv/bin/uvicorn bridge.dashboard.board:build_board_app --factory --port 8080
+# Start the unified dashboard & 6-Zone Enterprise Console locally
+.venv/bin/uvicorn bridge.dashboard.server:build_dashboard_app --factory --port 8080
 
-# Open the interactive 6-Zone Enterprise Console
+# Seed the 3 showcase domains (Banking, Mortgage, Insurance)
+curl -s -X POST http://localhost:8080/v1/demo/seed | jq .
+
+# Open the interactive 5-Scene Enterprise Console in your browser
 open http://localhost:8080/demo
 ```
 
-### API Endpoints for Domain Exploration
-- `GET /api/v1/catalog/summary` — Inspect registered SPIFFE agents, business glossary terms, and catalog assets across `banking`, `mortgage`, and `insurance`.
-- `GET /api/v1/operational/entities?domain=banking` — Query canonical entities, submissions, and extracted facts by industry domain.
-- `GET /api/v1/inbox/actions?domain=banking` — Retrieve pending human-in-the-loop A2UI v0.9 action items and cryptographic audit records.
-- `GET /api/v1/gym/overview` — View golden evaluation scores, adversarial stress-test results, and skill evolution candidates across all domains.
+### API Endpoints for Domain Exploration (`bridge/user_interaction/routes.py`)
+- `POST /v1/demo/seed` — Seed baseline bi-temporal facts, WORM vault records, and 6-hop lineage across `LOAN-MERIDIAN-001`, `MORTGAGE-WESTBROOK-2026`, and `terrepower-coastal-2027`.
+- `POST /v1/intake/ingest` — Ingest a Path A structured payload or Path B document with `SourceAnchor` page/polygon provenance.
+- `GET /v1/a2ui/gemini_app/LOAN-MERIDIAN-001?role=underwriter` — Render the declarative A2UI v0.9 surface with bi-temporal time-travel (`?as_of=...`) and click-to-source-page proof.
+- `GET /v1/a2ui/inbox/items` — Retrieve pending human-in-the-loop A2UI v0.9 action items and cryptographic RFC 6902 JSON Patch audit records.
+- `GET /v1/catalog/glossary` & `GET /v1/catalog/lineage/LOAN-MERIDIAN-001/origination_fee` — Inspect business glossary terms, SPIFFE agents, and 6-hop W3C PROV-O field lineage.
+- `GET /v1/registry/catalog`, `GET /v1/registry/lineage/LOAN-MERIDIAN-001`, & `GET /v1/gateway/status` — Inspect the Gemini platform Agent & Skill Registry, process-instance skill lineage, and Agent Gateway (`CLIENT_TO_AGENT` + `AGENT_TO_ANYWHERE` UAP CEL).
+- `GET /v1/gym/rules` & `GET /v1/gym/trust-policies` — View distilled Tribal Knowledge Rules, 3-Tier evaluation report cards, and Programmable Trust autonomy slices.
+- `GET /v1/telemetry/analytics` & `GET /v1/telemetry/sql-eval` — Query 22-step OpenTelemetry `gen_ai.*` trace analytics and the 5-gate BigQuery `Rule 0` SQL evaluation + Rogan-Gladen debiased pass rate.

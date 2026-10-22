@@ -96,8 +96,10 @@ def build_durable_session_service(
     if db_url:
         require_async_driver(db_url)
         from google.adk.sessions import DatabaseSessionService
+        from sqlalchemy.pool import NullPool
 
-        return DatabaseSessionService(db_url=db_url)
+        kwargs = {"poolclass": NullPool} if db_url.startswith("sqlite") else {}
+        return DatabaseSessionService(db_url=db_url, **kwargs)
 
     proj, loc, eid = _parse_agent_engine_resource(
         agent_engine_id, project=project, location=location
@@ -119,8 +121,10 @@ def build_durable_session_service(
         return InMemorySessionService()
     require_async_driver(dsn)
     from google.adk.sessions import DatabaseSessionService
+    from sqlalchemy.pool import NullPool
 
-    return DatabaseSessionService(db_url=dsn)
+    kwargs = {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+    return DatabaseSessionService(db_url=dsn, **kwargs)
 
 
 def build_address_app(

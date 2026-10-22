@@ -77,7 +77,7 @@ The application stack is chosen to run *with* the platform it showcases — the 
 | Layer | Choice |
 |---|---|
 | **Core + processing agents** | **Python 3.12+** |
-| **Agent runtime** | **Google ADK**, pinned `google-adk >= 2.7.0, < 3`. The Bridge is an `LlmAgent` (`document_bridge`) with tools; extraction is an `AgentTool` subagent; HITL is a `LongRunningFunctionTool`; documents are versioned ADK artifacts; sessions swap `InMemory…`/sqlite ↔ `DatabaseSessionService` on Cloud SQL, artifacts `InMemory…` ↔ `GcsArtifactService` (deploy). |
+| **Agent runtime** | **Google ADK**, pinned `google-adk >= 2.11.0, < 3`. The Bridge is an `LlmAgent` (`document_bridge`) with tools; extraction is an `AgentTool` subagent; HITL is a `LongRunningFunctionTool`; documents are versioned ADK artifacts; sessions swap `InMemory…`/sqlite ↔ `DatabaseSessionService` on Cloud SQL, artifacts `InMemory…` ↔ `GcsArtifactService` (deploy). |
 | **Agent protocol (A2A edge)** | **Canonical A2A on the standard `a2a-sdk`** — JSON-RPC 2.0, spec methods (`message/send`, `message/stream`, `tasks/get`/`list`/`cancel`/`resubscribe`), A2A `Message`/`Task`/`Artifact`/`Part`. Domain types (`CollectRequest`, `ExchangeTurn{CollectionStatus}`, `RequirementsList`, `LedgerEntry`) are the payload carried inside A2A parts/artifacts. No bespoke REST dialect. |
 | **Edge / HTTP surface** | **FastAPI** (async) — A2UI endpoints and the scoped artifact-fetch endpoint the A2A SDK does not cover. |
 | **Schemas / validation** | **Pydantic** — doctype schemas, Gemini constrained JSON, per-document validation, disposition signals. |

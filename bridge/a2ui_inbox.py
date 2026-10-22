@@ -1424,9 +1424,11 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
             )
         self.dsn = cleaned
         self._init_lock = threading.Lock()
+        self._runtime: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._engine: Any = None
+        self._closed = False
         self._items_table: Any = None
         self._audits_table: Any = None
 
@@ -1434,6 +1436,8 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         if self._engine is not None:
             return
         with self._init_lock:
+            if self._closed:
+                raise RuntimeError("the action inbox store is closed")
             if self._engine is not None:
                 return
             from sqlalchemy import (
@@ -1444,7 +1448,8 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
                 Table,
                 Text,
             )
-            from sqlalchemy.ext.asyncio import create_async_engine
+
+            from bridge.sql_runtime import acquire_dsn_runtime
 
             meta = MetaData()
             self._items_table = Table(
@@ -1464,30 +1469,41 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
                 Column("item_id", String(64), nullable=False, index=True),
                 Column("payload_json", Text, nullable=False),
             )
-            loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                target=loop.run_forever,
-                name="bridge-a2ui-inbox-store",
-                daemon=True,
-            )
-            thread.start()
-            engine = create_async_engine(self.dsn)
 
-            async def _create() -> None:
+            async def _create(engine: Any) -> None:
                 async with engine.begin() as conn:
                     await conn.run_sync(meta.create_all)
 
-            fut = asyncio.run_coroutine_threadsafe(_create(), loop)
-            fut.result(timeout=_INBOX_OP_TIMEOUT_S)
-            self._loop = loop
-            self._thread = thread
-            self._engine = engine
+            runtime = acquire_dsn_runtime(
+                self.dsn,
+                init_coro_factory=_create,
+                thread_name="bridge-a2ui-inbox-store",
+                timeout_s=_INBOX_OP_TIMEOUT_S,
+            )
+            self._runtime = runtime
+            self._loop = runtime.loop
+            self._thread = runtime.thread
+            self._engine = runtime.engine
+
+    def close(self) -> None:
+        """Release the underlying per-DSN SQLAlchemy runtime lease."""
+        with self._init_lock:
+            if self._closed:
+                return
+            self._closed = True
+            runtime = self._runtime
+            self._runtime = self._loop = self._thread = self._engine = None
+        if runtime is None:
+            return
+        from bridge.sql_runtime import release_dsn_runtime
+
+        release_dsn_runtime(self.dsn, runtime, timeout_s=_INBOX_OP_TIMEOUT_S)
+        _SQL_INBOX_CACHE.pop(self.dsn, None)
 
     def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
         self._ensure_ready()
-        assert self._loop is not None
-        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return fut.result(timeout=_INBOX_OP_TIMEOUT_S)
+        assert self._runtime is not None
+        return self._runtime.run(coro, timeout_s=_INBOX_OP_TIMEOUT_S)
 
     def _save_item_sql(self, item: ActionInboxItem) -> None:
         self._ensure_ready()
@@ -1663,23 +1679,6 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
                 return [InboxAuditRecord.model_validate_json(r[0]) for r in res]
 
         return self._run(_op())
-
-    def close(self) -> None:
-        """Dispose of the underlying SQLAlchemy engine and connection pool."""
-        with self._init_lock:
-            if self._engine is None:
-                return
-            engine, loop, thread = self._engine, self._loop, self._thread
-            self._engine = None
-            self._loop = None
-            self._thread = None
-        if loop is not None:
-            fut = asyncio.run_coroutine_threadsafe(engine.dispose(), loop)
-            fut.result(timeout=_INBOX_OP_TIMEOUT_S)
-            loop.call_soon_threadsafe(loop.stop)
-        if thread is not None:
-            thread.join(timeout=_INBOX_OP_TIMEOUT_S)
-        _SQL_INBOX_CACHE.pop(self.dsn, None)
 
 
 _DEFAULT_INBOX_STORE: InMemoryActionInboxStore | None = None

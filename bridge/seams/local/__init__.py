@@ -73,8 +73,10 @@ class LocalSessions(SessionsSeam):
             return InMemorySessionService()
         require_async_driver(dsn)
         from google.adk.sessions import DatabaseSessionService
+        from sqlalchemy.pool import NullPool
 
-        return DatabaseSessionService(db_url=dsn)
+        kwargs = {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+        return DatabaseSessionService(db_url=dsn, **kwargs)
 
 
 class LocalTaskStore(TaskStoreSeam):
@@ -95,8 +97,10 @@ class LocalTaskStore(TaskStoreSeam):
         require_async_driver(dsn)
         from a2a.server.tasks import DatabaseTaskStore
         from sqlalchemy.ext.asyncio import create_async_engine
+        from sqlalchemy.pool import NullPool
 
-        return DatabaseTaskStore(engine=create_async_engine(dsn))
+        kwargs = {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+        return DatabaseTaskStore(engine=create_async_engine(dsn, **kwargs))
 
     def build_push_config_store(self, db_url: str | None = None):
         """Build a push notification config store (in-memory or durable).
@@ -112,9 +116,11 @@ class LocalTaskStore(TaskStoreSeam):
         require_async_driver(dsn)
         from a2a.server.tasks import DatabasePushNotificationConfigStore
         from sqlalchemy.ext.asyncio import create_async_engine
+        from sqlalchemy.pool import NullPool
 
+        kwargs = {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
         return DatabasePushNotificationConfigStore(
-            engine=create_async_engine(dsn), create_table=True
+            engine=create_async_engine(dsn, **kwargs), create_table=True
         )
 
 

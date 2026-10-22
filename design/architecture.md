@@ -111,7 +111,7 @@ The eval corpus is the enforced source of truth for field names + expected dispo
 `network`, `runtime` (Cloud Run v2), `gateway`, `iam`, `database` (Cloud SQL), `tasks` (Cloud Tasks), `secrets`, `frontend`, and the `gcs` module holding the Skill Registry, Artifacts and email-landing buckets ([substrate](gcp-substrate.md)). Terraform provisions substrate; the seams provision services.
 
 ## Settled design decisions
-- **ADK is pinned `google-adk >= 2.7.0, < 3`** — the [experimental-surfaces list](adk.md) is the risk register.
+- **ADK is pinned `google-adk >= 2.11.0, < 3`** — the [experimental-surfaces list](adk.md) is the risk register.
 - **Three demos only** (Address, Benefits, RFP); the former "Maturity" demo is dropped ([frontend](frontend.md) folds the X-Ray in as a presentation mode).
 - **Outbound is first-class** ([outbound](outbound.md)); the pull spine remains the core motion.
 - **Completeness** is the app's Sense-B decision; a process skill may carry a **prose** satisfaction description the Bridge best-efforts (no DSL) ([collect](collect.md), [skills](skills.md)).

@@ -1080,15 +1080,19 @@ class SqlOperationalStore(OperationalStore):
             )
         self.dsn = cleaned
         self._init_lock = threading.Lock()
+        self._runtime: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._engine: Any = None
         self._table: Any = None
+        self._closed = False
 
     def _ensure_ready(self) -> None:
         if self._engine is not None:
             return
         with self._init_lock:
+            if self._closed:
+                raise RuntimeError("the operational store is closed")
             if self._engine is not None:
                 return
             from sqlalchemy import (
@@ -1101,7 +1105,8 @@ class SqlOperationalStore(OperationalStore):
                 Table,
                 Text,
             )
-            from sqlalchemy.ext.asyncio import create_async_engine
+
+            from bridge.sql_runtime import acquire_dsn_runtime
 
             meta = MetaData()
             self._table = Table(
@@ -1148,16 +1153,8 @@ class SqlOperationalStore(OperationalStore):
                     "recorded_at",
                 ),
             )
-            loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                target=loop.run_forever,
-                name="bridge-operational-store",
-                daemon=True,
-            )
-            thread.start()
-            engine = create_async_engine(self.dsn)
 
-            async def _create() -> None:
+            async def _create(engine: Any) -> None:
                 from sqlalchemy import inspect, text
 
                 async with engine.begin() as conn:
@@ -1194,17 +1191,36 @@ class SqlOperationalStore(OperationalStore):
                         if col_name not in existing_cols:
                             await conn.execute(text(ddl))
 
-            fut = asyncio.run_coroutine_threadsafe(_create(), loop)
-            fut.result(timeout=_OP_TIMEOUT_S)
-            self._loop = loop
-            self._thread = thread
-            self._engine = engine
+            runtime = acquire_dsn_runtime(
+                self.dsn,
+                init_coro_factory=_create,
+                thread_name="bridge-operational-store",
+                timeout_s=_OP_TIMEOUT_S,
+            )
+            self._runtime = runtime
+            self._loop = runtime.loop
+            self._thread = runtime.thread
+            self._engine = runtime.engine
+
+    def close(self) -> None:
+        """Release the underlying per-DSN SQLAlchemy runtime lease."""
+        with self._init_lock:
+            if self._closed:
+                return
+            self._closed = True
+            runtime = self._runtime
+            self._runtime = self._loop = self._thread = self._engine = None
+        if runtime is None:
+            return
+        from bridge.sql_runtime import release_dsn_runtime
+
+        release_dsn_runtime(self.dsn, runtime, timeout_s=_OP_TIMEOUT_S)
+        _SQL_STORE_CACHE.pop(self.dsn, None)
 
     def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
         self._ensure_ready()
-        assert self._loop is not None
-        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return fut.result(timeout=_OP_TIMEOUT_S)
+        assert self._runtime is not None
+        return self._runtime.run(coro, timeout_s=_OP_TIMEOUT_S)
 
     def append_facts(self, facts: list[ConsolidatedFact]) -> int:
         """Persist extracted canonical fact rows into the SQL operational store."""
@@ -1332,23 +1348,6 @@ class SqlOperationalStore(OperationalStore):
                 return out
 
         return self._run(_query())
-
-    def close(self) -> None:
-        """Dispose of the underlying SQLAlchemy engine and connection pool."""
-        with self._init_lock:
-            if self._engine is None:
-                return
-            engine, loop, thread = self._engine, self._loop, self._thread
-            self._engine = None
-            self._loop = None
-            self._thread = None
-        if loop is not None:
-            fut = asyncio.run_coroutine_threadsafe(engine.dispose(), loop)
-            fut.result(timeout=_OP_TIMEOUT_S)
-            loop.call_soon_threadsafe(loop.stop)
-        if thread is not None:
-            thread.join(timeout=_OP_TIMEOUT_S)
-        _SQL_STORE_CACHE.pop(self.dsn, None)
 
 
 _SQL_STORE_CACHE: dict[str, SqlOperationalStore] = {}

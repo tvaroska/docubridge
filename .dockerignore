@@ -17,6 +17,9 @@ design/
 spec/
 scripts/
 *.md
+!skills/**/SKILL.md
 .python-version
 .ruff_cache/
 .pytest_cache/
+.coverage*
+.resolved_sha

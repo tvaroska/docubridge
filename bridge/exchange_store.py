@@ -240,14 +240,16 @@ def _record(row: Any) -> ExchangeRecord:
 
 
 class SqlExchangeStore(ExchangeStore):
-    """Records in one SQL table over an async SQLAlchemy engine (sqlite / Cloud SQL).
+    """Records in one SQL table over a shared per-DSN async SQLAlchemy runtime.
 
-    ``__init__`` stores the DSN only. The first operation starts a private event loop
-    on a daemon thread, builds the ``AsyncEngine`` and creates the table if missing;
-    every operation then runs on that loop in its own transaction, and the caller
-    (any thread, including one running its own loop) blocks for the result.
-    ``close()`` disposes the engine and stops the thread (idempotent; a no-op if the
-    store was never used); a closed store refuses further operations.
+    ``__init__`` stores the DSN only. The first operation leases a shared
+    ``DsnSqlRuntime`` for ``self.dsn``, builds the ``AsyncEngine`` (if not already
+    running for that DSN), and creates the table if missing; every operation then
+    runs on that loop in its own transaction, and the caller (any thread, including
+    one running its own loop) blocks for the result.
+    ``close()`` releases the store's lease (disposing the engine and stopping the
+    thread once the last store on that DSN closes); a closed store refuses further
+    operations.
     """
 
     def __init__(self, dsn: str) -> None:
@@ -255,6 +257,7 @@ class SqlExchangeStore(ExchangeStore):
             raise ValueError("SqlExchangeStore needs a non-empty DSN")
         self.dsn = dsn.strip()
         self._lock = threading.Lock()
+        self._runtime: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._engine: Any = None
@@ -263,65 +266,49 @@ class SqlExchangeStore(ExchangeStore):
     # -- lifecycle ---------------------------------------------------------------
 
     def _start(self) -> None:
-        """Start the loop thread + engine + table on first use (caller holds no lock)."""
+        """Acquire the per-DSN runtime + create table on first use."""
         with self._lock:
             if self._closed:
                 raise RuntimeError("the exchange store is closed")
             if self._loop is not None:
                 return
-            loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                target=loop.run_forever, daemon=True, name="exchange-store"
+            from bridge.sql_runtime import acquire_dsn_runtime
+
+            runtime = acquire_dsn_runtime(
+                self.dsn,
+                init_coro_factory=self._open,
+                thread_name="exchange-store",
+                timeout_s=_OP_TIMEOUT_S,
             )
-            thread.start()
-            try:
-                engine = asyncio.run_coroutine_threadsafe(self._open(), loop).result(
-                    timeout=_OP_TIMEOUT_S
-                )
-            except BaseException:
-                loop.call_soon_threadsafe(loop.stop)
-                thread.join(timeout=_OP_TIMEOUT_S)
-                loop.close()
-                raise
-            self._loop, self._thread, self._engine = loop, thread, engine
+            self._runtime = runtime
+            self._loop = runtime.loop
+            self._thread = runtime.thread
+            self._engine = runtime.engine
 
-    async def _open(self) -> Any:
-        from sqlalchemy.ext.asyncio import create_async_engine
-
-        engine = create_async_engine(self.dsn)
+    async def _open(self, engine: Any) -> None:
         table = _table()
         try:
-            try:
-                async with engine.begin() as conn:
-                    await conn.run_sync(table.metadata.create_all)
-            except Exception:
-                # Another handle/replica may have won the CREATE race; checkfirst
-                # makes a second pass a no-op if the table now exists.
-                async with engine.begin() as conn:
-                    await conn.run_sync(table.metadata.create_all)
-        except BaseException:
-            await engine.dispose()
-            raise
-        return engine
+            async with engine.begin() as conn:
+                await conn.run_sync(table.metadata.create_all)
+        except Exception:
+            # Another handle/replica may have won the CREATE race; checkfirst
+            # makes a second pass a no-op if the table now exists.
+            async with engine.begin() as conn:
+                await conn.run_sync(table.metadata.create_all)
 
     def close(self) -> None:
-        """Dispose of the underlying SQLAlchemy engine for the exchange store."""
+        """Release the underlying per-DSN SQLAlchemy runtime lease."""
         with self._lock:
             if self._closed:
                 return
             self._closed = True
-            loop, thread, engine = self._loop, self._thread, self._engine
-            self._loop = self._thread = self._engine = None
-        if loop is None or thread is None:
+            runtime = self._runtime
+            self._runtime = self._loop = self._thread = self._engine = None
+        if runtime is None:
             return
-        try:
-            asyncio.run_coroutine_threadsafe(engine.dispose(), loop).result(
-                timeout=_OP_TIMEOUT_S
-            )
-        finally:
-            loop.call_soon_threadsafe(loop.stop)
-            thread.join(timeout=_OP_TIMEOUT_S)
-            loop.close()
+        from bridge.sql_runtime import release_dsn_runtime
+
+        release_dsn_runtime(self.dsn, runtime, timeout_s=_OP_TIMEOUT_S)
 
     def _call[T](self, make: Callable[[Any], Coroutine[Any, Any, T]]) -> T:
         """Run ``make(engine)`` (a coroutine factory) on the store loop; block for it."""
@@ -330,15 +317,10 @@ class SqlExchangeStore(ExchangeStore):
                 "re-entrant exchange-store call from its own loop thread would deadlock"
             )
         self._start()
-        loop, engine = self._loop, self._engine
-        if loop is None:
+        runtime, engine = self._runtime, self._engine
+        if runtime is None:
             raise RuntimeError("the exchange store is closed")
-        future = asyncio.run_coroutine_threadsafe(make(engine), loop)
-        try:
-            return future.result(timeout=_OP_TIMEOUT_S)
-        except TimeoutError:
-            future.cancel()
-            raise
+        return runtime.run(make(engine), timeout_s=_OP_TIMEOUT_S)
 
     # -- operations --------------------------------------------------------------
 
