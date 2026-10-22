@@ -1345,3 +1345,67 @@ supporting both local development (SQLite) and GCP deployment (Cloud SQL Postgre
 **Handoff to S0-arch-17:** deployed board-owning host needs `exchange_store_from_env()`
 with `BRIDGE_SEAM_MODE=gcp`, `StaleExchangeWrite` → 409 / retry policy decision, and
 store closure on shutdown.
+
+---
+
+## Full-Step OpenTelemetry Cloud Trace v2 Exporter & BigQuery Trace Analytics (`module.telemetry`)
+
+**Completed:** 2026-10-20 (`v1.11.0-bq-telemetry` / `86aa8aa`)
+
+Extended the deployed GCP observability substrate so every HTTP request and all 22 internal
+pipeline steps across Zones 1–6 and Agent Gym emit correlated W3C OpenTelemetry spans to
+three destinations: (1) the in-memory ring buffer (`GET /v1/telemetry/spans` and
+`GET /v1/telemetry/analytics`), (2) GCP Cloud Trace v2 (`traces:batchWrite`) + trace-correlated
+Cloud Logging (`logging.googleapis.com/trace`), and (3) BigQuery (`docubridge_telemetry.otel_spans`
++ SQL analytics views).
+
+**What was built:**
+
+- **Terraform `modules/telemetry/`** (`terraform/modules/telemetry/`, tested by
+  `terraform/tests/telemetry.tftest.hcl`):
+  - All resources gated on `var.enable_telemetry_bq` (default `false`) so the default
+    credential-free root plan stays unchanged unless enabled.
+  - `google_bigquery_dataset.telemetry` (`docubridge_telemetry`) + dataset-scoped
+    `roles/bigquery.dataEditor` for `bridge-runtime`.
+  - `google_bigquery_table.otel_spans`: day-partitioned on `start_time` and clustered by
+    `["name", "zone", "entity_id", "trace_id"]`, storing W3C `trace_id`, `span_id`,
+    `parent_span_id`, `name`, `kind`, `start_time`, `end_time`, `duration_ms`, `status`,
+    `service_name`, `zone`, `entity_id`, `doc_id`, `doctype`, `actor_role`, `actor_principal`,
+    `agent_spiffe_id`, and `attributes_json`.
+  - Three deduplicated SQL analytics views (`ROW_NUMBER() OVER (PARTITION BY trace_id, span_id
+    ORDER BY start_time DESC)` CTE):
+    - `v_step_latency_analytics`: `span_count`, `error_count`, `error_rate_pct`, `avg_duration_ms`,
+      `p50_duration_ms`, `p95_duration_ms`, `p99_duration_ms`, and `max_duration_ms` per
+      `(span_name, zone)`.
+    - `v_trace_waterfall`: chronological span waterfall with `offset_ms` relative to the
+      earliest span in each `trace_id`.
+    - `v_entity_pipeline_summary`: per-trace execution rollup (`total_spans`,
+      `distinct_step_names`, `pii_redaction_spans`, `worm_vault_locks`,
+      `operational_store_promotions`, `bitemporal_queries`, `bigquery_cdc_syncs`,
+      `lineage_traces`, `spiffe_svid_verifications`, `inbox_governance_actions`,
+      `agent_gym_operations`).
+  - `google_logging_project_sink.otel_spans_to_bq` (`filter = "jsonPayload.otel.span_id:*"`)
+    with dedicated writer identity granted `roles/bigquery.dataEditor`.
+- **`CloudTraceV2SpanExporter` & `compute_trace_analytics` (`bridge/telemetry.py`)**:
+  - Exports finished spans to Cloud Trace v2 (`POST https://cloudtrace.googleapis.com/v2/projects/{project}/traces:batchWrite`),
+    streams rows directly to BigQuery (`POST https://bigquery.googleapis.com/bigquery/v2/projects/{project}/datasets/{dataset}/tables/{table}/insertAll`
+    with deterministic `insertId = f"{trace_id}:{span_id}"`), and writes trace-correlated
+    structured JSON log entries to `stdout`.
+
+**Operational learnings & gotchas:**
+
+- **Cloud Run GFE only traces the outer HTTP request by default:** In-process Python
+  OpenTelemetry child spans (`trace_step`) are invisible in GCP Cloud Trace unless explicitly
+  written via the Cloud Trace v2 REST API under `roles/cloudtrace.agent`.
+- **Cloud Trace v2 `batchWrite` schema strictness:** `displayName` must be wrapped as
+  `{"value": ...}`, attributes must use typed `attributeMap` wrappers (`stringValue` /
+  `intValue` / `boolValue`), and unknown keys (e.g., `kind`) reject the entire batch with
+  HTTP 400.
+- **Direct `tabledata.insertAll` vs. Logging Sink buffering:** Streaming directly to
+  `tabledata.insertAll` makes spans immediately queryable in `v_step_latency_analytics`,
+  `v_trace_waterfall`, and `v_entity_pipeline_summary` at the end of an E2E test, while the
+  `ROW_NUMBER()` deduplication CTE prevents duplicate counting across retries.
+- **Offline `terraform test` in sandboxes:** Run
+  `terraform init -backend=false -plugin-dir=terraform/.terraform/providers` to initialize
+  module links against cached provider binaries without network access to
+  `registry.terraform.io`.

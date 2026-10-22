@@ -4495,6 +4495,35 @@ Checks:
 
 ---
 
+## 2026-10-20 — Vendor-Neutral Branding, Banking Underwriting Scenario, Full-Step OpenTelemetry Cloud Trace v2 Exporter, and BigQuery Trace Analytics (`v1.9.0-banking` .. `v1.11.0-bq-telemetry` / `86aa8aa`)
+
+- **Decisions.**
+  1. **Vendor-Neutral `docubridge.io` Defaults & Banking Commercial Loan Underwriting (`BANKING.md` C1–C8, `v1.9.0-banking`):**
+     - Replaced Aon-specific default URIs (`agents.global.aon.net`, `gs://aon-docubridge-audit-vault`, `aon_lakehouse.bq_policy_facts_iceberg`, `--aon-red: #d93025`) with vendor-neutral `docubridge.io` / `agents.docubridge.io` / `docubridge-audit-vault` / `docubridge_lakehouse` / Blue-Slate (`#0f172a` & `#1a73e8`), while retaining backward-compatible `@aon.com` role resolution in `bridge/user_interaction.py::resolve_caller_role`.
+     - Expanded `bridge/operational_store.py` (`_MONEY_KEYS` and `source_priority_for_doctype`) so banking monetary fields (`loan_amount`, `appraised_value`, `origination_fee`, `annual_debt_service`, `net_operating_income`, etc.) and banking authority priority (`addendum`/`closing-disclosure`/`fee-override` `[40]` > `credit-agreement`/`commitment-letter` `[30]` > `term-sheet`/`appraisal` `[20]`) consolidate deterministically using fixed-point `Decimal(0.01)` math without changing wire schemas.
+  2. **End-to-End OpenTelemetry (`otel`) Across All 22 Pipeline Steps + Cloud Trace v2 Exporter (`bridge/telemetry.py`, `v1.10.1-otel`):**
+     - Instrumented all 22 pipeline steps across Zones 1–6 and Agent Gym (`vault.py`, `collect.py`, `operational_store.py`, `knowledge_catalog.py`, `identity.py`, `a2ui_inbox.py`, `agent_gym.py`, `user_interaction.py`, and `edge/agent_engine_a2a.py`) using `trace_step(...)` plus `OtelAsgiMiddleware` on all FastAPI/Starlette apps (`build_a2a_app`, `build_dashboard_app`, `build_rfp_board_app`, `build_user_interaction_app`).
+     - Added dual exporters on `TracerProvider`: `RingBufferTelemetryExporter` (serving `GET /v1/telemetry/spans` and `POST /v1/telemetry/spans/clear`) and `CloudTraceV2SpanExporter` (emitting trace-correlated structured JSON logs to `stdout` and exporting child spans directly to GCP Cloud Trace v2 `traces:batchWrite`).
+  3. **BigQuery OpenTelemetry Trace Analytics (`terraform/modules/telemetry/`, `bridge/telemetry.py`, `v1.11.0-bq-telemetry` / `86aa8aa`):**
+     - Provisioned `terraform/modules/telemetry/` (gated on `enable_telemetry_bq`, default `false`) creating BigQuery dataset `docubridge_telemetry`, day-partitioned (`start_time`) and clustered (`["name", "zone", "entity_id", "trace_id"]`) table `otel_spans`, Cloud Logging sink `docubridge-otel-spans-bq`, and 3 deduplicated SQL views: `v_step_latency_analytics`, `v_trace_waterfall`, and `v_entity_pipeline_summary`.
+     - Extended `CloudTraceV2SpanExporter` to stream finished spans directly to BigQuery via `tabledata.insertAll` (`insertId = f"{trace_id}:{span_id}"`), and exposed `GET /v1/telemetry/analytics` (`compute_trace_analytics`) for real-time step latency percentiles (`p50`/`p95`/`p99`), trace waterfall, and entity pipeline rollups.
+
+- **Key Technical Learnings & Gotchas:**
+  1. **Cloud Run Google Frontend (GFE) Trace Header Rewriting & Child-Span Gap:**
+     - Cloud Run's GFE automatically writes only the top-level HTTP request span into GCP Cloud Trace and may rewrite `X-Cloud-Trace-Context` unless both W3C `traceparent` (`00-{trace_id}-{span_id}-01`) and `X-Cloud-Trace-Context` (`{trace_id}/{span_id_dec};o=1`) are parsed (`parse_incoming_span_context`). More importantly, in-process Python OpenTelemetry child spans (`trace_step`) never reach GCP Cloud Trace automatically unless the container explicitly exports them to `POST https://cloudtrace.googleapis.com/v2/projects/{project}/traces:batchWrite` with `roles/cloudtrace.agent` granted on the runtime service account.
+  2. **Cloud Trace v2 `batchWrite` Strict Protobuf JSON Validation:**
+     - `cloudtrace.googleapis.com/v2/.../traces:batchWrite` rejects the entire batch with HTTP 400 if any span includes unsupported fields (such as raw OpenTelemetry `kind`) or unweighted strings. `displayName` must be a `TruncatableString` (`{"value": name[:128]}`), `attributes.attributeMap` values must use typed wrappers (`{"stringValue": {"value": ...}}`, `{"intValue": "..."}`, `{"boolValue": ...}`), and `status` must use numeric gRPC status codes (`{"code": 0}` for OK, `{"code": 2, "message": ...}` for ERROR).
+  3. **Cloud Logging Trace & Span Correlation:**
+     - Structured JSON logs printed to `stdout` on Cloud Run correlate with Cloud Trace spans in Cloud Logging only when the top-level JSON payload includes `"logging.googleapis.com/trace": "projects/{project}/traces/{trace_id}"`, `"logging.googleapis.com/spanId": "{span_id}"`, and `"logging.googleapis.com/trace_sampled": true`.
+  4. **Direct BigQuery `tabledata.insertAll` vs. Cloud Logging Sink Latency:**
+     - While `google_logging_project_sink` provides a zero-code durability backstop, Cloud Logging sink routing + partitioning introduces buffering delay and nested `jsonPayload.otel.*` columns. Streaming directly from `CloudTraceV2SpanExporter` to `https://bigquery.googleapis.com/bigquery/v2/projects/{project}/datasets/{dataset}/tables/{table}/insertAll` with deterministic `insertId = f"{trace_id}:{span_id}"` makes all 98+ spans per E2E workflow queryable in BigQuery views within seconds, and a `ROW_NUMBER() OVER (PARTITION BY trace_id, span_id ORDER BY start_time DESC)` deduplication CTE in `v_step_latency_analytics`, `v_trace_waterfall`, and `v_entity_pipeline_summary` guarantees exact counts across retries.
+  5. **IAM Separation for BigQuery Streaming vs. View Queries:**
+     - Dataset-level `roles/bigquery.dataEditor` on `docubridge_telemetry` authorizes `tabledata.insertAll` streaming writes, whereas running SQL queries against the analytics views requires project-level `roles/bigquery.jobUser` (`extra_roles = ["roles/cloudtrace.agent", "roles/bigquery.jobUser"]`).
+  6. **Offline Terraform Plan-Time Tests in Restricted Sandboxes:**
+     - When network access to `registry.terraform.io` is blocked in a sandboxed environment, running `terraform init -backend=false -plugin-dir=/usr/local/google/home/tvaroska/projects/docubridge/terraform/.terraform/providers` reuses the cached provider binaries and allows `terraform test` (`mock_provider`) to run 100% offline.
+
+---
+
 ## 2026-10-21 — Executive Showcase Enhancements: 3-Domain Scenario Suite (Banking, Mortgage & Insurance), Click-to-Source Document Proof Modal, Day-2 Continuous Learning Payoff, Live OpenTelemetry & BigQuery X-Ray, and Warm Cloud Run Instances (`v1.12.0-showcase`)
 
 - **Decision.** Implemented and deployed the three executive showcase recommendations plus the dedicated **Residential Mortgage Underwriting & TRID Closing (`MORTGAGE-WESTBROOK-2026`)** scenario across `bridge/agent_gym.py`, `bridge/extraction/gemini.py`, `bridge/user_interaction.py`, `demo/enterprise-demo.html`, `demo/record_gcp_demo.py`, `terraform/`, and `tests/test_enterprise_data_architecture.py`:
