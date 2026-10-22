@@ -266,7 +266,7 @@ class GcpTaskStore(TaskStoreSeam):
     """
 
     def build_task_store(self, db_url: str | None = None):
-        """Construct the durable A2A task store backed by Firestore in Native mode."""
+        """Construct the durable A2A task store backed by Cloud SQL Postgres with terminal-write retry."""
         from a2a.server.tasks import DatabaseTaskStore
         from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -299,7 +299,7 @@ class GcpExchangeStore(ExchangeStoreSeam):
     """
 
     def build_exchange_store(self, db_url: str | None = None):
-        """Construct the durable exchange store backed by Firestore and Cloud Storage."""
+        """Construct the durable exchange store backed by Cloud SQL Postgres (`SqlExchangeStore`)."""
         from bridge.exchange_store import SqlExchangeStore
 
         return SqlExchangeStore(_resolve_dsn(db_url))

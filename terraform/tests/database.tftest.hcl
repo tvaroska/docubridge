@@ -73,4 +73,9 @@ run "postgres16_private_ip_psa" {
     condition     = google_sql_user.bridge.name == var.db_user
     error_message = "SQL user name must track db_user"
   }
+
+  assert {
+    condition     = one([for f in google_sql_database_instance.bridge.settings[0].database_flags : f.value if f.name == "cloudsql.iam_authentication"]) == "on"
+    error_message = "Cloud SQL instance must enable cloudsql.iam_authentication = on"
+  }
 }

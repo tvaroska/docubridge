@@ -1,6 +1,6 @@
-# Implementation plan — Cycle 1 (Core + Address)
+# Implementation plan — Cycle 1 (Core + Address) & Enterprise Showcase (v1.14)
 
-Last Updated: 2026-10-02 · **Active sprint: Sprint 4 — RFP live use-case-add (CUJ-9)** · Sprint 0: 0 open · **Closed 2026-10-02: Sprint 3 — the `document_bridge` LlmAgent behind the A2A edge** + the reopened Sprint 0, T3-green
+Last Updated: 2026-10-22 · **Active status: All Cycle 1 Sprints (P0–P7, Sprint 0–4) + 6-Zone Enterprise Data Architecture, Agent Gym (`gemini-3.8-flash` / `gemini-4-argon`), Agent Registry & Gateway, and GCP Cloud Build CI/CD complete & verified.**
 
 <!-- Counters: p0=4 p1=6 p2=5 p3=5 p4=5 p5=4 p6=6 p7=9 s0-sec=3 s0-arch=20 s0-docs=11 s0-bug=3 s0-debt=3 s0-perf=1 s0-frontend=1 s1-benefits=7 s3-edge=8 s4-usecase=5 -->
 

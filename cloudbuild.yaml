@@ -1,0 +1,110 @@
+# Google Cloud Build pipeline for A2A Document Bridge (docubridge)
+#
+# Runs the full verification ladder (ruff lint + format check, pytest suite,
+# frontend workspace tests, and credential-free Terraform plan assertions) before
+# building and pushing the production Cloud Run container image to Artifact Registry.
+#
+# Usage:
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions "_IMAGE=us-central1-docker.pkg.dev/${PROJECT_ID}/bridge/bridge-runtime:latest"
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: bridge
+  _SERVICE_NAME: docubridge-showcase-bridge
+  _IMAGE: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+steps:
+  # ------------------------------------------------------------------------- #
+  # 1. Resolve Git commit metadata (works for both triggers & manual submit)  #
+  # ------------------------------------------------------------------------- #
+  - id: resolve-git-metadata
+    name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        SHA="${COMMIT_SHA:-$(git rev-parse --short=12 HEAD 2>/dev/null || echo 'local')}"
+        BRANCH="${BRANCH_NAME:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'main')}"
+        printf '%s' "${SHA}" > /workspace/.resolved_sha
+        printf "Resolved commit=%s branch=%s\n" "${SHA}" "${BRANCH}"
+
+  # ------------------------------------------------------------------------- #
+  # 2. Python Lint, Format & Full Test Suite (uv + ruff + pytest)             #
+  # ------------------------------------------------------------------------- #
+  - id: python-quality-and-tests
+    name: python:3.12-slim
+    entrypoint: bash
+    env:
+      - UV_COMPILE_BYTECODE=1
+      - UV_LINK_MODE=copy
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        pip install --no-cache-dir uv
+        uv sync --frozen --extra dev --extra gcp --no-install-project
+        uv run ruff check .
+        uv run ruff format --check .
+        uv run pytest -q
+
+  # ------------------------------------------------------------------------- #
+  # 3. Frontend Workspace Unit Tests (pnpm + vitest)                          #
+  # ------------------------------------------------------------------------- #
+  - id: frontend-unit-tests
+    name: node:22-slim
+    entrypoint: bash
+    waitFor: ["resolve-git-metadata"]
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm --filter @docubridge/shared test
+
+  # ------------------------------------------------------------------------- #
+  # 4. Infrastructure-as-Code Plan-Time Verification (terraform test)         #
+  # ------------------------------------------------------------------------- #
+  - id: terraform-plan-tests
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    waitFor: ["resolve-git-metadata"]
+    args:
+      - -c
+      - |
+        set -eu
+        terraform -chdir=terraform init -backend=false -input=false
+        terraform -chdir=terraform test
+
+  # ------------------------------------------------------------------------- #
+  # 5. Build & Push Production Runtime Image to Artifact Registry             #
+  # ------------------------------------------------------------------------- #
+  - id: build-and-push-image
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    waitFor:
+      - python-quality-and-tests
+      - frontend-unit-tests
+      - terraform-plan-tests
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        SHA="$(cat /workspace/.resolved_sha)"
+        TARGET_IMAGE="${_IMAGE:-${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:${SHA}}"
+        LATEST_IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:latest"
+        docker pull "${LATEST_IMAGE}" || true
+        docker build \
+          --cache-from "${LATEST_IMAGE}" \
+          -t "${TARGET_IMAGE}" \
+          -t "${LATEST_IMAGE}" \
+          -f Dockerfile \
+          .
+        docker push "${TARGET_IMAGE}"
+        docker push "${LATEST_IMAGE}"

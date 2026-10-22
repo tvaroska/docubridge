@@ -1125,6 +1125,21 @@ class SqlOperationalStore(OperationalStore):
                 Column("source_anchor_json", Text, nullable=True),
                 Column("vault_uri", Text, nullable=True),
                 Column("flagged_for_review", Boolean, nullable=False, default=False),
+                Column("skill_version", String(64), nullable=False, default="1.0.0"),
+                Column(
+                    "skill_revision_id",
+                    String(128),
+                    nullable=False,
+                    default="rev-v1-0-baseline",
+                ),
+                Column("skill_urn", String(256), nullable=True),
+                Column(
+                    "process_skill_revision_id",
+                    String(128),
+                    nullable=False,
+                    default="rev-v1-0-baseline",
+                ),
+                Column("compiled_rule_ids_json", Text, nullable=True),
                 Index(
                     "ix_operational_facts_bitemporal",
                     "entity_id",
@@ -1143,8 +1158,41 @@ class SqlOperationalStore(OperationalStore):
             engine = create_async_engine(self.dsn)
 
             async def _create() -> None:
+                from sqlalchemy import inspect, text
+
                 async with engine.begin() as conn:
                     await conn.run_sync(meta.create_all)
+                    existing_cols = await conn.run_sync(
+                        lambda sync_conn: {
+                            c["name"]
+                            for c in inspect(sync_conn).get_columns(FACTS_TABLE_NAME)
+                        }
+                    )
+                    migrations = (
+                        (
+                            "skill_version",
+                            f"ALTER TABLE {FACTS_TABLE_NAME} ADD COLUMN skill_version VARCHAR(64) NOT NULL DEFAULT '1.0.0'",
+                        ),
+                        (
+                            "skill_revision_id",
+                            f"ALTER TABLE {FACTS_TABLE_NAME} ADD COLUMN skill_revision_id VARCHAR(128) NOT NULL DEFAULT 'rev-v1-0-baseline'",
+                        ),
+                        (
+                            "skill_urn",
+                            f"ALTER TABLE {FACTS_TABLE_NAME} ADD COLUMN skill_urn VARCHAR(256)",
+                        ),
+                        (
+                            "process_skill_revision_id",
+                            f"ALTER TABLE {FACTS_TABLE_NAME} ADD COLUMN process_skill_revision_id VARCHAR(128) NOT NULL DEFAULT 'rev-v1-0-baseline'",
+                        ),
+                        (
+                            "compiled_rule_ids_json",
+                            f"ALTER TABLE {FACTS_TABLE_NAME} ADD COLUMN compiled_rule_ids_json TEXT",
+                        ),
+                    )
+                    for col_name, ddl in migrations:
+                        if col_name not in existing_cols:
+                            await conn.execute(text(ddl))
 
             fut = asyncio.run_coroutine_threadsafe(_create(), loop)
             fut.result(timeout=_OP_TIMEOUT_S)
@@ -1189,6 +1237,15 @@ class SqlOperationalStore(OperationalStore):
                 ),
                 "vault_uri": f.vault_uri,
                 "flagged_for_review": f.flagged_for_review,
+                "skill_version": f.skill_version,
+                "skill_revision_id": f.skill_revision_id,
+                "skill_urn": f.skill_urn,
+                "process_skill_revision_id": f.process_skill_revision_id,
+                "compiled_rule_ids_json": (
+                    json.dumps(list(f.compiled_rule_ids))
+                    if f.compiled_rule_ids
+                    else None
+                ),
             }
             for f in facts
         ]
@@ -1256,6 +1313,20 @@ class SqlOperationalStore(OperationalStore):
                             source_anchor=anchor,
                             vault_uri=row["vault_uri"],
                             flagged_for_review=bool(row["flagged_for_review"]),
+                            skill_version=row.get("skill_version") or "1.0.0",
+                            skill_revision_id=(
+                                row.get("skill_revision_id") or "rev-v1-0-baseline"
+                            ),
+                            skill_urn=row.get("skill_urn"),
+                            process_skill_revision_id=(
+                                row.get("process_skill_revision_id")
+                                or "rev-v1-0-baseline"
+                            ),
+                            compiled_rule_ids=(
+                                tuple(json.loads(row["compiled_rule_ids_json"]))
+                                if row.get("compiled_rule_ids_json")
+                                else ()
+                            ),
                         )
                     )
                 return out
@@ -1286,7 +1357,7 @@ _SQL_CACHE_LOCK = threading.Lock()
 
 def operational_store_from_env() -> OperationalStore:
     """Resolve the OperationalStore from env: AlloyDB/Cloud SQL when a DSN is configured,
-    else :class:`InMemoryOperationalStore` (follows the host-controlled wiring guard)."""
+    else :class:`InMemoryOperationalStore` in local mode (refuses in-memory on GCP)."""
     dsn = (
         os.environ.get(OPERATIONAL_DB_ENV, "").strip()
         or os.environ.get("DATABASE_URL", "").strip()
@@ -1298,4 +1369,9 @@ def operational_store_from_env() -> OperationalStore:
                 cached = SqlOperationalStore(dsn)
                 _SQL_STORE_CACHE[dsn] = cached
         return cached
+    if os.environ.get("BRIDGE_SEAM_MODE", "").strip().lower() == "gcp":
+        raise RuntimeError(
+            "GCP seam mode requires DATABASE_URL or BRIDGE_OPERATIONAL_DB_URL for "
+            "OperationalStore; refusing an in-memory fallback (the session-affinity trap)."
+        )
     return InMemoryOperationalStore()

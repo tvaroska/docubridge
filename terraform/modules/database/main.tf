@@ -60,6 +60,13 @@ resource "google_sql_database_instance" "bridge" {
       ipv4_enabled    = false
       private_network = var.vpc_network
     }
+
+    # Enable Cloud SQL IAM database authentication alongside the Secret Manager DSN
+    # path so service accounts can authenticate via short-lived OAuth2 tokens.
+    database_flags {
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
   }
 }
 

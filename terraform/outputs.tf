@@ -209,3 +209,8 @@ output "telemetry_bq_entity_summary_view" {
   value       = module.telemetry.entity_summary_view_fqn
 }
 
+output "telemetry_bq_trace_sql_evaluation_view" {
+  description = "Fully qualified BigQuery view for Rule 0 deterministic SQL trajectory evaluation and selective AI.GENERATE_TABLE sampling (\"\" when disabled)."
+  value       = module.telemetry.trace_sql_evaluation_view_fqn
+}
+

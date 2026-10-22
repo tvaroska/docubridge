@@ -24,10 +24,13 @@ NEVER `agents/`. No pixel/CSS/style fields in any A2UI model.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import os
+import threading
 import uuid
+from collections.abc import Coroutine
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -1395,21 +1398,328 @@ class InMemoryActionInboxStore(ActionInboxStore):
         return [a for a in self._audits if a.item_id == item_id]
 
 
+INBOX_DB_ENV = "BRIDGE_INBOX_DB_URL"
+INBOX_ITEMS_TABLE_NAME = "bridge_a2ui_inbox_items"
+INBOX_AUDITS_TABLE_NAME = "bridge_a2ui_inbox_audits"
+_INBOX_OP_TIMEOUT_S = 30.0
+
+
+class SqlActionInboxStore(InMemoryActionInboxStore):
+    """AlloyDB / Cloud SQL Postgres / SQLite durable A2UI v0.9 Action Inbox store.
+
+    Synchronizes ``ActionInboxItem`` state and immutable ``InboxAuditRecord`` entries
+    with shared SQL tables so multi-replica Cloud Run services maintain a single
+    source of truth across instances and restarts.
+    """
+
+    def __init__(self, dsn: str) -> None:
+        super().__init__()
+        cleaned = (dsn or "").strip()
+        if not cleaned:
+            raise ValueError("SqlActionInboxStore requires a non-empty database DSN")
+        if ":memory:" in cleaned or "mode=memory" in cleaned:
+            raise ValueError(
+                "SqlActionInboxStore refuses an in-memory SQLite DSN; use "
+                "InMemoryActionInboxStore or a file/Postgres DSN"
+            )
+        self.dsn = cleaned
+        self._init_lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+        self._engine: Any = None
+        self._items_table: Any = None
+        self._audits_table: Any = None
+
+    def _ensure_ready(self) -> None:
+        if self._engine is not None:
+            return
+        with self._init_lock:
+            if self._engine is not None:
+                return
+            from sqlalchemy import (
+                Column,
+                Integer,
+                MetaData,
+                String,
+                Table,
+                Text,
+            )
+            from sqlalchemy.ext.asyncio import create_async_engine
+
+            meta = MetaData()
+            self._items_table = Table(
+                INBOX_ITEMS_TABLE_NAME,
+                meta,
+                Column("item_id", String(64), primary_key=True),
+                Column("entity_id", String(128), nullable=False, index=True),
+                Column("task_state", String(64), nullable=False, index=True),
+                Column("created_at", String(64), nullable=False, index=True),
+                Column("payload_json", Text, nullable=False),
+            )
+            self._audits_table = Table(
+                INBOX_AUDITS_TABLE_NAME,
+                meta,
+                Column("seq", Integer, primary_key=True, autoincrement=True),
+                Column("audit_id", String(64), unique=True, nullable=False, index=True),
+                Column("item_id", String(64), nullable=False, index=True),
+                Column("payload_json", Text, nullable=False),
+            )
+            loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                target=loop.run_forever,
+                name="bridge-a2ui-inbox-store",
+                daemon=True,
+            )
+            thread.start()
+            engine = create_async_engine(self.dsn)
+
+            async def _create() -> None:
+                async with engine.begin() as conn:
+                    await conn.run_sync(meta.create_all)
+
+            fut = asyncio.run_coroutine_threadsafe(_create(), loop)
+            fut.result(timeout=_INBOX_OP_TIMEOUT_S)
+            self._loop = loop
+            self._thread = thread
+            self._engine = engine
+
+    def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
+        self._ensure_ready()
+        assert self._loop is not None
+        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return fut.result(timeout=_INBOX_OP_TIMEOUT_S)
+
+    def _save_item_sql(self, item: ActionInboxItem) -> None:
+        self._ensure_ready()
+        table = self._items_table
+        engine = self._engine
+
+        async def _op() -> None:
+            from sqlalchemy import delete
+
+            async with engine.begin() as conn:
+                await conn.execute(delete(table).where(table.c.item_id == item.item_id))
+                await conn.execute(
+                    table.insert().values(
+                        item_id=item.item_id,
+                        entity_id=item.entity_id,
+                        task_state=item.task_state,
+                        created_at=item.created_at.isoformat(),
+                        payload_json=item.model_dump_json(),
+                    )
+                )
+
+        self._run(_op())
+
+    def _save_audit_sql(self, audit: InboxAuditRecord) -> None:
+        self._ensure_ready()
+        table = self._audits_table
+        engine = self._engine
+
+        async def _op() -> None:
+            from sqlalchemy import delete
+
+            async with engine.begin() as conn:
+                await conn.execute(
+                    delete(table).where(table.c.audit_id == audit.audit_id)
+                )
+                await conn.execute(
+                    table.insert().values(
+                        audit_id=audit.audit_id,
+                        item_id=audit.item_id,
+                        payload_json=audit.model_dump_json(),
+                    )
+                )
+
+        self._run(_op())
+
+    def _load_item_sql(self, item_id: str) -> ActionInboxItem | None:
+        self._ensure_ready()
+        table = self._items_table
+        engine = self._engine
+
+        async def _op() -> ActionInboxItem | None:
+            from sqlalchemy import select
+
+            async with engine.connect() as conn:
+                res = await conn.execute(
+                    select(table.c.payload_json).where(table.c.item_id == item_id)
+                )
+                row = res.first()
+                if row is None:
+                    return None
+                return ActionInboxItem.model_validate_json(row[0])
+
+        item = self._run(_op())
+        if item is not None:
+            self._items[item.item_id] = item
+        return item
+
+    def create_action(self, **kwargs: Any) -> ActionInboxItem:
+        """Create a new human-in-the-loop action inbox item and persist it in SQL."""
+        item = super().create_action(**kwargs)
+        self._save_item_sql(item)
+        return item
+
+    def get_item(self, item_id: str) -> ActionInboxItem | None:
+        """Retrieve an action inbox item from SQL by its unique action ID."""
+        return self._load_item_sql(item_id)
+
+    def list_items(
+        self,
+        *,
+        entity_id: str | None = None,
+        task_state: TaskLifecycleState | None = None,
+    ) -> list[ActionInboxItem]:
+        """List SQL-backed action inbox items filtered by entity ID or task state."""
+        self._ensure_ready()
+        table = self._items_table
+        engine = self._engine
+
+        async def _op() -> list[ActionInboxItem]:
+            from sqlalchemy import select
+
+            stmt = select(table.c.payload_json).order_by(table.c.created_at.desc())
+            if entity_id is not None:
+                stmt = stmt.where(table.c.entity_id == entity_id)
+            if task_state is not None:
+                stmt = stmt.where(table.c.task_state == task_state)
+            async with engine.connect() as conn:
+                res = await conn.execute(stmt)
+                items = [ActionInboxItem.model_validate_json(r[0]) for r in res]
+                for it in items:
+                    self._items[it.item_id] = it
+                return items
+
+        return self._run(_op())
+
+    def advance_step(
+        self,
+        item_id: str,
+        *,
+        step_id: str,
+        status: ActionStepStatus,
+        detail: str | None = None,
+        external_detail: str | None = None,
+        hint: str | None = None,
+    ) -> tuple[ActionInboxItem, dict[str, Any]]:
+        """Advance the workflow step of a SQL-backed action inbox item."""
+        self._load_item_sql(item_id)
+        item, delta = super().advance_step(
+            item_id,
+            step_id=step_id,
+            status=status,
+            detail=detail,
+            external_detail=external_detail,
+            hint=hint,
+        )
+        self._save_item_sql(item)
+        return item, delta
+
+    def resolve_action(
+        self,
+        item_id: str,
+        *,
+        action_request: A2uiClientActionRequest,
+        actor_principal: str,
+        actor_role: CatalogRole,
+        channel: DeliveryChannel,
+        agent_spiffe_id: str | None = None,
+        principal_max_approval_amount: float | None = None,
+    ) -> dict[str, Any]:
+        """Resolve a SQL-backed action inbox item and persist both the item and audit record."""
+        self._load_item_sql(item_id)
+        prev_audit_len = len(self._audits)
+        res = super().resolve_action(
+            item_id,
+            action_request=action_request,
+            actor_principal=actor_principal,
+            actor_role=actor_role,
+            channel=channel,
+            agent_spiffe_id=agent_spiffe_id,
+            principal_max_approval_amount=principal_max_approval_amount,
+        )
+        updated_item = self._items.get(item_id)
+        if updated_item is not None:
+            self._save_item_sql(updated_item)
+        for audit in self._audits[prev_audit_len:]:
+            self._save_audit_sql(audit)
+        return res
+
+    def list_audit_records(self, item_id: str | None = None) -> list[InboxAuditRecord]:
+        """Return immutable audit log records from SQL, optionally filtered by action ID."""
+        self._ensure_ready()
+        table = self._audits_table
+        engine = self._engine
+
+        async def _op() -> list[InboxAuditRecord]:
+            from sqlalchemy import select
+
+            stmt = select(table.c.payload_json).order_by(table.c.seq.asc())
+            if item_id is not None:
+                stmt = stmt.where(table.c.item_id == item_id)
+            async with engine.connect() as conn:
+                res = await conn.execute(stmt)
+                return [InboxAuditRecord.model_validate_json(r[0]) for r in res]
+
+        return self._run(_op())
+
+    def close(self) -> None:
+        """Dispose of the underlying SQLAlchemy engine and connection pool."""
+        with self._init_lock:
+            if self._engine is None:
+                return
+            engine, loop, thread = self._engine, self._loop, self._thread
+            self._engine = None
+            self._loop = None
+            self._thread = None
+        if loop is not None:
+            fut = asyncio.run_coroutine_threadsafe(engine.dispose(), loop)
+            fut.result(timeout=_INBOX_OP_TIMEOUT_S)
+            loop.call_soon_threadsafe(loop.stop)
+        if thread is not None:
+            thread.join(timeout=_INBOX_OP_TIMEOUT_S)
+        _SQL_INBOX_CACHE.pop(self.dsn, None)
+
+
 _DEFAULT_INBOX_STORE: InMemoryActionInboxStore | None = None
+_SQL_INBOX_CACHE: dict[str, SqlActionInboxStore] = {}
+_SQL_INBOX_LOCK = threading.Lock()
 
 
 def action_inbox_store_from_env(
     inbox_store: ActionInboxStore | None = None,
 ) -> ActionInboxStore:
-    """Return an explicit `ActionInboxStore` or the process singleton behind an env check."""
+    """Resolve `ActionInboxStore` from env: AlloyDB/Cloud SQL when a DSN is configured,
+    else the local in-memory singleton (refuses in-memory fallback when `BRIDGE_SEAM_MODE=gcp`)."""
     global _DEFAULT_INBOX_STORE
     if inbox_store is not None:
         return inbox_store
-    if os.environ.get("BRIDGE_INBOX_STORE_MODE", "memory") == "memory":
+    mode = os.environ.get("BRIDGE_INBOX_STORE_MODE", "").strip().lower()
+    if mode == "memory":
         if _DEFAULT_INBOX_STORE is None:
             _DEFAULT_INBOX_STORE = InMemoryActionInboxStore()
         return _DEFAULT_INBOX_STORE
-    return InMemoryActionInboxStore()
+    dsn = (
+        os.environ.get(INBOX_DB_ENV, "").strip()
+        or os.environ.get("BRIDGE_OPERATIONAL_DB_URL", "").strip()
+        or os.environ.get("DATABASE_URL", "").strip()
+    )
+    if dsn:
+        with _SQL_INBOX_LOCK:
+            cached = _SQL_INBOX_CACHE.get(dsn)
+            if cached is None:
+                cached = SqlActionInboxStore(dsn)
+                _SQL_INBOX_CACHE[dsn] = cached
+        return cached
+    if os.environ.get("BRIDGE_SEAM_MODE", "").strip().lower() == "gcp":
+        raise RuntimeError(
+            "GCP seam mode requires DATABASE_URL or BRIDGE_INBOX_DB_URL for "
+            "ActionInboxStore; refusing an in-memory fallback (the session-affinity trap)."
+        )
+    if _DEFAULT_INBOX_STORE is None:
+        _DEFAULT_INBOX_STORE = InMemoryActionInboxStore()
+    return _DEFAULT_INBOX_STORE
 
 
 def format_a2ui_sse_frames(

@@ -9,6 +9,11 @@ dependencies = [
     # a2a-sdk http-server extra pulls sse-starlette + starlette for A2AStarletteApplication (SSE).
     # google-adk[a2a] pulls a2a-sdk but not its http-server extra.
     "a2a-sdk[http-server]>=1.1,<2",
+    "fastapi>=0.115",
+    "httpx>=0.27",
+    "opentelemetry-api>=1.25",
+    "opentelemetry-sdk>=1.25",
+    "uvicorn>=0.30",
     # Durable stores (P4-1, DUR-1/DUR-2): DatabaseSessionService (google-adk[db]) +
     # DatabaseTaskStore (a2a-sdk[sql]) over local sqlite. sqlalchemy[asyncio] pulls greenlet;
     # aiosqlite pinned explicitly (was only transitive). Postgres/Cloud-SQL extras are P7.

@@ -57,8 +57,10 @@ gcloud artifacts repositories describe "${AR_REPO}" --location="${REGION}" >/dev
 
 IMAGE_TAG="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || date +%s)"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${SERVICE_NAME}:${IMAGE_TAG}"
-echo "==> Building + pushing ${IMAGE}"
-gcloud builds submit "${REPO_ROOT}" --tag "${IMAGE}"
+echo "==> Running Cloud Build pipeline (lint + pytest + terraform test + image push) for ${IMAGE}"
+gcloud builds submit "${REPO_ROOT}" \
+  --config "${REPO_ROOT}/cloudbuild.yaml" \
+  --substitutions "_REGION=${REGION},_AR_REPO=${AR_REPO},_SERVICE_NAME=${SERVICE_NAME},_IMAGE=${IMAGE}"
 
 # --------------------------------------------------------------------------- #
 # 3. Terraform init.                                                           #

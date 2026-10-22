@@ -22,3 +22,8 @@ output "entity_summary_view_fqn" {
   description = "Fully qualified BigQuery view for per-entity pipeline trace summary (\"\" when disabled)."
   value       = var.enable_telemetry_bq ? "${var.project_id}.${google_bigquery_dataset.telemetry[0].dataset_id}.${google_bigquery_table.v_entity_pipeline_summary[0].table_id}" : ""
 }
+
+output "trace_sql_evaluation_view_fqn" {
+  description = "Fully qualified BigQuery view for Rule 0 deterministic SQL trajectory evaluation and selective AI.GENERATE_TABLE sampling (\"\" when disabled)."
+  value       = var.enable_telemetry_bq ? "${var.project_id}.${google_bigquery_dataset.telemetry[0].dataset_id}.${google_bigquery_table.v_trace_sql_evaluation[0].table_id}" : ""
+}

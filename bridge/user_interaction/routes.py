@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 from bridge.a2ui_inbox import (
     ENTERPRISE_INBOX_CATALOG_SCHEMA,
@@ -43,6 +43,7 @@ from bridge.operational_store import OperationalStore, operational_store_from_en
 from bridge.telemetry import (
     OtelAsgiMiddleware,
     clear_recorded_spans,
+    compute_sql_trace_evaluation,
     compute_trace_analytics,
     get_recorded_spans,
 )
@@ -1059,6 +1060,34 @@ def build_user_interaction_router(
             )
         return HTMLResponse(content=demo_path.read_text(encoding="utf-8"))
 
+    @router.get("/demo/enterprise-demo.css")
+    def get_interactive_enterprise_console_css() -> Response:
+        """Serve the modular stylesheet for the Enterprise Showcase console."""
+        css_path = Path(__file__).resolve().parents[2] / "demo" / "enterprise-demo.css"
+        if not css_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="Stylesheet (demo/enterprise-demo.css) not found.",
+            )
+        return Response(
+            content=css_path.read_text(encoding="utf-8"),
+            media_type="text/css; charset=utf-8",
+        )
+
+    @router.get("/demo/enterprise-demo.js")
+    def get_interactive_enterprise_console_js() -> Response:
+        """Serve the modular JavaScript controller for the Enterprise Showcase console."""
+        js_path = Path(__file__).resolve().parents[2] / "demo" / "enterprise-demo.js"
+        if not js_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="Script (demo/enterprise-demo.js) not found.",
+            )
+        return Response(
+            content=js_path.read_text(encoding="utf-8"),
+            media_type="application/javascript; charset=utf-8",
+        )
+
     @router.get("/v1/catalog/spiffe-agents")
     def get_catalog_spiffe_agents(
         security_zone: Literal["internal", "external"] | None = None,
@@ -1139,6 +1168,21 @@ def build_user_interaction_router(
     ) -> dict[str, Any]:
         """Compute p50/p95/p99 step latency analytics, trace waterfall, and multi-model FinOps split."""
         return compute_trace_analytics(
+            trace_id=trace_id,
+            entity_id=entity_id,
+            limit=limit,
+        )
+
+    @router.get("/v1/telemetry/sql-eval")
+    @router.post("/v1/telemetry/sql-eval/run")
+    def run_telemetry_sql_eval_endpoint(
+        trace_id: str | None = None,
+        entity_id: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Execute BigQuery-compatible Rule 0 SQL trajectory evaluation, selective AI.GENERATE_TABLE
+        judge sampling, and Rogan-Gladen bias correction over recorded OpenTelemetry spans."""
+        return compute_sql_trace_evaluation(
             trace_id=trace_id,
             entity_id=entity_id,
             limit=limit,

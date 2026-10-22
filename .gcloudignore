@@ -1,0 +1,27 @@
+# .gcloudignore — controls context uploaded by `gcloud builds submit`.
+# Preserves lightweight .git metadata (< 4 KB) so `cloudbuild.yaml` resolves
+# COMMIT_SHA and BRANCH_NAME during manual CLI submissions without flags.
+
+.gcloudignore
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+node_modules/
+frontend/**/dist/
+frontend/**/node_modules/
+terraform/.terraform/
+terraform/terraform.tfstate*
+demo/_captures/
+.env
+
+# Ignore heavy git packfiles/logs while keeping HEAD + refs for SHA resolution
+.git/objects/**
+.git/logs/**
+.git/hooks/**
+!.git/HEAD
+!.git/config
+!.git/refs/
+!.git/packed-refs
+!.git/reftable/

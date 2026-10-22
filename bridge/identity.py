@@ -257,6 +257,21 @@ def _b64url_decode(segment: str) -> bytes:
         raise SpiffeAuthenticationError("Malformed JWT base64url segment.") from exc
 
 
+def _resolve_svid_signing_secret(secret: str | None = None) -> str:
+    """Resolve the SPIFFE SVID HMAC signing secret; refuse hardcoded dev fallback on GCP."""
+    if secret and secret.strip():
+        return secret.strip()
+    env_secret = os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip()
+    if env_secret:
+        return env_secret
+    if os.environ.get("BRIDGE_SEAM_MODE", "").strip().lower() == "gcp":
+        raise SpiffeAuthenticationError(
+            f"{SPIFFE_SVID_SECRET_ENV} must be configured when BRIDGE_SEAM_MODE=gcp; "
+            "refusing fallback to DEFAULT_DEV_SVID_SECRET."
+        )
+    return DEFAULT_DEV_SVID_SECRET
+
+
 def mint_jwt_svid(
     spiffe_id: str,
     *,
@@ -273,11 +288,7 @@ def mint_jwt_svid(
 ) -> str:
     """Mint a signed SPIFFE JWT-SVID (with optional RFC 8693 OBO `act`/`obo` claims)."""
     parsed = SpiffeId.parse(spiffe_id)
-    signing_secret = (
-        secret
-        or os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip()
-        or DEFAULT_DEV_SVID_SECRET
-    )
+    signing_secret = _resolve_svid_signing_secret(secret)
     now = int(now_epoch if now_epoch is not None else time.time())
     header = {"alg": "HS256", "typ": "JWT+SVID", "kid": "spiffe-root-v1"}
     payload: dict[str, Any] = {
@@ -344,11 +355,7 @@ def verify_jwt_svid(
             raise SpiffeAuthenticationError("Malformed JWT-SVID: expected 3 segments.")
 
         h_b64, p_b64, s_b64 = parts
-        signing_secret = (
-            secret
-            or os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip()
-            or DEFAULT_DEV_SVID_SECRET
-        )
+        signing_secret = _resolve_svid_signing_secret(secret)
         signing_input = f"{h_b64}.{p_b64}".encode("ascii")
         expected_sig = hmac.new(
             signing_secret.encode("utf-8"), signing_input, hashlib.sha256

@@ -201,6 +201,98 @@ resource "google_bigquery_table" "v_entity_pipeline_summary" {
   depends_on = [google_bigquery_table.otel_spans]
 }
 
+resource "google_bigquery_table" "v_trace_sql_evaluation" {
+  count = var.enable_telemetry_bq ? 1 : 0
+
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.telemetry[0].dataset_id
+  table_id            = "v_trace_sql_evaluation"
+  description         = "Rule 0 deterministic SQL trajectory evaluation across all 5 governance/ordering gates and selective AI.GENERATE_TABLE judge sampling."
+  deletion_protection = false
+  labels              = var.labels
+
+  view {
+    use_legacy_sql = false
+    query          = <<-SQL
+      WITH deduped AS (
+        SELECT * EXCEPT(rn)
+        FROM (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY trace_id, span_id ORDER BY start_time DESC) AS rn
+          FROM `${var.project_id}.${google_bigquery_dataset.telemetry[0].dataset_id}.${google_bigquery_table.otel_spans[0].table_id}`
+        )
+        WHERE rn = 1
+      ),
+      per_trace AS (
+        SELECT
+          trace_id,
+          COALESCE(MAX(entity_id), 'all') AS entity_id,
+          COUNT(*) AS total_spans,
+          COUNTIF(status = 'ERROR') AS error_spans,
+          COUNTIF(JSON_VALUE(attributes_json, '$."gen_ai.request.model"') = 'gemini-3.8-flash') AS workhorse_calls,
+          COUNTIF(JSON_VALUE(attributes_json, '$."gen_ai.request.model"') = 'gemini-4-argon') AS reasoning_calls,
+          COUNTIF(JSON_VALUE(attributes_json, '$."docubridge.finops.traffic_type"') = 'conflict_escalation') AS conflict_escalation_calls,
+          SUM(COALESCE(SAFE_CAST(JSON_VALUE(attributes_json, '$."gen_ai.usage.input_tokens"') AS INT64), 0) + COALESCE(SAFE_CAST(JSON_VALUE(attributes_json, '$."gen_ai.usage.output_tokens"') AS INT64), 0)) AS total_tokens,
+          (
+            COUNTIF(name = 'docubridge.intake.collect_document') = 0
+            OR (
+              COUNTIF(name = 'docubridge.intake.redact_pii' AND status = 'OK') > 0
+              AND COUNTIF(name = 'docubridge.vault.lock_worm_artifact' AND status = 'OK') > 0
+              AND MIN(IF(name = 'docubridge.intake.redact_pii', start_time, NULL)) <= MIN(IF(name = 'docubridge.intake.collect_document', start_time, NULL))
+            )
+          ) AS gate_1_pii_redacted_before_extract,
+          (
+            COUNTIF(name IN ('docubridge.consolidation.promote_to_operational_store', 'docubridge.a2ui.render_surface')) = 0
+            OR (
+              COUNTIF(name = 'docubridge.identity.verify_jwt_svid' AND status = 'OK') > 0
+              AND COUNTIF(agent_spiffe_id IS NOT NULL) > 0
+            )
+          ) AS gate_2_spiffe_zero_trust_verified,
+          (
+            COUNTIF(STARTS_WITH(name, 'docubridge.consolidation.') AND status = 'ERROR') = 0
+          ) AS gate_3_decimal_math_and_bitemporal_audit,
+          (
+            COUNTIF(
+              name = 'docubridge.agent_gym.distill_signal'
+              AND COALESCE(SAFE_CAST(JSON_VALUE(attributes_json, '$."docubridge.oversight.rsr_score"') AS FLOAT64), 1.0) < 0.80
+            ) = 0
+          ) AS gate_4_oversight_anti_rubber_stamp,
+          (
+            COUNTIF(status = 'ERROR') = 0
+            AND COUNTIF(JSON_VALUE(attributes_json, '$."docubridge.finops.traffic_type"') = 'conflict_escalation') <= 1
+          ) AS gate_5_finops_workhorse_right_sized,
+          MIN(start_time) AS trace_started_at,
+          ROUND(SUM(duration_ms), 3) AS cumulative_span_duration_ms
+        FROM deduped
+        GROUP BY trace_id
+      )
+      SELECT
+        *,
+        (
+          gate_1_pii_redacted_before_extract
+          AND gate_2_spiffe_zero_trust_verified
+          AND gate_3_decimal_math_and_bitemporal_audit
+          AND gate_4_oversight_anti_rubber_stamp
+          AND gate_5_finops_workhorse_right_sized
+        ) AS rule0_sql_all_passed,
+        (
+          NOT (
+            gate_1_pii_redacted_before_extract
+            AND gate_2_spiffe_zero_trust_verified
+            AND gate_3_decimal_math_and_bitemporal_audit
+            AND gate_4_oversight_anti_rubber_stamp
+            AND gate_5_finops_workhorse_right_sized
+          )
+          OR conflict_escalation_calls > 0
+          OR MOD(ABS(FARM_FINGERPRINT(trace_id)), 100) < 5
+        ) AS needs_llm_judge_sampling
+      FROM per_trace
+      ORDER BY trace_started_at DESC
+    SQL
+  }
+
+  depends_on = [google_bigquery_table.otel_spans]
+}
+
 resource "google_logging_project_sink" "otel_spans_to_bq" {
   count = var.enable_telemetry_bq ? 1 : 0
 

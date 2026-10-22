@@ -32,11 +32,11 @@ docubridge/
 │   ├── operational_store.py Zone 3/4 bi-temporal Operational Store, Decimal consolidation & Iceberg CDC
 │   ├── knowledge_catalog.py Zone 6 Knowledge Catalog, 6-hop lineage, glossary & asset map
 │   ├── identity.py          SPIFFE JWT-SVID verification, OBO compound identity & tenant isolation
-│   ├── a2ui_inbox.py        Zone 5 A2UI v0.9 Action Inbox, SSE deltas & RFC 6902 audit trail
-│   ├── agent_gym.py         Zone 6 Agent Gym continuous learning, stress suite & Programmable Trust
-│   ├── telemetry.py         End-to-end OpenTelemetry spans, Cloud Trace v2 & BigQuery streaming
-│   └── user_interaction.py  Zone 5/6 FastAPI router (/v1/a2ui/*, /v1/catalog/*, /v1/gym/*, /v1/telemetry/*, /demo)
-├── demo/            5-scene interactive Enterprise Showcase Console (enterprise-demo.html) + GCP recorder
+│   ├── a2ui_inbox.py        Zone 5 A2UI v0.9 Action Inbox, SQL store, SSE deltas & RFC 6902 audit trail
+│   ├── agent_gym/           Zone 6 Agent Gym package (models, engine, sql_store, registry_gateway)
+│   ├── telemetry.py         End-to-end OpenTelemetry spans, BatchSpanProcessor Cloud Trace v2 & BigQuery
+│   └── user_interaction/    Zone 5/6 FastAPI package (auth, surfaces, demo_seed, schemas, routes)
+├── demo/            5-scene interactive Enterprise Showcase Console (enterprise-demo.{html,css,js}) + GCP recorder
 ├── agents/          service-agent CONSUMERS + demo drivers
 │   ├── address/     the service agent: Workflow, RemoteA2aAgent collect, gate, CLI driver, wake
 │   ├── console/     the Agent Console console_server

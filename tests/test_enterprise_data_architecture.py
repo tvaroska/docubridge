@@ -3035,3 +3035,150 @@ def test_skill_registry_versioning_rollback_and_process_instance_skill_lineage()
     assert turn3_resp.status_code == 200
     assert turn3_resp.json()["entry"]["skill_revision_id"] == "rev-v1-0-baseline"
     assert turn3_resp.json()["entry"]["skill_version"] == "1.0.0"
+
+
+def test_gcp_hardening_sql_stores_and_modular_demo_assets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify BatchSpanProcessor telemetry wiring, SqlOperationalStore skill-lineage
+    persistence, SqlActionInboxStore persistence, GCP fail-fast store/SVID guards,
+    and modular /demo CSS & JS routes."""
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    from bridge.a2ui_inbox import (
+        A2uiClientActionRequest,
+        SqlActionInboxStore,
+        action_inbox_store_from_env,
+    )
+    from bridge.identity import (
+        SpiffeAuthenticationError,
+        mint_jwt_svid,
+        verify_jwt_svid,
+    )
+    from bridge.operational_store import (
+        ConsolidatedFact,
+        SqlOperationalStore,
+        operational_store_from_env,
+    )
+    from bridge.telemetry import ensure_telemetry_initialized
+
+    # 1. Verify BatchSpanProcessor is registered for CloudTraceV2SpanExporter
+    provider = ensure_telemetry_initialized()
+    processors = getattr(provider, "_active_span_processor", None)
+    span_processors = getattr(processors, "_span_processors", ())
+    assert any(isinstance(p, BatchSpanProcessor) for p in span_processors)
+
+    # 2. Verify SqlOperationalStore round-trips all 5 skill-lineage fields
+    db_file = tmp_path / "op_lineage.sqlite"
+    dsn = f"sqlite+aiosqlite:///{db_file}"
+    sql_op = SqlOperationalStore(dsn)
+    try:
+        now = datetime(2026, 10, 22, 12, 0, 0, tzinfo=UTC)
+        fact = ConsolidatedFact(
+            fact_id="fact-lineage-sql-001",
+            entity_id="LOAN-MERIDIAN-001",
+            context_id="ctx-meridian-001",
+            doc_id="doc-meridian-addendum",
+            doctype="addendum",
+            issuer="Syndicated Credit Agreement",
+            field_path="fields.key_fields.origination_fee",
+            field_value="$100,000.00",
+            numeric_value="100000.00",
+            currency="USD",
+            source_priority=40,
+            recorded_at=now,
+            effective_from=now,
+            version=2,
+            skill_version="1.2.0",
+            skill_revision_id="rev-v1-2-a1b2c3d4",
+            skill_urn="urn:skill:docubridge.io:addendum",
+            process_skill_revision_id="rev-v1-1-proc9999",
+            compiled_rule_ids=("rule-ext-001", "rule-ext-002"),
+        )
+        assert sql_op.append_facts([fact]) == 1
+        loaded = sql_op.list_facts("LOAN-MERIDIAN-001")
+        assert len(loaded) == 1
+        restored = loaded[0]
+        assert restored.skill_version == "1.2.0"
+        assert restored.skill_revision_id == "rev-v1-2-a1b2c3d4"
+        assert restored.skill_urn == "urn:skill:docubridge.io:addendum"
+        assert restored.process_skill_revision_id == "rev-v1-1-proc9999"
+        assert restored.compiled_rule_ids == ("rule-ext-001", "rule-ext-002")
+    finally:
+        sql_op.close()
+
+    # 3. Verify SqlActionInboxStore persists items, step updates, and RFC 6902 audits
+    inbox_db = tmp_path / "inbox_store.sqlite"
+    inbox_dsn = f"sqlite+aiosqlite:///{inbox_db}"
+    sql_inbox = SqlActionInboxStore(inbox_dsn)
+    try:
+        item = sql_inbox.create_action(
+            entity_id="LOAN-MERIDIAN-001",
+            title="Approve Origination Fee Addendum",
+            hint="Verify Schedule B Page 4 override.",
+            assigned_role="underwriter",
+            target_view="v_underwriter_exposure",
+            pause_for_review=True,
+            data_model={"resolution": {"selectedValue": "$50,000.00"}},
+        )
+        fetched = sql_inbox.get_item(item.item_id)
+        assert fetched is not None
+        assert fetched.entity_id == "LOAN-MERIDIAN-001"
+
+        res = sql_inbox.resolve_action(
+            item.item_id,
+            action_request=A2uiClientActionRequest(
+                action={
+                    "name": "edit_and_approve",
+                    "context": {
+                        "decision": "edit",
+                        "resolution": {"selectedValue": "$100,000.00"},
+                        "review": {"memo": "Verified Schedule B Page 4."},
+                    },
+                }
+            ),
+            actor_principal="senior.credit.officer@docubridge.io",
+            actor_role="underwriter",
+            channel="gemini_app",
+        )
+        assert res["task_state"] == "completed"
+        audits = sql_inbox.list_audit_records(item.item_id)
+        assert len(audits) == 1
+        assert audits[0].decision == "edit"
+    finally:
+        sql_inbox.close()
+
+    # 4. Verify GCP fail-fast guards on stores and SPIFFE SVID secret
+    monkeypatch.setenv("BRIDGE_SEAM_MODE", "gcp")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("BRIDGE_OPERATIONAL_DB_URL", raising=False)
+    monkeypatch.delenv("BRIDGE_INBOX_DB_URL", raising=False)
+    monkeypatch.delenv("BRIDGE_INBOX_STORE_MODE", raising=False)
+    monkeypatch.delenv("BRIDGE_SPIFFE_SVID_SECRET", raising=False)
+
+    with pytest.raises(RuntimeError, match="refusing an in-memory fallback"):
+        operational_store_from_env()
+
+    with pytest.raises(RuntimeError, match="refusing an in-memory fallback"):
+        action_inbox_store_from_env()
+
+    with pytest.raises(SpiffeAuthenticationError, match="BRIDGE_SPIFFE_SVID_SECRET"):
+        mint_jwt_svid("spiffe://agents.docubridge.io/internal/credit-officer-agent")
+
+    with pytest.raises(SpiffeAuthenticationError, match="BRIDGE_SPIFFE_SVID_SECRET"):
+        verify_jwt_svid("eyJhbGciOiJIUzI1NiJ9.e30.sig")
+
+    monkeypatch.setenv("BRIDGE_SEAM_MODE", "local")
+
+    # 5. Verify modular /demo CSS & JS static routes
+    app = build_user_interaction_app()
+    client = TestClient(app)
+    css_resp = client.get("/demo/enterprise-demo.css")
+    assert css_resp.status_code == 200
+    assert "text/css" in css_resp.headers["content-type"]
+    assert "--brand-primary" in css_resp.text
+
+    js_resp = client.get("/demo/enterprise-demo.js")
+    assert js_resp.status_code == 200
+    assert "application/javascript" in js_resp.headers["content-type"]
+    assert "window.switchDomain" in js_resp.text

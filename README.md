@@ -12,6 +12,39 @@ observability, and Agent Gym continuous improvement with a multi-model split bet
 teacher, judge, and conflict-escalation model) wired into one real system, and a
 reusable mediation core that service agents call over canonical A2A.
 
+## Architecture Overview
+
+```mermaid
+flowchart LR
+  subgraph Consumers["Calling & Counterparty Agents (agents/)"]
+    SA["Service Agents<br/>(Address / Benefits / Underwriting)"]
+    CA["Counterparty Agents<br/>(ADK & LangGraph)"]
+  end
+
+  subgraph Gateway["Zone 1 & 6 · Governed Edge & Identity"]
+    AGW["Agent Gateway<br/>(CLIENT_TO_AGENT & AGENT_TO_ANYWHERE + CEL)"]
+    ID["SPIFFE JWT-SVID + Human OBO<br/>Compound Identity"]
+  end
+
+  subgraph Core["Reusable Bridge Core (bridge/)"]
+    Z2["Zone 2 · Dual-Path Intake<br/>Path A: Schema Code | Path B: DocAI + gemini-3.8-flash"]
+    Z3V["Zone 3 · Cloud Storage<br/>7-Year WORM Audit Vault"]
+    Z3O["Zone 3 · Consolidation Engine<br/>Decimal Math & Bi-Temporal SQL Store"]
+    Z4["Zone 4 · Role-Based Views<br/>& BigQuery Iceberg Sync"]
+    Z5["Zone 5 · A2UI v0.9 Action Inbox<br/>& Provenance Surface"]
+    Z6["Zone 6 · Knowledge Catalog<br/>Agent & Skill Registry + Agent Gym (gemini-4-argon)"]
+  end
+
+  SA <-->|"A2A v0.3 (contract/)"| AGW
+  AGW --> ID --> Z2
+  Z2 <-->|"Outbound A2A"| CA
+  Z2 -->|"Accepted Bytes"| Z3V
+  Z2 -->|"Page-Anchored Fields"| Z3O
+  Z3O --> Z4 --> Z5
+  Z5 -->|"SME Feedback & RFC 6902 Patches"| Z6
+  Z6 -->|"Promoted Rules & SKILL.md Revisions"| Z2
+```
+
 ## The Address demo, in three sentences
 
 A fintech servicer onboards **Jordan Lee** (synthetic — no real PII) and needs
@@ -78,16 +111,17 @@ uv run python -m agents.address \
 Port map, the 8001 mock-vs-portal collision, and CORS:
 [docs/local-dev.md](docs/local-dev.md). Env index: [`.env.example`](.env.example).
 
-### Tests
+### Tests & Google Cloud Build CI/CD
 
 ```bash
 uv run pytest
 uv run ruff check
+uv run ruff format --check
+pnpm --filter @docubridge/shared test
+terraform -chdir=terraform test
 ```
 
-GCP adapter tests are gated on `BRIDGE_TEST_GCP=1`. Deployed-path apply is
-`scripts/deploy.sh` / `scripts/parity.sh` — see
-[docs/features/gcp-deployment.md](docs/features/gcp-deployment.md).
+GCP adapter tests are gated on `BRIDGE_TEST_GCP=1`. Continuous integration and container builds run natively on **Google Cloud Build** via [`cloudbuild.yaml`](cloudbuild.yaml); full substrate deployment is [`scripts/deploy.sh`](scripts/deploy.sh) / [`scripts/parity.sh`](scripts/parity.sh) — see [docs/features/gcp-deployment.md](docs/features/gcp-deployment.md).
 
 ## Repository map
 
