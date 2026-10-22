@@ -239,13 +239,14 @@ def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
     ]
     assert steps["python-agent-and-golden-tests"]["waitFor"] == ["python-env-and-lint"]
 
-    # Coverage gate combines both shards and enforces >=85%.
+    # Coverage gate combines both shards and enforces >=90%.
     cov_step = steps["python-coverage-gate"]
     assert set(cov_step["waitFor"]) == {
         "python-core-and-enterprise-tests",
         "python-agent-and-golden-tests",
     }
-    assert "--fail-under=85" in " ".join(cov_step["args"])
+    assert "--fail-under=90" in " ".join(cov_step["args"])
+    assert "bridge-serve" in dockerfile
 
     # Docker build runs in parallel with test suites; push waits for all gates.
     assert steps["docker-build-image"]["waitFor"] == ["resolve-git-metadata"]
@@ -255,6 +256,25 @@ def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
         "frontend-tests-and-typecheck",
         "terraform-plan-tests",
     }
+
+
+def test_secondary_docs_list_all_13_hexagonal_ports() -> None:
+    """``design/seams.md`` and ``TODO.md`` enumerate all 13 Hexagonal ``Port`` names."""
+    from bridge.ports import Port
+
+    seams_doc = (REPO_ROOT / "design/seams.md").read_text(encoding="utf-8")
+    todo_doc = (REPO_ROOT / "TODO.md").read_text(encoding="utf-8")
+    for port in Port:
+        assert port.value in seams_doc, (
+            f"design/seams.md missing Hexagonal Port {port.value!r}"
+        )
+        assert port.value in todo_doc, f"TODO.md missing Hexagonal Port {port.value!r}"
+
+    pyproject = tomllib.loads(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    assert pyproject["build-system"]["build-backend"] == "hatchling.build"
+    assert pyproject["tool"]["coverage"]["report"]["fail_under"] >= 90
 
 
 def test_enterprise_demo_console_assets_and_api_contract() -> None:

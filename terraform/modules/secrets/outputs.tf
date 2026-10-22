@@ -22,3 +22,8 @@ output "email_token_secret_id" {
   description = "The intake-token HMAC key secret id (\"\" when email intake is disabled)."
   value       = var.enable_email_ingress ? google_secret_manager_secret.email_token[0].secret_id : ""
 }
+
+output "spiffe_svid_secret_id" {
+  description = "The SPIFFE JWT-SVID signing key secret id (injected as BRIDGE_SPIFFE_SVID_SECRET)."
+  value       = google_secret_manager_secret.spiffe_svid.secret_id
+}

@@ -21,6 +21,12 @@ variable "dataset_id" {
   default     = "docubridge_telemetry"
 }
 
+variable "lakehouse_dataset_id" {
+  type        = string
+  description = "BigQuery dataset id for the Zone 4 Iceberg operational facts lakehouse."
+  default     = "docubridge_lakehouse"
+}
+
 variable "service_account_member" {
   type        = string
   description = "IAM member string for the bridge-runtime workload SA."

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import threading
 from collections.abc import Coroutine
@@ -13,6 +14,8 @@ from bridge.agent_gym.models import (
     _OP_TIMEOUT_S,
     DEFAULT_TRUST_POLICIES,
     PROCESS_SKILL_LINEAGE_TABLE_NAME,
+    REGISTRY_BINDINGS_TABLE_NAME,
+    REGISTRY_SERVICES_TABLE_NAME,
     REPORTS_TABLE_NAME,
     RULES_TABLE_NAME,
     SHADOW_RECORDS_TABLE_NAME,
@@ -69,6 +72,8 @@ class SqlAgentGymEngine(AgentGymEngine):
         self._shadow_table: Any = None
         self._skill_revisions_table: Any = None
         self._process_skill_lineage_table: Any = None
+        self._registry_services_table: Any = None
+        self._registry_bindings_table: Any = None
 
     def _ensure_ready(self) -> None:
         if self._engine is not None:
@@ -144,6 +149,20 @@ class SqlAgentGymEngine(AgentGymEngine):
                 Column("lineage_id", String(64), unique=True, nullable=False),
                 Column("context_id", String(128), nullable=False, index=True),
                 Column("entity_id", String(128), nullable=False, index=True),
+                Column("payload_json", Text, nullable=False),
+            )
+            self._registry_services_table = Table(
+                REGISTRY_SERVICES_TABLE_NAME,
+                meta,
+                Column("service_id", String(128), primary_key=True),
+                Column("component_type", String(64), nullable=False, index=True),
+                Column("payload_json", Text, nullable=False),
+            )
+            self._registry_bindings_table = Table(
+                REGISTRY_BINDINGS_TABLE_NAME,
+                meta,
+                Column("binding_id", String(128), primary_key=True),
+                Column("source_agent", String(256), nullable=False, index=True),
                 Column("payload_json", Text, nullable=False),
             )
 
@@ -470,6 +489,84 @@ class SqlAgentGymEngine(AgentGymEngine):
 
         return self._run(_op())
 
+    def _save_registry_service(self, entry: dict[str, Any]) -> None:
+        self._ensure_ready()
+        table = self._registry_services_table
+        engine = self._engine
+        svc_id = str(entry["service_id"])
+        comp_type = str(entry["component_type"])
+        payload_str = json.dumps(entry, sort_keys=True)
+
+        async def _op() -> None:
+            from sqlalchemy import delete
+
+            async with engine.begin() as conn:
+                await conn.execute(delete(table).where(table.c.service_id == svc_id))
+                await conn.execute(
+                    table.insert().values(
+                        service_id=svc_id,
+                        component_type=comp_type,
+                        payload_json=payload_str,
+                    )
+                )
+
+        self._run(_op())
+
+    def _list_registry_services(self) -> list[dict[str, Any]]:
+        self._ensure_ready()
+        table = self._registry_services_table
+        engine = self._engine
+
+        async def _op() -> list[dict[str, Any]]:
+            from sqlalchemy import select
+
+            async with engine.connect() as conn:
+                res = await conn.execute(
+                    select(table.c.payload_json).order_by(table.c.service_id.asc())
+                )
+                return [json.loads(row[0]) for row in res]
+
+        return self._run(_op())
+
+    def _save_registry_binding(self, binding: dict[str, Any]) -> None:
+        self._ensure_ready()
+        table = self._registry_bindings_table
+        engine = self._engine
+        bind_id = str(binding["binding_id"])
+        src_agent = str(binding["source_agent"])
+        payload_str = json.dumps(binding, sort_keys=True)
+
+        async def _op() -> None:
+            from sqlalchemy import delete
+
+            async with engine.begin() as conn:
+                await conn.execute(delete(table).where(table.c.binding_id == bind_id))
+                await conn.execute(
+                    table.insert().values(
+                        binding_id=bind_id,
+                        source_agent=src_agent,
+                        payload_json=payload_str,
+                    )
+                )
+
+        self._run(_op())
+
+    def _list_registry_bindings(self) -> list[dict[str, Any]]:
+        self._ensure_ready()
+        table = self._registry_bindings_table
+        engine = self._engine
+
+        async def _op() -> list[dict[str, Any]]:
+            from sqlalchemy import select
+
+            async with engine.connect() as conn:
+                res = await conn.execute(
+                    select(table.c.payload_json).order_by(table.c.binding_id.asc())
+                )
+                return [json.loads(row[0]) for row in res]
+
+        return self._run(_op())
+
     def _clear_rules_and_signals(self) -> None:
         self._ensure_ready()
         signals_table = self._signals_table
@@ -478,6 +575,8 @@ class SqlAgentGymEngine(AgentGymEngine):
         shadow_table = self._shadow_table
         skill_revisions_table = self._skill_revisions_table
         process_skill_lineage_table = self._process_skill_lineage_table
+        registry_services_table = self._registry_services_table
+        registry_bindings_table = self._registry_bindings_table
         engine = self._engine
 
         async def _op() -> None:
@@ -490,6 +589,8 @@ class SqlAgentGymEngine(AgentGymEngine):
                 await conn.execute(delete(shadow_table))
                 await conn.execute(delete(skill_revisions_table))
                 await conn.execute(delete(process_skill_lineage_table))
+                await conn.execute(delete(registry_services_table))
+                await conn.execute(delete(registry_bindings_table))
 
         self._run(_op())
 

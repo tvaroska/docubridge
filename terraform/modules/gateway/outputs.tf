@@ -16,3 +16,8 @@ output "gateway_url" {
   EOT
   value       = length(var.ssl_domains) > 0 ? "https://${var.ssl_domains[0]}/" : ""
 }
+
+output "security_policy_name" {
+  description = "Cloud Armor edge security policy name attached to the runtime backend service (\"\" when disabled)."
+  value       = length(google_compute_security_policy.edge_waf) > 0 ? google_compute_security_policy.edge_waf[0].name : ""
+}

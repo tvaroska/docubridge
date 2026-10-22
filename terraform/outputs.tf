@@ -83,6 +83,11 @@ output "db_secret_id" {
   value       = module.secrets.secret_id
 }
 
+output "spiffe_svid_secret_id" {
+  description = "The Secret Manager secret id the runtime reads as the BRIDGE_SPIFFE_SVID_SECRET env."
+  value       = module.secrets.spiffe_svid_secret_id
+}
+
 # GCS surface (P7-3) — the bucket names the runtime reads as BRIDGE_SKILLS_BUCKET /
 # BRIDGE_ARTIFACT_BUCKET (plain envs; bucket names are not secrets).
 output "skills_bucket_name" {
@@ -123,6 +128,11 @@ output "gateway_ip" {
 output "gateway_url" {
   description = "The Gateway-authorized public HTTPS URL (\"\" when disabled / no domain); feeds BRIDGE_PUBLIC_URL at deploy (P7-9)."
   value       = module.gateway.gateway_url
+}
+
+output "gateway_security_policy_name" {
+  description = "The Cloud Armor edge security policy name attached to the runtime backend service (\"\" when disabled)."
+  value       = module.gateway.security_policy_name
 }
 
 # Frontend serving surface (P7-7) — the deploy step (P7-9) rsyncs each app's built
@@ -212,5 +222,15 @@ output "telemetry_bq_entity_summary_view" {
 output "telemetry_bq_trace_sql_evaluation_view" {
   description = "Fully qualified BigQuery view for Rule 0 deterministic SQL trajectory evaluation and selective AI.GENERATE_TABLE sampling (\"\" when disabled)."
   value       = module.telemetry.trace_sql_evaluation_view_fqn
+}
+
+output "telemetry_lakehouse_dataset_id" {
+  description = "BigQuery dataset id for the Zone 4 operational facts lakehouse (\"\" when disabled)."
+  value       = module.telemetry.lakehouse_dataset_id
+}
+
+output "telemetry_operational_facts_iceberg_table" {
+  description = "Fully qualified BigQuery table (project.docubridge_lakehouse.bq_operational_facts_iceberg) for Zone 4 operational facts (\"\" when disabled)."
+  value       = module.telemetry.operational_facts_iceberg_table_fqn
 }
 

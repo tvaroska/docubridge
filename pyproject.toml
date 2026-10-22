@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
 [project]
 name = "docubridge"
 version = "0.1.0"
@@ -97,6 +101,9 @@ markers = [
     "port: shared port-parity tests parametrized over local/gcp adapters (Hexagonal Ports & Adapters)",
     "seam: shared seam-parity tests parametrized over local/gcp adapters",
 ]
+filterwarnings = [
+    "ignore:.*EXPERIMENTAL.*ResumabilityConfig.*:UserWarning",
+]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
@@ -106,9 +113,12 @@ source = ["bridge", "contract", "agents"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
-fail_under = 85
+fail_under = 90
 show_missing = true
 skip_covered = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["contract", "bridge", "agents"]
 
 [tool.uv]
 # dev extras installed by default in this workspace

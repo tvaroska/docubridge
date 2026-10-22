@@ -99,6 +99,14 @@ run "enabled_builds_ingress_lb" {
     condition     = google_compute_backend_service.runtime[0].load_balancing_scheme == "EXTERNAL_MANAGED"
     error_message = "the backend service must be an external managed HTTPS LB"
   }
+  assert {
+    condition     = google_compute_security_policy.edge_waf[0].name == "bridge-runtime-edge-waf"
+    error_message = "the gateway must provision a Cloud Armor edge WAF security policy"
+  }
+  assert {
+    condition     = output.security_policy_name == "bridge-runtime-edge-waf"
+    error_message = "security_policy_name output must match the Cloud Armor policy name"
+  }
 }
 
 run "per_party_invoker_scoping" {

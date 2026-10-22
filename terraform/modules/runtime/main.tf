@@ -120,6 +120,19 @@ resource "google_cloud_run_v2_service" "bridge" {
         }
       }
 
+      dynamic "env" {
+        for_each = var.spiffe_svid_secret_id != "" ? [1] : []
+        content {
+          name = "BRIDGE_SPIFFE_SVID_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = var.spiffe_svid_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
       # Bucket NAMES are not secrets (P7-3) — inject as PLAIN envs (never a
       # secret_key_ref). Each gated so the P7-1 no-bucket default leaves the
       # container env untouched (runtime tests stay green). The gcs module
@@ -501,6 +514,19 @@ resource "google_cloud_run_v2_service" "rfp_board" {
           value_source {
             secret_key_ref {
               secret  = var.db_url_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.spiffe_svid_secret_id != "" ? [1] : []
+        content {
+          name = "BRIDGE_SPIFFE_SVID_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = var.spiffe_svid_secret_id
               version = "latest"
             }
           }

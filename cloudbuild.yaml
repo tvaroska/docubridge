@@ -103,7 +103,7 @@ steps:
           -q
 
   # ------------------------------------------------------------------------- #
-  # 2d. Combine Coverage Shards & Enforce >=85% Coverage Gate                 #
+  # 2d. Combine Coverage Shards & Enforce >=90% Coverage Gate                 #
   # ------------------------------------------------------------------------- #
   - id: python-coverage-gate
     name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
@@ -116,10 +116,10 @@ steps:
       - |
         set -euo pipefail
         /workspace/.venv/bin/coverage combine /workspace/.coverage.core /workspace/.coverage.agents
-        /workspace/.venv/bin/coverage report --fail-under=85
+        /workspace/.venv/bin/coverage report --fail-under=90
 
   # ------------------------------------------------------------------------- #
-  # 3. Frontend All-Workspace Unit Tests & TypeScript/Vite Builds (t=0)       #
+  # 3. Frontend All-Workspace Unit Tests, Typecheck & E2E Smoke Validation    #
   # ------------------------------------------------------------------------- #
   - id: frontend-tests-and-typecheck
     name: node:22-slim
@@ -134,6 +134,7 @@ steps:
         pnpm --filter "!@docubridge/e2e" -r --parallel test
         pnpm --filter @docubridge/shared build
         pnpm --filter "!@docubridge/e2e" --filter "!@docubridge/shared" -r --parallel build
+        pnpm --filter @docubridge/e2e exec tsc --noEmit
 
   # ------------------------------------------------------------------------- #
   # 4. Infrastructure-as-Code Plan-Time Verification (t=0, terraform test)    #

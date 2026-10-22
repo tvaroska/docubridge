@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 from typing import TYPE_CHECKING, Any, Literal
 
 from bridge.agent_gym.models import (
@@ -45,6 +47,26 @@ class RegistryGatewayMixin:
     ) -> list[ProcessSkillLineageRecord]:
         """Return chronological process-instance skill lineage records (implemented by AgentGymEngine)."""
         raise NotImplementedError
+
+    def _save_registry_service(self, entry: dict[str, Any]) -> None:
+        """Persist a custom Agent Registry service registration (implemented by AgentGymEngine)."""
+        if not hasattr(self, "_custom_registry_services"):
+            self._custom_registry_services: list[dict[str, Any]] = []
+        self._custom_registry_services.append(entry)
+
+    def _list_registry_services(self) -> list[dict[str, Any]]:
+        """List custom Agent Registry services (implemented by AgentGymEngine)."""
+        return list(getattr(self, "_custom_registry_services", []))
+
+    def _save_registry_binding(self, binding: dict[str, Any]) -> None:
+        """Persist a custom Agent Registry binding (implemented by AgentGymEngine)."""
+        if not hasattr(self, "_custom_registry_bindings"):
+            self._custom_registry_bindings: list[dict[str, Any]] = []
+        self._custom_registry_bindings.append(binding)
+
+    def _list_registry_bindings(self) -> list[dict[str, Any]]:
+        """List custom Agent Registry bindings (implemented by AgentGymEngine)."""
+        return list(getattr(self, "_custom_registry_bindings", []))
 
     def get_registry_catalog(self) -> dict[str, Any]:
         """Return the unified Gemini platform Agent Registry + Skill Registry catalog
@@ -352,7 +374,7 @@ class RegistryGatewayMixin:
             },
         ]
 
-        custom_services = getattr(self, "_custom_registry_services", [])
+        custom_services = self._list_registry_services()
         for svc in custom_services:
             kind = svc.get("component_type")
             if kind == "AGENT":
@@ -362,7 +384,7 @@ class RegistryGatewayMixin:
             elif kind == "ENDPOINT":
                 endpoints_list.append(svc["projected"])
 
-        custom_bindings = getattr(self, "_custom_registry_bindings", [])
+        custom_bindings = self._list_registry_bindings()
         bindings_list.extend(custom_bindings)
 
         return {
@@ -428,8 +450,6 @@ class RegistryGatewayMixin:
     ) -> dict[str, Any]:
         """Writable `Service` resource registration in Agent Registry (`POST .../services?serviceId=`),
         automatically projecting onto the read-only `Agent`, `McpServer`, or `Endpoint` collection."""
-        if not hasattr(self, "_custom_registry_services"):
-            self._custom_registry_services = []
         service_name = f"projects/{_gcp_project_number()}/locations/{location}/services/{service_id}"
         if component_type == "AGENT":
             urn = f"urn:agent:projects-{_gcp_project_number()}:projects:{_gcp_project_number()}:locations:{location}:agentregistry:services:{service_id}"
@@ -493,7 +513,7 @@ class RegistryGatewayMixin:
             "identifier_urn": urn,
             "projected": projected,
         }
-        self._custom_registry_services.append(entry)
+        self._save_registry_service(entry)
         return entry
 
     def create_registry_binding(
@@ -508,8 +528,6 @@ class RegistryGatewayMixin:
         location: str = "us-central1",
     ) -> dict[str, Any]:
         """Create an explicit Agent Registry `Binding` connecting `source_agent` to `target_resource`."""
-        if not hasattr(self, "_custom_registry_bindings"):
-            self._custom_registry_bindings = []
         if source_agent.startswith("urn:"):
             raise ValueError(
                 "NOT_FOUND: Requested entity was not found. Policy bindings and route rules must specify "
@@ -529,7 +547,7 @@ class RegistryGatewayMixin:
             "auth_provider": auth_provider,
             "delegation_mode": delegation_mode,
         }
-        self._custom_registry_bindings.append(binding)
+        self._save_registry_binding(binding)
         return binding
 
     def get_gateway_catalog(self) -> dict[str, Any]:
@@ -643,6 +661,55 @@ class RegistryGatewayMixin:
             },
         }
 
+    def _inspect_with_gcp_model_armor(
+        self, raw_text: str, *, location: str = "us-central1"
+    ) -> tuple[bool, str] | None:
+        """Invoke the GCP Model Armor REST API (`sanitizeUserPrompt`) when enabled on GCP.
+
+        Returns `(allowed, verdict_str)` when a live response is received, or `None`
+        to fall back to deterministic local inspection when running offline/local.
+        """
+        if not raw_text.strip():
+            return None
+        live_enabled = os.environ.get(
+            "BRIDGE_MODEL_ARMOR_LIVE", ""
+        ).strip().lower() in {"1", "true"}
+        session = getattr(self, "_model_armor_session", None)
+        if not live_enabled and session is None:
+            return None
+
+        project_id = _gcp_project_id()
+        template_id = (
+            os.environ.get("BRIDGE_MODEL_ARMOR_TEMPLATE", "").strip()
+            or "docubridge-model-armor-strict"
+        )
+        url = (
+            f"https://modelarmor.{location}.rep.googleapis.com/v1/projects/{project_id}"
+            f"/locations/{location}/templates/{template_id}:sanitizeUserPrompt"
+        )
+        with contextlib.suppress(Exception):
+            if session is None:
+                import google.auth
+                from google.auth.transport.requests import AuthorizedSession
+
+                creds, _ = google.auth.default(
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                )
+                session = AuthorizedSession(creds)
+            resp = session.post(
+                url,
+                json={"userPromptData": {"text": raw_text}},
+                timeout=3.0,
+            )
+            if getattr(resp, "status_code", 500) == 200:
+                body = resp.json() if hasattr(resp, "json") else {}
+                result = body.get("sanitizationResult") or {}
+                match_state = str(result.get("filterMatchState", "NO_MATCH_FOUND"))
+                if match_state == "MATCH_FOUND":
+                    return False, "BLOCKED (GCP_MODEL_ARMOR_API)"
+                return True, "PASS (GCP_MODEL_ARMOR_API)"
+        return None
+
     def evaluate_gateway_route(
         self,
         *,
@@ -671,6 +738,7 @@ class RegistryGatewayMixin:
         ) as span:
             if governed_access_path == "CLIENT_TO_AGENT":
                 raw_text = payload_text or ""
+                live_ma = self._inspect_with_gcp_model_armor(raw_text)
                 lower_text = raw_text.lower()
                 injection_markers = (
                     "ignore previous instructions",
@@ -679,7 +747,15 @@ class RegistryGatewayMixin:
                     "bypass approval authority",
                     "drop table",
                 )
-                if any(m in lower_text for m in injection_markers):
+                blocked_by_ma = (live_ma is not None and not live_ma[0]) or any(
+                    m in lower_text for m in injection_markers
+                )
+                if blocked_by_ma:
+                    verdict_label = (
+                        live_ma[1]
+                        if (live_ma is not None and not live_ma[0])
+                        else "BLOCKED (PI_AND_JAILBREAK_FILTER)"
+                    )
                     span.set_attribute(
                         "docubridge.gateway.decision", "DENY_MODEL_ARMOR"
                     )
@@ -689,13 +765,18 @@ class RegistryGatewayMixin:
                         "decision": "DENY_MODEL_ARMOR_PROMPT_INJECTION",
                         "gateway": f"projects/{_gcp_project_id()}/locations/us-central1/agentGateways/docubridge-client-to-agent-gw",
                         "governed_access_path": "CLIENT_TO_AGENT",
-                        "model_armor_verdict": "BLOCKED (PI_AND_JAILBREAK_FILTER)",
+                        "model_armor_verdict": verdict_label,
                         "dlp_redacted_fields": 0,
                         "sanitized_payload": None,
                         "reason": "Model Armor template 'docubridge-model-armor-strict' blocked adversarial prompt-injection payload at CLIENT_TO_AGENT ingress.",
                     }
                 sanitized_text, changed = _scrub_string(raw_text)
                 redaction_count = sanitized_text.count("[REDACTED-") if changed else 0
+                pass_label = (
+                    live_ma[1]
+                    if (live_ma is not None and live_ma[0])
+                    else "PASS (PI_AND_JAILBREAK_CLEAN)"
+                )
                 span.set_attribute("docubridge.gateway.decision", "ALLOW_INGRESS")
                 span.set_attribute("docubridge.gateway.dlp_redactions", redaction_count)
                 return {
@@ -704,7 +785,7 @@ class RegistryGatewayMixin:
                     "decision": "ALLOW_CLIENT_TO_AGENT_INGRESS",
                     "gateway": f"projects/{_gcp_project_id()}/locations/us-central1/agentGateways/docubridge-client-to-agent-gw",
                     "governed_access_path": "CLIENT_TO_AGENT",
-                    "model_armor_verdict": "PASS (PI_AND_JAILBREAK_CLEAN)",
+                    "model_armor_verdict": pass_label,
                     "dlp_redacted_fields": redaction_count,
                     "sanitized_payload": sanitized_text,
                     "reason": "Ingress request passed Model Armor inspection and Cloud DLP inline SSN redaction.",

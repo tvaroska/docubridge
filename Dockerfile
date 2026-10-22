@@ -43,16 +43,19 @@ COPY --chown=appuser:appuser skills/ ./skills/
 COPY --chown=appuser:appuser wiki/ ./wiki/
 COPY --chown=appuser:appuser demo/ ./demo/
 
-# Put the synced venv first on PATH so `python` is the project interpreter (no `uv
-# run` re-resolution at container start; runtime needs no network).
+# Install the project in editable mode without re-resolving dependencies so the
+# `bridge-serve` console script is registered in `/app/.venv/bin/bridge-serve`
+# while `__file__` remains rooted in `/app/bridge/` for runtime `wiki/evals/` lookup.
+RUN uv pip install --no-deps -e . && \
+    chown -R appuser:appuser /app
+
+# Put the synced venv first on PATH so `python` and `bridge-serve` resolve directly.
 ENV PATH="/app/.venv/bin:$PATH" \
     PORT=8080
 
 USER appuser
 EXPOSE 8080
 
-# serve_container() reads $PORT (default 8080), binds 0.0.0.0, and advertises
-# BRIDGE_PUBLIC_URL on the served card (adk >=2.7 same-origin, P7-5). The packaged
-# equivalent is the `bridge-serve` console script (pyproject [project.scripts]); we
-# invoke the function directly because the source runs un-installed (see header).
-CMD ["python", "-c", "from bridge.edge.server import serve_container; serve_container()"]
+# `bridge-serve` invokes `bridge.edge.server:serve_container`, binding 0.0.0.0:$PORT
+# and advertising BRIDGE_PUBLIC_URL on the served Agent Card (P7-5).
+CMD ["bridge-serve"]

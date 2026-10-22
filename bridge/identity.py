@@ -54,8 +54,11 @@ DEFAULT_SPIFFE_TRUST_DOMAIN = "agents.docubridge.io"
 SPIFFE_TRUST_DOMAIN_ENV = "BRIDGE_SPIFFE_TRUST_DOMAIN"
 SPIFFE_REQUIRE_SVID_ENV = "BRIDGE_SPIFFE_REQUIRE_SVID"
 SPIFFE_SVID_SECRET_ENV = "BRIDGE_SPIFFE_SVID_SECRET"
+SPIFFE_PRIVATE_KEY_PEM_ENV = "BRIDGE_SPIFFE_PRIVATE_KEY_PEM"
+SPIFFE_PUBLIC_KEY_PEM_ENV = "BRIDGE_SPIFFE_PUBLIC_KEY_PEM"
 USER_JWT_SECRET_ENV = "BRIDGE_USER_JWT_SECRET"
 DEFAULT_DEV_SVID_SECRET = "docubridge-spiffe-svid-signing-key-v1"
+SvidAlgorithmLiteral = Literal["HS256", "RS256", "ES256"]
 
 SPIFFE_SVID_HEADER = "x-bridge-spiffe-svid"
 SPIFFE_ID_HEADER = "x-bridge-spiffe-id"
@@ -272,6 +275,113 @@ def _resolve_svid_signing_secret(secret: str | None = None) -> str:
     return DEFAULT_DEV_SVID_SECRET
 
 
+def generate_ephemeral_svid_keypair(
+    algorithm: Literal["RS256", "ES256"] = "ES256",
+) -> tuple[str, str]:
+    """Generate an asymmetric `(private_key_pem, public_key_pem)` keypair for `RS256` or `ES256` JWT-SVIDs."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec, rsa
+
+    if algorithm == "ES256":
+        priv: Any = ec.generate_private_key(ec.SECP256R1())
+    elif algorithm == "RS256":
+        priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    else:
+        raise ValueError(f"Unsupported asymmetric algorithm '{algorithm}'.")
+
+    priv_pem = priv.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("ascii")
+    pub_pem = (
+        priv.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode("ascii")
+    )
+    return priv_pem, pub_pem
+
+
+def _sign_asymmetric_jws(
+    signing_input: bytes,
+    *,
+    algorithm: Literal["RS256", "ES256"],
+    private_key_pem: str,
+) -> bytes:
+    """Sign `signing_input` using an RSA (`RS256`) or ECDSA P-256 (`ES256`, RFC 7518 R||S) private key."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa, utils
+
+    try:
+        key = serialization.load_pem_private_key(
+            private_key_pem.encode("utf-8"), password=None
+        )
+    except Exception as exc:
+        raise SpiffeAuthenticationError("Invalid SPIFFE private key PEM.") from exc
+
+    if algorithm == "RS256":
+        if not isinstance(key, rsa.RSAPrivateKey):
+            raise SpiffeAuthenticationError("RS256 requires an RSA private key.")
+        return key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+
+    if algorithm == "ES256":
+        if not isinstance(key, ec.EllipticCurvePrivateKey):
+            raise SpiffeAuthenticationError(
+                "ES256 requires an ECDSA P-256 private key."
+            )
+        der_sig = key.sign(signing_input, ec.ECDSA(hashes.SHA256()))
+        r_int, s_int = utils.decode_dss_signature(der_sig)
+        return r_int.to_bytes(32, "big") + s_int.to_bytes(32, "big")
+
+    raise SpiffeAuthenticationError(f"Unsupported algorithm '{algorithm}'.")
+
+
+def _verify_asymmetric_jws(
+    signing_input: bytes,
+    signature: bytes,
+    *,
+    algorithm: Literal["RS256", "ES256"],
+    public_key_pem: str,
+) -> None:
+    """Verify an `RS256` or `ES256` JWS signature using a PEM public key."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa, utils
+
+    try:
+        pub = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
+    except Exception as exc:
+        raise SpiffeAuthenticationError("Invalid SPIFFE public key PEM.") from exc
+
+    try:
+        if algorithm == "RS256":
+            if not isinstance(pub, rsa.RSAPublicKey):
+                raise SpiffeAuthenticationError("RS256 requires an RSA public key.")
+            pub.verify(signature, signing_input, padding.PKCS1v15(), hashes.SHA256())
+            return
+        if algorithm == "ES256":
+            if not isinstance(pub, ec.EllipticCurvePublicKey):
+                raise SpiffeAuthenticationError(
+                    "ES256 requires an ECDSA P-256 public key."
+                )
+            if len(signature) == 64:
+                r_int = int.from_bytes(signature[:32], "big")
+                s_int = int.from_bytes(signature[32:], "big")
+                der_sig = utils.encode_dss_signature(r_int, s_int)
+            else:
+                der_sig = signature
+            pub.verify(der_sig, signing_input, ec.ECDSA(hashes.SHA256()))
+            return
+    except SpiffeAuthenticationError:
+        raise
+    except Exception as exc:
+        raise SpiffeAuthenticationError(
+            "Invalid JWT-SVID cryptographic signature."
+        ) from exc
+
+
 def mint_jwt_svid(
     spiffe_id: str,
     *,
@@ -284,13 +394,15 @@ def mint_jwt_svid(
     max_approval_amount: Decimal | str | None = None,
     ttl_seconds: int = 3600,
     secret: str | None = None,
+    algorithm: SvidAlgorithmLiteral = "HS256",
+    private_key_pem: str | None = None,
+    kid: str = "spiffe-root-v1",
     now_epoch: int | None = None,
 ) -> str:
-    """Mint a signed SPIFFE JWT-SVID (with optional RFC 8693 OBO `act`/`obo` claims)."""
+    """Mint a signed SPIFFE JWT-SVID (`HS256`, `RS256`, or `ES256` with optional RFC 8693 OBO claims)."""
     parsed = SpiffeId.parse(spiffe_id)
-    signing_secret = _resolve_svid_signing_secret(secret)
     now = int(now_epoch if now_epoch is not None else time.time())
-    header = {"alg": "HS256", "typ": "JWT+SVID", "kid": "spiffe-root-v1"}
+    header = {"alg": algorithm, "typ": "JWT+SVID", "kid": kid}
     payload: dict[str, Any] = {
         "iss": f"https://{parsed.trust_domain}",
         "sub": parsed.uri,
@@ -325,9 +437,23 @@ def mint_jwt_svid(
     h_b64 = _b64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     p_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signing_input = f"{h_b64}.{p_b64}".encode("ascii")
-    sig = hmac.new(
-        signing_secret.encode("utf-8"), signing_input, hashlib.sha256
-    ).digest()
+
+    if algorithm in ("RS256", "ES256"):
+        resolved_priv = (
+            private_key_pem or os.environ.get(SPIFFE_PRIVATE_KEY_PEM_ENV, "").strip()
+        )
+        if not resolved_priv:
+            raise SpiffeAuthenticationError(
+                f"{algorithm} JWT-SVID minting requires private_key_pem or {SPIFFE_PRIVATE_KEY_PEM_ENV}."
+            )
+        sig = _sign_asymmetric_jws(
+            signing_input, algorithm=algorithm, private_key_pem=resolved_priv
+        )
+    else:
+        signing_secret = _resolve_svid_signing_secret(secret)
+        sig = hmac.new(
+            signing_secret.encode("utf-8"), signing_input, hashlib.sha256
+        ).digest()
     return f"{h_b64}.{p_b64}.{_b64url_encode(sig)}"
 
 
@@ -337,9 +463,10 @@ def verify_jwt_svid(
     expected_trust_domain: str | None = None,
     expected_audience: str | None = "docubridge",
     secret: str | None = None,
+    public_key_pem: str | None = None,
     now_epoch: int | None = None,
 ) -> dict[str, Any]:
-    """Cryptographically verify a SPIFFE JWT-SVID and return its verified claims."""
+    """Cryptographically verify a SPIFFE JWT-SVID (`HS256`, `RS256`, or `ES256`) and return its claims."""
     with trace_step(
         "docubridge.identity.verify_jwt_svid",
         {
@@ -355,25 +482,46 @@ def verify_jwt_svid(
             raise SpiffeAuthenticationError("Malformed JWT-SVID: expected 3 segments.")
 
         h_b64, p_b64, s_b64 = parts
-        signing_secret = _resolve_svid_signing_secret(secret)
-        signing_input = f"{h_b64}.{p_b64}".encode("ascii")
-        expected_sig = hmac.new(
-            signing_secret.encode("utf-8"), signing_input, hashlib.sha256
-        ).digest()
-        actual_sig = _b64url_decode(s_b64)
-        if not hmac.compare_digest(expected_sig, actual_sig):
-            raise SpiffeAuthenticationError("Invalid JWT-SVID cryptographic signature.")
-
         try:
             header = json.loads(_b64url_decode(h_b64).decode("utf-8"))
+        except Exception as exc:
+            raise SpiffeAuthenticationError("Invalid JWT-SVID JSON header.") from exc
+
+        alg = header.get("alg")
+        if alg not in ("HS256", "RS256", "ES256"):
+            raise SpiffeAuthenticationError(f"Unsupported JWT-SVID algorithm '{alg}'.")
+
+        signing_input = f"{h_b64}.{p_b64}".encode("ascii")
+        actual_sig = _b64url_decode(s_b64)
+
+        if alg in ("RS256", "ES256"):
+            resolved_pub = (
+                public_key_pem or os.environ.get(SPIFFE_PUBLIC_KEY_PEM_ENV, "").strip()
+            )
+            if not resolved_pub:
+                raise SpiffeAuthenticationError(
+                    f"{alg} JWT-SVID verification requires public_key_pem or {SPIFFE_PUBLIC_KEY_PEM_ENV}."
+                )
+            _verify_asymmetric_jws(
+                signing_input,
+                actual_sig,
+                algorithm=alg,
+                public_key_pem=resolved_pub,
+            )
+        else:
+            signing_secret = _resolve_svid_signing_secret(secret)
+            expected_sig = hmac.new(
+                signing_secret.encode("utf-8"), signing_input, hashlib.sha256
+            ).digest()
+            if not hmac.compare_digest(expected_sig, actual_sig):
+                raise SpiffeAuthenticationError(
+                    "Invalid JWT-SVID cryptographic signature."
+                )
+
+        try:
             claims = json.loads(_b64url_decode(p_b64).decode("utf-8"))
         except Exception as exc:
             raise SpiffeAuthenticationError("Invalid JWT-SVID JSON payload.") from exc
-
-        if header.get("alg") != "HS256":
-            raise SpiffeAuthenticationError(
-                f"Unsupported JWT-SVID algorithm '{header.get('alg')}'."
-            )
 
         sub = claims.get("sub")
         if not isinstance(sub, str):
@@ -381,6 +529,7 @@ def verify_jwt_svid(
         parsed_id = SpiffeId.parse(sub)
         span.set_attribute("docubridge.agent_spiffe_id", parsed_id.uri)
         span.set_attribute("docubridge.trust_domain", parsed_id.trust_domain)
+        span.set_attribute("docubridge.jwt_alg", str(alg))
 
         trust_domain = (
             expected_trust_domain
@@ -418,6 +567,35 @@ def verify_jwt_svid(
                 span.set_attribute("docubridge.obo_role", str(obo["role"]))
         span.set_attribute("docubridge.svid_verified", True)
         return claims
+
+
+def verify_google_oidc_token(
+    token: str,
+    *,
+    expected_audience: str | None = None,
+    request_transport: Any = None,
+) -> dict[str, Any]:
+    """Verify a Google Cloud OIDC ID token (Cloud Run / IAP / Workload Identity) via `google.oauth2.id_token`."""
+    raw = token.strip()
+    if raw.lower().startswith("bearer "):
+        raw = raw[7:].strip()
+    if not raw:
+        raise SpiffeAuthenticationError("Empty Google OIDC token.")
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token
+
+        transport = request_transport or google_requests.Request()
+        claims = id_token.verify_oauth2_token(
+            raw,
+            transport,
+            audience=expected_audience,
+        )
+        return dict(claims)
+    except Exception as exc:
+        raise SpiffeAuthenticationError(
+            f"Google OIDC token verification failed: {exc}"
+        ) from exc
 
 
 def authorize_spiffe_agent(
@@ -567,6 +745,8 @@ __all__ = [
     "DEFAULT_SPIFFE_TRUST_DOMAIN",
     "MAX_APPROVAL_HEADER",
     "SPIFFE_ID_HEADER",
+    "SPIFFE_PRIVATE_KEY_PEM_ENV",
+    "SPIFFE_PUBLIC_KEY_PEM_ENV",
     "SPIFFE_REQUIRE_SVID_ENV",
     "SPIFFE_SVID_HEADER",
     "SPIFFE_SVID_SECRET_ENV",
@@ -579,12 +759,15 @@ __all__ = [
     "SpiffeAgentPolicy",
     "SpiffeAuthenticationError",
     "SpiffeId",
+    "SvidAlgorithmLiteral",
     "TenantIsolationError",
     "UserPrincipal",
     "authorize_entity_access",
     "authorize_spiffe_agent",
     "filter_quotes_for_principal",
+    "generate_ephemeral_svid_keypair",
     "mint_jwt_svid",
     "parse_decimal_header",
+    "verify_google_oidc_token",
     "verify_jwt_svid",
 ]

@@ -83,3 +83,23 @@ resource "google_secret_manager_secret_iam_member" "email_token_accessor" {
   role      = "roles/secretmanager.secretAccessor"
   member    = var.service_account_member
 }
+
+# SPIFFE JWT-SVID signing key/secret container (Zone 6 Identity Governance).
+# As with db_url, only the container + per-secret secretAccessor grant are
+# created in HCL; the key material is added out-of-band at deploy time.
+resource "google_secret_manager_secret" "spiffe_svid" {
+  project   = var.project_id
+  secret_id = var.spiffe_svid_secret_id
+  labels    = var.labels
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "spiffe_svid_accessor" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.spiffe_svid.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = var.service_account_member
+}

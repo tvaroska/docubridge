@@ -817,4 +817,6 @@ TRUST_POLICIES_TABLE_NAME = "gym_trust_policies"
 SHADOW_RECORDS_TABLE_NAME = "gym_shadow_comparisons"
 SKILL_REVISIONS_TABLE_NAME = "gym_skill_revisions"
 PROCESS_SKILL_LINEAGE_TABLE_NAME = "gym_process_skill_lineage"
+REGISTRY_SERVICES_TABLE_NAME = "gym_registry_services"
+REGISTRY_BINDINGS_TABLE_NAME = "gym_registry_bindings"
 _OP_TIMEOUT_S = 15.0

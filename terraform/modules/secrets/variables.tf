@@ -60,3 +60,9 @@ variable "email_token_secret_id" {
   description = "Secret id of the intake-token HMAC key (BRIDGE_EMAIL_TOKEN_SECRET on the runtime)."
   default     = "bridge-email-token-secret"
 }
+
+variable "spiffe_svid_secret_id" {
+  type        = string
+  description = "Secret Manager secret id for the SPIFFE JWT-SVID signing key/secret (injected as BRIDGE_SPIFFE_SVID_SECRET)."
+  default     = "bridge-spiffe-svid-secret"
+}

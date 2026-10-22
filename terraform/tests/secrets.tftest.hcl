@@ -44,4 +44,14 @@ run "dsn_secret_container_and_accessor" {
     condition     = google_secret_manager_secret.db_url.secret_id != ""
     error_message = "secret container must exist (its version/value is deploy-injected, not in HCL)"
   }
+
+  assert {
+    condition     = google_secret_manager_secret.spiffe_svid.secret_id == var.spiffe_svid_secret_id
+    error_message = "SPIFFE SVID secret id must track spiffe_svid_secret_id (default bridge-spiffe-svid-secret)"
+  }
+
+  assert {
+    condition     = google_secret_manager_secret_iam_member.spiffe_svid_accessor.role == "roles/secretmanager.secretAccessor"
+    error_message = "runtime must be granted roles/secretmanager.secretAccessor on the SPIFFE SVID secret"
+  }
 }

@@ -3202,3 +3202,173 @@ def test_gcp_hardening_sql_stores_and_modular_demo_assets(
     assert js_resp.status_code == 200
     assert "application/javascript" in js_resp.headers["content-type"]
     assert "window.switchDomain" in js_resp.text
+
+
+def test_statistical_calibration_irr_rair_rsr_and_rogan_gladen() -> None:
+    """Verify full statistical calibration suite in bridge/calibration.py."""
+    from bridge.calibration import (
+        agreement_at_k,
+        compute_calibration_summary,
+        compute_rair_rsr,
+        effective_panel_size,
+        gwets_ac2,
+        human_agent_swap,
+        krippendorff_alpha,
+        negative_flip_rate,
+        pass_at_k,
+        pass_hat_k,
+        rogan_gladen_debiased_pass_rate,
+        stochastic_threshold_corridor,
+    )
+
+    ratings = [
+        [1, 1, 1],
+        [1, 1, 1],
+        [0, 0, 0],
+        [1, 0, 1],
+    ]
+    alpha = krippendorff_alpha(ratings, metric="nominal", scale_values=[0, 1])
+    assert -1.0 <= alpha <= 1.0
+
+    ac2 = gwets_ac2(ratings, scale_values=[0, 1], metric="ordinal")
+    assert -1.0 <= ac2 <= 1.0
+
+    rg = rogan_gladen_debiased_pass_rate(
+        judge_pass_count=18,
+        n_unlabeled=20,
+        calibration_human_labels=[1, 1, 1, 1, 0, 0, 0, 0],
+        calibration_judge_labels=[1, 1, 1, 1, 0, 0, 0, 1],
+    )
+    assert rg.tpr_sensitivity == 1.0
+    assert rg.tnr_specificity == 0.75
+    assert 0.0 <= rg.debiased_pass_rate <= 1.0
+    assert rg.ci_95_lower <= rg.debiased_pass_rate <= rg.ci_95_upper
+
+    j_eff = effective_panel_size(n_judges=5, pairwise_error_correlation=0.25)
+    assert 1.0 < j_eff < 5.0
+
+    has = human_agent_swap(
+        human_ratings_matrix=[[1, 1], [1, 1], [0, 0], [1, 1]],
+        autorater_ratings=[1, 1, 0, 1],
+        metric="ordinal",
+        scale_values=[0, 1],
+    )
+    assert has.passes_parity_gate is True
+
+    assert agreement_at_k([1, 1, 1]) == 1.0
+    assert pass_at_k(n_trials=5, c_successes=3, k=2) == pytest.approx(0.9)
+    assert pass_hat_k(n_trials=4, c_successes=4, k=3) == pytest.approx(1.0)
+    assert negative_flip_rate([1, 1, 0, 1], [1, 0, 0, 1]) == pytest.approx(0.25)
+
+    reliance = compute_rair_rsr(
+        human_initial_correct=[0, 0, 1, 1],
+        ai_correct=[1, 1, 0, 1],
+        final_decision_correct=[1, 1, 1, 1],
+    )
+    assert reliance.rair == 1.0
+    assert reliance.rsr == 1.0
+    assert reliance.passes_oversight_gate is True
+
+    corridor = stochastic_threshold_corridor(
+        scores=[0.95, 0.92, 0.94, 0.91],
+        min_mean=0.90,
+        max_std=0.05,
+        min_p05=0.90,
+    )
+    assert corridor.passes is True
+
+    summary = compute_calibration_summary(
+        human_scores=[1.0, 1.0, 0.0, 1.0],
+        judge_scores=[1.0, 1.0, 0.0, 1.0],
+        scale_values=[0.0, 1.0],
+    )
+    assert summary.passes_production_gate is True
+    assert summary.mae == 0.0
+
+
+def test_asymmetric_rs256_es256_spiffe_svid_and_oidc_verification() -> None:
+    """Verify RS256 and ES256 asymmetric SPIFFE JWT-SVID signing and verification."""
+    from bridge.identity import (
+        SpiffeAuthenticationError,
+        generate_ephemeral_svid_keypair,
+        mint_jwt_svid,
+        verify_jwt_svid,
+    )
+
+    for alg in ("RS256", "ES256"):
+        priv_pem, pub_pem = generate_ephemeral_svid_keypair(alg)
+        token = mint_jwt_svid(
+            "spiffe://agents.docubridge.io/internal/credit-officer-agent",
+            obo_subject="usr:credit.officer@docubridge.io",
+            obo_role="underwriter",
+            private_key_pem=priv_pem,
+            algorithm=alg,
+        )
+        claims = verify_jwt_svid(token, public_key_pem=pub_pem)
+        assert (
+            claims["sub"]
+            == "spiffe://agents.docubridge.io/internal/credit-officer-agent"
+        )
+        assert claims["obo"]["role"] == "underwriter"
+
+        # Tampering with payload invalidates signature
+        header_b64, _payload_b64, sig_b64 = token.split(".")
+        with pytest.raises(SpiffeAuthenticationError):
+            verify_jwt_svid(f"{header_b64}.e30.{sig_b64}", public_key_pem=pub_pem)
+
+
+def test_sql_agent_gym_registry_service_and_binding_persistence_and_model_armor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify custom Agent Registry services and bindings persist across SQL replicas."""
+    from bridge.agent_gym import SqlAgentGymEngine
+
+    dsn = f"sqlite+aiosqlite:///{tmp_path / 'registry_persist.db'}"
+    replica_1 = SqlAgentGymEngine(dsn)
+    try:
+        svc = replica_1.register_registry_service(
+            service_id="custom-fraud-agent",
+            component_type="AGENT",
+            display_name="Custom Fraud Agent",
+            spec_type="a2a-agent-card",
+            target_uri="https://fraud-agent.docubridge.io/a2a",
+            agent_principal="spiffe://agents.docubridge.io/internal/fraud-agent",
+        )
+        assert svc["service_id"] == "custom-fraud-agent"
+
+        target_mcp = replica_1.get_registry_catalog()["agent_registry"]["mcp_servers"][
+            0
+        ]["resource_name"]
+        binding = replica_1.create_registry_binding(
+            binding_id="binding-fraud-mcp",
+            source_agent=svc["registry_resource"],
+            target_resource=target_mcp,
+            target_type="MCP_SERVER",
+        )
+        assert binding["binding_id"] == "binding-fraud-mcp"
+    finally:
+        replica_1.close()
+
+    # Open a second independent SQL handle to verify cross-replica durability
+    replica_2 = SqlAgentGymEngine(dsn)
+    try:
+        catalog = replica_2.get_registry_catalog()
+        agents = catalog["agent_registry"]["agents"]
+        assert any(a["display_name"] == "Custom Fraud Agent" for a in agents)
+        bindings = catalog["agent_registry"]["bindings"]
+        assert any(b["binding_id"] == "binding-fraud-mcp" for b in bindings)
+
+        # Route evaluation across replica_2 succeeds using persisted service + binding
+        route_eval = replica_2.evaluate_gateway_route(
+            governed_access_path="AGENT_TO_ANYWHERE",
+            source_principal=svc["registry_resource"],
+            target_resource=target_mcp,
+        )
+        assert route_eval["allowed"] is True
+        assert route_eval["decision"] == "ALLOW_EGRESS_VIA_IAP"
+
+        # Verify _inspect_with_gcp_model_armor returns None cleanly when template env is unset
+        monkeypatch.delenv("BRIDGE_MODEL_ARMOR_TEMPLATE", raising=False)
+        assert replica_2._inspect_with_gcp_model_armor("benign payload") is None
+    finally:
+        replica_2.close()

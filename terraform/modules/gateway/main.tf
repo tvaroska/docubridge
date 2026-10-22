@@ -35,6 +35,61 @@ resource "google_compute_region_network_endpoint_group" "runtime" {
   }
 }
 
+# Cloud Armor edge security policy — rate-limiting + OWASP preconfigured WAF rules
+# attached to the external HTTPS LB backend service.
+resource "google_compute_security_policy" "edge_waf" {
+  count = var.enable_gateway ? 1 : 0
+
+  project     = var.project_id
+  name        = "${var.service_name}-edge-waf"
+  description = "Cloud Armor edge rate-limiting and OWASP WAF policy for the Bridge runtime LB."
+
+  rule {
+    action      = "deny(403)"
+    priority    = 900
+    description = "Block OWASP XSS and local file inclusion probes at the edge."
+    match {
+      expr {
+        expression = "evaluatePreconfiguredWaf('xss-v33-stable') || evaluatePreconfiguredWaf('lfi-v33-stable')"
+      }
+    }
+  }
+
+  rule {
+    action      = "rate_based_ban"
+    priority    = 1000
+    description = "Per-IP rate limit (300 req/min) protecting public intake and A2A edge routes."
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+    rate_limit_options {
+      conform_action   = "allow"
+      exceed_action    = "deny(429)"
+      enforce_on_key   = "IP"
+      ban_duration_sec = 60
+      rate_limit_threshold {
+        count        = 300
+        interval_sec = 60
+      }
+    }
+  }
+
+  rule {
+    action      = "allow"
+    priority    = 2147483647
+    description = "Default allow rule."
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+  }
+}
+
 # Global backend service → the Serverless NEG (external managed HTTPS LB).
 resource "google_compute_backend_service" "runtime" {
   count = var.enable_gateway ? 1 : 0
@@ -43,6 +98,7 @@ resource "google_compute_backend_service" "runtime" {
   name                  = "${var.service_name}-backend"
   load_balancing_scheme = "EXTERNAL_MANAGED"
   protocol              = "HTTPS"
+  security_policy       = google_compute_security_policy.edge_waf[0].id
 
   backend {
     group = google_compute_region_network_endpoint_group.runtime[0].id

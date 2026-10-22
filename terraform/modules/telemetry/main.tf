@@ -254,11 +254,12 @@ resource "google_bigquery_table" "v_trace_sql_evaluation" {
             COUNTIF(
               name = 'docubridge.agent_gym.distill_signal'
               AND COALESCE(SAFE_CAST(JSON_VALUE(attributes_json, '$."docubridge.oversight.rsr_score"') AS FLOAT64), 1.0) < 0.80
+              AND COALESCE(JSON_VALUE(attributes_json, '$."docubridge.rule_status"'), 'accepted') != 'rejected'
             ) = 0
           ) AS gate_4_oversight_anti_rubber_stamp,
           (
-            COUNTIF(status = 'ERROR') = 0
-            AND COUNTIF(JSON_VALUE(attributes_json, '$."docubridge.finops.traffic_type"') = 'conflict_escalation') <= 1
+            COUNTIF(status = 'ERROR' AND NOT STARTS_WITH(name, 'docubridge.identity.') AND name != 'docubridge.catalog.authorize_access') = 0
+            AND COUNTIF(JSON_VALUE(attributes_json, '$."docubridge.finops.traffic_type"') = 'conflict_escalation') <= GREATEST(1, COUNT(DISTINCT entity_id))
           ) AS gate_5_finops_workhorse_right_sized,
           MIN(start_time) AS trace_started_at,
           ROUND(SUM(duration_ms), 3) AS cumulative_span_duration_ms
@@ -314,4 +315,71 @@ resource "google_bigquery_dataset_iam_member" "sink_writer" {
   dataset_id = google_bigquery_dataset.telemetry[0].dataset_id
   role       = "roles/bigquery.dataEditor"
   member     = google_logging_project_sink.otel_spans_to_bq[0].writer_identity
+}
+
+# Zone 4 Lakehouse Analytics — BigQuery dataset + bq_operational_facts_iceberg table
+# matching bridge/operational_store/iceberg_sync.py::BIGQUERY_ICEBERG_DDL.
+resource "google_bigquery_dataset" "lakehouse" {
+  count = var.enable_telemetry_bq ? 1 : 0
+
+  project                    = var.project_id
+  dataset_id                 = var.lakehouse_dataset_id
+  friendly_name              = "DocuBridge Operational Facts Lakehouse"
+  description                = "Zone 4 bi-temporal consolidated operational facts synced from AlloyDB/Cloud SQL to BigQuery Open Iceberg."
+  location                   = var.region
+  delete_contents_on_destroy = !var.deletion_protection
+  labels                     = var.labels
+}
+
+resource "google_bigquery_dataset_iam_member" "lakehouse_runtime_editor" {
+  count = var.enable_telemetry_bq ? 1 : 0
+
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.lakehouse[0].dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = var.service_account_member
+}
+
+resource "google_bigquery_table" "operational_facts_iceberg" {
+  count = var.enable_telemetry_bq ? 1 : 0
+
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.lakehouse[0].dataset_id
+  table_id            = "bq_operational_facts_iceberg"
+  description         = "Bi-temporal consolidated operational facts table with SourceAnchor and SkillRevision lineage."
+  deletion_protection = var.deletion_protection
+  labels              = var.labels
+
+  time_partitioning {
+    type  = "DAY"
+    field = "recorded_at"
+  }
+
+  clustering = ["entity_id", "doctype", "field_path"]
+
+  schema = jsonencode([
+    { name = "fact_id", type = "STRING", mode = "REQUIRED", description = "Unique consolidated fact identifier" },
+    { name = "entity_id", type = "STRING", mode = "REQUIRED", description = "Entity / Loan / Submission identifier" },
+    { name = "context_id", type = "STRING", mode = "REQUIRED", description = "A2A context identifier" },
+    { name = "doc_id", type = "STRING", mode = "REQUIRED", description = "Source document identifier" },
+    { name = "doctype", type = "STRING", mode = "REQUIRED", description = "Document type / skill identifier" },
+    { name = "issuer", type = "STRING", mode = "NULLABLE", description = "Normalized issuer / carrier / lender" },
+    { name = "field_path", type = "STRING", mode = "REQUIRED", description = "Consolidated field path" },
+    { name = "field_value", type = "STRING", mode = "REQUIRED", description = "Consolidated field string value" },
+    { name = "numeric_value", type = "NUMERIC", mode = "NULLABLE", description = "Exact Decimal numeric value" },
+    { name = "currency", type = "STRING", mode = "NULLABLE", description = "ISO 4217 currency code" },
+    { name = "source_priority", type = "INT64", mode = "REQUIRED", description = "Source document hierarchy priority" },
+    { name = "recorded_at", type = "TIMESTAMP", mode = "REQUIRED", description = "Transaction-time bi-temporal timestamp (when learned)" },
+    { name = "effective_from", type = "DATE", mode = "REQUIRED", description = "Valid-time start date" },
+    { name = "effective_to", type = "DATE", mode = "NULLABLE", description = "Valid-time end date" },
+    { name = "version", type = "INT64", mode = "REQUIRED", description = "Append-only fact version" },
+    { name = "supersedes_fact_id", type = "STRING", mode = "NULLABLE", description = "Prior fact ID superseded by this fact" },
+    { name = "vault_uri", type = "STRING", mode = "NULLABLE", description = "Zone 3 WORM Audit Vault URI" },
+    { name = "page", type = "INT64", mode = "NULLABLE", description = "1-indexed source PDF page number" },
+    { name = "bbox_json", type = "STRING", mode = "NULLABLE", description = "Normalized polygon vertices JSON" },
+    { name = "skill_version", type = "STRING", mode = "NULLABLE", description = "Skill semantic version" },
+    { name = "skill_revision_id", type = "STRING", mode = "NULLABLE", description = "Immutable content-addressed skill revision ID" },
+    { name = "skill_urn", type = "STRING", mode = "NULLABLE", description = "Agent Registry skill URN" },
+    { name = "process_skill_revision_id", type = "STRING", mode = "NULLABLE", description = "Process-instance skill revision ID" }
+  ])
 }

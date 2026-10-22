@@ -56,6 +56,17 @@ variable "db_url_secret_id" {
   default     = ""
 }
 
+variable "spiffe_svid_secret_id" {
+  type        = string
+  description = <<-EOT
+    Secret Manager secret id whose latest version is injected as the
+    BRIDGE_SPIFFE_SVID_SECRET env (SPIFFE JWT-SVID signing key/secret). Empty ("") =
+    no secret env (keeps credential-free module tests green). Set to
+    module.secrets.spiffe_svid_secret_id.
+  EOT
+  default     = ""
+}
+
 variable "skills_bucket" {
   type        = string
   description = <<-EOT

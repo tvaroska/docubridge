@@ -182,7 +182,8 @@ module "runtime" {
   egress_subnet         = module.network.internal_subnet_id
   # Inject the DB DSN as the DATABASE_URL secret env (P7-2). The Bridge connects to
   # Cloud SQL over the private-IP VPC path, never an HTTP hop (DECISIONS.md 2026-08-24).
-  db_url_secret_id = module.secrets.secret_id
+  db_url_secret_id      = module.secrets.secret_id
+  spiffe_svid_secret_id = module.secrets.spiffe_svid_secret_id
   # GCS bucket NAMES as plain envs (P7-3) — not secrets, so plain env not
   # secret_key_ref. Select the GCS skill registry + GcsArtifactService/signed-URL path.
   skills_bucket    = module.gcs.skills_bucket_name

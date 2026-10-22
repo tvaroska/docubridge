@@ -244,7 +244,12 @@ def render_domain_agent_a2ui(
             "docubridge.role": role,
             "docubridge.channel": channel,
             "docubridge.target_view": resolved_view,
-            "docubridge.agent_spiffe_id": agent_spiffe_id,
+            "docubridge.agent_spiffe_id": agent_spiffe_id
+            or (
+                f"spiffe://agents.docubridge.io/internal/{role}-agent"
+                if channel == "gemini_app"
+                else "spiffe://agents.docubridge.io/portal/external-portal-agent"
+            ),
             "docubridge.svid_verified": svid_verified,
         },
     ) as span:
@@ -424,6 +429,7 @@ def ingest_accepted_submission(
             "docubridge.doc_id": entry.doc_id,
             "docubridge.doctype": entry.doctype,
             "docubridge.version": version,
+            "docubridge.agent_spiffe_id": "spiffe://agents.docubridge.io/internal/extraction-agent",
         },
     ) as span:
         vault = vault_store or vault_from_env()

@@ -13,17 +13,21 @@ tags: [bridge]
 
 The seams are **[Ring 2](../spec/standards.md)** — the standardization priority's portability contract. Typed against the *real* platform ABCs so the mock→real / local→GCP swap is a no-op for the agent; custom here is tolerated only as an *adapter behind the ABC*, never a divergent interface.
 
-| Seam | Local adapter | GCP adapter |
+| Seam / Port (`bridge/ports/`) | Local adapter | GCP adapter |
 |---|---|---|
-| **Sessions** | ADK `DatabaseSessionService` on async sqlite (in-memory when no DSN) | ADK `VertexAiSessionService` on Vertex AI Agent Engine when `BRIDGE_AGENT_ENGINE_ID` is set (or `DatabaseSessionService` on Cloud SQL Postgres when unset) |
-| **Task store** | local embedded store | a managed relational store, adoptable as the platform's managed task store via a one-adapter swap |
-| **Exchange store** | local embedded store | a managed relational store |
-| **Skill registry** | directory of [Agent Skills](skills.md) folders | GCP Skill Registry (same [Agent Skills format](skills.md)) |
-| **Memory bank** | ADK `InMemoryMemoryService` (or `SqliteMemoryService` when `BRIDGE_MEMORY_DB_PATH` is set) | ADK `VertexAiMemoryBankService` on Vertex AI Agent Engine (`BRIDGE_AGENT_ENGINE_ID`) |
-| **Scheduler/Timer** | in-process, virtual clock | Cloud Tasks |
-| **A2A client (outbound)** | injected fake transport | authenticated transport with Agent Identity |
-| **Extraction** | fixture extractor (deterministic) | Gemini *or* Gemini + Document AI pre-pass — engine-selectable |
-| **Email ingress** | a landing directory of `.eml` + attachments + processed markers | a GCS landing bucket, same object layout, create-only writes |
+| **Sessions** (`sessions`) | ADK `DatabaseSessionService` on async sqlite (in-memory when no DSN) | ADK `VertexAiSessionService` on Vertex AI Agent Engine when `BRIDGE_AGENT_ENGINE_ID` is set (or `DatabaseSessionService` on Cloud SQL Postgres when unset) |
+| **Task store** (`task_store`) | local embedded store | a managed relational store, adoptable as the platform's managed task store via a one-adapter swap |
+| **Exchange store** (`exchange_store`) | local embedded store | a managed relational store |
+| **Skill registry** (`skill_registry`) | directory of [Agent Skills](skills.md) folders | GCP Skill Registry (same [Agent Skills format](skills.md)) |
+| **Memory bank** (`memory_bank`) | ADK `InMemoryMemoryService` (or `SqliteMemoryService` when `BRIDGE_MEMORY_DB_PATH` is set) | ADK `VertexAiMemoryBankService` on Vertex AI Agent Engine (`BRIDGE_AGENT_ENGINE_ID`) |
+| **Scheduler/Timer** (`scheduler`) | in-process, virtual clock | Cloud Tasks |
+| **A2A client (outbound)** (`a2a_client`) | injected fake transport | authenticated transport with Agent Identity |
+| **Extraction** (`extraction`) | fixture extractor (deterministic) | Gemini *or* Gemini + Document AI pre-pass — engine-selectable |
+| **Email ingress** (`email_ingress`) | a landing directory of `.eml` + attachments + processed markers | a GCS landing bucket, same object layout, create-only writes |
+| **Audit vault** (`audit_vault`) | `LocalAuditVaultStore` (in-memory / filesystem write-once WORM lock) | `GcpAuditVaultStore` on 7-year retention-locked Cloud Storage (`BRIDGE_VAULT_BUCKET`) |
+| **Operational store** (`operational_store`) | `InMemoryOperationalStore` / `SqlOperationalStore` on SQLite | `SqlOperationalStore` on AlloyDB / Cloud SQL Postgres (`DATABASE_URL`, refuses in-memory fallback) |
+| **Action inbox** (`action_inbox`) | `InMemoryActionInboxStore` / `SqlActionInboxStore` on SQLite | `SqlActionInboxStore` on AlloyDB / Cloud SQL Postgres (`DATABASE_URL`, refuses in-memory fallback) |
+| **Agent Gym** (`agent_gym`) | `InMemoryAgentGymEngine` / `SqlAgentGymEngine` on SQLite | `SqlAgentGymEngine` on AlloyDB / Cloud SQL Postgres (`DATABASE_URL`, refuses in-memory fallback) |
 
 **The config knob** selects a global seam mode (local or deployed) with per-seam overrides, so you can move one boundary onto a managed service at a time. The **same test suite runs against both** adapters — that parity is what lets the Bridge develop at local speed while genuinely running on the managed platform it showcases.
 
@@ -57,7 +61,7 @@ GCP *write* paths (event publish, timer enqueue) assemble their requests on the 
 
 Every managed-service seam is verified by the **same test suite running against both adapters**, ensuring the mock→real and local→GCP swaps are **no-ops for the agent**. This is the parity claim that lets the Bridge develop at local speed while genuinely showcasing the managed platform.
 
-**The seams.** The test markers enumerate exactly the `Seam` enum's names: `sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`.
+**The seams / ports.** The test markers enumerate all 13 `Port` (`Seam`) enum names: `sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`.
 
 **The harness:**
 - **`adapter` fixture**: parametrized over `("local", "gcp")`. The `local` adapter **always** runs; the `gcp` adapter runs **only when `BRIDGE_TEST_GCP=1`** is set (skips otherwise, e.g. in CI without credentials). The *same* test body asserts both.

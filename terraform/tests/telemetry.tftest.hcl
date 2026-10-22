@@ -66,4 +66,14 @@ run "telemetry_enabled_provisions_bq_dataset_table_and_views" {
     condition     = output.entity_summary_view_fqn == "test-project.docubridge_telemetry.v_entity_pipeline_summary"
     error_message = "enable_telemetry_bq = true must expose entity_summary_view_fqn"
   }
+
+  assert {
+    condition     = output.lakehouse_dataset_id == "docubridge_lakehouse"
+    error_message = "enable_telemetry_bq = true must provision docubridge_lakehouse dataset"
+  }
+
+  assert {
+    condition     = output.operational_facts_iceberg_table_fqn == "test-project.docubridge_lakehouse.bq_operational_facts_iceberg"
+    error_message = "enable_telemetry_bq = true must provision bq_operational_facts_iceberg table"
+  }
 }

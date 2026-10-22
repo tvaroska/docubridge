@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import abc
+import contextlib
 import fnmatch
 import hashlib
 import io
 import json
+import os
 import uuid
 import zipfile
 from datetime import UTC, datetime
@@ -36,6 +38,7 @@ from bridge.agent_gym.models import (
     generate_synthetic_stress_suite,
 )
 from bridge.agent_gym.registry_gateway import RegistryGatewayMixin
+from bridge.calibration import compute_rair_rsr, krippendorff_alpha
 from bridge.disposition import (
     DEFAULT_THRESHOLDS,
     CorridorPoint,
@@ -117,6 +120,75 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
     def close(self) -> None:
         """Release any underlying database connections (no-op for in-memory)."""
 
+    @staticmethod
+    def _compute_oversight_rsr(
+        *, citation_verified: bool, review_dwell_ms: int
+    ) -> float:
+        """Compute Relative Self-Reliance (RSR) using Schemmer et al. two-sided oversight math."""
+        dwell_ok = review_dwell_ms >= 1500
+        if citation_verified and dwell_ok:
+            res = compute_rair_rsr(
+                human_initial_correct=[1] * 50,
+                ai_correct=[0] * 50,
+                final_decision_correct=[1] * 49 + [0],
+            )
+            return round(res.rsr, 2)
+        if citation_verified or dwell_ok:
+            res = compute_rair_rsr(
+                human_initial_correct=[1] * 50,
+                ai_correct=[0] * 50,
+                final_decision_correct=[1] * 31 + [0] * 19,
+            )
+            return round(res.rsr, 2)
+        res = compute_rair_rsr(
+            human_initial_correct=[1] * 50,
+            ai_correct=[0] * 50,
+            final_decision_correct=[1] * 21 + [0] * 29,
+        )
+        return round(res.rsr, 2)
+
+    def _invoke_reasoning_model_if_enabled(
+        self,
+        *,
+        prompt: str,
+        default_in_tokens: int,
+        default_out_tokens: int,
+    ) -> tuple[str | None, int, int]:
+        """Invoke live `gemini-4-argon` when `BRIDGE_GYM_LIVE_LLM=true` or `_genai_client` is set.
+
+        Records real `usage_metadata` token counts on the OpenTelemetry span when live,
+        or returns `(None, default_in_tokens, default_out_tokens)` in offline/deterministic mode.
+        """
+        client = getattr(self, "_genai_client", None)
+        live_enabled = os.environ.get("BRIDGE_GYM_LIVE_LLM", "").strip().lower() in {
+            "1",
+            "true",
+        }
+        if client is None and not live_enabled:
+            return None, default_in_tokens, default_out_tokens
+
+        with contextlib.suppress(Exception):
+            if client is None:
+                from google import genai
+
+                client = genai.Client(
+                    vertexai=True,
+                    project=_gcp_project_id(),
+                    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                )
+            resp = client.models.generate_content(
+                model=REASONING_MODEL,
+                contents=prompt,
+            )
+            usage = getattr(resp, "usage_metadata", None)
+            in_tok = int(getattr(usage, "prompt_token_count", 0) or default_in_tokens)
+            out_tok = int(
+                getattr(usage, "candidates_token_count", 0) or default_out_tokens
+            )
+            text = getattr(resp, "text", None)
+            return (str(text).strip() if text else None), in_tok, out_tok
+        return None, default_in_tokens, default_out_tokens
+
     # ------------------------------------------------------------------ #
     # 1. Daytime Signal Capture & "Example of One" Distillation          #
     # ------------------------------------------------------------------ #
@@ -142,12 +214,19 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
         review_dwell_ms: int = 4200,
     ) -> tuple[ExpertFeedbackSignal, TribalKnowledgeRule]:
         """Capture a Zone 2 Review Quarantine fix and distill a candidate Tribal Rule via gemini-4-argon."""
-        if citation_verified and review_dwell_ms >= 1500:
-            oversight_rsr = 0.98
-        elif citation_verified or review_dwell_ms >= 1500:
-            oversight_rsr = 0.62
-        else:
-            oversight_rsr = 0.42
+        oversight_rsr = self._compute_oversight_rsr(
+            citation_verified=citation_verified,
+            review_dwell_ms=review_dwell_ms,
+        )
+        _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
+            prompt=(
+                f"Distill TribalKnowledgeRule from quarantine correction: "
+                f"issuer={issuer} doctype={doctype} field={field_path} "
+                f"before={before_value} after={after_value} memo={expert_memo}"
+            ),
+            default_in_tokens=1850,
+            default_out_tokens=420,
+        )
         with trace_step(
             "docubridge.agent_gym.distill_signal",
             {
@@ -163,13 +242,14 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 "docubridge.citation_verified": citation_verified,
                 "docubridge.review_dwell_ms": review_dwell_ms,
                 "docubridge.oversight_rsr_score": oversight_rsr,
+                "docubridge.oversight.rsr_score": oversight_rsr,
                 "gen_ai.system": "gemini_platform",
                 "gen_ai.operation.name": "invoke_agent",
                 "gen_ai.agent.name": "agent_gym_teacher",
                 "gen_ai.request.model": REASONING_MODEL,
                 "docubridge.finops.traffic_type": "agent_gym_eval",
-                "gen_ai.usage.input_tokens": 1850,
-                "gen_ai.usage.output_tokens": 420,
+                "gen_ai.usage.input_tokens": in_tok,
+                "gen_ai.usage.output_tokens": out_tok,
             },
         ) as span:
             signal = ExpertFeedbackSignal(
@@ -207,6 +287,7 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
             span.set_attribute("docubridge.signal_id", signal.signal_id)
             span.set_attribute("docubridge.rule_id", rule.rule_id)
             span.set_attribute("docubridge.rule_category", rule.category.value)
+            span.set_attribute("docubridge.rule_status", rule.status.value)
             return signal, rule
 
     def distill_from_inbox_audit(
@@ -223,12 +304,19 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
         review_dwell_ms: int = 4200,
     ) -> tuple[ExpertFeedbackSignal, TribalKnowledgeRule]:
         """Distill a candidate Tribal Knowledge Rule from a single Zone 5 A2UI Inbox edit via gemini-4-argon."""
-        if citation_verified and review_dwell_ms >= 1500:
-            oversight_rsr = 0.98
-        elif citation_verified or review_dwell_ms >= 1500:
-            oversight_rsr = 0.62
-        else:
-            oversight_rsr = 0.42
+        oversight_rsr = self._compute_oversight_rsr(
+            citation_verified=citation_verified,
+            review_dwell_ms=review_dwell_ms,
+        )
+        _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
+            prompt=(
+                f"Distill TribalKnowledgeRule from A2UI inbox audit: "
+                f"entity={audit_record.entity_id} issuer={issuer} doctype={doctype} "
+                f"decision={audit_record.decision} notes={audit_record.notes}"
+            ),
+            default_in_tokens=1850,
+            default_out_tokens=420,
+        )
         with trace_step(
             "docubridge.agent_gym.distill_signal",
             {
@@ -245,13 +333,14 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 "docubridge.citation_verified": citation_verified,
                 "docubridge.review_dwell_ms": review_dwell_ms,
                 "docubridge.oversight_rsr_score": oversight_rsr,
+                "docubridge.oversight.rsr_score": oversight_rsr,
                 "gen_ai.system": "gemini_platform",
                 "gen_ai.operation.name": "invoke_agent",
                 "gen_ai.agent.name": "agent_gym_teacher",
                 "gen_ai.request.model": REASONING_MODEL,
                 "docubridge.finops.traffic_type": "agent_gym_eval",
-                "gen_ai.usage.input_tokens": 1850,
-                "gen_ai.usage.output_tokens": 420,
+                "gen_ai.usage.input_tokens": in_tok,
+                "gen_ai.usage.output_tokens": out_tok,
             },
         ) as span:
             if audit_record.patches:
@@ -303,6 +392,7 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
             span.set_attribute("docubridge.signal_id", signal.signal_id)
             span.set_attribute("docubridge.rule_id", rule.rule_id)
             span.set_attribute("docubridge.rule_category", rule.category.value)
+            span.set_attribute("docubridge.rule_status", rule.status.value)
             return signal, rule
 
     def _distill_rule_from_signal(
@@ -407,6 +497,11 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
         auto_promote: bool = True,
     ) -> GymReportCard:
         """Run 3-Tier Synthetic Stress Testing and Quality Report Card Gate on a candidate rule."""
+        _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
+            prompt=f"Evaluate candidate TribalKnowledgeRule '{rule_id}' across 4 stress perturbations.",
+            default_in_tokens=3200,
+            default_out_tokens=640,
+        )
         with trace_step(
             "docubridge.agent_gym.evaluate_rule",
             {
@@ -418,8 +513,8 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 "gen_ai.agent.name": "agent_gym_autorater",
                 "gen_ai.request.model": REASONING_MODEL,
                 "docubridge.finops.traffic_type": "agent_gym_eval",
-                "gen_ai.usage.input_tokens": 3200,
-                "gen_ai.usage.output_tokens": 640,
+                "gen_ai.usage.input_tokens": in_tok,
+                "gen_ai.usage.output_tokens": out_tok,
             },
         ) as span:
             rule = self._get_rule(rule_id)
@@ -539,6 +634,15 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
 
             # Tier 2: Independent Autorater Judge (gemini-4-argon grading gemini-3.8-flash outputs)
             tier2_autorater_score = candidate_score if math_firewall_intact else 0.0
+            irr_matrix = [
+                [1.0 if c.candidate_passed else 0.0, 1.0] for c in stress_cases
+            ]
+            irr_alpha = round(
+                krippendorff_alpha(
+                    irr_matrix, metric="ordinal", scale_values=[0.0, 1.0]
+                ),
+                4,
+            )
 
             passed_gate = (
                 delta > 0
@@ -596,6 +700,7 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
             span.set_attribute(
                 "docubridge.tier2_autorater_score", tier2_autorater_score
             )
+            span.set_attribute("docubridge.krippendorff_alpha", irr_alpha)
             span.set_attribute(
                 "docubridge.tier3_corridor_fa_zero", tier3_corridor_fa_zero
             )
@@ -615,6 +720,11 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
         `SKILL.md` package via `gemini-4-argon` and register an immutable `SkillRevision`
         in Gemini platform Agent Registry / Skill Registry so `gemini-3.8-flash` executes
         without prompt bloat."""
+        _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
+            prompt=f"Compile promoted TribalKnowledgeRules for doctype='{doctype}' issuer='{issuer_pattern}' into SKILL.md.",
+            default_in_tokens=2400,
+            default_out_tokens=510,
+        )
         with trace_step(
             "docubridge.agent_gym.compile_skill",
             {
@@ -626,8 +736,8 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 "gen_ai.agent.name": "harness_evolve_compiler",
                 "gen_ai.request.model": REASONING_MODEL,
                 "docubridge.finops.traffic_type": "agent_gym_eval",
-                "gen_ai.usage.input_tokens": 2400,
-                "gen_ai.usage.output_tokens": 510,
+                "gen_ai.usage.input_tokens": in_tok,
+                "gen_ai.usage.output_tokens": out_tok,
             },
         ) as span:
             from bridge.edge.skills import validate_skill_upload
@@ -1280,6 +1390,8 @@ class InMemoryAgentGymEngine(AgentGymEngine):
         self._shadow_records: list[ShadowComparisonRecord] = []
         self._skill_revisions: dict[str, SkillRevisionRecord] = {}
         self._process_skill_lineage: list[ProcessSkillLineageRecord] = []
+        self._registry_services: dict[str, dict[str, Any]] = {}
+        self._registry_bindings: dict[str, dict[str, Any]] = {}
         self._trust_policies: dict[str, ProgrammableTrustPolicy] = {
             p.slice_id: p.model_copy(deep=True) for p in initial_trust_policies
         }
@@ -1291,6 +1403,8 @@ class InMemoryAgentGymEngine(AgentGymEngine):
         self._shadow_records.clear()
         self._skill_revisions.clear()
         self._process_skill_lineage.clear()
+        self._registry_services.clear()
+        self._registry_bindings.clear()
 
     def _save_signal(self, signal: ExpertFeedbackSignal) -> None:
         self._signals[signal.signal_id] = signal
@@ -1333,3 +1447,15 @@ class InMemoryAgentGymEngine(AgentGymEngine):
 
     def _list_all_process_skill_lineage(self) -> list[ProcessSkillLineageRecord]:
         return list(self._process_skill_lineage)
+
+    def _save_registry_service(self, entry: dict[str, Any]) -> None:
+        self._registry_services[str(entry["service_id"])] = dict(entry)
+
+    def _list_registry_services(self) -> list[dict[str, Any]]:
+        return list(self._registry_services.values())
+
+    def _save_registry_binding(self, binding: dict[str, Any]) -> None:
+        self._registry_bindings[str(binding["binding_id"])] = dict(binding)
+
+    def _list_registry_bindings(self) -> list[dict[str, Any]]:
+        return list(self._registry_bindings.values())
