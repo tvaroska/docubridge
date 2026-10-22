@@ -2697,6 +2697,26 @@ def test_multimodel_split_otel_genai_and_3tier_harness_evolve() -> None:
     assert "name" in first_wf
     assert "gen_ai_model" in first_wf
 
+    # 7. Verify BigQuery SQL Trace Evaluation (`v_trace_sql_evaluation` + `AI.GENERATE_TABLE`)
+    assert "trace_sql_evaluation" in analytics
+    assert "trace_sql_evaluation" in analytics["bigquery_target"]["views"]
+    sql_eval = analytics["trace_sql_evaluation"]
+    assert sql_eval["judge_model"] == "gemini-4-argon"
+    assert sql_eval["workhorse_model"] == "gemini-3.8-flash"
+    assert len(sql_eval["gates"]) == 5
+    assert "rule0_trajectory_sql" in sql_eval["sql_queries"]
+    assert "ai_generate_table_judge_sql" in sql_eval["sql_queries"]
+    assert "AI.GENERATE_TABLE" in sql_eval["sql_queries"]["ai_generate_table_judge_sql"]
+    assert "rogan_gladen_sme_alignment_sql" in sql_eval["sql_queries"]
+    assert (
+        sql_eval["statistical_calibration"]["rogan_gladen_debiased_pass_rate"] >= 0.85
+    )
+
+    sql_eval_resp = client.post("/v1/telemetry/sql-eval/run")
+    assert sql_eval_resp.status_code == 200
+    assert sql_eval_resp.json()["view_fqn"].endswith("v_trace_sql_evaluation")
+    assert client.get("/v1/telemetry/sql-eval").status_code == 200
+
 
 def test_skill_registry_versioning_rollback_and_process_instance_skill_lineage() -> (
     None
