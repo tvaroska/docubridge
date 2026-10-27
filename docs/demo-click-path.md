@@ -28,7 +28,7 @@
 ## 2. Minute-by-Minute Live Demo Click-Path (5 Minutes)
 
 ### Minute 0:00–1:00 — Scene 1 & Scene 2: Dual-Path Intake & Bi-Temporal Conflict Detection
-1. Open `https://docubridge-showcase-bridge-rfp-board-100000000000.us-central1.run.app/demo` and select **`🏦 Banking`** (`Meridian Logistics Center LLC — $45M CRE Term Loan`, or switch to **`🏠 Mortgage · TRID Closing`** / **`🛡️ Insurance`**).
+1. Open `https://docubridge-showcase-bridge-rfp-board-100000000000.us-central1.run.app/demo` and select **`🏦 Banking`** (`Meridian Logistics Center LLC — $45M CRE Term Loan`, `$45,000,000` / `72.00% LTV` on `$62,500,000` appraisal; or switch to **`🏠 Mortgage · TRID Closing`** `$1.85M` / `$1,850,000` / `77.08% LTV` with `$4,250.00 -> $8,500.00` rate-lock fee override, or **`🛡️ Insurance`** `$142,500,000` TIV / `$418,500.00` premium).
 2. In **Scene 1 (Dual-Path Intake)**:
    - Contrast **Path A (Structured MISMO / ACORD / JSON)** bypassing OCR at zero token cost against **Path B (Documents)** running Document AI bounding-polygon extraction + `gemini-3.8-flash`.
    - Click any highlighted value (`$100,000.00` Schedule B origination fee addendum) to open the **Click-to-Source Document Proof Modal** showing the PDF page, normalized polygon, and 7-year write-once Cloud Storage Audit Vault lock.

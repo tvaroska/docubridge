@@ -87,7 +87,12 @@ def test_default_thresholds_inside_corridor():
 def test_every_process_policy_equals_defaults_and_is_inside():
     """Every process skill's disposition: block == the code defaults, inside the corridor."""
     policies = process_policy_thresholds()
-    assert set(policies) == {"address-proof", "benefits-procurement", "benefits-rfp"}
+    assert set(policies) == {
+        "address-proof",
+        "benefits-procurement",
+        "benefits-rfp",
+        "commercial-loan-underwriting",
+    }
     corridor = threshold_corridor(corpus_points())
     for name, t in policies.items():
         assert t == DEFAULT_THRESHOLDS, name

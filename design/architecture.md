@@ -29,12 +29,12 @@ docubridge/
 │   ├── email_ingress/  email intake + correlation
 │   ├── demos/       fenced demo-host glue (seeding) — the core never imports it
 │   ├── vault.py             Zone 2/3 PII redaction & WORM Cloud Storage Audit Vault
-│   ├── operational_store.py Zone 3/4 bi-temporal Operational Store, Decimal consolidation & Iceberg CDC
+│   ├── operational_store/   Zone 3/4 bi-temporal Operational Store, Decimal consolidation & Iceberg CDC
 │   ├── knowledge_catalog.py Zone 6 Knowledge Catalog, 6-hop lineage, glossary & asset map
 │   ├── identity.py          SPIFFE JWT-SVID verification, OBO compound identity & tenant isolation
-│   ├── a2ui_inbox.py        Zone 5 A2UI v0.9 Action Inbox, SQL store, SSE deltas & RFC 6902 audit trail
+│   ├── a2ui_inbox/          Zone 5 A2UI v0.9 Action Inbox, SQL store, SSE deltas & RFC 6902 audit trail
 │   ├── agent_gym/           Zone 6 Agent Gym package (models, engine, sql_store, registry_gateway)
-│   ├── telemetry.py         End-to-end OpenTelemetry spans, BatchSpanProcessor Cloud Trace v2 & BigQuery
+│   ├── telemetry/           End-to-end OpenTelemetry spans, BatchSpanProcessor Cloud Trace v2 & BigQuery
 │   └── user_interaction/    Zone 5/6 FastAPI package (auth, surfaces, demo_seed, schemas, routes)
 ├── demo/            5-scene interactive Enterprise Showcase Console (enterprise-demo.{html,css,js}) + GCP recorder
 ├── agents/          service-agent CONSUMERS + demo drivers
@@ -43,8 +43,8 @@ docubridge/
 │   └── benefits/    simulated carrier counterparty agents, ADK + LangGraph
 ├── skills/          Agent Skills folders the Bridge loads at runtime (doctype + process)
 │   ├── address-proof, gov-id, utility-bill (Address)
-│   ├── benefits-procurement, benefits-quote (Benefits)
-│   └── benefits-rfp (emergent-Collect process)
+│   ├── benefits-procurement, benefits-quote, benefits-rfp (Benefits & RFP)
+│   └── commercial-loan-underwriting, trid-closing-disclosure (Financial Services & Banking)
 ├── frontend/        four apps (provider portal = A2UI Path-B; console + dashboard = SSE; timewarp)
 │   ├── provider-portal/, agent-console/, ops-dashboard/, timewarp/
 │   ├── shared/      @docubridge/shared: theme, Panel, Badges, contract mirror

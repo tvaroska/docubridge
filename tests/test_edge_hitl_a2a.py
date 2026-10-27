@@ -362,6 +362,9 @@ async def test_resume_after_rebuild_reaches_timeline_resolution(tmp_path):
     async with _client(app, REVIEWER) as (_hc, client):
         _events, parked = await _park(client, ctx=ctx)
     call_id = _meta(parked.status.message)[META_REVIEW_CALL_ID]
+    import asyncio
+
+    await asyncio.sleep(0)
     await task_store.engine.dispose()
     await sessions.db_engine.dispose()
     del app, _leg, llm, task_store, sessions  # the restart boundary: nothing survives

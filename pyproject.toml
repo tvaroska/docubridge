@@ -102,7 +102,9 @@ markers = [
     "seam: shared seam-parity tests parametrized over local/gcp adapters",
 ]
 filterwarnings = [
-    "ignore:.*EXPERIMENTAL.*ResumabilityConfig.*:UserWarning",
+    "ignore:.*EXPERIMENTAL.*:UserWarning",
+    "ignore:label\\(\\) is deprecated.*:DeprecationWarning",
+    "ignore:Exception ignored in.*ActiveTask\\._run_:pytest.PytestUnraisableExceptionWarning",
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -121,4 +123,9 @@ skip_covered = true
 packages = ["contract", "bridge", "agents"]
 
 [tool.uv]
-# dev extras installed by default in this workspace
+package = false
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true

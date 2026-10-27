@@ -200,6 +200,7 @@ class ExpertFeedbackSignal(BaseModel):
     patches: tuple[Rfc6902PatchOp, ...] = ()
     citation_verified: bool = True
     review_dwell_ms: int = 4200
+    pre_committed: bool = False
     oversight_rsr_score: float = 0.98
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -298,6 +299,8 @@ class ShadowComparisonRecord(BaseModel):
     exact_match: bool
     drift_reason: str | None = None
     active_skill_revision_id: str | None = None
+    citation_verified: bool = True
+    oversight_rsr_score: float = 0.98
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -370,6 +373,7 @@ class ProgrammableTrustPolicy(BaseModel):
     total_evaluated: int = 0
     total_exact_matches: int = 0
     drift_incidents: int = 0
+    spot_check_sample_rate: float = Field(default=0.05, ge=0.0, le=1.0)
     last_updated_by: str = "system:bootstrap"
     last_updated_reason: str = "Initial Shadow Mode onboarding"
     agent_spiffe_id: str | None = None
@@ -777,6 +781,7 @@ def build_a2ui_trust_readiness_surface(
             "readyForPromotion": policy.ready_for_promotion,
             "accuracyRate": policy.accuracy_rate,
             "driftIncidents": policy.drift_incidents,
+            "spotCheckSampleRate": policy.spot_check_sample_rate,
             "reason": policy.last_updated_reason,
         }
     }

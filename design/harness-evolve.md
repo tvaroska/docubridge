@@ -12,7 +12,7 @@ tags: [bridge, agent-gym, harness-evolve, extraction, docai, optimization]
 
 # Agent Gym × Harness Evolve — Continual Learning & Multi-Tier Extraction Evolution
 
-> **Canonical Methodology Source:** General OCTO Agent Gym, OCTO Harness Evolve (`arXiv:2609.00829`), and Harness² (`arXiv:2610.14224`, 8 editable harness surfaces `c1..c8` and Cheapest-Lever Gate) patterns are maintained in [`~/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md`](file:///usr/local/google/home/tvaroska/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md). This document specifies the DocuBridge-specific implementation (`bridge/agent_gym.py`, `bridge/extraction/gemini.py`, `skills/<doctype>/`).
+> **Canonical Methodology Source:** General OCTO Agent Gym, OCTO Harness Evolve (`arXiv:2609.00829`), and Harness² (`arXiv:2610.14224`, 8 editable harness surfaces `c1..c8` and Cheapest-Lever Gate) patterns are maintained in [`~/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md`](file:///usr/local/google/home/tvaroska/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md). This document specifies the DocuBridge-specific implementation (`bridge/agent_gym/`, `bridge/extraction/gemini.py`, `skills/<doctype>/`).
 >
 > **Architecture & As-Built Status (`v1.14.0-agent-gateway`):** Unifies **OCTO Agent Gym** (online, SME-in-the-loop "Example of One" tacit knowledge capture with Two-Sided Oversight `RSR`) with **OCTO Harness Evolve (`HaE`)** (`compile_rules_to_skill()` / `POST /v1/gym/compile-skill` folding promoted rules into immutable `SkillRevision` packages in the Gemini platform Skill Registry with 1-click rollback and Bi-Temporal Process-Instance Skill Lineage) across all three extraction tiers: **Gemini (`gemini-3.8-flash` workhorse + `gemini-4-argon` teacher/judge)**, **Document AI Standard Extractors**, and **Document AI Custom Extractors**.
 
@@ -22,7 +22,7 @@ tags: [bridge, agent-gym, harness-evolve, extraction, docai, optimization]
 
 Both initiatives share the same Day-2 autonomy thesis—*training models is not training agents; enterprise agents win by evolving on the job*—but solve **two opposite, complementary halves** of the evolution loop:
 
-| Dimension | OCTO Agent Gym (`bridge/agent_gym.py`) | OCTO Harness Evolve (`HaE` / `AgentEvolve`) |
+| Dimension | OCTO Agent Gym (`bridge/agent_gym/`) | OCTO Harness Evolve (`HaE` / `AgentEvolve`) |
 | :--- | :--- | :--- |
 | **Core Problem** | Agents fail on unwritten enterprise exceptions ("tribal knowledge") | Agents accumulate prompt bloat, waste tool calls, or over-consume tokens |
 | **Primary Loop** | **Online / Daytime**, interactive **SME-in-the-loop** capture | **Offline / Nightly**, automated **evolutionary sweep & compilation** |
@@ -37,18 +37,16 @@ Both initiatives share the same Day-2 autonomy thesis—*training models is not 
 
 ## 2. How DocuBridge Benefits from Each & Their Combined Flywheel
 
-### 2.1 Closing the Daytime Loop with Agent Gym (Next-Gen Upgrades)
+### 2.1 Closing the Daytime Loop with Agent Gym (Implemented Architecture)
 
-DocuBridge already runs the 5-pillar Agent Gym v1 foundation (`bridge/agent_gym.py`). Three targeted wiring upgrades complete the online loop:
+DocuBridge runs the 5-pillar Agent Gym v1/v2 loop (`bridge/agent_gym/`):
 
 1. **Inject Promoted Extraction Hints into Live Extraction (`Stage 1 Feedback Loop`):**
-   - **Current state:** `AgentGymEngine.get_extraction_hints()` (`bridge/agent_gym.py:1060-1069`) queries promoted `EXTRACTION_HINT` rules from Cloud SQL (`gym_tribal_rules`), and `normalize_entity_or_issuer()` (`bridge/agent_gym.py:1071-1092`) applies `ENTITY_ALIAS` rules in Stage 2 consolidation. However, `GeminiExtractor._catalog()` (`bridge/extraction/gemini.py:686-702`) only reads static `doctype_schemas()`.
-   - **Next step:** Feed promoted `(issuer_pattern, doctype)` extraction hints into `build_extraction_prompt()` (or compile them into `skills/<doctype>/references/`) so the very next document upload benefits on the first pass.
-2. **Replace Simulated Stress Metadata with Live Extractor Replay:**
-   - **Current state:** `generate_synthetic_stress_suite()` (`bridge/agent_gym.py:392-467`) synthesizes 4 corner-case descriptors (`carrier_layout_shift`, `legal_entity_suffix_variant`, `distinct_syndicate_guard`, `model_upgrade_parity`) with static `candidate_passed=True`.
-   - **Next step:** Have `evaluate_candidate_rule()` (`bridge/agent_gym.py:905-1025`) replay the candidate rule against live fixture/sandbox documents in `wiki/evals/` and historical `gym_feedback_signals` before setting `passed_gate=True`.
-3. **Wire Two-Sided Human-Oversight Calibration (`design/agent-gym.md` §2.3):**
-   - Enforce **Blind Pre-Commitment** (`selectedValue: ""` and hidden `confidenceScore` on `HIGH`/`CRITICAL` risk items until a `SourceCitationPill` is opened), **Inline Reasoning Probes** when `/review/memo` is blank (`bridge/agent_gym.py:783`), **verified `consecutive_matches`** (`RAIR`/`RSR` gating), and **5% stratified spot-checks** on `trusted_auto_approve` slices.
+   - `AgentGymEngine.get_extraction_hints()` (`bridge/agent_gym/engine.py`) queries promoted `EXTRACTION_HINT` rules from Cloud SQL (`gym_tribal_rules`), `GeminiExtractor._catalog()` (`bridge/extraction/gemini.py`) dynamically rebuilds `build_extraction_prompt(schemas, extraction_hints=...)` whenever promoted rule IDs change, and `ingest_accepted_submission()` (`bridge/user_interaction/surfaces.py`) applies matching hints on Day-2 submissions.
+2. **Deterministic Rule Execution on Synthetic Stress Suites:**
+   - `generate_synthetic_stress_suite()` (`bridge/agent_gym/models.py`) synthesizes and executes 4 corner-case perturbations (`carrier_layout_shift`, `legal_entity_suffix_variant`, `distinct_syndicate_guard`, `model_upgrade_parity`) via `_execute_rule_on_case()`, and `evaluate_candidate_rule()` (`bridge/agent_gym/engine.py`) verifies positive slice gain, zero historical regression, and an intact `_FORBIDDEN_MATH_TOKENS` firewall before setting `passed_gate=True`.
+3. **Two-Sided Human-Oversight Calibration (`design/agent-gym.md` §2.1):**
+   - Enforces **Blind Pre-Commitment** (`selectedValue: ""` on `HIGH`/`CRITICAL` or evaluative items), **Inline Reasoning Probes** (`oversight_rsr_score` rejecting rubber-stamps with `RSR < 0.50`), **verified `consecutive_matches`** (`RAIR`/`RSR` gating), and **5% stratified spot-checks** on `trusted_auto_approve` slices.
 
 ### 2.2 Offline Algorithmic & Cost Optimization with Harness Evolve (`HaE`)
 

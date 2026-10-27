@@ -71,12 +71,12 @@ uv sync
 uv run uvicorn --factory bridge.dashboard.server:build_dashboard_app --port 8003
 ```
 
-Open **http://localhost:8003/demo** (or `/console`) to explore all three seeded industry scenarios and cinco interactive scenes:
+Open **http://localhost:8003/demo** (or `/console`) to explore all three seeded industry scenarios and five interactive scenes:
 
 - **Three Industry Presets (1-Click Header Switcher)**:
-  - **Commercial Banking (`LOAN-MERIDIAN-001`)** — Meridian Logistics Center LLC `$45,000,000` CRE Term Loan (`66.18% LTV`, `$68,000,000` appraisal, Page 9 Fee Override Addendum `$225,000.00` vs. `$450,000.00`).
-  - **Residential Mortgage (`MORTGAGE-WESTBROOK-2026`)** — Westbrook Family Trust `$1,850,000` 30-Year Jumbo Mortgage (`77.08% LTV`, TRID Closing Disclosure Page 3 Section A rate-lock extension addendum `$8,500.00` vs. `$4,250.00`).
-  - **Commercial Specialty Insurance (`terrepower-coastal-2027`)** — Terrepower Coastal LLC `$275,000,000` TIV Property Placement (`$1,650,000.00` total bound premium across 3 carriers).
+  - **Commercial Banking (`LOAN-MERIDIAN-001`)** — Meridian Logistics Center LLC `$45,000,000` CRE Term Loan (`72.00% LTV`, `$62,500,000` appraisal, Schedule B Page 4 Fee Addendum overriding `origination_fee` from `$50,000.00` to `$100,000.00`).
+  - **Residential Mortgage (`MORTGAGE-WESTBROOK-2026`)** — Westbrook Family Trust `$1,850,000` 30-Year Jumbo Mortgage (`77.08% LTV`, `$2,400,000` appraisal, TRID Closing Disclosure Page 3 Section A rate-lock extension addendum overriding `origination_fee` from `$4,250.00` to `$8,500.00`).
+  - **Commercial Specialty Insurance (`terrepower-coastal-2027`)** — Terrepower Coastal LLC `$142,500,000` TIV Property Placement (`$50,000,000` coverage limit, `$418,500.00` annual premium, Page 4 Wind/Hail Deductible Endorsement overriding `deductible` from `$50,000.00` to `$100,000.00`).
 - **Five Interactive Scenes**:
   1. **Scene 1 · Dual-Path Intake & 7-Year WORM Audit Vault** (`POST /v1/intake/ingest`)
   2. **Scene 2 · Bi-Temporal Operational Store & Role-Based Views** (`GET /v1/a2ui/gemini_app/{entity_id}`, `GET /v1/bigquery/sync`) with click-to-source PDF polygon proof modal
@@ -154,11 +154,11 @@ uv run pytest
 uv run ruff check
 uv run ruff format --check
 pnpm --filter "!@docubridge/e2e" -r test
-terraform -chdir=terraform test
+terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test
 ```
 
-- **100% Static Type & Docstring Enforcement:** `ruff check` enforces `ANN001`, `ANN201`, and `ANN202` across all `bridge/`, `contract/`, and `agents/` modules alongside `>=85%` test coverage.
-- **Google Cloud Build CI/CD:** Continuous integration and container builds run natively on **Google Cloud Build** via [`cloudbuild.yaml`](cloudbuild.yaml) (a 4-track parallel DAG running Python lint + sharded `pytest -n 4` + `>=85%` coverage gate, all 5 frontend workspaces, `terraform test`, and BuildKit image caching before pushing to Artifact Registry). Full substrate deployment is [`scripts/deploy.sh`](scripts/deploy.sh) / [`scripts/parity.sh`](scripts/parity.sh) — see [docs/features/gcp-deployment.md](docs/features/gcp-deployment.md).
+- **100% Static Type & Docstring Enforcement:** `ruff check` enforces `ANN001`, `ANN201`, and `ANN202` across all `bridge/`, `contract/`, and `agents/` modules alongside `>=90%` test coverage.
+- **Google Cloud Build CI/CD:** Continuous integration and container builds run natively on **Google Cloud Build** via [`cloudbuild.yaml`](cloudbuild.yaml) (a 4-track parallel DAG running Python lint + sharded `pytest -n 4` + `>=90%` coverage gate, all 5 frontend workspaces, `terraform test`, and BuildKit image caching before pushing to Artifact Registry). Full substrate deployment is [`scripts/deploy.sh`](scripts/deploy.sh) / [`scripts/parity.sh`](scripts/parity.sh) — see [docs/features/gcp-deployment.md](docs/features/gcp-deployment.md).
 
 ## Repository Map
 

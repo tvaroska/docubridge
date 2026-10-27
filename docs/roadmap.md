@@ -2,9 +2,9 @@
 
 The high-level milestone view of the build. Each milestone is defined by **what it proves on stage** (the demo beat / [CUJ](../spec/cujs.md) it unlocks), not by task detail — that lives in [`TODO.md`](../TODO.md), and the per-feature breakdown in [`features.md`](features.md).
 
-The one commitment of this cycle: **one deployed core, the Address demo running on it end-to-end, deployed on the Gemini Enterprise Agent Platform.** Benefits and RFP are later cycles.
+The core commitment: **one deployed core on the Gemini platform running Address, Employee Benefits, Emergent RFP, and the 6-Zone Financial Services & Regulated Industry Enterprise Showcase (`LOAN-MERIDIAN-001`, `MORTGAGE-WESTBROOK-2026`, `terrepower-coastal-2027`) end-to-end.**
 
-> _Current focus (see [`TODO.md`](../TODO.md) for live status):_ Cycle 1 milestones **M0–M7 are in place** — M7 ("It's deployed") closed 2026-10-01 — and the Benefits cycle (CUJ‑3/11/12) is done. The `document_bridge` LlmAgent now sits behind the A2A edge (hybrid mode: off-script routing, real-erase deletion, HITL park agent-to-agent; closed 2026-10-02). RFP live use-case-add (CUJ‑9) is built — a process skill and its doctypes added to the running core are advertised and usable while another exchange stays undisturbed, and a malformed upload is refused; the CUJ‑9 Driver line awaits the spec owner (proposal in `DECISIONS.md`), and the sprint close is `/replan`'s.
+> _Current focus (see [`TODO.md`](../TODO.md) for live status):_ Cycle 1 milestones **M0–M7 are complete** — M7 ("It's deployed") closed 2026-10-01 — and the Benefits cycle (CUJ‑3/11/12), Emergent RFP cycle (CUJ‑9/13), Hybrid `document_bridge` LlmAgent edge (off-script routing, real-erase deletion, HITL park/resume), and the 6-Zone Enterprise Data Architecture + Agent Gym + Agent Gateway showcase (`v1.14.0-agent-gateway`) are all built and verified.
 
 ## Cycle 1 milestones — Core + Address
 

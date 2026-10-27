@@ -1,0 +1,15 @@
+# Disposition thresholds — MUST equal bridge/disposition.py DispositionThresholds
+# defaults (code carries built-ins; policy is the authoritative source per wiki).
+disposition:
+  auto_approve_at: 0.85
+  resubmit_below: 0.55
+  max_resubmissions: 3
+
+sla:
+  deadline: 3
+  cadence: 2
+  max_nudges: 2
+  overdue_ticks: 1
+  reminder_ticks: 2
+  escalate_ticks: 3
+  ladder: [overdue, reminder, escalated]

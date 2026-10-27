@@ -90,6 +90,9 @@ class InboxAuditRecord(BaseModel):
     patches: list[Rfc6902PatchOp] = Field(default_factory=list)
     notes: str = ""
     escalated_to: str | None = None
+    review_dwell_ms: int = Field(default=4200, ge=0)
+    citation_opened: bool = True
+    pre_committed: bool = False
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -118,6 +121,7 @@ class ActionInboxItem(BaseModel):
     initial_data_model: dict[str, Any] = Field(default_factory=dict)
     current_data_model: dict[str, Any] = Field(default_factory=dict)
     max_approval_amount: float | None = None
+    blind_pre_commitment: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     delta_history: list[dict[str, Any]] = Field(default_factory=list)

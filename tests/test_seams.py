@@ -176,6 +176,7 @@ def test_collection_guard_rejects_invalid_seam(pytester):
     pytester.makeini(
         """
         [pytest]
+        asyncio_default_fixture_loop_scope = function
         markers =
             seam: shared seam-parity tests
         """
@@ -224,6 +225,7 @@ def test_collection_guard_accepts_valid_seam(pytester):
     pytester.makeini(
         """
         [pytest]
+        asyncio_default_fixture_loop_scope = function
         markers =
             seam: shared seam-parity tests
         """
@@ -278,6 +280,12 @@ def test_gcp_param_gated_by_env(pytester):
         """
     )
 
+    pytester.makeini(
+        """
+        [pytest]
+        asyncio_default_fixture_loop_scope = function
+        """
+    )
     # Run with --collect-only to see what would be collected
     result = pytester.runpytest("--collect-only", "-q")
     output = "\n".join(result.outlines)

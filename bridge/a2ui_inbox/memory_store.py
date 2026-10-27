@@ -64,6 +64,7 @@ class ActionInboxStore:
         conflicts: list[FactConflict] | None = None,
         pause_for_review: bool = False,
         max_approval_amount: float | None = None,
+        blind_pre_commitment: bool = False,
     ) -> ActionInboxItem:
         """Create a new human-in-the-loop action inbox item and record its initial audit event."""
         raise NotImplementedError
@@ -141,6 +142,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         conflicts: list[FactConflict] | None = None,
         pause_for_review: bool = False,
         max_approval_amount: float | None = None,
+        blind_pre_commitment: bool = False,
     ) -> ActionInboxItem:
         """Create a new human-in-the-loop action inbox item in memory and record its audit event."""
         with trace_step(
@@ -152,6 +154,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 "docubridge.target_view": target_view,
                 "docubridge.risk_level": risk_level,
                 "docubridge.pause_for_review": pause_for_review,
+                "docubridge.blind_pre_commitment": blind_pre_commitment,
             },
         ) as span:
             item_id = f"act_{uuid.uuid4().hex[:10]}"
@@ -202,7 +205,11 @@ class InMemoryActionInboxStore(ActionInboxStore):
                     )
                 initial_model["discrepancy"] = {"rows": rows}
                 initial_model["resolutionOptions"] = options
-                if options and not initial_model["resolution"].get("selectedValue"):
+                if (
+                    options
+                    and not blind_pre_commitment
+                    and not initial_model["resolution"].get("selectedValue")
+                ):
                     initial_model["resolution"]["selectedValue"] = options[0]["value"]
 
             task_state: TaskLifecycleState = (
@@ -236,6 +243,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 initial_data_model=copy.deepcopy(initial_model),
                 current_data_model=copy.deepcopy(initial_model),
                 max_approval_amount=max_approval_amount,
+                blind_pre_commitment=blind_pre_commitment,
             )
             initial_delta = build_update_data_model_delta(
                 surface_id,
@@ -410,10 +418,44 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 decision = "edit"
 
             notes = str(candidate_model.get("review", {}).get("memo", ""))
+            review_block = candidate_model.get("review", {}) or {}
+            raw_dwell = action_ctx.get(
+                "review_dwell_ms",
+                action_ctx.get(
+                    "reviewDwellMs",
+                    review_block.get(
+                        "review_dwell_ms", review_block.get("dwellMs", 4200)
+                    ),
+                ),
+            )
+            review_dwell_ms = max(0, int(raw_dwell if raw_dwell is not None else 4200))
+            raw_citation = action_ctx.get(
+                "citation_opened",
+                action_ctx.get(
+                    "citationOpened",
+                    action_ctx.get(
+                        "citation_verified",
+                        review_block.get("citation_opened", True),
+                    ),
+                ),
+            )
+            citation_opened = bool(True if raw_citation is None else raw_citation)
+            raw_pre_commit = action_ctx.get(
+                "pre_committed",
+                action_ctx.get(
+                    "preCommitted",
+                    review_block.get("pre_committed", item.blind_pre_commitment),
+                ),
+            )
+            pre_committed = bool(raw_pre_commit)
+
             item.current_data_model = candidate_model
             item.updated_at = datetime.now(UTC)
             span.set_attribute("docubridge.decision", decision)
             span.set_attribute("docubridge.patch_count", len(patches))
+            span.set_attribute("docubridge.review_dwell_ms", review_dwell_ms)
+            span.set_attribute("docubridge.citation_opened", citation_opened)
+            span.set_attribute("docubridge.pre_committed", pre_committed)
 
             if decision == "escalate":
                 target_role = str(action_ctx.get("targetRole", "underwriter"))
@@ -440,6 +482,9 @@ class InMemoryActionInboxStore(ActionInboxStore):
                     patches=patches,
                     notes=notes,
                     escalated_to=item.assigned_role,
+                    review_dwell_ms=review_dwell_ms,
+                    citation_opened=citation_opened,
+                    pre_committed=pre_committed,
                 )
                 self._audits.append(audit)
                 span.set_attribute("docubridge.audit_id", audit.audit_id)
@@ -518,6 +563,9 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 resolved_data_model=candidate_model,
                 patches=patches,
                 notes=notes,
+                review_dwell_ms=review_dwell_ms,
+                citation_opened=citation_opened,
+                pre_committed=pre_committed,
             )
             self._audits.append(audit)
             span.set_attribute("docubridge.audit_id", audit.audit_id)

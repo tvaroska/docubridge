@@ -5,9 +5,9 @@
 Each domain exercises the full 6-zone architecture and the 4 Gemini platform pillars (**Build, Govern, Scale, Optimize**):
 1. **Zone 1 — Dual-Path Intake & A2A Edge:** Path A structured JSON/Excel schema validation (`\$0` OCR/LLM cost) and Path B multi-page PDF ingestion via Document AI OCR + `gemini-3.8-flash` extraction (`bridge/collect.py`, `bridge/extraction/`).
 2. **Zone 2 — Edge PII Redaction & Draft Quarantine:** Inline Cloud DLP / regex PII scrubbing (`redact_personal_data`) and quarantine staging (`GcsArtifactService`) with a deterministic 4-Signal Disposition Gate (`bridge/signals.py`).
-3. **Zone 3 — 7-Year WORM Audit Vault & Bi-Temporal Operational Store:** Immutable SHA-256 evidence locking in Cloud Storage (`bridge/vault.py`) paired with append-only bi-temporal `Decimal` consolidation in Cloud SQL for PostgreSQL 16 / AlloyDB (`bridge/operational_store.py`) and watermarked BigQuery Open Iceberg CDC sync.
+3. **Zone 3 — 7-Year WORM Audit Vault & Bi-Temporal Operational Store:** Immutable SHA-256 evidence locking in Cloud Storage (`bridge/vault.py`) paired with append-only bi-temporal `Decimal` consolidation in Cloud SQL for PostgreSQL 16 / AlloyDB (`bridge/operational_store/`) and watermarked BigQuery Open Iceberg CDC sync.
 4. **Zone 4 — Role-Based Views & Multi-Persona Projections:** Deterministic source-priority resolution (`endorsement`/`addendum`/`closing-disclosure` `40` > `binder`/`credit-agreement` `30` > `quote`/`term-sheet`/`appraisal` `20` > `submission`/`loan-application` `10`) serving Broker, Claims, and Underwriter views with click-to-source-page bounding boxes.
-5. **Zone 5 — Declarative A2UI v0.9 & Human-in-the-Loop Action Inbox:** Security-zone-isolated surfaces (`gemini_app` internal vs. `custom_web` external) with compound SPIFFE JWT-SVID + OBO principal authorization (`bridge/identity.py`) and RFC 6902 JSON Patch audit trails (`bridge/a2ui_inbox.py`).
+5. **Zone 5 — Declarative A2UI v0.9 & Human-in-the-Loop Action Inbox:** Security-zone-isolated surfaces (`gemini_app` internal vs. `custom_web` external) with compound SPIFFE JWT-SVID + OBO principal authorization (`bridge/identity.py`) and RFC 6902 JSON Patch audit trails (`bridge/a2ui_inbox/`).
 6. **Zone 6 — Knowledge Catalog, Agent Registry, Agent Gateway & Agent Gym:** 6-hop W3C PROV-O lineage (`bridge/knowledge_catalog.py`), Gemini platform Agent & Skill Registry (`agentregistry.googleapis.com`), Agent Gateway (`CLIENT_TO_AGENT` Model Armor/DLP + `AGENT_TO_ANYWHERE` IAM v3 UAP CEL), and closed-loop **Agent Gym** (`bridge/agent_gym/`) with Two-Sided Oversight (`RSR`), 3-Tier evaluation (`gemini-4-argon` judge), and 1-click `SKILL.md` compilation.
 
 ---
@@ -21,10 +21,10 @@ Each domain exercises the full 6-zone architecture and the 4 Gemini platform pil
 ### Seeded Showcase Entity (`bridge/user_interaction/demo_seed.py`)
 | Entity ID | Borrower / Facility | Facility Size | Scenario Highlights |
 | :--- | :--- | :--- | :--- |
-| `LOAN-MERIDIAN-001` | **Meridian Logistics Center LLC** | `\$45,000,000` | Multi-document CRE Term Loan consolidating Initial Application (`doc-meridian-app-v1`), Executed Term Sheet (`doc-meridian-termsheet-v1`), CBRE MAI Appraisal (`doc-meridian-appraisal-v1` at `\$62.5M` / `72.00% LTV`), and Negotiated Fee Addendum #2 (`doc-meridian-addendum-v2` overriding `origination_fee` from `\$225,000` to `\$450,000` on Page 9). |
+| `LOAN-MERIDIAN-001` | **Meridian Logistics Center LLC** | `\$45,000,000` | Multi-document CRE Term Loan consolidating Executed Term Sheet & MAI Appraisal (`doc-meridian-ts-v1` at `\$62,500,000` appraisal / `72.00% LTV` and `\$50,000.00` base origination fee) and Schedule B Closing Fee Addendum (`doc-meridian-addendum-v2` overriding `origination_fee` from `\$50,000.00` to `\$100,000.00` on Page 4). |
 
 ### Key Canonical Facts, Glossary Terms & Trust Slices
-- **Canonical Facts:** `loan_amount` (`45000000.00`), `appraised_value` (`62500000.00`), `collateral_value` (`60000000.00`), `origination_fee` (`225000.00` → `450000.00`).
+- **Canonical Facts:** `loan_amount` (`45000000.00`), `appraised_value` (`62500000.00`), `net_operating_income` (`4185000.00`), `origination_fee` (`50000.00` → `100000.00`).
 - **Glossary Terms:** `term.loan_to_value_ratio` (Loan-to-Value Ratio), `term.addendum_priority_hierarchy` (Banking & Insurance Document Priority Hierarchy), `term.cross_document_conflict`.
 - **Programmable Trust Slices:** `slice:closing-disclosure:fee-schedule:LOW` (`trusted_auto_approve`), `slice:credit-agreement:addendum:MEDIUM` (`guided_review`), `slice:appraisal-report:commercial:HIGH` (`shadow_mode`).
 
@@ -39,10 +39,10 @@ Each domain exercises the full 6-zone architecture and the 4 Gemini platform pil
 ### Seeded Showcase Entity (`bridge/user_interaction/demo_seed.py`)
 | Entity ID | Borrower / File Name | Loan Amount | Scenario Highlights |
 | :--- | :--- | :--- | :--- |
-| `MORTGAGE-WESTBROOK-2026` | **Westbrook Family Trust (30-Year Jumbo)** | `\$1,850,000` | Combines Path A structured Form 1003 URLA + IRS 4506-C (`doc-westbrook-1003-v1`), Form 1004 Uniform Residential Appraisal (`doc-westbrook-1004-v1` at `\$2,400,000` / `77.08% LTV`), and Path B TRID Closing Disclosure Page 3 Section A rate-lock extension addendum (`doc-westbrook-cd-addendum-v2`, updating `rate_lock_fee` from `\$4,250` to `\$8,500`). |
+| `MORTGAGE-WESTBROOK-2026` | **Westbrook Family Trust (30-Year Jumbo)** | `\$1,850,000` | Combines Path A structured Form 1003 URLA + Form 1004 Appraisal (`doc-westbrook-le-v1` at `\$2,400,000` / `77.08% LTV` and `\$4,250.00` initial origination fee) and Path B TRID Closing Disclosure Page 3 Section A rate-lock extension addendum (`doc-westbrook-cd-v2`, updating `origination_fee` from `\$4,250.00` to `\$8,500.00`). |
 
 ### Key Canonical Facts, Glossary Terms & Trust Slices
-- **Canonical Facts:** `loan_amount` (`1850000.00`), `appraised_value` (`2400000.00`), `rate_lock_fee` (`4250.00` → `8500.00`).
+- **Canonical Facts:** `loan_amount` (`1850000.00`), `appraised_value` (`2400000.00`), `origination_fee` (`4250.00` → `8500.00`).
 - **Glossary Terms:** `term.loan_to_value_ratio`, `term.addendum_priority_hierarchy`, `term.cross_document_conflict`.
 - **Programmable Trust Slice:** `slice:mortgage-trid:closing-disclosure:MEDIUM` (`guided_review`).
 
@@ -57,10 +57,10 @@ Each domain exercises the full 6-zone architecture and the 4 Gemini platform pil
 ### Seeded Showcase Entity (`bridge/user_interaction/demo_seed.py`)
 | Entity ID | Account / Placement Name | Total Insured Value | Scenario Highlights |
 | :--- | :--- | :--- | :--- |
-| `terrepower-coastal-2027` | **Terrepower Coastal LLC** | `\$250,000,000` | Consolidates Schedule of Values (`doc-terrepower-sov-v1`), Primary Property Binder (`doc-terrepower-binder-v1` at `\$1,420,000` annual premium), and Sovereign Wind/Hail Deductible Endorsement (`doc-terrepower-endorsement-v2` overriding `wind_hail_deductible` from `\$100,000` to `\$250,000` on Page 14). |
+| `terrepower-coastal-2027` | **Terrepower Coastal LLC** | `\$142,500,000` | Consolidates Carrier Property Quote (`doc-terrepower-quote-v1` with `\$50,000,000` coverage limit, `\$418,500.00` annual premium, and `\$50,000.00` base deductible) and Sovereign Wind/Hail Deductible Endorsement (`doc-terrepower-endorsement-v2` overriding `deductible` from `\$50,000.00` to `\$100,000.00` on Page 4). |
 
 ### Key Canonical Facts, Glossary Terms & Trust Slices
-- **Canonical Facts:** `total_insured_value` (`250000000.00`), `annual_premium` (`1420000.00`), `wind_hail_deductible` (`100000.00` → `250000.00`).
+- **Canonical Facts:** `total_insured_value` (`142500000.00`), `coverage_limit` (`50000000.00`), `premium` (`418500.00`), `deductible` (`50000.00` → `100000.00`).
 - **Glossary Terms:** `term.premium`, `term.deductible_to_limit_ratio`, `term.active_coverage_as_of_loss`.
 - **Programmable Trust Slices:** `slice:chubb:quote:LOW` (`trusted_auto_approve`), `slice:aig:endorsement:MEDIUM` (`guided_review`), `slice:lloyds:quote:HIGH` (`shadow_mode`).
 

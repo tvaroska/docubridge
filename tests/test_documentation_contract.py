@@ -395,3 +395,175 @@ def test_zero_stale_firestore_or_broken_claude_plan_references() -> None:
         assert rule in ruff_select, (
             f"pyproject.toml [tool.ruff.lint] select missing {rule!r}"
         )
+
+
+def test_canonical_financial_figures_match_across_docs_and_seed() -> None:
+    """``README.md``, ``BANKING.md``, and ``docs/demo-click-path.md`` match ``seed_demo_scenarios()``."""
+    readme_text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    banking_text = (REPO_ROOT / "BANKING.md").read_text(encoding="utf-8")
+    click_path_text = (REPO_ROOT / "docs/demo-click-path.md").read_text(
+        encoding="utf-8"
+    )
+
+    canonical_figures = (
+        "$45,000,000",
+        "72.00% LTV",
+        "$50,000.00",
+        "$100,000.00",
+        "$1,850,000",
+        "77.08% LTV",
+        "$4,250.00",
+        "$8,500.00",
+        "$142,500,000",
+        "$418,500.00",
+    )
+    for fig in canonical_figures:
+        assert fig in readme_text, f"Canonical figure {fig!r} missing from README.md"
+        assert fig in banking_text, f"Canonical figure {fig!r} missing from BANKING.md"
+
+    for click_fig in ("$50,000.00", "$100,000.00", "$45M", "$1.85M"):
+        assert click_fig in click_path_text, (
+            f"Canonical figure {click_fig!r} missing from docs/demo-click-path.md"
+        )
+
+    assert "cinco interactive scenes" not in readme_text
+
+
+def test_fsi_skills_loaded_and_advertised_on_a2a_agent_card() -> None:
+    """First-class FSI skills load in ``loaded_skills()`` and advertise on ``build_agent_card()``."""
+    from bridge.edge.card import build_agent_card
+    from bridge.edge.skills import loaded_skills
+
+    skills = {s.name: s for s in loaded_skills()}
+    assert "commercial-loan-underwriting" in skills
+    assert skills["commercial-loan-underwriting"].kind == "process"
+    assert "trid-closing-disclosure" in skills
+    assert skills["trid-closing-disclosure"].kind == "doctype"
+
+    card = build_agent_card("http://localhost:8080")
+    card_skill_ids = {s.id for s in card.skills}
+    assert "commercial-loan-underwriting" in card_skill_ids
+
+
+def test_dynamic_process_skill_resolution_and_two_sided_oversight_controls() -> None:
+    """Domain process skills resolve dynamically and Agent Gym v2 oversight controls gate promotion."""
+    from bridge.a2ui_inbox import A2uiClientActionRequest, InMemoryActionInboxStore
+    from bridge.agent_gym import InMemoryAgentGymEngine
+    from bridge.operational_store import FactConflict, SourceTrace
+    from bridge.user_interaction.surfaces import _resolve_process_skill_name
+
+    assert (
+        _resolve_process_skill_name(
+            entity_id="MORTGAGE-WESTBROOK-2026", doctype="closing-disclosure"
+        )
+        == "trid-mortgage-closing"
+    )
+    assert (
+        _resolve_process_skill_name(
+            entity_id="terrepower-coastal-2027", doctype="quote"
+        )
+        == "commercial-property-placement"
+    )
+    assert (
+        _resolve_process_skill_name(entity_id="LOAN-MERIDIAN-001", doctype="addendum")
+        == "commercial-loan-closing"
+    )
+
+    inbox = InMemoryActionInboxStore()
+    conflict = FactConflict(
+        entity_id="LOAN-MERIDIAN-001",
+        field_path="origination_fee",
+        winning_fact_id="fact-addendum-1",
+        winning_doc_id="doc-addendum",
+        winning_value="100000.00",
+        conflicting_fact_id="fact-term-1",
+        conflicting_doc_id="doc-term",
+        conflicting_value="50000.00",
+        reason="Addendum overrides term sheet",
+        winning_trace=SourceTrace(doc_id="doc-addendum", doctype="addendum"),
+        conflicting_trace=SourceTrace(doc_id="doc-term", doctype="term-sheet"),
+    )
+    blind_item = inbox.create_action(
+        entity_id="LOAN-MERIDIAN-001",
+        title="Verify Fee Override",
+        hint="Blind pre-commitment check",
+        conflicts=[conflict],
+        blind_pre_commitment=True,
+    )
+    assert blind_item.blind_pre_commitment is True
+    assert blind_item.initial_data_model["resolution"]["selectedValue"] == ""
+
+    resolved = inbox.resolve_action(
+        blind_item.item_id,
+        action_request=A2uiClientActionRequest(
+            action={
+                "name": "edit_and_approve",
+                "context": {
+                    "decision": "edit_and_approve",
+                    "resolution": {"selectedValue": "100000.00"},
+                    "review": {"memo": "Verified Schedule B Page 9."},
+                    "review_dwell_ms": 4800,
+                    "citation_opened": True,
+                    "pre_committed": True,
+                },
+            }
+        ),
+        actor_principal="senior.credit.officer@docubridge.io",
+        actor_role="underwriter",
+        channel="gemini_app",
+    )
+    audit = inbox.list_audit_records(blind_item.item_id)[0]
+    assert resolved["audit_id"] == audit.audit_id
+    assert audit.review_dwell_ms == 4800
+    assert audit.citation_opened is True
+    assert audit.pre_committed is True
+
+    gym = InMemoryAgentGymEngine()
+    signal, rule = gym.distill_from_inbox_audit(
+        audit,
+        doc_id="doc-addendum",
+        doctype="closing-disclosure",
+        issuer="Meridian Commercial Bank",
+    )
+    assert signal.pre_committed is True
+    assert signal.oversight_rsr_score >= 0.95
+    assert rule.status.value == "candidate"
+
+    # Rubber-stamped shadow comparison must NOT increment consecutive_matches
+    slice_id = "slice:credit-agreement:addendum:MEDIUM"
+    before_policy = gym.get_trust_policy(slice_id)
+    assert before_policy is not None
+    assert before_policy.spot_check_sample_rate == 0.05
+    before_matches = before_policy.consecutive_matches
+
+    rubber_rec, held_policy = gym.record_shadow_comparison(
+        slice_id=slice_id,
+        entity_id="LOAN-MERIDIAN-001",
+        doc_id="doc-rubber",
+        issuer="Syndicated",
+        doctype="addendum",
+        field_path="origination_fee",
+        ai_value="100000.00",
+        human_value="100000.00",
+        citation_verified=False,
+        review_dwell_ms=250,
+    )
+    assert rubber_rec.exact_match is True
+    assert rubber_rec.oversight_rsr_score < 0.50
+    assert held_policy.consecutive_matches == before_matches
+
+    # Verified shadow comparison advances consecutive_matches
+    verified_rec, promoted_policy = gym.record_shadow_comparison(
+        slice_id=slice_id,
+        entity_id="LOAN-MERIDIAN-001",
+        doc_id="doc-verified",
+        issuer="Syndicated",
+        doctype="addendum",
+        field_path="origination_fee",
+        ai_value="100000.00",
+        human_value="100000.00",
+        citation_verified=True,
+        review_dwell_ms=4200,
+    )
+    assert verified_rec.oversight_rsr_score >= 0.95
+    assert promoted_policy.consecutive_matches == before_matches + 1

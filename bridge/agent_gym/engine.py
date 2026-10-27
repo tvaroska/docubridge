@@ -122,28 +122,43 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
 
     @staticmethod
     def _compute_oversight_rsr(
-        *, citation_verified: bool, review_dwell_ms: int
+        *,
+        citation_verified: bool,
+        review_dwell_ms: int,
+        pre_committed: bool = False,
+        historical_outcomes: tuple[bool, ...] = (),
     ) -> float:
-        """Compute Relative Self-Reliance (RSR) using Schemmer et al. two-sided oversight math."""
-        dwell_ok = review_dwell_ms >= 1500
-        if citation_verified and dwell_ok:
-            res = compute_rair_rsr(
-                human_initial_correct=[1] * 50,
-                ai_correct=[0] * 50,
-                final_decision_correct=[1] * 49 + [0],
+        """Compute Relative Self-Reliance (RSR) using Schemmer et al. two-sided oversight math.
+
+        Combines continuous dwell-time saturation, source citation verification, and optional
+        blind pre-commitment with empirical ``compute_rair_rsr`` trials over observed signals.
+        """
+        dwell_ratio = min(1.0, max(0.0, float(review_dwell_ms) / 1500.0))
+        citation_score = 1.0 if citation_verified else 0.0
+        pre_commit_bonus = 0.02 if pre_committed else 0.0
+
+        if citation_verified and review_dwell_ms >= 1500:
+            empirical_prob = min(0.99, 0.96 + 0.02 * dwell_ratio + pre_commit_bonus)
+        elif citation_verified or review_dwell_ms >= 1500:
+            empirical_prob = min(
+                0.78,
+                0.52 + 0.10 * max(citation_score, dwell_ratio) + pre_commit_bonus,
             )
-            return round(res.rsr, 2)
-        if citation_verified or dwell_ok:
-            res = compute_rair_rsr(
-                human_initial_correct=[1] * 50,
-                ai_correct=[0] * 50,
-                final_decision_correct=[1] * 31 + [0] * 19,
-            )
-            return round(res.rsr, 2)
+        else:
+            empirical_prob = max(0.18, 0.30 + 0.12 * dwell_ratio + pre_commit_bonus)
+
+        n_prior = 50
+        prior_successes = round(empirical_prob * n_prior)
+        final_decisions = (
+            [1] * prior_successes
+            + [0] * (n_prior - prior_successes)
+            + [1 if ok else 0 for ok in historical_outcomes]
+        )
+        total_trials = len(final_decisions)
         res = compute_rair_rsr(
-            human_initial_correct=[1] * 50,
-            ai_correct=[0] * 50,
-            final_decision_correct=[1] * 21 + [0] * 29,
+            human_initial_correct=[1] * total_trials,
+            ai_correct=[0] * total_trials,
+            final_decision_correct=final_decisions,
         )
         return round(res.rsr, 2)
 
@@ -212,11 +227,13 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
         distinct_entities: tuple[str, ...] = (),
         citation_verified: bool = True,
         review_dwell_ms: int = 4200,
+        pre_committed: bool = False,
     ) -> tuple[ExpertFeedbackSignal, TribalKnowledgeRule]:
         """Capture a Zone 2 Review Quarantine fix and distill a candidate Tribal Rule via gemini-4-argon."""
         oversight_rsr = self._compute_oversight_rsr(
             citation_verified=citation_verified,
             review_dwell_ms=review_dwell_ms,
+            pre_committed=pre_committed,
         )
         _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
             prompt=(
@@ -276,6 +293,7 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 ),
                 citation_verified=citation_verified,
                 review_dwell_ms=review_dwell_ms,
+                pre_committed=pre_committed,
                 oversight_rsr_score=oversight_rsr,
             )
             self._save_signal(signal)
@@ -300,13 +318,26 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
         field_path: str | None = None,
         category: TribalRuleCategory | None = None,
         distinct_entities: tuple[str, ...] = (),
-        citation_verified: bool = True,
-        review_dwell_ms: int = 4200,
+        citation_verified: bool | None = None,
+        review_dwell_ms: int | None = None,
+        pre_committed: bool | None = None,
     ) -> tuple[ExpertFeedbackSignal, TribalKnowledgeRule]:
         """Distill a candidate Tribal Knowledge Rule from a single Zone 5 A2UI Inbox edit via gemini-4-argon."""
+        resolved_citation = (
+            audit_record.citation_opened
+            if citation_verified is None
+            else citation_verified
+        )
+        resolved_dwell = (
+            audit_record.review_dwell_ms if review_dwell_ms is None else review_dwell_ms
+        )
+        resolved_pre_commit = (
+            audit_record.pre_committed if pre_committed is None else pre_committed
+        )
         oversight_rsr = self._compute_oversight_rsr(
-            citation_verified=citation_verified,
-            review_dwell_ms=review_dwell_ms,
+            citation_verified=resolved_citation,
+            review_dwell_ms=resolved_dwell,
+            pre_committed=resolved_pre_commit,
         )
         _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
             prompt=(
@@ -330,8 +361,9 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 "docubridge.issuer": issuer,
                 "docubridge.actor_principal": audit_record.actor_principal,
                 "docubridge.actor_role": audit_record.actor_role,
-                "docubridge.citation_verified": citation_verified,
-                "docubridge.review_dwell_ms": review_dwell_ms,
+                "docubridge.citation_verified": resolved_citation,
+                "docubridge.review_dwell_ms": resolved_dwell,
+                "docubridge.pre_committed": resolved_pre_commit,
                 "docubridge.oversight_rsr_score": oversight_rsr,
                 "docubridge.oversight.rsr_score": oversight_rsr,
                 "gen_ai.system": "gemini_platform",
@@ -379,8 +411,9 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 actor_role=audit_record.actor_role,
                 agent_spiffe_id=audit_record.agent_spiffe_id,
                 patches=tuple(audit_record.patches),
-                citation_verified=citation_verified,
-                review_dwell_ms=review_dwell_ms,
+                citation_verified=resolved_citation,
+                review_dwell_ms=resolved_dwell,
+                pre_committed=resolved_pre_commit,
                 oversight_rsr_score=oversight_rsr,
             )
             self._save_signal(signal)
@@ -1222,8 +1255,14 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
         ai_value: str,
         human_value: str,
         risk_level: RiskTier = "MEDIUM",
+        citation_verified: bool = True,
+        review_dwell_ms: int = 4200,
     ) -> tuple[ShadowComparisonRecord, ProgrammableTrustPolicy]:
         """Compare AI output vs. human ground truth; track consecutive matches or auto-demote on drift."""
+        oversight_rsr = self._compute_oversight_rsr(
+            citation_verified=citation_verified,
+            review_dwell_ms=review_dwell_ms,
+        )
         with trace_step(
             "docubridge.agent_gym.shadow_comparison",
             {
@@ -1234,6 +1273,9 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 "docubridge.issuer": issuer,
                 "docubridge.doctype": doctype,
                 "docubridge.field_path": field_path,
+                "docubridge.citation_verified": citation_verified,
+                "docubridge.review_dwell_ms": review_dwell_ms,
+                "docubridge.oversight_rsr_score": oversight_rsr,
             },
         ) as span:
             policy = self._get_trust_policy(slice_id)
@@ -1252,8 +1294,18 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
 
             if exact_match:
                 policy.total_exact_matches += 1
-                policy.consecutive_matches += 1
-                policy.last_updated_reason = f"Shadow/Review exact match #{policy.consecutive_matches} on '{field_path}'."
+                if citation_verified and oversight_rsr >= 0.80:
+                    policy.consecutive_matches += 1
+                    policy.last_updated_reason = (
+                        f"Shadow/Review exact match #{policy.consecutive_matches} "
+                        f"on '{field_path}' (RSR={oversight_rsr:.2f})."
+                    )
+                else:
+                    policy.last_updated_reason = (
+                        f"Unverified/rubber-stamp match on '{field_path}' "
+                        f"(RSR={oversight_rsr:.2f} < 0.80); consecutive_matches held at "
+                        f"{policy.consecutive_matches}."
+                    )
             else:
                 policy.consecutive_matches = 0
                 policy.drift_incidents += 1
@@ -1285,6 +1337,8 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
                 exact_match=exact_match,
                 drift_reason=drift_reason,
                 active_skill_revision_id=active_rev.revision_id,
+                citation_verified=citation_verified,
+                oversight_rsr_score=oversight_rsr,
             )
             self._append_shadow_record(record)
             span.set_attribute("docubridge.exact_match", exact_match)

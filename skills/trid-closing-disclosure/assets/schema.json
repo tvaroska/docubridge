@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": ["doctype", "key_fields"],
+  "properties": {
+    "doctype": { "type": "string", "enum": ["trid-closing-disclosure"] },
+    "key_fields": {
+      "type": "object",
+      "required": ["loan_amount", "appraised_value", "origination_fee", "currency"],
+      "properties": {
+        "loan_amount": { "type": "string", "description": "Principal loan facility amount" },
+        "appraised_value": { "type": "string", "description": "Appraised collateral value" },
+        "origination_fee": { "type": "string", "description": "Origination or rate-lock extension fee" },
+        "currency": { "type": "string", "description": "ISO 4217 currency code (e.g. USD)" },
+        "effective_date": { "type": "string", "description": "ISO date (YYYY-MM-DD)" }
+      }
+    }
+  }
+}

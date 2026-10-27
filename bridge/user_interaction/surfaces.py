@@ -404,6 +404,24 @@ class EnterpriseIngestionResult(BaseModel):
     applied_extraction_hints: tuple[str, ...] = ()
 
 
+def _resolve_process_skill_name(entity_id: str, doctype: str) -> str:
+    """Resolve the domain process skill name for process-instance lineage tracking."""
+    ent_lower = entity_id.lower()
+    dtype_lower = doctype.lower()
+    if ent_lower.startswith("mortgage-") or "westbrook" in ent_lower:
+        return "trid-mortgage-closing"
+    if (
+        any(
+            tok in dtype_lower
+            for tok in ("quote", "endorsement", "binder", "policy", "sov")
+        )
+        or "terrepower" in ent_lower
+        or ent_lower.startswith("sub-")
+    ):
+        return "commercial-property-placement"
+    return "commercial-loan-closing"
+
+
 def ingest_accepted_submission(
     entry: LedgerEntry,
     *,
@@ -505,8 +523,11 @@ def ingest_accepted_submission(
 
         # Resolve active SkillRevision from Agent Registry / Skill Registry and stamp
         # process-instance skill lineage onto the LedgerEntry before Vault & Store promotion
+        process_skill_name = _resolve_process_skill_name(
+            entity_id, normalized_entry.doctype
+        )
         active_doc_skill = gym.get_active_skill_revision(normalized_entry.doctype)
-        active_proc_skill = gym.get_active_skill_revision("commercial-loan-closing")
+        active_proc_skill = gym.get_active_skill_revision(process_skill_name)
         effective_compiled_rules = tuple(
             dict.fromkeys([*active_doc_skill.compiled_rule_ids, *applied_hint_ids])
         )
@@ -525,12 +546,26 @@ def ingest_accepted_submission(
             doc_id=normalized_entry.doc_id,
             doctype=normalized_entry.doctype,
             document_version=version,
+            process_skill_name=process_skill_name,
             applied_rule_ids=tuple(applied_hint_ids),
             recorded_at=recorded_at,
             effective_from=effective_from,
         )
 
         # Emit workhorse extraction span (`gemini-3.8-flash`) with OTel gen_ai.* attributes
+        estimated_input_tokens = max(
+            640,
+            1100
+            + len(raw_document_bytes) * 4
+            + len(normalized_entry.key_fields) * 45
+            + len(applied_hint_ids) * 60,
+        )
+        estimated_output_tokens = max(
+            180,
+            180
+            + len(normalized_entry.key_fields) * 28
+            + len(normalized_entry.source_anchors) * 35,
+        )
         with trace_step(
             "docubridge.extract.call_llm",
             {
@@ -541,14 +576,15 @@ def ingest_accepted_submission(
                 "docubridge.skill.version": active_doc_skill.version,
                 "docubridge.skill.revision_id": active_doc_skill.revision_id,
                 "docubridge.skill.urn": active_doc_skill.skill_urn,
+                "docubridge.process_skill.name": process_skill_name,
                 "docubridge.process_skill.revision_id": active_proc_skill.revision_id,
                 "gen_ai.system": "gemini_platform",
                 "gen_ai.operation.name": "call_llm",
                 "gen_ai.agent.name": "extraction_agent",
                 "gen_ai.request.model": "gemini-3.8-flash",
                 "docubridge.finops.traffic_type": "production_inference",
-                "gen_ai.usage.input_tokens": 1420,
-                "gen_ai.usage.output_tokens": 310,
+                "gen_ai.usage.input_tokens": estimated_input_tokens,
+                "gen_ai.usage.output_tokens": estimated_output_tokens,
                 "docubridge.day2_distilled_execution": bool(applied_hint_ids),
             },
         ):
