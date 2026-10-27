@@ -14,7 +14,7 @@ consumer decoder ``wire.extract_exchange_turn`` (select-by-metadata then shape;
 The primary path reads off ``ctx.session.events`` (the AGENT-7 invariant: the gate
 sees the persisted terminal ledger). As a documented fallback the reader also
 honours a turn a node recorded to ``ctx.state["latest_turn"]`` (the presenter /
-observability seam, and the stub tests).
+observability port, and the stub tests).
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def read_latest_exchange_turn(ctx: Any) -> ExchangeTurn | None:
         if turn is not None:
             return turn
 
-    # Fallback: a turn recorded to state (presenter/observability seam).
+    # Fallback: a turn recorded to state (presenter/observability port).
     state = getattr(ctx, "state", None)
     recorded = None
     if state is not None:

@@ -50,14 +50,14 @@ implementation **substance** and rationale (with architectural decisions logged 
 **What:** Entry-point docs (README.md, docs/local-dev.md), the eval index (wiki/evals/README.md, wiki/evals/benefits/description.md) and repo conventions (CLAUDE.md, CRITICAL.md, scripts/_dev-env.sh) described an earlier build. Separately, every frontmatter block in design/* and wiki/evals/* carried Obsidian-style `"[[stem]]"` wikilinks; the document bodies had already been converted to relative markdown links.
 
 **Built (docs and comments only):**
-- **Frontmatter wikilinks converted to relative paths.** Every `"[[stem]]"` in design/*.md (29 files) and wiki/evals/ description files (4 files) converted to quoted relative paths (e.g., `"seams.md"`, `"../spec/standards.md"`, `"../../../spec/demos/benefits-demo.md"`). Resolution order: design → spec → spec/demos, ignoring docs/. Keeps the graph information and is mechanically checkable. A one-off script generated the conversions; spec/ files get only a proposal (spec/ is protected).
+- **Frontmatter wikilinks converted to relative paths.** Every `"[[stem]]"` in design/*.md (29 files) and wiki/evals/ description files (4 files) converted to quoted relative paths (e.g., `"ports.md"`, `"../spec/standards.md"`, `"../../../spec/demos/benefits-demo.md"`). Resolution order: design → spec → spec/demos, ignoring docs/. Keeps the graph information and is mechanically checkable. A one-off script generated the conversions; spec/ files get only a proposal (spec/ is protected).
 - **README.md**: RFP demo now described as built (emergent Collect with RFP board, carrier checklist, email intake); repo map updated (scripts/, frontend four apps + shared lib + e2e, tests with conformance + perf, wiki/evals as Address + Benefits oracles).
 - **docs/local-dev.md**: RFP demo host added to port table (:8010, `bridge.demos.rfp_demo:build_rfp_demo_app`); new sections for RFP demo host (3-command recipe, seeded RFP from Benefits conformance corpus, persistence option, email env) and email CLI (land/drain local loop, subscribe/renew for Graph, env requirements).
 - **wiki/evals/README.md**: Benefits row updated (5 carrier-quote records including Carrier B's revised -v2, 2 conformance records, 3 native-digital PDFs); RFP row kept as scaffold, noting demo inputs come from Benefits conformance corpus.
 - **wiki/evals/benefits/description.md**: Updated to cover normalize, standard-gap disposition, and revise loop oracles; added benefits-carrier-b-usd-en-v2 to table; replaced "deferred Document AI adapter" with description of docai engine (Gemini + Document AI OCR pre-pass); scanned PDF rendered at test time.
-- **CLAUDE.md**: Frontend and repo-shape blocks updated (frontend: shared lib + e2e; tests: conformance/ + perf/; agents: Address, Benefits carriers, console; scripts/ and docs/ rows added); seams description updated (drop "from P7", no numeral).
+- **CLAUDE.md**: Frontend and repo-shape blocks updated (frontend: shared lib + e2e; tests: conformance/ + perf/; agents: Address, Benefits carriers, console; scripts/ and docs/ rows added); ports description updated (drop "from P7", no numeral).
 - **CRITICAL.md**: Added six paths (scripts/deploy.sh, scripts/parity.sh, skills/, bridge/email_ingress/, bridge/edge/email_ingress.py, .env.example) with rationales (live GCP apply, runtime policy, secret-bearing code, public webhook, env var index).
-- **scripts/_dev-env.sh**: Comment updated to describe seams without a count; extraction axis noted.
+- **scripts/_dev-env.sh**: Comment updated to describe ports without a count; extraction axis noted.
 
 **Decision: convert, not drop.** Frontmatter wikilinks converted to relative paths (matching the body conversion that already happened) to preserve graph information and enable mechanical checking. Resolution order design → spec → spec/demos ensures unique resolution.
 
@@ -71,7 +71,7 @@ implementation **substance** and rationale (with architectural decisions logged 
 
 **Verification:**
 - T1: `uv run ruff check` clean; `uv run pytest -q` → 1738 passed / 97 skipped (identical to baseline).
-- T2: No `[[` wikilinks left under design/ or wiki/evals/ (spec/ still has 7 files with proposals). Frontmatter YAML loads and every path resolves (bad 0). Bodies byte-identical except wiki/evals/README.md and wiki/evals/benefits/description.md. Stale claims gone (no "not yet built", "first-cycle", "eight seams", "from P6/P7"). CLAUDE.md has scripts/ and docs/ rows; CRITICAL.md has 6 new rows. RFP demo host serves acme-vb-2027 with "process":"benefits-rfp". Email CLI --help lists land/subscribe/renew/drain. Every relative link in edited docs resolves. No spec/ files in commit.
+- T2: No `[[` wikilinks left under design/ or wiki/evals/ (spec/ still has 7 files with proposals). Frontmatter YAML loads and every path resolves (bad 0). Bodies byte-identical except wiki/evals/README.md and wiki/evals/benefits/description.md. Stale claims gone (no "not yet built", "first-cycle", "eight ports", "from P6/P7"). CLAUDE.md has scripts/ and docs/ rows; CRITICAL.md has 6 new rows. RFP demo host serves acme-vb-2027 with "process":"benefits-rfp". Email CLI --help lists land/subscribe/renew/drain. Every relative link in edited docs resolves. No spec/ files in commit.
 
 **Follow-ups:**
 - `wiki/evals/benefits/expected.json` note still says "deferred Document AI adapter" (oracle file, needs separate CRITICAL edit).
@@ -157,7 +157,7 @@ not a string.
 
 **What:** `tests/test_isolation_guard.py` guarded only `bridge/→agents/`. The reverse
 invariant — `agents/` must not import `bridge/` — was documented
-(`bridge/seams/local/__init__.py` §1.4) and load-bearing for the mock→real Bridge swap
+(`bridge/ports/local/__init__.py` §1.4) and load-bearing for the mock→real Bridge swap
 property, but unguarded. No violation existed; this closes the latent gap.
 
 **Approach:** generalized the AST detector `_imports_agents(path)` →
@@ -165,7 +165,7 @@ property, but unguarded. No violation existed; this closes the latent gap.
 so both directions share one code path. Added `test_agents_never_imports_bridge` (scans
 the real `agents/` tree) and `test_guard_detects_reverse_violation` (positive control).
 All original bridge→agents cases retained. One-line docstring update in
-`bridge/seams/local/__init__.py` naming the enforcing test.
+`bridge/ports/local/__init__.py` naming the enforcing test.
 
 **Verification:**
 - T1: `uv run pytest` → 515 passed, 13 skipped. Lint not configured in this env.
@@ -178,36 +178,36 @@ All original bridge→agents cases retained. One-line docstring update in
 `contract/` imports must never be flagged. The near-miss guard (`package` + `package.`
 prefix only) keeps `bridgehead`/`agentspew` from tripping either direction.
 
-### S0-arch-3 — Seam-harness hygiene (2026-09-06)
+### S0-arch-3 — Port-harness hygiene (2026-09-06)
 
-Three related P2 clean-ups that restore the "one shared parametrized test per seam"
-invariant and make the seam ABCs' intent explicit.
+Three related P2 clean-ups that restore the "one shared parametrized test per port"
+invariant and make the port ABCs' intent explicit.
 
 **Built (three parts):**
-- **(a) Deferred empty seams labelled.** `ExchangeStoreSeam` + `MemoryBankSeam` (and
+- **(a) Deferred empty ports labelled.** `ExchangeStorePort` + `MemoryBankPort` (and
   their `LocalExchangeStore` / `LocalMemoryBank` adapters) now carry a **"deferred,
-  empty by design"** docstring — no domain methods this cycle, no `@pytest.mark.seam`
-  parity test, kept as named seams for the P7 GCP swap. (Replaced the stale
+  empty by design"** docstring — no domain methods this cycle, no `@pytest.mark.port`
+  parity test, kept as named ports for the P7 GCP swap. (Replaced the stale
   "filled in at P4" placeholder text — P4 shipped and these stayed empty by design.)
 - **(b) Consistent `@abc.abstractmethod`.** Added `@abc.abstractmethod` to every
-  non-empty seam ABC method (`SessionsSeam.build_session_service`,
-  `TaskStoreSeam.build_task_store`/`build_push_config_store`,
-  `SkillRegistrySeam.list_skills`/`get_skill`/`install_skill`,
-  `SchedulerSeam.build_scheduler`, `A2AClientSeam.build_client`) so the base ABCs are
-  no longer directly instantiable — matching the lone pre-existing `ExtractionSeam.extract`.
-- **(c) De-overloaded the `seam` marker.** Removed `@pytest.mark.seam(...)` from 37
+  non-empty port ABC method (`SessionsPort.build_session_service`,
+  `TaskStorePort.build_task_store`/`build_push_config_store`,
+  `SkillRegistryPort.list_skills`/`get_skill`/`install_skill`,
+  `SchedulerPort.build_scheduler`, `A2AClientPort.build_client`) so the base ABCs are
+  no longer directly instantiable — matching the lone pre-existing `ExtractionPort.extract`.
+- **(c) De-overloaded the `port` marker.** Removed `@pytest.mark.port(...)` from 37
   non-parity integration tests (test_progress_surfaces 2, test_edge_artifacts 8,
   test_collect 7, test_edge_a2a 12, test_mock_bridge 1, test_signals 3,
   test_push_config 2, address/test_corpus 2). The marker now sits only on the six true
   parity tests (sessions, task_store, skill_registry, scheduler, a2a_client, extraction),
-  matching its pyproject definition. No `-m seam` selection exists in CI, so which tests
+  matching its pyproject definition. No `-m port` selection exists in CI, so which tests
   run is unchanged.
 
 **Verification:**
 - T1: `uv run pytest` → 515 passed, 13 skipped. Lint not configured in this env.
 - T2 (a): docstrings assert the deferred-by-design intent (grep-confirmed).
 - T2 (b): direct instantiation of each non-empty ABC now raises `TypeError`
-  (abstract); the two empty seams stay instantiable (`__abstractmethods__` empty);
+  (abstract); the two empty ports stay instantiable (`__abstractmethods__` empty);
   all 8 local adapters still build through `get_adapter(..., local)`.
 - T2 (c): marker present only on the six parity tests, each of which takes the
   `adapter` fixture (or, for extraction, resolves the local adapter and compares to the
@@ -285,7 +285,7 @@ violates the design-docs-are-status-free invariant.
 
 **Key approach:** Replaced the section with a status-free architectural statement
 ("One architecture, demand-driven build") — all three outbound activities ride the
-single A2A-client seam through the one trust boundary over shared contracts, so the
+single A2A-client port through the one trust boundary over shared contracts, so the
 architecture is whole from day one while the build tracks demand. Which cycle wires
 up which activity is now pointed at `TODO.md` rather than restated in the design doc.
 No sequencing was lost: it already lives in `TODO.md` (P5 note L162 for the Address-cycle
@@ -333,10 +333,10 @@ pattern hits different replicas and the poll misses.
   imports, comments, strings).
 - **`design/patterns.md`** — added "Host-controlled wiring" subsection documenting the rule:
   `bridge/` factories never hardcode in-memory services unconditionally; the host owns
-  durability wiring. Cross-references `design/seams.md` (session-affinity trap) and the guard.
+  durability wiring. Cross-references `design/ports.md` (session-affinity trap) and the guard.
 
 **Why AST gates (not just grep).** Grep would flag all 8 current legitimate `InMemory*`
-constructions in `bridge/` (edge/mock, portal/dashboard/timewarp servers, local seam
+constructions in `bridge/` (edge/mock, portal/dashboard/timewarp servers, local port
 adapters, artifact service fallback). The AST climb identifies an `or`-operand or an
 `if`-branch ancestor, distinguishing `param or InMemory…()` (allowed) from an unconditional
 `x = InMemory…()` in a function body (violation).
@@ -360,7 +360,7 @@ putting a per-replica store on the deployed path. The guard makes this a red tes
 legitimately construct `InMemory*` unconditionally and are out of scope per the task. The
 guard never modifies `bridge/` to satisfy itself — gate logic is adjusted, not source.
 
-### S0-arch-5 — Schema-driven extraction through the skill_registry seam (2026-09-23)
+### S0-arch-5 — Schema-driven extraction through the skill_registry port (2026-09-23)
 
 **What:** `bridge/extraction/gemini.py` pinned one literal `EXTRACTION_PROMPT` in the
 Address shape and passed only `response_mime_type="application/json"`, so every doctype
@@ -368,14 +368,14 @@ skill's `assets/schema.json` was decorative metadata. The engine now builds both
 prompt and the request's structured-output schema from the installed skills.
 
 **Built:**
-- **`SkillRegistrySeam.read_asset(name, rel) -> str`** (new abstract method) with local +
+- **`SkillRegistryPort.read_asset(name, rel) -> str`** (new abstract method) with local +
   GCP adapters, both reusing the S0-sec-1 traversal defense (GCP's `_validate_install`
   generalized to `_validate_skill_paths(name, rels)` and fired **before** `_bucket()`), and
-  one shared `@pytest.mark.seam("skill_registry")` parity test.
+  one shared `@pytest.mark.port("skill_registry")` parity test.
 - **`SkillMeta.schema_asset`** parsed from `metadata.bridge-schema` (not named `schema` —
   that shadows `BaseModel.schema`).
 - **`build_extraction_prompt` / `build_response_schema`** (pure) plus
-  `_doctype_schemas_from_registry` (lazy seam import — `bridge.seams.local` imports
+  `_doctype_schemas_from_registry` (lazy port import — `bridge.ports.local` imports
   `bridge.extraction.fixture`, so a module-level import would close a cycle). The catalog
   is built **once per extractor** on first `extract` — never per call, never a module-level
   cache (`BRIDGE_SKILLS_DIR` changes at runtime: the live doctype-add property).
@@ -393,9 +393,9 @@ asset refuses loud.
 
 **Verification:**
 - T1: `uv run pytest` → 697 passed, 29 skipped (baseline 676/28); `uv run ruff check` clean;
-  `-m seam` 9 passed / 8 skipped.
+  `-m port` 9 passed / 8 skipped.
 - T2: fake-client request carries all three installed doctypes + their fields and the union
-  schema with no `enum` on `doctype`; a `pay-stub` skill installed through the seam into a
+  schema with no `enum` on `doctype`; a `pay-stub` skill installed through the port into a
   temp `BRIDGE_SKILLS_DIR` reaches the next extractor's prompt and pinned schema with no code
   change; one registry read per extractor (zero at construction); all 8 corpus records replay
   to their expected disposition/gate (new credential-free `test_corpus_replay_keeps_terminal_outcomes`);
@@ -428,7 +428,7 @@ retry with the specific rejection reason fed back to the model.
   the parse are caught. A 429/500 from `generate_content` propagates unchanged and burns
   no attempt.
 
-**Key approach:** The retry mirrors the existing `bridge/seams/gcp/_TerminalRetryStore`
+**Key approach:** The retry mirrors the existing `bridge/ports/gcp/_TerminalRetryStore`
 idiom (attempts=3, warn per failure, error on exhaustion, raise the last error). The
 correction echoes the rejected output (making the next attempt a repair rather than a
 re-roll) — a deliberate small deviation from the consumer's reason-only correction. The happy path
@@ -437,7 +437,7 @@ latency or cost.
 
 **Verification:**
 - T1: `uv run pytest` → 708 passed, 29 skipped (baseline 697 + 11 new tests);
-  `uv run ruff check` clean; seam tests unchanged.
+  `uv run ruff check` clean; port tests unchanged.
 - T2: scripted-client tests prove a rejected payload is repaired in 2 attempts (both
   schema violations and truncated JSON); exhaustion after 3 attempts raises the last
   `ValidationError` with the attempt count in `__notes__`; transport errors propagate
@@ -450,11 +450,11 @@ normalized to empty string so it becomes a retryable `JSONDecodeError` rather th
 import). `_parse_extraction` and the top-level `extra="forbid"` on `ExtractionResult`
 are deliberately unchanged — the validator is the retry oracle.
 
-### S0-arch-7 — A real artifact resolver behind the extraction seam (2026-09-23)
+### S0-arch-7 — A real artifact resolver behind the extraction port (2026-09-23)
 
 **What:** ART-2 puts documents on the wire **by reference** (`FileWithUri`), and
 `bridge/edge/wire.py::decode_submissions` sets `DocumentSubmission.artifact_name =
-part.url` — so the string reaching the extraction seam is *the counterparty's uri*. The
+part.url` — so the string reaching the extraction port is *the counterparty's uri*. The
 engine could only read `<wiki/evals/address>/<name>` off local disk (`Path(corpus) /
 "https://…"` → `FileNotFoundError`), and `bridge/edge/artifacts.py::resolve_bytes` carried
 the same gap; the signed-URL / `gs://` fetch was a docstring promise. A by-reference
@@ -501,12 +501,12 @@ document from a third-party consumer is now extractable.
   `GOOGLE_GENAI_USE_VERTEXAI` — `is False`, never falsy, because a test double has no such
   attribute and must pass through.
 
-**Key approach:** no ninth seam. `design/seams.md` pins eight and `tests/conftest.py`
+**Key approach:** no ninth port. `design/ports.md` pins eight and `tests/conftest.py`
 guards the marker names; the resolver is an *injectable collaborator behind the existing
-extraction seam*, the same seam-in-waiting posture `bridge/edge/artifacts.py` Decision 1
+extraction port*, the same port-in-waiting posture `bridge/edge/artifacts.py` Decision 1
 uses for the artifact store. No new dependency — `httpx` is already transitive and is
 imported lazily **inside** the function, the repo's idiom, which also keeps
-`bridge/extraction/` free of module-level `google.*` / `bridge.edge` / `bridge.seams`
+`bridge/extraction/` free of module-level `google.*` / `bridge.edge` / `bridge.ports`
 imports (the AST guard and the import cycle both bite). The resolve stays **outside** the
 retry loop and `_catalog()` still runs first, so a registry error precedes any network
 call and a retry re-asks rather than re-fetching.
@@ -526,8 +526,8 @@ unless its host / `host:port` is in `BRIDGE_FETCH_ALLOWLIST`.
 
 **Verification:**
 - T1: `uv run ruff check` clean; `uv run pytest -q` → 749 passed, 31 skipped (baseline
-  715/30, +34 from `tests/test_artifact_resolver.py`); `uv run pytest -q -m seam` → 9
-  passed, 8 skipped (unchanged — no ninth seam).
+  715/30, +34 from `tests/test_artifact_resolver.py`); `uv run pytest -q -m port` → 9
+  passed, 8 skipped (unchanged — no ninth port).
 - T2: a loopback-served copy of the committed corpus PDF is fetched over `http` under the
   allowlist and reaches the model as `inline_data.mime_type == "application/pdf"`
   byte-equal to the file (1186 bytes), yielding a parsed `benefits-quote`; a 307 hop is
@@ -576,7 +576,7 @@ asymmetry above exists to prevent. Reproduced against a closed loopback port bef
   fetch failure and the persistence skip is unconditional — an enumerated list of anticipated
   failures is how "skips" quietly becomes "fails the turn".
 - **Re-verified, not just the delta:** T1 `ruff` clean, `pytest -q` 793 passed / 31 skipped,
-  `-m seam` 9 passed / 8 skipped. T2 re-ran the **whole** acceptance surface as a script —
+  `-m port` 9 passed / 8 skipped. T2 re-ran the **whole** acceptance surface as a script —
   14 PASS lines, exit 0 — every criterion above plus the blocker case on both legs.
 
 ### S0-arch-8 — Path-A validation driven by the doctype skill's schema (2026-09-23)
@@ -617,14 +617,14 @@ extraction path. **Not** in scope: top-level `required` (`issuer` on utility-bil
 
 **Verification:**
 - T1: `uv run pytest -q` → 759 passed, 31 skipped (baseline 749/31 + 10 new); `uv run ruff
-  check` clean; `-m seam` 9 passed / 8 skipped.
+  check` clean; `-m port` 9 passed / 8 skipped.
 - T2: the corpus `benefits-quote` block minus `premium` now raises `missing ('premium',)`
   and with a `bogus` key raises `extra_forbidden`, while the untouched block still disposes
   `accepted`; a `passport` assertion still disposes `rejected`/`unsupported`/
   `unsupported_doctype` rather than raising; a `pay-stub` skill folder dropped into
   `BRIDGE_SKILLS_DIR` validates its own required fields with **zero** change to `bridge/`
   between runs; end-to-end over the A2A app a malformed `benefits-procurement` assertion
-  yields `reason_code == "schema_invalid"` with the extraction-seam spy never called; the
+  yields `reason_code == "schema_invalid"` with the extraction-port spy never called; the
   models built for `gov-id`/`utility-bill` have field and required sets identical to
   `GovIdKeyFields`/`UtilityBillKeyFields` (no coverage regression from deleting the dict).
 
@@ -637,11 +637,11 @@ a live capability gap as "a later-cycle capability, not a critical-path item".
 
 **The three falsified claims (re-verified against `~/benefits-consumer` at implement time):**
 - *"it has **no real PDF path**"* (line 40) — `~/benefits-consumer/engine/extraction/gcp.py:386::GcpExtractor`
-  is a Vertex Gemini engine: `gemini-2.5-flash`, `temperature=0`,
+  is a Gemini platform engine: `gemini-2.5-flash`, `temperature=0`,
   `response_schema=_ExtractedQuote`, `_MAX_ATTEMPTS = 3` with each rejection reason fed back,
   **no** fixture fallback, `fields_requiring_review`, an `application/pdf` binary part, and
   `gs://` passed through for Vertex to read by reference. Logged at `~/benefits-consumer/DECISIONS.md:586`
-  (2026-09-13, with a live `ADP_TEST_GCP=1` seam run).
+  (2026-09-13, with a live `ADP_TEST_GCP=1` port run).
 - *"the deferred Benefits/RFP cycle"* (line 44) — Sprint 1 (Benefits, CUJ-3/11/12) closed
   2026-09-07 T3-green; all seven `S1-benefits-*` tasks are archived in
   `docs/features/benefits.md`, including **S1-benefits-4 Dial-out + Deliver** and
@@ -658,7 +658,7 @@ its own engine because the Bridge, whose premise is *documents in, structured si
 could not do the job. That is a **capability gap in the Bridge core**, and it is the reason
 this is a Sprint-0 item rather than a later-cycle nice-to-have. Bridge-side state of each gap
 at the time of writing: `S0-arch-5` (schema-driven extraction through the `skill_registry`
-seam) **done**; `S0-bug-2` (bounded schema-validated retry, no fixture fallback) **done**;
+port) **done**; `S0-bug-2` (bounded schema-validated retry, no fixture fallback) **done**;
 `S0-arch-6` (a native-digital carrier PDF in the benefits corpus + `tests/test_pdf_extraction.py`;
 scanned/OCR stays the deferred Document AI swap) **done**; `S0-arch-8` (Path-A validation from
 the skill schema) **done**; `S0-debt-2` (the consumer's `fields_requiring_review` / dotted-path
@@ -738,16 +738,16 @@ A separate broker-RFP CUJ was rejected: it would leave CUJ-13 Driver-less while 
   - jeep LLM judge: CUJ-13 and CUJ-15 both `pass=true`, `score=1.0`.
   - `git status --porcelain -- spec/` is empty.
 
-### S0-docs-7 — `spec/standards.md`, `open-questions.md`, `demos/` proposal: nine seams, D2 posture, resolved questions out, Benefits process skill + hard-document beat (2026-10-01)
+### S0-docs-7 — `spec/standards.md`, `open-questions.md`, `demos/` proposal: nine ports, D2 posture, resolved questions out, Benefits process skill + hard-document beat (2026-10-01)
 
 **What:** four spec files had drifted from the code.
-- `standards.md:23,46` counted eight seams; the `Seam` enum has nine (`email_ingress`). D2 (`:35`) cited a `strict=True` per-party-scoping footgun, but no such flag exists anywhere.
+- `standards.md:23,46` counted eight ports; the `Port` enum has nine (`email_ingress`). D2 (`:35`) cited a `strict=True` per-party-scoping footgun, but no such flag exists anywhere.
 - `open-questions.md` still asked three resolved questions: request intake, FX rate source and the Requirements-list schema. Its "Benefits/RFP deferred" settled bullet was false. The never-applied S0-docs-4 Benefits Consumer rewrite had gone stale too: its prerequisites and OCR boundary converged (S0-arch-7/9/12), and its "could not do the job" finding is false clause by clause.
 - `demos/benefits-demo.md:18,32` named `benefits-quote` (a doctype skill) as the process skill; the shipped process skill is `benefits-procurement`, with its rules in `assets/standard.yaml`. The demo had no beat for the scanned-PDF and 1000-row capabilities.
 - `demos/rfp-demo.md:64` Requirement fields lagged `contract/wire.py` and listed a phantom `note`.
 
 **Proposal:** `DECISIONS.md` "2026-10-01 — S0-docs-7" carries apply-ready text under the house "SPEC PROPOSAL (not applied — spec/ is protected)" marker. No frontmatter is touched (S0-docs-11).
-- **standards.md:** three whole-line replacements. The seams are listed by name with no count, Email ingress included and named as a Bridge-owned boundary. D2 states the as-built posture: isolation at the network layer, a party addresses only its own leg, and every artifact fetch is authorized against the leg that asked.
+- **standards.md:** three whole-line replacements. The ports are listed by name with no count, Email ingress included and named as a Bridge-owned boundary. D2 states the as-built posture: isolation at the network layer, a party addresses only its own leg, and every artifact fetch is authorized against the leg that asked.
 - **open-questions.md:** a full-body replacement. The three resolved questions and the deferred bullet are deleted, and retention stays. The Benefits Consumer section is restated: what the Bridge now offers for carrier quotes, the delegate-or-keep question still open, and only contract shape (wider vocabulary refused, not coerced) and provenance kept as open sub-points.
 - **benefits-demo.md:** a full-body replacement. The process skill is `benefits-procurement`, the doctype schema lists its tables, a new **`3b · Hard documents`** beat is added (no renumbering — `standard.yaml` and `bridge/` docstrings cite beat 4/5), plus two depth bullets, the scanned and 1000-row demo data and validation, and the design parameters stated as chosen.
 - **rfp-demo.md:64:** the fields of `contract.wire.Requirement` plus `done` and the due date. The Nimbus scenario stays, as the industry-neutral requirement.
@@ -760,7 +760,7 @@ A separate broker-RFP CUJ was rejected: it would leave CUJ-13 Driver-less while 
   1. `git status --porcelain -- spec/` is empty, and no `spec/` path is staged.
   2. `cmp` of the frontmatter is byte-identical: standards 1-10, open-questions 1-6, benefits-demo 1-10, rfp-demo 1-9.
   3. Every relative `](x.md)` link resolves against the real file's directory: 17 / 15 / 16 / 14 links, 0 misses.
-  4. Every `Seam` member (9) maps to a display name that appears in the proposed Ring-2 row, Email ingress included. `\b(eight|nine)\b` → none.
+  4. Every `Port` member (9) maps to a display name that appears in the proposed Ring-2 row, Email ingress included. `\b(eight|nine)\b` → none.
   5. No `strict=True`. The D2 bullet links `../design/zones.md`, which contains "network layer only".
   6. open-questions.md has none of the three resolved headings, exactly one "Artifact retention window" and one "Feature request (incoming)". The Benefits Consumer section still asks delegate-or-keep. The stale strings (convergence prerequisites, adapter swap, no real PDF path, could not do the job, Benefits/RFP deferred, eval scaffold) → none.
   7. benefits-demo.md has the "Process skill `benefits-procurement`" line ×1 and `request benefits-procurement` ×1, no `benefits-quote` as the process, and names `standard.yaml`. The named skills exist under `skills/`. Beats run 1, 2, 3, 3b, 4, 5, 6, and 3b mentions scanned + 1000 rows. Backing tests: the two scanned-PDF tests + `tests/perf/test_scale_extraction.py` + `tests/test_cuj11_negotiate_bind_rollup.py` → 8 passed, 0 skipped. Benefits Consumer offer paragraph: `tests/conformance` + `tests/test_rfp_second_use_case.py` → 86 passed / 6 skipped (gated); with `BRIDGE_TEST_CONSUMER_REPO=~/benefits-consumer`, `-k consumer` → 36 passed, the real-consumer drift check included.
@@ -774,26 +774,26 @@ A separate broker-RFP CUJ was rejected: it would leave CUJ-13 Driver-less while 
 **What:** Design docs described things the deployed system does not do. They presented Vertex Agent Engine / `VertexAiSessionService` as the GCP sessions adapter and a working party-memory Memory Bank. They described Document AI as per-doctype processors and said every external request enters through the Gateway. They omitted the Artifacts bucket and `deletion_protection`, said a PENDING item drives `_status_for`, and claimed `skills-ref validate` runs in CI. This was a docs-only task plus comment/docstring-only edits in two `bridge/` files.
 
 **Built (seven items, status-free prose):**
-- **Sessions = Cloud SQL `DatabaseSessionService`.** The runtime's durable state is Cloud SQL Postgres — ADK `DatabaseSessionService` (sessions), a2a-sdk `DatabaseTaskStore` + push-config store (tasks), and the Bridge's `SqlExchangeStore` (exchange records), all on the one `DATABASE_URL` DSN. A managed session service would be a one-adapter swap behind the Sessions seam. `VertexAiSessionService` appears nowhere in code. Locally, `InMemorySessionService` or `DatabaseSessionService` over async sqlite when `BRIDGE_SESSION_DB_URL` is set. Updated `design/gcp-substrate.md`, `design/long-running.md`, `design/deploy-resume.md`, `design/a2a-consumer.md`, `design/adk.md`, `design/seams.md`.
-- **Party memory reduced to interface intent.** `Seam.memory_bank` / `MemoryBankSeam` declares no methods. The local adapter is empty. There is no GCP adapter (the registry raises). No parity test. So no event log, profile rollup or Memory Bank exists, and nothing reads or writes party memory. Outbound uses a fixed channel (`Nudge.channel = "email"`), and chase copy is the Bridge default. The intent: cross-exchange counterparty memory could feed advisory hints (disposition pre-arming, extraction hints, outbound defaults), but the seam is advisory-only — never thresholds, never auto-routing, never off-path sends. Updated `design/party-memory.md`, `design/outbound.md`, `design/seams.md`, `design/gcp-substrate.md`.
-- **Extraction engine set per deployment.** `BRIDGE_EXTRACTION_ENGINE=fixture|gemini|docai`, chosen once per deployment, not per doctype. The `docai` engine is that same Gemini request with the client's existing Document AI processor run as an OCR pre-pass — one processor for the deployment, no per-doctype processor or entity map. The skill frontmatter keys `bridge-extraction-engine` and `bridge-docai-processor` are declarative and not read by the Bridge. Updated `design/fulfillment-graph.md`, `design/seams.md`, `design/skills.md`, plus Path-B diagram in `design/fulfillment-graph.md` copied verbatim from `bridge/pathb.py` docstring.
+- **Sessions = Cloud SQL `DatabaseSessionService`.** The runtime's durable state is Cloud SQL Postgres — ADK `DatabaseSessionService` (sessions), a2a-sdk `DatabaseTaskStore` + push-config store (tasks), and the Bridge's `SqlExchangeStore` (exchange records), all on the one `DATABASE_URL` DSN. A managed session service would be a one-adapter swap behind the Sessions port. `VertexAiSessionService` appears nowhere in code. Locally, `InMemorySessionService` or `DatabaseSessionService` over async sqlite when `BRIDGE_SESSION_DB_URL` is set. Updated `design/gcp-substrate.md`, `design/long-running.md`, `design/deploy-resume.md`, `design/a2a-consumer.md`, `design/adk.md`, `design/ports.md`.
+- **Party memory reduced to interface intent.** `Port.memory_bank` / `MemoryBankPort` declares no methods. The local adapter is empty. There is no GCP adapter (the registry raises). No parity test. So no event log, profile rollup or Memory Bank exists, and nothing reads or writes party memory. Outbound uses a fixed channel (`Nudge.channel = "email"`), and chase copy is the Bridge default. The intent: cross-exchange counterparty memory could feed advisory hints (disposition pre-arming, extraction hints, outbound defaults), but the port is advisory-only — never thresholds, never auto-routing, never off-path sends. Updated `design/party-memory.md`, `design/outbound.md`, `design/ports.md`, `design/gcp-substrate.md`.
+- **Extraction engine set per deployment.** `BRIDGE_EXTRACTION_ENGINE=fixture|gemini|docai`, chosen once per deployment, not per doctype. The `docai` engine is that same Gemini request with the client's existing Document AI processor run as an OCR pre-pass — one processor for the deployment, no per-doctype processor or entity map. The skill frontmatter keys `bridge-extraction-engine` and `bridge-docai-processor` are declarative and not read by the Bridge. Updated `design/fulfillment-graph.md`, `design/ports.md`, `design/skills.md`, plus Path-B diagram in `design/fulfillment-graph.md` copied verbatim from `bridge/pathb.py` docstring.
 - **Zones: the email webhook exception.** With the Gateway enabled the runtime accepts only load-balancer ingress. One exception: the email intake webhook — Microsoft Graph cannot present a Google identity — is a separate public Cloud Run service (`allUsers` invoker) outside the Gateway, authenticated per notification by the subscription's clientState and running as a create-only identity that can only land new objects in the email bucket. Updated `design/zones.md`.
-- **Artifacts bucket and deletion_protection in gcp-substrate.** The `gcs` module homes the Skill Registry bucket and the Artifacts bucket. GCS bucket `<prefix>-artifacts` behind ADK `GcsArtifactService`, selected by `BRIDGE_ARTIFACT_BUCKET` (a native backend swap, not a seam); versioned — a resubmission is a new version; lifecycle Delete after `artifact_retention_days` (default 365), archived versions included; never public — bytes leave only by a signed URL minted after the leg-scope check. The root `deletion_protection` variable (default `true`) guards the Cloud SQL instance and the runtime and RFP-board Cloud Run services; the demo deploy script sets it `false`. The buckets carry none — their retention is the lifecycle rules. Updated `design/gcp-substrate.md`.
+- **Artifacts bucket and deletion_protection in gcp-substrate.** The `gcs` module homes the Skill Registry bucket and the Artifacts bucket. GCS bucket `<prefix>-artifacts` behind ADK `GcsArtifactService`, selected by `BRIDGE_ARTIFACT_BUCKET` (a native backend swap, not a port); versioned — a resubmission is a new version; lifecycle Delete after `artifact_retention_days` (default 365), archived versions included; never public — bytes leave only by a signed URL minted after the leg-scope check. The root `deletion_protection` variable (default `true`) guards the Cloud SQL instance and the runtime and RFP-board Cloud Run services; the demo deploy script sets it `false`. The buckets carry none — their retention is the lifecycle rules. Updated `design/gcp-substrate.md`.
 - **`_status_for` depends on `ExchangeTurn.terminal`.** The task status follows the turn, not the item: the edge maps `ExchangeTurn.terminal` — terminal → `COMPLETED`, non-terminal → `INPUT_REQUIRED`. A Collector or Path-A turn is always terminal, so a `pending` item rides a `COMPLETED` task and the consumer owns the review (`bridge-hitl: report`, the default). A `pending` item parks the task as `INPUT_REQUIRED` only when the process declares `bridge-hitl: park` and the edge is hybrid: the LLM leg holds it on `request_human_review`. The other non-terminal turns are an LLM-leg escalate and an RFP's turn, which waits on its carriers. Updated `design/disposition.md`, `design/a2a-consumer.md`, `bridge/edge/executor.py` docstring. The stale "not reachable yet" comment was already gone.
-- **No CI and no skills-ref.** There is no `.github/`, no CI config, and no `skills-ref` in `pyproject.toml`/`uv.lock`. What checks a skill folder is the Bridge's own loader. `skill_meta_from_dir` parses `SKILL.md` frontmatter into the Pydantic `SkillMeta`; a missing `name`/`description`/`bridge-kind` or a bad `bridge-hitl` fails the load, identically on both adapters. `uv run pytest` loads every installed skill. Updated `design/seams.md`, `design/skills.md`.
+- **No CI and no skills-ref.** There is no `.github/`, no CI config, and no `skills-ref` in `pyproject.toml`/`uv.lock`. What checks a skill folder is the Bridge's own loader. `skill_meta_from_dir` parses `SKILL.md` frontmatter into the Pydantic `SkillMeta`; a missing `name`/`description`/`bridge-kind` or a bad `bridge-hitl` fails the load, identically on both adapters. `uv run pytest` loads every installed skill. Updated `design/ports.md`, `design/skills.md`.
 
 **Gotchas:**
 - Line numbers in the TODO entry had drifted (outbound `:35` not `:33`, disposition `:51` not `:46`, skills-ref `skills.md:119` not `:108`, `_status_for` `executor.py:938` not `:251`). Anchored on text.
 - The stale executor comment was already gone. Do not invent one to delete.
 - No test reads `design/*.md`. Doc edits cannot break pytest. The `bridge/` docstring edits can, through the isolation guard's skill-name docstring scan, so skill names were kept out.
 - Don't delete the skill keys from `skills/*/SKILL.md`. Tests assert them.
-- Artifacts is not a seam. Don't add it to the `Seam` list or the seams table.
+- Artifacts is not a port. Don't add it to the `Port` list or the ports table.
 - Design docs kept status-free. No "not yet built", "deferred", "this cycle", "later release" or phase ids in new text.
 
 **Handoffs (residual drift, left to other tasks):**
-- S0-docs-10: `docs/features.md:151` (SEAM-1 "Vertex Agent Engine"), `:155` (SEAM-5 "local event log / Vertex Memory Bank"), `:168` (GCP-1 "consumes managed session/memory via seams") carry the same drift.
+- S0-docs-10: `docs/features.md:151` (PORT-1 "Vertex Agent Engine"), `:155` (PORT-5 "local event log / Vertex Memory Bank"), `:168` (GCP-1 "consumes managed session/memory via ports") carry the same drift.
 - S0-docs-9 / later: `design/bridge.md:27` and `design/adk.md:75` list Memory Bank among the showcased platform pillars.
-- Code-comment status leakage, left out of scope: `bridge/seams/protocols.py` `MemoryBankSeam` and `bridge/seams/local/__init__.py` `LocalMemoryBank` docstrings ("this cycle", "P7 GCP swap", TODO pointer), and the `GcpSessions` docstring ("a documented later swap").
+- Code-comment status leakage, left out of scope: `bridge/ports/protocols.py` `MemoryBankPort` and `bridge/ports/local/__init__.py` `LocalMemoryBank` docstrings ("this cycle", "P7 GCP swap", TODO pointer), and the `GcpSessions` docstring ("a documented later swap").
 - Skill frontmatter: the `bridge-extraction-engine` / `bridge-docai-processor` keys in `skills/*/SKILL.md` are inert. Removing them needs `tests/address/test_skills.py:245,312` updated. Kept, because docs now say they are declarative.
 
 **Verification:**
@@ -810,30 +810,30 @@ _Use `/new-feature` / `/new-task`; requirements land in `spec/`._
 
 ### S0-docs-10 — Feature catalog + feature docs catch up two sprints (2026-10-01)
 
-**What:** `docs/features.md` stopped at SEAM-8 (no `email_ingress`), lacked entries for email intake / chunking / RFP views / disposition contract / conformance / any Benefits capability (Programs, FX, standard-gap, Negotiate/bind/rollup, interop), and had stale rows (OUT-3/OUT-4/AGENT-8 read "Def … (built with Benefits)"). `docs/features/benefits.md` showed "Planned (active Sprint 1)" with unchecked acceptance boxes though Sprint 1 closed 2026-09-07. `docs/features/gcp-deployment.md` listed P7-6/P7-8 under wrong titles. `docs/upstream-adk-issues.md` cited nonexistent `agents/src/bridge_client/…` and `google-adk == 2.7.0` (lock: 2.7.1).
+**What:** `docs/features.md` stopped at PORT-8 (no `email_ingress`), lacked entries for email intake / chunking / RFP views / disposition contract / conformance / any Benefits capability (Programs, FX, standard-gap, Negotiate/bind/rollup, interop), and had stale rows (OUT-3/OUT-4/AGENT-8 read "Def … (built with Benefits)"). `docs/features/benefits.md` showed "Planned (active Sprint 1)" with unchecked acceptance boxes though Sprint 1 closed 2026-09-07. `docs/features/gcp-deployment.md` listed P7-6/P7-8 under wrong titles. `docs/upstream-adk-issues.md` cited nonexistent `agents/src/bridge_client/…` and `google-adk == 2.7.0` (lock: 2.7.1).
 
-**Done:** `docs/features.md` header/legend changed Scope → Area (Core · Address · Benefits · RFP · Deploy), dropped the C1/Def vocabulary, added Benefits oracle (`wiki/evals/benefits/`), fixed stale rows (SEAM-1/5/8, OUT-3/4, AGENT-8), added SEAM-9 (`email_ingress`), GCP-9, CORE-9, COLL-6/7, new sections N (Benefits — BEN-1…7), O (RFP views & email intake — RFP-1/2, EMAIL-1/2), P (Extraction depth — EXT-1/2), TEST-5; tables K/L/M Scope column dropped. `docs/features/benefits.md` acceptance boxes flipped with proof, Planned Work closed. `docs/features/gcp-deployment.md` P7-6/8 titles corrected. `docs/upstream-adk-issues.md` paths/versions fixed. `DECISIONS.md` "2026-10-01 — S0-docs-10" records decisions and follow-ups.
+**Done:** `docs/features.md` header/legend changed Scope → Area (Core · Address · Benefits · RFP · Deploy), dropped the C1/Def vocabulary, added Benefits oracle (`wiki/evals/benefits/`), fixed stale rows (PORT-1/5/8, OUT-3/4, AGENT-8), added PORT-9 (`email_ingress`), GCP-9, CORE-9, COLL-6/7, new sections N (Benefits — BEN-1…7), O (RFP views & email intake — RFP-1/2, EMAIL-1/2), P (Extraction depth — EXT-1/2), TEST-5; tables K/L/M Scope column dropped. `docs/features/benefits.md` acceptance boxes flipped with proof, Planned Work closed. `docs/features/gcp-deployment.md` P7-6/8 titles corrected. `docs/upstream-adk-issues.md` paths/versions fixed. `DECISIONS.md` "2026-10-01 — S0-docs-10" records decisions and follow-ups.
 
 **Decisions:**
 - **(a) Scope column replaced by Area (status-free).** The Scope legend's C1/C1‑slice/Def vocabulary is sequencing (lives in `TODO.md`), not feature categorization. Area groups by what exercises the core (Core, Address, Benefits, RFP demo, Deploy substrate), matching how the code is organized. Status-free per user preference.
-- **(b) IDs appended, never renumbered.** `CORE‑9`, `COLL‑6/7`, `BEN‑1…7`, `RFP‑1/2`, `EMAIL‑1/2`, `EXT‑1/2`, `TEST‑5`, `SEAM‑9`, `GCP‑9` are new IDs. Existing IDs (e.g. `COLL‑5`, `SEAM‑8`) stayed unchanged — they are cited in `TODO.md`, `roadmap.md`, `DECISIONS.md` and test docstrings.
+- **(b) IDs appended, never renumbered.** `CORE‑9`, `COLL‑6/7`, `BEN‑1…7`, `RFP‑1/2`, `EMAIL‑1/2`, `EXT‑1/2`, `TEST‑5`, `PORT‑9`, `GCP‑9` are new IDs. Existing IDs (e.g. `COLL‑5`, `PORT‑8`) stayed unchanged — they are cited in `TODO.md`, `roadmap.md`, `DECISIONS.md` and test docstrings.
 - **(c) Gemini golden-run scope stated honestly.** The fixture leg runs every branch; the Gemini leg is proven on the PDF intake branch only (fake client + credential-gated live). Revise/bind/rollup are fixture-only for now.
 - **(d) Upstream issues still open on 2.7.1.** `remote_a2a_agent.py:629` still checks `ctx.session.events[-1].author != "user"`, and the `A2A_DATA_PART_START_TAG` constant is still present. Both issues reproduce on the locked 2.7.1.
 
 **Follow-ups (not edited here):**
-- `design/seams.md` "GCP Skill Registry" text vs the as-built GCS-bucket adapter (plan Step 1b comment).
+- `design/ports.md` "GCP Skill Registry" text vs the as-built GCS-bucket adapter (plan Step 1b comment).
 - S0-docs-9 archive placement: sits under "## Planned Work" while S0-docs-8 is under "## Completed Work". Reconcile heading placement or leave as-is with a note that production-readiness.md is chronological append-only.
 
 **Verification:**
 - T1: `uv run ruff check` → clean. `uv run pytest -q` → 1738 passed / 97 skipped, identical to baseline at HEAD c97571f.
 - T2 (all 11 checks passing):
-  1. Seams row count == `Seam` enum count: 9 rows, 9 enum values, names match.
+  1. Ports row count == `Port` enum count: 9 rows, 9 enum values, names match.
   2. Stale status vocabulary grep → 0 hits.
   3. Coverage grep: all required terms present (`email_ingress`, `chunking`, `/rfps`, `calibration`, `conformance`, `bridge/program.py`, `bridge/negotiate.py`, etc.).
   4. Every cited repo path exists (no MISSING in docs/features.md, docs/upstream-adk-issues.md, docs/features/benefits.md, docs/features/gcp-deployment.md).
   5. Cited test node ids run (pass or skip via existing GCP/live gates).
   6. `docs/features/benefits.md`: 0 open boxes (`- [ ]` count), 0 "Planned (active Sprint 1)" hits.
-  7. `docs/features/gcp-deployment.md` P7 titles: P7-6 "Deployed extraction adapter", P7-8 "Service-wiring guard test"; no "Vertex" or "Identity seam" hits.
+  7. `docs/features/gcp-deployment.md` P7 titles: P7-6 "Deployed extraction adapter", P7-8 "Service-wiring guard test"; no "Vertex" or "Identity port" hits.
   8. `docs/upstream-adk-issues.md`: no phantom `bridge_client` or `agents/src` paths; `pending_resume_target` and `resume_stamping_interceptor` found; `extract_exchange_turn` and `_TAG_START` found; issues 1/2 workaround paths correct; env line states 2.7.1.
   9. New IDs use U+2011: grep for ASCII-hyphen table rows finds 0 hits.
   10. Relative links resolve: all `](…)` links in edited docs resolve.
@@ -843,7 +843,7 @@ _Use `/new-feature` / `/new-task`; requirements land in `spec/`._
 
 **What:** `design/` had status/sequencing leaks and `architecture.md` had the wrong module paths.
 - `architecture.md:3,14,23,32,54-66` carried a "First planning cycle" / "deferred past cycle 1" plan that was both status and false (RFP built; `DialOut`/`Delivery` exist; `agents/benefits/` exists), cited nonexistent `bridge_client/remote_consumer.py` (real: `agents/address/collect.py`, `wire.py`, `interceptor.py`), placed the portal under `agents/address/` (it's `bridge/portal/`), and omitted `agents/console/`, `agents/benefits/`, `frontend/shared/`, the `bridge/` FastAPI hosts and `scripts/`.
-- Same class in `bridge.md:33,58-59`, `a2a-edge.md:23`, `adk.md:33,62,80`, `outbound.md:39,41`, `proactive.md:18`, `deploy-resume.md:36,57,63-64,70`, `seams.md:32`, `service-agent-architecture.md:91`, `frontend.md:56`, `patterns.md:25`, `email-intake.md:27`. Total 22 status hits.
+- Same class in `bridge.md:33,58-59`, `a2a-edge.md:23`, `adk.md:33,62,80`, `outbound.md:39,41`, `proactive.md:18`, `deploy-resume.md:36,57,63-64,70`, `ports.md:32`, `service-agent-architecture.md:91`, `frontend.md:56`, `patterns.md:25`, `email-intake.md:27`. Total 22 status hits.
 - `outbound.md` and `proactive.md` had no documentation of the operator's manual chase or per-skill ladders.
 
 **Done:** every status/sequencing marker removed from `design/`, and `architecture.md` rewritten to the as-built module paths. `DECISIONS.md` "2026-10-01 — S0-docs-9" records decisions and follow-ups.

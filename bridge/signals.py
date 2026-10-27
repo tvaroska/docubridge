@@ -11,8 +11,8 @@ from bridge.disposition import (
     DispositionVerdict,
     dispose,
 )
-from bridge.seams import Seam, get_adapter, resolve_mode
-from bridge.seams.protocols import ExtractionSeam
+from bridge.ports import Port, get_adapter, resolve_mode
+from bridge.ports.protocols import ExtractionPort
 from contract.extraction import ExtractionResult, fields_requiring_review
 
 
@@ -72,17 +72,17 @@ class SignalProvider(abc.ABC):
 
 
 class ExtractionSignalProvider(SignalProvider):
-    """Signals derived from the extraction seam; canonicalizes the issuer Bridge-side."""
+    """Signals derived from the extraction port; canonicalizes the issuer Bridge-side."""
 
-    def __init__(self, extractor: ExtractionSeam | None = None) -> None:
-        self._extractor = extractor  # None -> resolve the extraction seam lazily
+    def __init__(self, extractor: ExtractionPort | None = None) -> None:
+        self._extractor = extractor  # None -> resolve the extraction port lazily
 
     async def signals_for(
         self, artifact_name: str, *, candidate_doctypes: list[str]
     ) -> Signals:
         """Extract quality, freshness, and schema completeness signals from a document."""
         extractor = self._extractor or get_adapter(
-            Seam.extraction, resolve_mode(Seam.extraction)
+            Port.extraction, resolve_mode(Port.extraction)
         )
         r = await extractor.extract(artifact_name)
         return signals_from_result(r, candidate_doctypes=candidate_doctypes)

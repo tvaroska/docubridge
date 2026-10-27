@@ -95,8 +95,8 @@ async def upload(
     (ACCEPT/REJECT/ESCALATE) append the entry to the ledger and clear the slot; on a
     non-terminal park (RESUBMIT/HITL) keep the threaded state + park.
 
-    ``extractor`` is injectable for the seam-spy test; production leaves it ``None`` so
-    ``pathb.step`` resolves the extraction seam lazily (fixture adapter locally).
+    ``extractor`` is injectable for the port-spy test; production leaves it ``None`` so
+    ``pathb.step`` resolves the extraction port lazily (fixture adapter locally).
     """
     rec = store.get(session_id)
 

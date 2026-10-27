@@ -64,15 +64,15 @@ The cycle is `START → collect`, `collect → gate`, `gate --[again]--> collect
 - **LLM routes, code decides.** The gate is a deterministic pure function; a model never mints the completeness verdict ([collect](collect.md), `is_satisfied`).
 - **The graph sits *on top* of the LLM.** `Workflow` cannot yet be an `LlmAgent` sub-agent (`google-adk` 2.7.0), so the LLM appears **as a node** (the presenter), never as a front the graph hides behind.
 - **One shared, durable session.** Every node runs on the parent `InvocationContext`; the collected ledger, exchange `context_id`, and peer A2A `task_id`/`context_id` (carried in `event.custom_metadata`) all live in the durable session store. This shared session is what makes park/resume-across-restart possible: a construct that runs the Bridge in a fresh throwaway child session per call (a new `Runner` + `InMemorySessionService`) has no durable session for a `LongRunningFunctionTool` pause to resume against, and so structurally cannot host it ([a2a-consumer](a2a-consumer.md)).
-- **`bridge/` never imports `agents/`.** The gate's canonicalization/disposition parity with the core Bridge holds by the shared seam suite, not by import.
+- **`bridge/` never imports `agents/`.** The gate's canonicalization/disposition parity with the core Bridge holds by the shared port suite, not by import.
 
 ## Durability: park, restart, resume — no HTTP
 
 A collection runs for [days or weeks](long-running.md). When the Bridge parks awaiting an external event its task returns **`input-required`**, which `RemoteA2aAgent` turns into a `LongRunningFunctionTool` pause: the invocation *ends* (zero compute), and a later `FunctionResponse` resumes the *same* task. Because the whole graph is on one durable session, a parked leg **survives a process restart** and resumes to the same state with **no webhook and no `adk web`**:
 
-- **Sessions seam** → `DatabaseSessionService` (session state + event history).
-- **Task store seam** → `DatabaseTaskStore` (task + artifacts + `context_id`).
-- **`ResumabilityConfig(is_resumable=True)`** on the `App` — the switch that makes a park survive a restart. (`@experimental` in 2.7.0 — pin + seam-cover.)
+- **Sessions port** → `DatabaseSessionService` (session state + event history).
+- **Task store port** → `DatabaseTaskStore` (task + artifacts + `context_id`).
+- **`ResumabilityConfig(is_resumable=True)`** on the `App` — the switch that makes a park survive a restart. (`@experimental` in 2.7.0 — pin + port-cover.)
 
 Resume works by feeding the matching `FunctionResponse` to `runner.run_async` on a *fresh* `Runner` pointed at the same database — no HTTP. The webhook adds only the *wake path* (a receiver + a `task_id`→session index) on top of this restore mechanism.
 
@@ -86,7 +86,7 @@ Resume works by feeding the matching `FunctionResponse` to `runner.run_async` on
 
 ## Conformance — the Address instance
 
-The Address agent is the canonical instance of this shape: a `Workflow` conditional cycle; collect = `RemoteA2aAgent`; gate = the deterministic `is_satisfied` function setting `ctx.route`; present = a code node, with `LlmAgent` as the documented drop-in. Durability is split by construct: the app builder carries only the resumability *switch* (`ResumabilityConfig(is_resumable=True)` on the `App`); the durable *stores* — `DatabaseSessionService` (Sessions seam) + the Bridge's `DatabaseTaskStore` (Task-store seam) — are wired at `Runner` construction by the caller, so a single-process demo can run `InMemory*` while a durable deployment supplies persistent stores. With both persistent stores in place the leg parks at `input-required` and resumes to the same terminal outcome across a process restart.
+The Address agent is the canonical instance of this shape: a `Workflow` conditional cycle; collect = `RemoteA2aAgent`; gate = the deterministic `is_satisfied` function setting `ctx.route`; present = a code node, with `LlmAgent` as the documented drop-in. Durability is split by construct: the app builder carries only the resumability *switch* (`ResumabilityConfig(is_resumable=True)` on the `App`); the durable *stores* — `DatabaseSessionService` (Sessions port) + the Bridge's `DatabaseTaskStore` (Task-store port) — are wired at `Runner` construction by the caller, so a single-process demo can run `InMemory*` while a durable deployment supplies persistent stores. With both persistent stores in place the leg parks at `input-required` and resumes to the same terminal outcome across a process restart.
 
 To add a new service agent: reuse the Bridge remote-agent helper for the collect node, write the use case's deterministic gate, choose a presenter (code or `LlmAgent`), and wire the same four edges. The mock→real / local→GCP swap is only the card URL.
 

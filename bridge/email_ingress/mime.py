@@ -23,7 +23,7 @@ HTML-embedded image nested under ``multipart/related`` is still seen and counted
 Filenames are sanitized here, once (NFC, last path segment, control/format chars and
 leading dots stripped, ``?``/``#`` replaced, ≤ 128 chars and ≤ 200 UTF-8 bytes keeping
 the suffix), so the
-seam adapters only *validate* (``bridge.seams.protocols.validate_attachment_slot``).
+port adapters only *validate* (``bridge.ports.protocols.validate_attachment_slot``).
 
 Pure stdlib + ``bridge.extraction.resolve`` (the one suffix↔mime table). No
 ``google.*``, no ``a2a``, never ``agents/``.

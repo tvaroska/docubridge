@@ -1,7 +1,7 @@
 """CUJ-3 golden run — dial-out fan-out → normalize → compare → Deliver (S1-benefits-4).
 
 The deterministic driver for CUJ-3: the Bridge fans out a 4-carrier program, dials each
-leg with Agent-Card discovery over the a2a_client seam's local (fake-transport) adapter,
+leg with Agent-Card discovery over the a2a_client port's local (fake-transport) adapter,
 the carriers' quotes arrive and normalize to one currency/language, the comparison flags
 carrier-b, and the finished comparison is Delivered outward by reference. Every send is
 idempotent / crash-safe and carries no bearer token.
@@ -24,8 +24,8 @@ from bridge.outbound import (
     FakePeerDirectory,
     PeerCard,
 )
+from bridge.ports import Port, PortMode, get_adapter
 from bridge.program import fan_out
-from bridge.seams import Seam, SeamMode, get_adapter
 from bridge.standard import ROUTE_NEGOTIATE, ROUTE_NONE, load_program_standard
 
 BENEFITS_CORPUS = (
@@ -43,7 +43,7 @@ CORPUS_DOC = {
 
 
 async def test_cuj3_dial_out_deliver_golden_run():
-    client = get_adapter(Seam.a2a_client, SeamMode.local).build_client()
+    client = get_adapter(Port.a2a_client, PortMode.local).build_client()
 
     # 1. Fan out a 4-carrier program (each leg its own isolated context).
     program = fan_out("acme-2026", ["carrier-a", "carrier-b", "carrier-c", "carrier-d"])

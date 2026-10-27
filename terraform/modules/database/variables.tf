@@ -50,7 +50,7 @@ variable "db_user" {
 # credential is supplied out-of-band at deploy (P7-9) — the composed DSN then
 # rides the Secret Manager secret env (the secrets module), never plaintext HCL.
 # IAM database authentication is the preferred alternative (no password at all);
-# this var is the plan-time seam so `terraform plan/validate` resolves.
+# this var is the plan-time port so `terraform plan/validate` resolves.
 variable "db_password" {
   type        = string
   description = "SQL user password — supplied at deploy (P7-9), never committed. Prefer IAM auth."

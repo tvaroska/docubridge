@@ -144,14 +144,14 @@ variable "frontend_ssl_domains" {
   default     = []
 }
 
-# Deployed-container seam wiring (P7-9). Both non-secret plain envs, empty at plan
+# Deployed-container port wiring (P7-9). Both non-secret plain envs, empty at plan
 # time so the credential-free default leaves the container env untouched. The deploy
-# step sets seam_mode = "gcp" (route every seam to its Gcp adapter — the master
+# step sets port_mode = "gcp" (route every port to its Gcp adapter — the master
 # switch, DECISIONS.md 2026-08-24 session-affinity trap) and extraction_engine =
 # "gemini" (the deployed extraction engine, P7-6).
-variable "seam_mode" {
+variable "port_mode" {
   type        = string
-  description = "BRIDGE_SEAM_MODE runtime env — the seam master switch. Set \"gcp\" at deploy (P7-9); empty = no env at plan time."
+  description = "BRIDGE_PORT_MODE runtime env — the port master switch. Set \"gcp\" at deploy (P7-9); empty = no env at plan time."
   default     = ""
 }
 

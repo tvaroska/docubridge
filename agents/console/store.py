@@ -5,11 +5,11 @@ prepared request*, then reads that run's live/terminal state back to drive a
 session list + a per-turn viewer + an SSE stream. That per-run record must survive
 *between* HTTP requests (start now, poll/stream later), so it lives here.
 
-**Not a seam (Decision, §2c of the plan).** Mirroring ``bridge/portal/store.py``
+**Not a port (Decision, §2c of the plan).** Mirroring ``bridge/portal/store.py``
 Decision 2b / ``bridge/edge/artifacts.py`` Decision 1 (a native backend swap, not a
-managed ``Seam``): the console registry is a **local default + a documented durable
-swap point**, NOT an entry in the ``Seam`` enum. No
-``@pytest.mark.seam`` here; ``bridge/seams/seam.py`` is untouched.
+managed ``Port``): the console registry is a **local default + a documented durable
+swap point**, NOT an entry in the ``Port`` enum. No
+``@pytest.mark.port`` here; ``bridge/ports/port.py`` is untouched.
 
 **P7 durable swap.** ``ConsoleSessionRecord`` is a plain serializable value (the
 background ``asyncio.Task`` handle is kept out of it — see ``server.py``), so P7
@@ -50,7 +50,7 @@ class ConsoleSessionRecord:
 
 
 class ConsoleStore(Protocol):
-    """The persistence seam-in-waiting for console sessions (native swap, §2c)."""
+    """The persistence port-in-waiting for console sessions (native swap, §2c)."""
 
     def create(self, rec: ConsoleSessionRecord) -> None:
         """Create and persist a new customer console session state."""
@@ -73,7 +73,7 @@ class InMemoryConsoleStore:
     """Local default: an in-process dict of session records (insertion-ordered).
 
     P7 swaps this for a durable store (P4 ``DatabaseSessionService`` / Cloud SQL); the
-    ``ConsoleStore`` protocol is the swap boundary. NOT a managed ``Seam`` (§2c).
+    ``ConsoleStore`` protocol is the swap boundary. NOT a managed ``Port`` (§2c).
     """
 
     def __init__(self) -> None:

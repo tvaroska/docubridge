@@ -1,16 +1,16 @@
-"""Seam parity for the exchange_store (S0-arch-14): materialized Exchange records.
+"""Port parity for the exchange_store (S0-arch-14): materialized Exchange records.
 
-The shared ``@pytest.mark.seam("exchange_store")`` cases run against both adapters:
+The shared ``@pytest.mark.port("exchange_store")`` cases run against both adapters:
 local → a file-backed ``sqlite+aiosqlite`` store under ``tmp_path``; gcp → the Cloud SQL
 Postgres DSN in ``BRIDGE_GCP_TEST_DSN`` (gated on ``BRIDGE_TEST_GCP=1`` by the ``adapter``
-fixture AND skipped without a provisioned DSN — the ``test_durable_seams.py`` pattern).
+fixture AND skipped without a provisioned DSN — the ``test_durable_ports.py`` pattern).
 Each case writes under a uuid-suffixed ``kind`` so reruns against a persistent Cloud SQL
 never collide.
 
 Covered: durable roundtrip across close/reopen, the compare-and-set contract (create-only
 at version 0; a stale update raises and leaves the record unchanged), ``list`` in creation
 order with kind isolation, cross-replica read-after-write (two independent handles, no
-close in between — design/seams.md), and JSON parity. Plain tests below pin the local
+close in between — design/ports.md), and JSON parity. Plain tests below pin the local
 adapter's resolution (in-memory default, env DSN, async-driver guard) and run the CAS /
 ordering / JSON cases against the in-memory store too.
 """
@@ -29,9 +29,9 @@ from bridge.exchange_store import (
     SqlExchangeStore,
     StaleExchangeWrite,
 )
-from bridge.seams import Seam, SeamMode, get_adapter
-from bridge.seams.local import EXCHANGE_DB_URL_ENV
-from tests.test_durable_seams import _gcp_dsn_or_skip
+from bridge.ports import Port, PortMode, get_adapter
+from bridge.ports.local import EXCHANGE_DB_URL_ENV
+from tests.test_durable_ports import _gcp_dsn_or_skip
 
 
 def _kind() -> str:
@@ -41,7 +41,7 @@ def _kind() -> str:
 @pytest.fixture
 def open_store(adapter, tmp_path, monkeypatch) -> Iterator[Callable[[], ExchangeStore]]:
     """A factory of INDEPENDENT store handles over one backing store; all closed after."""
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         dsn = _gcp_dsn_or_skip()
     else:
         monkeypatch.delenv(EXCHANGE_DB_URL_ENV, raising=False)
@@ -49,7 +49,7 @@ def open_store(adapter, tmp_path, monkeypatch) -> Iterator[Callable[[], Exchange
     handles: list[ExchangeStore] = []
 
     def make() -> ExchangeStore:
-        store = get_adapter(Seam.exchange_store, adapter).build_exchange_store(
+        store = get_adapter(Port.exchange_store, adapter).build_exchange_store(
             db_url=dsn
         )
         assert isinstance(store, SqlExchangeStore)
@@ -61,10 +61,10 @@ def open_store(adapter, tmp_path, monkeypatch) -> Iterator[Callable[[], Exchange
         store.close()
 
 
-# --- shared seam cases (local always, gcp gated) -----------------------------
+# --- shared port cases (local always, gcp gated) -----------------------------
 
 
-@pytest.mark.seam("exchange_store")
+@pytest.mark.port("exchange_store")
 def test_exchange_store_durable_roundtrip(open_store):
     kind = _kind()
     a = open_store()
@@ -81,17 +81,17 @@ def test_exchange_store_durable_roundtrip(open_store):
     assert got.doc == {"k": [1, "v"]}
 
 
-@pytest.mark.seam("exchange_store")
+@pytest.mark.port("exchange_store")
 def test_exchange_store_version_check(open_store):
     _check_cas(open_store())
 
 
-@pytest.mark.seam("exchange_store")
+@pytest.mark.port("exchange_store")
 def test_exchange_store_list_creation_order_and_kind_isolation(open_store):
     _check_listing(open_store())
 
 
-@pytest.mark.seam("exchange_store")
+@pytest.mark.port("exchange_store")
 def test_exchange_store_cross_replica_read_after_write(open_store):
     """Write through handle A, read through an independent handle B (no close between)."""
     kind = _kind()
@@ -113,7 +113,7 @@ def test_exchange_store_cross_replica_read_after_write(open_store):
     assert b.get(kind, "rfp-1").doc == {"n": 3}
 
 
-@pytest.mark.seam("exchange_store")
+@pytest.mark.port("exchange_store")
 def test_exchange_store_json_parity(open_store):
     _check_json(open_store())
 
@@ -183,14 +183,14 @@ def _check_json(store: ExchangeStore) -> None:
 
 def test_local_adapter_defaults_to_in_memory(monkeypatch):
     monkeypatch.delenv(EXCHANGE_DB_URL_ENV, raising=False)
-    store = get_adapter(Seam.exchange_store, SeamMode.local).build_exchange_store()
+    store = get_adapter(Port.exchange_store, PortMode.local).build_exchange_store()
     assert isinstance(store, InMemoryExchangeStore)
 
 
 def test_local_adapter_honors_env_dsn(monkeypatch, tmp_path):
     dsn = f"sqlite+aiosqlite:///{tmp_path}/env.db"
     monkeypatch.setenv(EXCHANGE_DB_URL_ENV, dsn)
-    store = get_adapter(Seam.exchange_store, SeamMode.local).build_exchange_store()
+    store = get_adapter(Port.exchange_store, PortMode.local).build_exchange_store()
     try:
         assert isinstance(store, SqlExchangeStore) and store.dsn == dsn
         assert not (tmp_path / "env.db").exists()  # nothing opened before first use
@@ -203,7 +203,7 @@ def test_local_adapter_honors_env_dsn(monkeypatch, tmp_path):
 def test_local_adapter_arg_wins_over_env(monkeypatch, tmp_path):
     monkeypatch.setenv(EXCHANGE_DB_URL_ENV, f"sqlite+aiosqlite:///{tmp_path}/env.db")
     arg = f"sqlite+aiosqlite:///{tmp_path}/arg.db"
-    store = get_adapter(Seam.exchange_store, SeamMode.local).build_exchange_store(
+    store = get_adapter(Port.exchange_store, PortMode.local).build_exchange_store(
         db_url=arg
     )
     assert store.dsn == arg
@@ -213,16 +213,16 @@ def test_local_adapter_arg_wins_over_env(monkeypatch, tmp_path):
 def test_local_adapter_rejects_sync_sqlite(monkeypatch):
     monkeypatch.delenv(EXCHANGE_DB_URL_ENV, raising=False)
     with pytest.raises(ValueError, match="async driver"):
-        get_adapter(Seam.exchange_store, SeamMode.local).build_exchange_store(
+        get_adapter(Port.exchange_store, PortMode.local).build_exchange_store(
             db_url="sqlite:///x.db"
         )
 
 
-def test_exchange_store_from_env_resolves_the_seam(monkeypatch, tmp_path):
+def test_exchange_store_from_env_resolves_the_port(monkeypatch, tmp_path):
     from bridge.exchange_store import exchange_store_from_env
 
-    monkeypatch.delenv("BRIDGE_SEAM_MODE", raising=False)
-    monkeypatch.delenv("BRIDGE_SEAM_EXCHANGE_STORE", raising=False)
+    monkeypatch.delenv("BRIDGE_PORT_MODE", raising=False)
+    monkeypatch.delenv("BRIDGE_PORT_EXCHANGE_STORE", raising=False)
     monkeypatch.delenv(EXCHANGE_DB_URL_ENV, raising=False)
     assert isinstance(exchange_store_from_env(), InMemoryExchangeStore)
 
@@ -231,7 +231,7 @@ def test_exchange_store_from_env_resolves_the_seam(monkeypatch, tmp_path):
     assert isinstance(store, SqlExchangeStore)
     store.close()
 
-    monkeypatch.setenv("BRIDGE_SEAM_EXCHANGE_STORE", "gcp")
+    monkeypatch.setenv("BRIDGE_PORT_EXCHANGE_STORE", "gcp")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(RuntimeError, match="session-affinity"):
         exchange_store_from_env()

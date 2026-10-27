@@ -71,10 +71,10 @@ That one narrative hits every beat: pull spine, both edges, dual-path, bounded C
 - **Driver (two initiation surfaces)** — a thin stand-in for the servicer's internal agent that requests proof and starts the [`Workflow` graph](../../design/service-agent-architecture.md) (which reads the ledger, runs the satisfaction function via the gate, and re-requests or finalizes). Realized as (1) a **CLI** (`python -m agents.address …`, scriptable, drives the golden/eval runs) and (2) the **[Agent Console](../../design/frontend.md)** (Vite+React: new-session-from-prepared-request button + session list with live status). Both are `App`/`Runner` hosts, not ADK agents. Sense B lives in the graph's **gate node**, not the driver.
 
 **Core machinery the demo relies on:**
-- Extraction seam — **fixture** adapter (deterministic, for a reliable stage run) + **Gemini** adapter (impressive on real sample docs).
+- Extraction port — **fixture** adapter (deterministic, for a reliable stage run) + **Gemini** adapter (impressive on real sample docs).
 - [Disposition](../../design/disposition.md) — simple quality/confidence gates + HITL suspend/resume.
 - Both [edges](../../design/edges.md) — A2A server (Path A) + A2UI portal & reference renderer (Path B).
-- [Proactive](../../design/proactive.md) — Scheduler seam with the **virtual clock** to fast-forward the SLA on stage.
+- [Proactive](../../design/proactive.md) — Scheduler port with the **virtual clock** to fast-forward the SLA on stage.
 - Read-model/dashboard — exchange view showing the ledger fill in live.
 - Deploy path — runtime + Gateway/Identity (deployed for the real showcase; local adapters for rehearsal).
 

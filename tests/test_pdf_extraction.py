@@ -15,7 +15,7 @@ conformance run (S0-arch-9), and
 **scanned/raster** PDFs needing OCR (the ``docai`` engine's envelope — Gemini with the
 Document AI OCR pre-pass, exercised by ``tests/test_docai_extraction.py``).
 
-Parity is **terminal-outcome, never ledger-identical** (CLAUDE.md; design/seams.md):
+Parity is **terminal-outcome, never ledger-identical** (CLAUDE.md; design/ports.md):
 confidences are deliberately not compared between the legs.
 """
 
@@ -189,7 +189,7 @@ async def test_pdf_replay_reaches_the_same_terminal_outcome_on_both_legs():
     ``FixtureExtractor._normalize_key`` strips ``.pdf``, so the fixture leg accepts the
     very artifact path the gemini leg resolves to bytes — that shared name is the
     parity pivot. Confidences are deliberately NOT compared: parity is
-    terminal-outcome, never ledger-identical (CLAUDE.md; design/seams.md).
+    terminal-outcome, never ledger-identical (CLAUDE.md; design/ports.md).
     """
     gemini_leg = await GeminiExtractor(
         client=_replayed_client(), corpus_root=BENEFITS_ROOT

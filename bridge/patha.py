@@ -1,5 +1,5 @@
 """Path-A validate-only (PATH-A) — a party-with-agent asserts structured extraction
-fields; the Bridge **schema-validates + disposes, with NO extraction-seam call**.
+fields; the Bridge **schema-validates + disposes, with NO extraction-port call**.
 
 Dual-path (``design/dual-path.md``): when the party has its own agent, the response
 is a structured data part carrying the extraction fields the party self-reports. The
@@ -11,7 +11,7 @@ Schema validation is **Pydantic, not a new ``jsonschema`` dependency** (§2e), a
 typed key-field model is **built from the asserted doctype's skill schema**
 (S0-arch-8): the assertion is parsed into ``contract.extraction.ExtractionResult``,
 then the doctype skill's ``bridge-schema`` asset — read through the ``skill_registry``
-seam by ``bridge/doctypes.py``, the same asset the Path-B prompt is built from — is
+port by ``bridge/doctypes.py``, the same asset the Path-B prompt is built from — is
 turned into a ``extra="forbid"`` key-field model with the schema's ``required`` keys
 mandatory, and its declared ``tables`` into a typed row model (S0-arch-10). A
 missing/extra key raises ``pydantic.ValidationError`` → Path A rejects
@@ -116,7 +116,7 @@ async def validate_only(
 ) -> DispositionVerdict:
     """PATH-A: schema-validate the assertion, then dispose the asserted signals.
 
-    The extraction seam is **NEVER called** (validate-only): the party's agent already
+    The extraction port is **NEVER called** (validate-only): the party's agent already
     produced the fields. ``async`` to mirror the Path-B ``step`` signature (the executor
     branches on shape, not on sync/async), though no I/O occurs.
     """

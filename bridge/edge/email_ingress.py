@@ -6,13 +6,13 @@ Two halves, deployable apart (``design/email-intake.md``):
   subscription handshake, authenticates each change notification by its
   ``clientState`` secret, fetches the raw RFC 5322 bytes from the CONFIGURED mailbox
   by message id (``bridge.email_ingress.graph``) and lands them on the
-  ``email_ingress`` seam. Landing is **create-only**, so a Graph re-delivery (or a
+  ``email_ingress`` port. Landing is **create-only**, so a Graph re-delivery (or a
   503-then-retry) is a ``duplicate``, never a second filing; nothing is acknowledged
   to Graph before it is landed (any Graph / storage failure → 503 for the batch).
 * **The processor** (:class:`EmailProcessor`, ``POST /email/drain``) — on the host
   that owns the ``RfpBoard``: ``pending()`` → parse → sender-auth / limits → token
   correlation to exactly one open (RFP, carrier) leg → each attachment through the
-  extraction seam + the disposition gate → ``bridge.rfp.receive`` → ``board.put`` →
+  extraction port + the disposition gate → ``bridge.rfp.receive`` → ``board.put`` →
   ``mark_processed``. The landed bucket/directory IS the queue.
 
 **Where the processor binds (S0-bug-3).** On the host that owns the RFP board —
@@ -111,11 +111,11 @@ from bridge.email_ingress.graph import (
 from bridge.email_ingress.mime import landing_key, max_mail_bytes, parse_mime
 from bridge.exchange_store import StaleExchangeWrite
 from bridge.extraction.resolve import SUFFIX_MIME
+from bridge.ports import EmailIngressPort, Port, PortMode, get_adapter, resolve_mode
+from bridge.ports.gcp import EMAIL_BUCKET_ENV
+from bridge.ports.local import EMAIL_DIR_ENV
+from bridge.ports.protocols import EMAIL_KEY_PATTERN
 from bridge.rfp import RfpPolicy, acknowledge, note_unreadable, receive
-from bridge.seams import EmailIngressSeam, Seam, SeamMode, get_adapter, resolve_mode
-from bridge.seams.gcp import EMAIL_BUCKET_ENV
-from bridge.seams.local import EMAIL_DIR_ENV
-from bridge.seams.protocols import EMAIL_KEY_PATTERN
 from bridge.signals import dispose_signals, signals_from_result
 from contract.enums import RfpItemStatus
 from contract.wire import ArtifactRef, LedgerEntry
@@ -203,8 +203,8 @@ def _mailbox_from_env() -> str:
     return value
 
 
-def _default_seam() -> EmailIngressSeam:
-    return get_adapter(Seam.email_ingress, resolve_mode(Seam.email_ingress))
+def _default_port() -> EmailIngressPort:
+    return get_adapter(Port.email_ingress, resolve_mode(Port.email_ingress))
 
 
 class EmailProcessor:
@@ -214,7 +214,7 @@ class EmailProcessor:
         self,
         *,
         board: RfpBoard,
-        seam: EmailIngressSeam | None = None,
+        port: EmailIngressPort | None = None,
         mailbox: str | None = None,
         secret: bytes | str | None = None,
         extraction: Any = None,
@@ -223,7 +223,7 @@ class EmailProcessor:
     ) -> None:
         max_mail_bytes()  # a malformed BRIDGE_EMAIL_MAX_BYTES fails loud here, not per mail
         self.board = board
-        self.seam = seam or _default_seam()
+        self.port = port or _default_port()
         self.mailbox = mailbox or _mailbox_from_env()
         intake_address(self.mailbox, "a" * 16)  # validate the mailbox shape now
         if secret is None:
@@ -232,7 +232,7 @@ class EmailProcessor:
         if not self._secret:
             raise ValueError("email intake token secret must not be empty")
         self.extraction = extraction or get_adapter(
-            Seam.extraction, resolve_mode(Seam.extraction)
+            Port.extraction, resolve_mode(Port.extraction)
         )
         self.artifact_store = artifact_store or build_artifact_store()
         self.base_url = resolved_card_url(base_url)
@@ -267,7 +267,7 @@ class EmailProcessor:
         """Process every pending key in landing order; a transient error propagates."""
         async with self._lock:
             outcomes: list[MailOutcome] = []
-            for key in await asyncio.to_thread(self.seam.pending):
+            for key in await asyncio.to_thread(self.port.pending):
                 outcomes.append(await self.process(key))
             return outcomes
 
@@ -290,7 +290,7 @@ class EmailProcessor:
         )
         _LOG.warning("email %s quarantined: %s (from %s)", key, reason, sender)
         await asyncio.to_thread(
-            self.seam.mark_processed, key, outcome.model_dump(mode="json")
+            self.port.mark_processed, key, outcome.model_dump(mode="json")
         )
         return outcome
 
@@ -313,10 +313,10 @@ class EmailProcessor:
 
     async def process(self, key: str) -> MailOutcome:
         """Process one landed key (idempotent: an already-processed key returns its marker)."""
-        existing = await asyncio.to_thread(self.seam.processed, key)
+        existing = await asyncio.to_thread(self.port.processed, key)
         if existing is not None:
             return MailOutcome.model_validate(existing)
-        raw = await asyncio.to_thread(self.seam.read, key)
+        raw = await asyncio.to_thread(self.port.read, key)
         try:
             mail = parse_mime(raw)
         except ValueError as exc:
@@ -349,7 +349,7 @@ class EmailProcessor:
         unreadable: list[UnreadableAttachment] = []
         for att in mail.attachments:
             uri = await asyncio.to_thread(
-                self.seam.put_attachment,
+                self.port.put_attachment,
                 key,
                 att.index,
                 att.filename,
@@ -491,7 +491,7 @@ class EmailProcessor:
             **meta,
         )
         await asyncio.to_thread(
-            self.seam.mark_processed, key, outcome.model_dump(mode="json")
+            self.port.mark_processed, key, outcome.model_dump(mode="json")
         )
         return outcome
 
@@ -544,7 +544,7 @@ def drain_interval_from_env() -> float:
 
 def _landing_configured() -> bool:
     """Whether the resolved ``email_ingress`` adapter has somewhere to read mail from."""
-    local = resolve_mode(Seam.email_ingress) is SeamMode.local
+    local = resolve_mode(Port.email_ingress) is PortMode.local
     env = EMAIL_DIR_ENV if local else EMAIL_BUCKET_ENV
     return bool(os.environ.get(env, "").strip())
 
@@ -609,14 +609,14 @@ async def email_drain_loop(
 
 
 def mount_email_drain_routes(
-    app: FastAPI, processor: EmailProcessor, *, seam: EmailIngressSeam | None = None
+    app: FastAPI, processor: EmailProcessor, *, port: EmailIngressPort | None = None
 ) -> None:
     """Bind ``POST /email/drain`` + ``GET /email/outcomes/{key}`` for ``processor``.
 
     Only on the board-owning host (the outcome markers carry sender, subject, RFP and
-    carrier). ``seam`` (default ``processor.seam``) is where the markers are read.
+    carrier). ``port`` (default ``processor.port``) is where the markers are read.
     """
-    marker_seam = seam if seam is not None else processor.seam
+    marker_port = port if port is not None else processor.port
 
     @app.post("/email/drain")
     async def drain() -> list[dict[str, Any]]:
@@ -627,7 +627,7 @@ def mount_email_drain_routes(
     async def outcome(key: str) -> Any:
         if not _KEY_RE.fullmatch(key):
             return Response(status_code=404)
-        marker = await run_in_threadpool(marker_seam.processed, key)
+        marker = await run_in_threadpool(marker_port.processed, key)
         if marker is None:
             return Response(status_code=404)
         return marker
@@ -635,7 +635,7 @@ def mount_email_drain_routes(
 
 def build_email_app(
     *,
-    seam: EmailIngressSeam | None = None,
+    port: EmailIngressPort | None = None,
     graph: GraphMailClient | None = None,
     client_state: str | None = None,
     processor: EmailProcessor | None = None,
@@ -653,8 +653,8 @@ def build_email_app(
         raise ValueError("build_email_app(graph=...) requires client_state")
     if graph is not None:
         max_mail_bytes()  # a malformed BRIDGE_EMAIL_MAX_BYTES fails at startup
-    if seam is None:
-        seam = processor.seam if processor is not None else _default_seam()
+    if port is None:
+        port = processor.port if processor is not None else _default_port()
     app = FastAPI(title="Document Bridge — email intake")
 
     async def _background_drain() -> None:
@@ -720,7 +720,7 @@ def build_email_app(
                 _LOG.warning("email %s quarantined: oversize (graph id)", key)
                 try:
                     await run_in_threadpool(
-                        seam.mark_processed, key, outcome.model_dump(mode="json")
+                        port.mark_processed, key, outcome.model_dump(mode="json")
                     )
                 except Exception:
                     _LOG.exception(
@@ -734,7 +734,7 @@ def build_email_app(
                 return Response(status_code=503)
             key = landing_key(raw)
             try:
-                fresh = await run_in_threadpool(seam.land, key, raw)
+                fresh = await run_in_threadpool(port.land, key, raw)
             except Exception:
                 _LOG.exception("email landing failed; asking Graph to retry")
                 return Response(status_code=503)
@@ -753,7 +753,7 @@ def build_email_app(
     # webhook is PUBLIC (allUsers): it must not serve markers (sender, subject, RFP,
     # carrier) to anyone holding a key — and its create-only SA could not read them.
     if processor is not None:
-        mount_email_drain_routes(app, processor, seam=seam)
+        mount_email_drain_routes(app, processor, port=port)
 
     return app
 
@@ -762,8 +762,8 @@ def serve_email_webhook_container() -> None:  # pragma: no cover
     """Cloud Run entrypoint for the PUBLIC, webhook-only email service (S0-arch-13).
 
     Graph → this service only: ``graph = GraphMailClient.from_env()``, ``client_state``
-    from ``BRIDGE_EMAIL_CLIENT_STATE`` (missing → ``RuntimeError``), the seam from its
-    adapter (``BRIDGE_SEAM_EMAIL_INGRESS=gcp`` → the create-only GCS landing bucket),
+    from ``BRIDGE_EMAIL_CLIENT_STATE`` (missing → ``RuntimeError``), the port from its
+    adapter (``BRIDGE_PORT_EMAIL_INGRESS=gcp`` → the create-only GCS landing bucket),
     and NO processor — this service holds no board, no runtime grants. ``tenantId`` is
     checked when ``BRIDGE_EMAIL_GRAPH_TENANT`` is a tenant GUID (a domain-name tenant
     cannot be compared with the notification's GUID). Binds ``0.0.0.0:$PORT`` like

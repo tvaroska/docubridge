@@ -7,7 +7,7 @@ the right OIDC-authenticated Cloud Task, idempotent re-arm is delete-then-create
 a derived task name, ``cancel`` deletes by name, ``now`` is wall-clock, and
 ``advance``/``advance_to`` honestly raise (the poll→push divergence). The live queue
 roundtrip is gated on ``BRIDGE_TEST_GCP`` (a P7-9 input). Mirrors
-``test_gcp_seams.py`` / ``test_gcp_skill_registry.py``.
+``test_gcp_ports.py`` / ``test_gcp_skill_registry.py``.
 """
 
 from __future__ import annotations
@@ -18,15 +18,15 @@ import sys
 
 import pytest
 
-from bridge.scheduler import Alarm, Scheduler
-from bridge.seams import Seam, SeamMode, get_adapter
-from bridge.seams.gcp import (
+from bridge.ports import Port, PortMode, get_adapter
+from bridge.ports.gcp import (
     BRIDGE_FOLLOWUP_CALLBACK_URL_ENV,
     BRIDGE_RUNTIME_SA_EMAIL_ENV,
     BRIDGE_TASKS_QUEUE_ENV,
     GcpScheduler,
     _task_id,
 )
+from bridge.scheduler import Alarm, Scheduler
 
 _QUEUE = "projects/test-project/locations/us-central1/queues/bridge-followups"
 _CALLBACK = "https://bridge-runtime-abc.a.run.app/followup"
@@ -62,7 +62,7 @@ class _FakeTasksClient:
 def _build(client, **overrides):
     cfg = {"queue_path": _QUEUE, "callback_url": _CALLBACK, "oidc_sa_email": _SA}
     cfg.update(overrides)
-    return get_adapter(Seam.scheduler, SeamMode.gcp).build_scheduler(
+    return get_adapter(Port.scheduler, PortMode.gcp).build_scheduler(
         client=client, **cfg
     )
 
@@ -72,9 +72,9 @@ def _build(client, **overrides):
 
 def test_get_adapter_returns_gcp_scheduler():
     """gcp scheduler no longer raises NotImplementedError (P7-4)."""
-    adapter = get_adapter(Seam.scheduler, SeamMode.gcp)
+    adapter = get_adapter(Port.scheduler, PortMode.gcp)
     assert isinstance(adapter, GcpScheduler)
-    assert adapter.seam is Seam.scheduler
+    assert adapter.port is Port.scheduler
 
 
 def test_built_scheduler_is_scheduler_protocol():
@@ -96,7 +96,7 @@ def test_build_refuses_without_queue_env(monkeypatch):
     ):
         monkeypatch.delenv(env, raising=False)
     with pytest.raises(RuntimeError, match=BRIDGE_TASKS_QUEUE_ENV):
-        get_adapter(Seam.scheduler, SeamMode.gcp).build_scheduler()
+        get_adapter(Port.scheduler, PortMode.gcp).build_scheduler()
 
 
 def test_build_resolves_config_from_env(monkeypatch):
@@ -104,7 +104,7 @@ def test_build_resolves_config_from_env(monkeypatch):
     monkeypatch.setenv(BRIDGE_TASKS_QUEUE_ENV, _QUEUE)
     monkeypatch.setenv(BRIDGE_FOLLOWUP_CALLBACK_URL_ENV, _CALLBACK)
     monkeypatch.setenv(BRIDGE_RUNTIME_SA_EMAIL_ENV, _SA)
-    sched = get_adapter(Seam.scheduler, SeamMode.gcp).build_scheduler(
+    sched = get_adapter(Port.scheduler, PortMode.gcp).build_scheduler(
         client=_FakeTasksClient()
     )
     assert isinstance(sched, Scheduler)
@@ -224,9 +224,9 @@ def test_pending_reconstructs_alarms():
 
 
 def test_importing_gcp_pkg_does_not_import_cloud_tasks():
-    import bridge.seams.gcp  # noqa: F401
+    import bridge.ports.gcp  # noqa: F401
 
-    assert "bridge.seams.gcp" in sys.modules
+    assert "bridge.ports.gcp" in sys.modules
     assert "google.cloud.tasks" not in sys.modules
     assert "google.cloud.tasks_v2" not in sys.modules
 
@@ -251,7 +251,7 @@ def test_gcp_scheduler_live_roundtrip():
             "P7-9 input for the live scheduler roundtrip"
         )
 
-    sched = get_adapter(Seam.scheduler, SeamMode.gcp).build_scheduler()
+    sched = get_adapter(Port.scheduler, PortMode.gcp).build_scheduler()
     key = "followup:live-roundtrip-test"
     sched.schedule(key, sched.now() + 3600, payload="reminder")
     try:

@@ -41,7 +41,7 @@ the core names no skill (S0-arch-15) — a new emergent-Collect industry is a ne
   ``last_chased_at`` and appends one ``chased`` event — no cell, status, ``last_activity``
   (that is *carrier* activity), entry or attempt moves. ``chase_message`` is the
   Bridge-authored chase copy naming only that carrier and its own lines. The send itself
-  is the host's (``bridge.outbound.Nudge`` over the ``a2a_client`` seam); the chase is
+  is the host's (``bridge.outbound.Nudge`` over the ``a2a_client`` port); the chase is
   operator-triggered, not ladder-armed.
 
 Two read projections: ``rfp_status`` (the per-carrier x product matrix the dashboard and
@@ -162,7 +162,7 @@ def load_rfp_policy(skill_name: str, *, skills_dir: Path | None = None) -> RfpPo
     validated by the shared pure parser ``rfp_policy_from_docs``. This is the build-time
     loader for a host's home process; the live registry reader
     (``bridge.edge.skills.rfp_policy_for``) feeds the same parser through the
-    ``skill_registry`` seam.
+    ``skill_registry`` port.
     """
     frontmatter = _load_skill_frontmatter(skill_name, skills_dir=skills_dir)
     return rfp_policy_from_docs(

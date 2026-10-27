@@ -194,11 +194,28 @@ class CollectExecutor(AgentExecutor):
         artifact_store: BaseArtifactService | None = None,
         base_url: str = DEFAULT_URL,
         resolver: Resolver = resolve_bytes,
+        vault_store: Any = None,
+        operational_store: Any = None,
+        knowledge_catalog: Any = None,
     ) -> None:
-        # Default Collector lazily resolves the extraction seam via get_adapter
+        # Default Collector lazily resolves the extraction port via get_adapter
         # (P1-4). Injectable for tests.
-        self._collector = collector or Collector()
-        # ART-2: the artifact store is a native-service backend swap, not a seam
+        self._collector = collector or Collector(
+            vault_store=vault_store,
+            operational_store=operational_store,
+            knowledge_catalog=knowledge_catalog,
+        )
+        if collector is not None and (
+            vault_store is not None
+            or operational_store is not None
+            or knowledge_catalog is not None
+        ):
+            self.bind_enterprise_stores(
+                vault_store=vault_store,
+                operational_store=operational_store,
+                knowledge_catalog=knowledge_catalog,
+            )
+        # ART-2: the artifact store is a native-service backend swap, not a port
         # (GCS on deploy via BRIDGE_ARTIFACT_BUCKET, else in-memory; P7-3). A
         # standalone fallback instance is created here, but the SHARED instance
         # (writer == reader, Decision 4) is bound by build_a2a_app via bind_store.
@@ -272,6 +289,26 @@ class CollectExecutor(AgentExecutor):
         Collector."""
         self._rfp = board
 
+    def bind_enterprise_stores(
+        self,
+        *,
+        vault_store: Any = None,
+        operational_store: Any = None,
+        knowledge_catalog: Any = None,
+    ) -> None:
+        """Bind Zone 3–6 Enterprise Data Architecture stores onto the underlying Collector.
+
+        When bound, accepted document entries on ``CollectExecutor`` turns are promoted
+        into the Zone 3 WORM Audit Vault, Zone 3–4 Bi-Temporal Operational Store, and
+        Zone 6 Knowledge Catalog lineage graph.
+        """
+        if vault_store is not None:
+            self._collector._vault_store = vault_store
+        if operational_store is not None:
+            self._collector._operational_store = operational_store
+        if knowledge_catalog is not None:
+            self._collector._knowledge_catalog = knowledge_catalog
+
     @property
     def rfp_board(self) -> RfpBoard | None:
         """The bound RFP opener board (``None`` = no opener, the default)."""
@@ -298,7 +335,7 @@ class CollectExecutor(AgentExecutor):
         route, scope = await self._route_for(message, context.current_task)
 
         # Dual-path routing (PATH-A/PATH-B): a structured extraction-assertion (no
-        # file bytes) is validate-only — schema + disposition, NO extraction seam
+        # file bytes) is validate-only — schema + disposition, NO extraction port
         # call, NO artifact persistence. Everything else keeps today's file/text
         # collect path unchanged (§2c).
         if route is Route.PATH_A:
@@ -830,7 +867,7 @@ class CollectExecutor(AgentExecutor):
 
     def _build_path_a_turn(self, message: Any) -> ExchangeTurn:
         """PATH-A validate-only: schema-validate the structured assertion + dispose it
-        into a one-entry terminal turn — NO extraction seam call, NO artifact persistence
+        into a one-entry terminal turn — NO extraction port call, NO artifact persistence
         (a structured response carries no bytes).
 
         A malformed assertion (missing/extra required key) raises ``ValidationError`` at
@@ -925,7 +962,7 @@ class CollectExecutor(AgentExecutor):
         Reads the process skill's candidate doctypes from the loaded skills
         metadata; an unresolved process → ``[]`` (empty label space; every document
         is rejected ``unsupported_doctype``). The real source is ``bridge.edge.skills.loaded_skills()``,
-        a P6-6/SKILL-4 seam-in-waiting.
+        a P6-6/SKILL-4 port-in-waiting.
         """
         return candidate_doctypes_for(process)
 

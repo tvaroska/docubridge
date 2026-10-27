@@ -24,7 +24,7 @@ run "root_wires_three_modules" {
     error_message = "default enable_gateway = false must yield INGRESS_TRAFFIC_ALL"
   }
 
-  # The runtime runs as the SA the iam module minted (the wiring seam). Assert
+  # The runtime runs as the SA the iam module minted (the wiring port). Assert
   # on the input-derived service_name rather than the provider-computed SA email
   # (opaque at plan time under mock_provider, P7-1 plan §2b).
   assert {

@@ -10,12 +10,12 @@ Scope is **Core + Address** ([layout & first-cycle scope](design/architecture.md
 
 ## Guiding order
 
-**Agent-first, contract-down, seam-parallel, deploy-last.**
+**Agent-first, contract-down, port-parallel, deploy-last.**
 
 1. **Agent-first.** The Address agent's A2A contract is nailed down against a *mock Bridge* before the real Bridge is committed ([service-agent architecture](design/service-agent-architecture.md)). So the wire and the consumer come early; the real core fills in behind a stable contract.
-2. **Contract-down.** `contract/` and the seam ABCs are the foundation everything imports; they land first so nothing is built against a moving shape.
-3. **Seam-parallel.** Every feature is built on its **local adapter** first; the GCP adapter is written against the same shared test and slotted in at the deploy phase. Local green is the gate to move on; GCP green is the gate to ship.
-4. **Deploy-last, but designed-throughout.** The trust boundary, seams, and contracts are whole from day one; the Terraform + GCP adapters are assembled at the end so Address runs deployed, not just local.
+2. **Contract-down.** `contract/` and the port ABCs are the foundation everything imports; they land first so nothing is built against a moving shape.
+3. **Port-parallel.** Every feature is built on its **local adapter** first; the GCP adapter is written against the same shared test and slotted in at the deploy phase. Local green is the gate to move on; GCP green is the gate to ship.
+4. **Deploy-last, but designed-throughout.** The trust boundary, ports, and contracts are whole from day one; the Terraform + GCP adapters are assembled at the end so Address runs deployed, not just local.
 
 ## Critical path (at a glance)
 
@@ -32,15 +32,15 @@ P0 foundations ─▶ P1 core spine ─▶ P2 A2A edge + mock ─▶ P3 Collect 
                                         P7 GCP substrate + deploy
 ```
 
-P4 and P5 can proceed in parallel once P3 lands (both depend on the durable session + A2A edge, not on each other). P6 needs P3 (console/driver) and P5 (dashboard shows escalation). P7 is last and depends on all seam GCP adapters being ready.
+P4 and P5 can proceed in parallel once P3 lands (both depend on the durable session + A2A edge, not on each other). P6 needs P3 (console/driver) and P5 (dashboard shows escalation). P7 is last and depends on all port GCP adapters being ready.
 
-Feature IDs (`CORE‑1`, `AGENT‑3`, `SEAM‑7`, …) reference [`docs/features.md`](docs/features.md).
+Feature IDs (`CORE‑1`, `AGENT‑3`, `PORT‑7`, …) reference [`docs/features.md`](docs/features.md).
 
 **How this plan is executed.** Each phase below is a checklist of `- [ ]` tasks with ids
 (`P<phase>-<seq>`). `- [ ]` open · `- [x]` done · `- [!]` attempted-but-failed. A task is
 **unblocked** when every task it "needs" is `- [x]`. Tasks are done strictly in order
 (they share files + git history); each one: implement → `uv run pytest` green → mark `- [x]`
-→ commit. Every managed-service boundary is a **seam** (local adapter now; GCP adapter at P7).
+→ commit. Every managed-service boundary is a **port** (local adapter now; GCP adapter at P7).
 
 ---
 
@@ -51,7 +51,7 @@ Feature IDs (`CORE‑1`, `AGENT‑3`, `SEAM‑7`, …) reference [`docs/features
 **Focus.** CUJ-8 proves one *doctype* skill added live; CUJ-9 is the whole-use-case version: a
 *process* skill plus its doctype skills dropped into the running core while an exchange of
 another process is in flight. Carried-over context: `list_skills()` already reads the
-`skill_registry` seam per call and the Agent Card regenerates per GET
+`skill_registry` port per call and the Agent Card regenerates per GET
 (`bridge/edge/server.py` `_live_card`); `load_rfp_policy` and `candidate_doctypes_for`
 resolve a process from its skill. Not yet shown: that every per-request consumer of a skill
 (executor candidate labels, RFP policy, calibration, extraction schema) is read live rather
@@ -65,11 +65,11 @@ Spec is protected: the CUJ-9 Driver line is a PROPOSAL (S4-usecase-5).
       Needs: S4-usecase-1
       Added: 2026-10-02
 - [x] **S4-usecase-3**: **A bad live upload is refused, not propagated.** A malformed / half-copied skill folder (missing `SKILL.md` frontmatter, unknown `bridge-kind`, policy.yaml unparseable, doctype named in `bridge-candidate-doctypes` that is absent) dropped into the live registry must not break discovery, not remove already-advertised skills, and not disturb in-flight exchanges: skipped with a logged reason, absent from the card, and picked up once repaired. A process whose candidate doctypes are missing is never dispositioned against another process's label space (S0-arch-18). Driver-level tests extend the S4-usecase-2 fixture; no new wire change. _(done 2026-10-03; reviewed; see docs/features/usecase.md)_
-      Files: bridge/seams/local (skill registry adapter), bridge/edge/skills.py, bridge/edge/card.py, tests/test_live_use_case_add.py, tests/_skill_fixtures.py
+      Files: bridge/ports/local (skill registry adapter), bridge/edge/skills.py, bridge/edge/card.py, tests/test_live_use_case_add.py, tests/_skill_fixtures.py
       Needs: S4-usecase-2
       Added: 2026-10-02
-- [x] **S4-usecase-4**: **A live-added RFP use case opens on the shared board next to a running exchange.** On the board host (`bridge/dashboard/board_host.py` over the shared exchange store), add the synthetic process live, open an RFP for it via the A2A Requirements path while an Address leg is parked: `/rfps` lists the new RFP, the carrier checklist and email-intake correlation resolve its policy (`item_field: credential`) from the live registry, and the Address leg still resumes to its baseline outcome. Local adapter in T1; gcp registry adapter under the shared seam test (gated on `BRIDGE_TEST_GCP`) asserts the same terminal outcome. _(done 2026-10-03; reviewed; see docs/features/usecase.md)_
-      Files: bridge/dashboard/board_host.py, bridge/rfp.py, bridge/portal/rfp_checklist.py, bridge/seams/gcp/__init__.py, tests/test_live_use_case_add.py, tests/test_seam_skill_registry.py
+- [x] **S4-usecase-4**: **A live-added RFP use case opens on the shared board next to a running exchange.** On the board host (`bridge/dashboard/board_host.py` over the shared exchange store), add the synthetic process live, open an RFP for it via the A2A Requirements path while an Address leg is parked: `/rfps` lists the new RFP, the carrier checklist and email-intake correlation resolve its policy (`item_field: credential`) from the live registry, and the Address leg still resumes to its baseline outcome. Local adapter in T1; gcp registry adapter under the shared port test (gated on `BRIDGE_TEST_GCP`) asserts the same terminal outcome. _(done 2026-10-03; reviewed; see docs/features/usecase.md)_
+      Files: bridge/dashboard/board_host.py, bridge/rfp.py, bridge/portal/rfp_checklist.py, bridge/ports/gcp/__init__.py, tests/test_live_use_case_add.py, tests/test_port_skill_registry.py
       Needs: S4-usecase-2
       Added: 2026-10-02
 - [x] **S4-usecase-5**: **Spec proposal + close-out.** PROPOSAL-only entry in `DECISIONS.md` (no `spec/` edit): CUJ-9 `**Driver:**` = the full node ids of S4-usecase-2 (+ S4-usecase-3/4 tests as companions) with the existing Judge kept verbatim and the bad-upload trap added; the exact replacement line is written out for the spec owner. Update `docs/features.md` (SKILL-5), new `docs/features/usecase.md` (what shipped), `docs/roadmap.md`; re-run `/verify CUJ-9` and record both judges. _(done 2026-10-03; see docs/features/usecase.md)_
@@ -96,11 +96,11 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Goal.** A repo skeleton and test harness that everything else lands into; nothing built against a moving shape.
 
-**Exit gate.** `pytest` green with placeholder seams; isolation-guard test passes; contract package importable by both `bridge/` and `agents/`.
+**Exit gate.** `pytest` green with placeholder ports; isolation-guard test passes; contract package importable by both `bridge/` and `agents/`.
 
 - [x] **P0-1** — Repo tree + workspace scaffold: create `contract/ bridge/ agents/ skills/ frontend/ terraform/ tests/` packages with `__init__.py`, wire uv (Python 3.12) deps, and add the `bridge/`-never-imports-`agents/` **isolation-guard test** (fails if any `bridge/**` module imports `agents`). [CONTRACT‑1 scaffold, load-bearing invariant] _(done 2026-08-18; see design/architecture.md)_
 - [x] **P0-2** — `contract/` Pydantic wire types (Pydantic-only, no ADK / no a2a-sdk): `CollectRequest`, `ExchangeTurn`, `CollectionStatus`, `LedgerEntry`, `Requirement`, `RequirementsList`, `RequirementStatus`, and the extraction field schemas. Round-trip + validation tests. [CONTRACT‑1] _(done 2026-08-18; see design/contracts.md)_
-- [x] **P0-3** — Seam / Port harness: `Port` (`Seam`) enum (all 13 Hexagonal port names: `sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`), the port ABCs/Protocols, the `@pytest.mark.port` / `@pytest.mark.seam` markers + `adapter` fixture parametrized over `("local","gcp")` (gcp gated on `BRIDGE_TEST_GCP`), `BRIDGE_PORT_MODE` / `BRIDGE_SEAM_MODE` + per-port overrides, and a collection-time guard rejecting invalid port names. [TEST‑1, seam ABCs] _(done 2026-08-18; expanded to 13 ports 2026-10-22; see design/seams.md)_
+- [x] **P0-3** — Port harness: `Port` enum (all 13 Hexagonal port names: `sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`), the port ABCs/Protocols, the `@pytest.mark.port` marker + `adapter` fixture parametrized over `("local","gcp")` (gcp gated on `BRIDGE_TEST_GCP`), `BRIDGE_PORT_MODE` + per-port overrides, and a collection-time guard rejecting invalid port names. [TEST‑1, port ABCs] _(done 2026-08-18; expanded to 13 ports 2026-10-22; see design/ports.md)_
 - [x] **P0-4** — Pin `google-adk >= 2.7.0, < 3` and stand up the **experimental-surface register** (`RemoteA2aAgent`, `ResumabilityConfig`, …) with a test that fails if an unlisted experimental surface is used. [TEST‑4] _(done 2026-08-18; see design/adk.md)_
 
 ---
@@ -112,7 +112,7 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 **Exit gate.** Every `expected.json` record disposes to its `expected_disposition`/`expected_gate` through the gate (deterministic on repeat); issuer variants canonicalize identically; the LLM cannot produce an acceptance without a gate call.
 
 - [x] **P1-1** — `document_bridge` `LlmAgent` on stock `Runner`/`App`, plus `run_disposition_gate` as a **pure deterministic `FunctionTool`** (the one inversion — the LLM cannot mint an acceptance without a gate call). [CORE‑1, CORE‑2] _(done 2026-08-18; see design/disposition.md)_
-- [x] **P1-2** — Extraction seam + **fixture adapter** loaded from the eval corpus, exposed as the `extraction_agent` `AgentTool`; `InMemoryArtifactService`. [SEAM‑8, ART‑1] _(done 2026-08-18; see design/seams.md)_
+- [x] **P1-2** — Extraction port + **fixture adapter** loaded from the eval corpus, exposed as the `extraction_agent` `AgentTool`; `InMemoryArtifactService`. [PORT‑8, ART‑1] _(done 2026-08-18; see design/ports.md)_
 - [x] **P1-3** — Four-signal `SignalProvider`, classification, and `canonicalize_issuer` (e.g. `PowerCo`/`Power Co.`→`power-co`). Canonicalization tests over the corpus issuer variants. [CORE‑3, CORE‑4] _(done 2026-08-18; see design/disposition.md)_
 - [x] **P1-4** — Classified ledger as a `CollectionStatus` projection with `reason_code`+`message` on entries/requirements; the one-turn collect path. [CORE‑5, COLL‑4] _(done 2026-08-18; see design/collect.md)_
 - [x] **P1-5** — Off-script routing tools: `handle_deletion_request`, `reject_submission`, escalation stub. [CORE‑6, CORE‑7, CORE‑8] _(done 2026-08-18; see design/a2a-edge.md)_
@@ -154,7 +154,7 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Exit gate.** Park a leg, kill the process, restart, resume to the same terminal outcome (CUJ‑7); an HITL review parks with zero compute and resumes on the matched response (CUJ‑5). Verify the throwaway-child-session anti-pattern is *not* used.
 
-- [x] **P4-1** — `DatabaseSessionService` (async driver `sqlite+aiosqlite:///…`) + `DatabaseTaskStore` behind the sessions/task_store seams; `ResumabilityConfig(is_resumable=True)` on the `App`. [DUR‑1, DUR‑2] _(needs P3-5)_ _(done 2026-08-18; see design/long-running.md)_
+- [x] **P4-1** — `DatabaseSessionService` (async driver `sqlite+aiosqlite:///…`) + `DatabaseTaskStore` behind the sessions/task_store ports; `ResumabilityConfig(is_resumable=True)` on the `App`. [DUR‑1, DUR‑2] _(needs P3-5)_ _(done 2026-08-18; see design/long-running.md)_
 - [x] **P4-2** — Park on `input-required` → `LongRunningFunctionTool` (zero compute); resume by feeding an id-matched `FunctionResponse` to a **fresh `Runner`** on the same DB — no HTTP. [DUR‑3, DUR‑4] _(needs P4-1)_ _(done 2026-08-18; see design/long-running.md)_
 - [x] **P4-3** — `request_human_review` `LongRunningFunctionTool` (HITL pause). [DUR‑5] _(needs P4-2)_ _(done 2026-08-18; see design/long-running.md)_
 - [x] **P4-4** — Progress surfaces: `tasks/get`, `tasks/resubscribe`, `PushNotificationConfig`, non-empty `TaskStatusUpdateEvent.status.message`. [DUR‑6] _(needs P4-2)_ _(done 2026-08-18; see design/a2a-edge.md)_
@@ -170,9 +170,9 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Note (silent cap):** dial-out (OUT‑3) and Deliver (OUT‑4) are designed but **not built this cycle** — Address's only send is the chase.
 
-- [x] **P5-1** — Scheduler seam: in-process `VirtualClock` (local adapter) + an SLA/policy engine that reads cadence / deadline / max-nudges / ladder from the process-skill `policy.yaml`. [SEAM‑6, PROA‑1] _(needs P3-5)_ _(done 2026-08-19; see design/followup.md)_
+- [x] **P5-1** — Scheduler port: in-process `VirtualClock` (local adapter) + an SLA/policy engine that reads cadence / deadline / max-nudges / ladder from the process-skill `policy.yaml`. [PORT‑6, PROA‑1] _(needs P3-5)_ _(done 2026-08-19; see design/followup.md)_
 - [x] **P5-2** — Follow-up ladder `on_track→overdue→reminder→escalated`; each step a scheduled callback that re-arms the next (zero compute between). [PROA‑2] _(needs P5-1)_ _(done 2026-08-19; see design/followup.md)_
-- [x] **P5-3** — `a2a_client` seam (fake transport local) + a **real party-channel nudge** — the first concrete outbound send. [SEAM‑7, OUT‑1, OUT‑2] _(needs P5-2)_ _(done 2026-08-19; see design/outbound.md)_
+- [x] **P5-3** — `a2a_client` port (fake transport local) + a **real party-channel nudge** — the first concrete outbound send. [PORT‑7, OUT‑1, OUT‑2] _(needs P5-2)_ _(done 2026-08-19; see design/outbound.md)_
 - [x] **P5-4** — Wake path: webhook receiver + `task_id`→session index + `PushNotificationConfig`; doorbell carries only "task X changed", restore from persistent stores, then `run_async`. [PROA‑3] _(needs P5-2)_ _(done 2026-08-19; see design/long-running.md)_
 
 ---
@@ -196,13 +196,13 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 
 **Goal.** Address runs **deployed** on the platform, not just locally — the showcase.
 
-**Delivers:** the GCP adapters for every seam, GCP‑1…8, ART‑2 signed URLs, ART‑3 retention.
+**Delivers:** the GCP adapters for every port, GCP‑1…8, ART‑2 signed URLs, ART‑3 retention.
 
-**Depends on:** all prior phases (each seam's GCP adapter shares the phase's local test).
+**Depends on:** all prior phases (each port's GCP adapter shares the phase's local test).
 
 **Work.**
 - Terraform by primitive: `network`, `runtime` (Cloud Run v2), `gateway` (`enable_gateway`), `iam` (`bridge-runtime` SA + grants + Cloud Tasks OIDC token-creator), `database` (Cloud SQL PG16 private IP), `tasks` (`bridge-followups`), `secrets` (DSN via secret env), GCS registry module, `frontend`.
-- Seam GCP adapters: Sessions/Memory (Vertex Agent Engine or Cloud SQL), task_store/exchange_store (Cloud SQL), skill_registry (GCS), scheduler (Cloud Tasks), a2a_client (Agent-Identity transport), extraction (Gemini deployed; Document AI as the `docai` engine's OCR pre-pass feeding Gemini — S0-arch-12, [design/docai-prepass.md](design/docai-prepass.md)).
+- Port GCP adapters: Sessions/Memory (Vertex Agent Engine or Cloud SQL), task_store/exchange_store (Cloud SQL), skill_registry (GCS), scheduler (Cloud Tasks), a2a_client (Agent-Identity transport), extraction (Gemini deployed; Document AI as the `docai` engine's OCR pre-pass feeding Gemini — S0-arch-12, [design/docai-prepass.md](design/docai-prepass.md)).
 - `GcsArtifactService` + signed-URL fetch endpoint; GCS object-lifecycle retention policy.
 - Trust boundary: two zones, Gateway ingress + per-party scoping, Agent Identity workload auth.
 - Plan-time credential-free tests (`terraform test` + `mock_provider`); deployed-path parity run against a provisioned project.
@@ -212,24 +212,24 @@ Drained 2026-10-02 (the 2026-10-01 whole-documentation review reopen, `S0-bug-3`
 - **Reconcile Agent Card `url` against the Gateway-authorized host in the `a2a_client` adapter.** A host mismatch between the card's advertised URL and the Gateway-authorized host yields a `403` egress-denied at call time (the peer's `_resolve_agent_card` repoints to the `.mtls` host as a workaround). Verify our outbound A2A resolves to the Gateway-authorized host; **re-verify against `google-adk >=2.7` before porting any repointing hack** — it may be fixed or the surface may have shifted since their 2.3 pin.
 - **Per-workload identity if serving surfaces split.** P7 names one `bridge-runtime` SA (fine for a single workload). If the edge, dashboard, and follow-up worker deploy as separate services, give each a per-workload Agent Identity so IAM grants stay least-privilege (the peer uses no shared mesh SA).
 
-**Session-affinity discipline (task_store / sessions).** The A2A edge is send-then-poll across replicas, so the GCP `task_store` (and `sessions`) adapters MUST be shared stores (Cloud SQL), never per-replica in-memory — a peer reference measured 86.8% poll-404s with a per-replica store on multi-replica Agent Runtime (see `design/seams.md`, "the session-affinity trap"). Encode as: (a) a **cross-replica read-after-write** parity case (write via one adapter handle, read via a second independent handle to the same backing store); (b) terminal-state writes get retry + loud logging; (c) if any A2A-serving Cloud Run service is pinned to a single instance as a stopgap, `log()`/record it as a silent-cap in TODO — don't inherit "the app owns the task store" indirection.
+**Session-affinity discipline (task_store / sessions).** The A2A edge is send-then-poll across replicas, so the GCP `task_store` (and `sessions`) adapters MUST be shared stores (Cloud SQL), never per-replica in-memory — a peer reference measured 86.8% poll-404s with a per-replica store on multi-replica Agent Runtime (see `design/ports.md`, "the session-affinity trap"). Encode as: (a) a **cross-replica read-after-write** parity case (write via one adapter handle, read via a second independent handle to the same backing store); (b) terminal-state writes get retry + loud logging; (c) if any A2A-serving Cloud Run service is pinned to a single instance as a stopgap, `log()`/record it as a silent-cap in TODO — don't inherit "the app owns the task store" indirection.
 
-**Exit gate.** The whole seam suite passes with `BRIDGE_TEST_GCP=1`; the Address golden runs reproduce the same terminal outcomes on the deployed path; plan-time Terraform tests green with no credentials; the cross-replica read-after-write case passes against the Cloud SQL task_store adapter.
+**Exit gate.** The whole port suite passes with `BRIDGE_TEST_GCP=1`; the Address golden runs reproduce the same terminal outcomes on the deployed path; plan-time Terraform tests green with no credentials; the cross-replica read-after-write case passes against the Cloud SQL task_store adapter.
 
 ---
 
 ## Cross-cutting, every phase
 
-- **Shared seam suite is the contract.** Each new adapter is added under the existing parametrized test; parity is terminal-outcome, never ledger-identical.
+- **Shared port suite is the contract.** Each new adapter is added under the existing parametrized test; parity is terminal-outcome, never ledger-identical.
 - **Experimental-surface discipline (TEST‑4).** `RemoteA2aAgent` (`@a2a_experimental`, pin `use_legacy=True`), `ResumabilityConfig` (`@experimental`, on `App`) — validate before flipping any mode; re-audit on every `google-adk` minor bump.
 - **Eval corpus is the oracle.** No Address behavior is "done" until it reproduces `wiki/evals/address/expected.json` + `timeline.json`.
-- **No silent caps.** Anything scoped out this cycle (dial-out, Deliver, cold unsolicited push, Benefits/RFP) stays a designed-but-unbuilt seam, logged here, not quietly dropped.
+- **No silent caps.** Anything scoped out this cycle (dial-out, Deliver, cold unsolicited push, Benefits/RFP) stays a designed-but-unbuilt port, logged here, not quietly dropped.
 
 ## Deferred to later cycles
 
 RFP live use-case-add (CUJ‑9) is Sprint 4; deferred:
 - **Cold unsolicited inbound push** (the Extract secondary edge).
-- _(Completed 2026-10-19)_ **Option B — A2A Server on Vertex AI Agent Engine (`BridgeA2aAgentEngine` / `BRIDGE_AGENT_ENGINE_A2A=1`):** Both **Option A** (`VertexAiSessionService`, `VertexAiMemoryBankService`, and remote `document_bridge` / `address` ADK `App` execution via `BRIDGE_AGENT_ENGINE_ID` + `BRIDGE_AGENT_ENGINE_REMOTE=1`) and **Option B** (`BridgeA2aAgentEngine` in `bridge/edge/agent_engine_a2a.py` hosting `CollectExecutor`, `EdgeRequestHandler`, dynamic `build_agent_card` over `loaded_skills()`, `TaskStore`, `PushNotificationConfigStore`, `LlmLeg`, and `RfpBoard` inside Vertex AI Agent Engine with thin Cloud Run proxy routes in `bridge/edge/server.py` behind `BRIDGE_AGENT_ENGINE_A2A=1`) are now built and tested (`tests/test_agent_engine_a2a.py`).
+- _(Completed 2026-10-19)_ **Option B — A2A Server on Gemini platform Agent Engine (`BridgeA2aAgentEngine` / `BRIDGE_AGENT_ENGINE_A2A=1`):** Both **Option A** (`VertexAiSessionService`, `VertexAiMemoryBankService`, and remote `document_bridge` / `address` ADK `App` execution via `BRIDGE_AGENT_ENGINE_ID` + `BRIDGE_AGENT_ENGINE_REMOTE=1`) and **Option B** (`BridgeA2aAgentEngine` in `bridge/edge/agent_engine_a2a.py` hosting `CollectExecutor`, `EdgeRequestHandler`, dynamic `build_agent_card` over `loaded_skills()`, `TaskStore`, `PushNotificationConfigStore`, `LlmLeg`, and `RfpBoard` inside Gemini platform Agent Engine with thin Cloud Run proxy routes in `bridge/edge/server.py` behind `BRIDGE_AGENT_ENGINE_A2A=1`) are now built and tested (`tests/test_agent_engine_a2a.py`).
 
 See [layout & scope](design/architecture.md) and [open questions](spec/open-questions.md).
 (Benefits — Negotiate/FX/interop + dial-out/Deliver, CUJ‑3/11/12 — was the Sprint 1

@@ -146,10 +146,10 @@ const ZONES = [
   {id:'wire',     label:'A2A wire (JSON-RPC over HTTP)',        color:'#a371f7', y:210, h:70},
   {id:'edge',     label:'Bridge edge (bridge/edge)',           color:'#d29922', y:300, h:110},
   {id:'core',     label:'Bridge core (bridge/*)',              color:'#3fb950', y:430, h:110},
-  {id:'seam',     label:'Extraction seam + corpus (fixture)',  color:'#f778ba', y:560, h:70},
+  {id:'port',     label:'Extraction port + corpus (fixture)',  color:'#f778ba', y:560, h:70},
 ];
-const ZFILL = {consumer:'#1f6feb22',wire:'#a371f722',edge:'#d2992222',core:'#3fb95022',seam:'#f778ba22'};
-const ZSTROKE = {consumer:'#1f6feb',wire:'#a371f7',edge:'#d29922',core:'#3fb950',seam:'#f778ba'};
+const ZFILL = {consumer:'#1f6feb22',wire:'#a371f722',edge:'#d2992222',core:'#3fb95022',port:'#f778ba22'};
+const ZSTROKE = {consumer:'#1f6feb',wire:'#a371f7',edge:'#d29922',core:'#3fb950',port:'#f778ba'};
 
 // ---------------------------------------------------------------------------
 // Nodes — real modules/functions in the CUJ-1 path.
@@ -174,8 +174,8 @@ const NODES = [
   {id:'dispose',  lbl:'disposition gate',       sfx:'dispose → auto_approve',zone:'core', x:870, y:452, w:170,h:50},
   {id:'project',  lbl:'project ledger',         sfx:'CollectionStatus/Turn', zone:'core', x:1060,y:452, w:100,h:50},
 
-  {id:'extract',  lbl:'FixtureExtractor',       sfx:'extraction seam',       zone:'seam', x:520, y:578, w:160,h:44},
-  {id:'corpus',   lbl:'eval corpus artifact',   sfx:'gov-id-clean.svg',      zone:'seam', x:700, y:578, w:170,h:44},
+  {id:'extract',  lbl:'FixtureExtractor',       sfx:'extraction port',       zone:'port', x:520, y:578, w:160,h:44},
+  {id:'corpus',   lbl:'eval corpus artifact',   sfx:'gov-id-clean.svg',      zone:'port', x:700, y:578, w:170,h:44},
 ];
 const N = Object.fromEntries(NODES.map(n=>[n.id,n]));
 
@@ -185,7 +185,7 @@ const N = Object.fromEntries(NODES.map(n=>[n.id,n]));
 const TYPES = {
   call:  {label:'in-process call', color:'#58a6ff', dash:''},
   wire:  {label:'A2A over the wire', color:'#a371f7', dash:''},
-  seam:  {label:'seam / data read', color:'#f778ba', dash:'6 4'},
+  port:  {label:'port / data read', color:'#f778ba', dash:'6 4'},
   route: {label:'gate route (done/again)', color:'#d29922', dash:'2 5'},
   ret:   {label:'return / output', color:'#3fb950', dash:''},
 };
@@ -251,7 +251,7 @@ Message(parts=[
   { node:'intake', edge:['executor','intake','call'], zone:'edge',
     title:'Decode submissions',
     file:'bridge/edge/intake.py::decode_submissions',
-    desc:'Content-routed dual-mode intake: reads the by-reference document part back into a DocumentSubmission, keyed for the extraction seam. The scenario: marker is ignored by the real edge.',
+    desc:'Content-routed dual-mode intake: reads the by-reference document part back into a DocumentSubmission, keyed for the extraction port. The scenario: marker is ignored by the real edge.',
     code:`decode_submissions(msg) → [
   <span class=k>DocumentSubmission</span>(
     doc_id=<span class=s>"gov-id-clean"</span>,
@@ -261,17 +261,17 @@ Message(parts=[
   { node:'collector', edge:['intake','collector','call'], zone:'core',
     title:'Collector: the one-turn path',
     file:'bridge/collect.py::Collector.collect',
-    desc:'The deterministic Sense-A path. Reads the extraction seam per submission, disposes via the pure gate, projects the classified ledger. Imports contract + bridge.* only — never agents/, never google.adk.',
+    desc:'The deterministic Sense-A path. Reads the extraction port per submission, disposes via the pure gate, projects the classified ledger. Imports contract + bridge.* only — never agents/, never google.adk.',
     code:`class Collector:
   async def collect(subs, …):
-    result = await self._extractor.extract(sub)  <span class=c># seam</span>
+    result = await self._extractor.extract(sub)  <span class=c># port</span>
     verdict = dispose(result)
     return project_collection_status(entries)` },
 
-  { node:'extract', edge:['collector','extract','seam'], zone:'seam',
-    title:'Extraction seam → ExtractionResult',
+  { node:'extract', edge:['collector','extract','port'], zone:'port',
+    title:'Extraction port → ExtractionResult',
     file:'bridge/extraction/fixture.py::FixtureExtractor',
-    desc:'The seam’s local adapter loads the expected fields for this artifact from the eval corpus (the oracle). In P7 a Gemini adapter swaps in behind the same ABC — terminal-outcome parity, never ledger-identical.',
+    desc:'The port’s local adapter loads the expected fields for this artifact from the eval corpus (the oracle). In P7 a Gemini adapter swaps in behind the same ABC — terminal-outcome parity, never ledger-identical.',
     code:`ExtractionResult(
   doctype_hint=<span class=s>"gov-id"</span>,
   fields={ issuer:<span class=s>"State DMV"</span>,
@@ -348,10 +348,10 @@ is_satisfied == <span class=g>True</span>   gate_rounds == <span class=n>1</span
 // Presets — focus a slice by clamping the step range emphasis.
 // ---------------------------------------------------------------------------
 const PRESETS = {
-  'Full flow':        {zones:['consumer','wire','edge','core','seam'], step:0},
+  'Full flow':        {zones:['consumer','wire','edge','core','port'], step:0},
   'Request leg':      {zones:['consumer','wire','edge'], step:3},
-  'Bridge processing':{zones:['edge','core','seam'], step:8},
-  'Disposition':      {zones:['core','seam'], step:10},
+  'Bridge processing':{zones:['edge','core','port'], step:8},
+  'Disposition':      {zones:['core','port'], step:10},
   'Return + gate':    {zones:['consumer','wire','core'], step:13},
 };
 
@@ -360,7 +360,7 @@ const PRESETS = {
 // ---------------------------------------------------------------------------
 const state = {
   step: 0,
-  zones: {consumer:true, wire:true, edge:true, core:true, seam:true},
+  zones: {consumer:true, wire:true, edge:true, core:true, port:true},
   preset: 'Full flow',
   comments: [],
   zoom: 1,

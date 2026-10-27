@@ -62,11 +62,11 @@ W9 = ("w9", "synthetic/supplier-x-w9.pdf")
 COI = ("coi", "synthetic/supplier-x-coi.pdf")
 ADDRESS_CTX = "ctx-live-add"  # the SAME on both cores, so artifact URIs compare equal
 ENV_TO_CLEAR = (
-    "BRIDGE_SEAM_MODE",
-    "BRIDGE_SEAM_SKILL_REGISTRY",
-    "BRIDGE_SEAM_EXTRACTION",
-    "BRIDGE_SEAM_TASK_STORE",
-    "BRIDGE_SEAM_SESSIONS",
+    "BRIDGE_PORT_MODE",
+    "BRIDGE_PORT_SKILL_REGISTRY",
+    "BRIDGE_PORT_EXTRACTION",
+    "BRIDGE_PORT_TASK_STORE",
+    "BRIDGE_PORT_SESSIONS",
     "BRIDGE_TASK_DB_URL",
     "BRIDGE_ARTIFACT_BUCKET",
     "BRIDGE_PUBLIC_URL",

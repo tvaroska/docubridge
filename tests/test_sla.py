@@ -1,7 +1,7 @@
 """SLA/policy engine tests (P5-1, PROA-1) + compose integration.
 
 Tests ``load_sla_policy`` against the address-proof corpus, validates invariants,
-and proves the VirtualClock + SlaPolicy composition — the seam-level shape of the
+and proves the VirtualClock + SlaPolicy composition — the port-level shape of the
 CUJ-6 follow-up ladder (P5-2 adds the re-arming state machine).
 """
 
@@ -192,7 +192,7 @@ Test skill body.
 class TestComposeIntegration:
     """Test VirtualClock + SlaPolicy composition (the P5-1 proof).
 
-    This is the seam-level shape of the CUJ-6 follow-up ladder — arm the schedule
+    This is the port-level shape of the CUJ-6 follow-up ladder — arm the schedule
     into a clock, advance, and observe overdue→reminder→escalated fire in order.
     P5-2 adds the re-arming state machine + real send.
     """

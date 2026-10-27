@@ -27,7 +27,7 @@ Shared-store wiring (built once, injected everywhere):
   sent over A2A therefore opens onto the SAME board ``/ops/rfps`` reads;
 * one ``ProgramBoard`` (``benefits-procurement`` standard) → the dashboard.
 
-The edge's task store stays seam-resolved (in-memory, or durable with
+The edge's task store stays port-resolved (in-memory, or durable with
 ``BRIDGE_TASK_DB_URL``).
 
 Seeds (synthetic, deterministic):

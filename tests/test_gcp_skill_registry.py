@@ -6,7 +6,7 @@ GCS ``skill_registry`` adapter — the refuse-without-bucket guard, the S0-sec-1
 traversal defense (which MUST fire before any storage client is built), and the
 download-to-temp + reuse-``skill_meta_from_dir`` list/get/install logic against an
 in-memory fake bucket. The live GCS roundtrip is gated on ``BRIDGE_TEST_GCP`` +
-``BRIDGE_SKILLS_BUCKET`` in ``test_skill_registry_seam.py`` (P7-9).
+``BRIDGE_SKILLS_BUCKET`` in ``test_skill_registry_port.py`` (P7-9).
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ import sys
 
 import pytest
 
-from bridge.seams import Seam, SeamMode, get_adapter
-from bridge.seams.gcp import SKILLS_BUCKET_ENV, GcpSkillRegistry, _resolve_bucket
+from bridge.ports import Port, PortMode, get_adapter
+from bridge.ports.gcp import SKILLS_BUCKET_ENV, GcpSkillRegistry, _resolve_bucket
 from tests._fake_gcs import FakeBucket
 
 _SKILL_MD = (
@@ -47,9 +47,9 @@ def _reg_with_fake(monkeypatch) -> tuple[GcpSkillRegistry, FakeBucket]:
 # --- wired, not stubbed ----------------------------------------------------
 def test_get_adapter_returns_gcp_skill_registry():
     """gcp skill_registry no longer raises NotImplementedError (P7-3)."""
-    adapter = get_adapter(Seam.skill_registry, SeamMode.gcp)
+    adapter = get_adapter(Port.skill_registry, PortMode.gcp)
     assert isinstance(adapter, GcpSkillRegistry)
-    assert adapter.seam is Seam.skill_registry
+    assert adapter.port is Port.skill_registry
 
 
 # --- refuse-without-bucket is loud -----------------------------------------
@@ -57,7 +57,7 @@ def test_refuses_without_bucket_env(monkeypatch):
     """No bucket arg + no BRIDGE_SKILLS_BUCKET env → RuntimeError naming the env."""
     monkeypatch.delenv(SKILLS_BUCKET_ENV, raising=False)
     with pytest.raises(RuntimeError, match=SKILLS_BUCKET_ENV):
-        get_adapter(Seam.skill_registry, SeamMode.gcp).list_skills()
+        get_adapter(Port.skill_registry, PortMode.gcp).list_skills()
 
 
 def test_resolve_bucket_arg_wins_over_env(monkeypatch):
@@ -99,7 +99,7 @@ def test_install_list_get_roundtrip_reuses_parser(monkeypatch):
     assert meta.kind == "doctype"
     assert meta.tags == ("doctype", "income")
 
-    # Objects laid out in the <name>/… folder format (the seam contract).
+    # Objects laid out in the <name>/… folder format (the port contract).
     assert fake.objects["pay-stub/SKILL.md"].decode() == _SKILL_MD
     assert fake.objects["pay-stub/schema.json"] == b"{}"
 
@@ -200,7 +200,7 @@ def test_importing_gcp_pkg_does_not_import_storage():
     import importlib
 
     importlib.import_module("bridge.edge.artifacts")
-    importlib.import_module("bridge.seams.gcp")
+    importlib.import_module("bridge.ports.gcp")
 
-    assert "bridge.seams.gcp" in sys.modules
+    assert "bridge.ports.gcp" in sys.modules
     assert "google.cloud.storage" not in sys.modules

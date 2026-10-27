@@ -71,7 +71,7 @@ run "runtime_enabled_board_internal_runtime_sa_scheduler_drain" {
     service_account_email        = var.runtime_email
     vpc_network                  = "projects/test-project/global/networks/bridge-vpc"
     egress_subnet                = "projects/test-project/regions/us-central1/subnetworks/bridge-vpc-internal"
-    seam_mode                    = "gcp"
+    port_mode                    = "gcp"
     db_url_secret_id             = "bridge-db-url"
     enable_rfp_board             = true
     rfp_process                  = "benefits-rfp"
@@ -111,15 +111,15 @@ run "runtime_enabled_board_internal_runtime_sa_scheduler_drain" {
   assert {
     condition = {
       for e in google_cloud_run_v2_service.rfp_board[0].template[0].containers[0].env :
-      e.name => e.value if contains(["BRIDGE_RFP_PROCESS", "BRIDGE_EMAIL_DRAIN_INTERVAL", "BRIDGE_SEAM_MODE", "BRIDGE_EMAIL_BUCKET", "BRIDGE_EMAIL_MAILBOX"], e.name)
+      e.name => e.value if contains(["BRIDGE_RFP_PROCESS", "BRIDGE_EMAIL_DRAIN_INTERVAL", "BRIDGE_PORT_MODE", "BRIDGE_EMAIL_BUCKET", "BRIDGE_EMAIL_MAILBOX"], e.name)
       } == {
       BRIDGE_RFP_PROCESS          = "benefits-rfp"
       BRIDGE_EMAIL_DRAIN_INTERVAL = "0"
-      BRIDGE_SEAM_MODE            = "gcp"
+      BRIDGE_PORT_MODE            = "gcp"
       BRIDGE_EMAIL_BUCKET         = "bridge-runtime-email"
       BRIDGE_EMAIL_MAILBOX        = "rfp-quotes@broker.example"
     }
-    error_message = "the board service carries the process, drain-interval 0, seam mode and the processor's plain envs"
+    error_message = "the board service carries the process, drain-interval 0, port mode and the processor's plain envs"
   }
   assert {
     condition = {

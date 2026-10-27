@@ -5,7 +5,7 @@ Graph ``Mail.Read`` *application* permission, restricted by an Exchange Online
 Application Access Policy (or RBAC for Applications) to that ONE mailbox — never the
 brokers' own mailboxes. Graph POSTs a change notification per new message to the
 email webhook (``bridge.edge.email_ingress.build_email_app``), which fetches the raw
-MIME here and lands it on the ``email_ingress`` seam.
+MIME here and lands it on the ``email_ingress`` port.
 
 Security posture:
 

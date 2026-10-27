@@ -1,6 +1,6 @@
 """``bridge.timewarp`` — the local-only time-warp host (P6-5, FE-5).
 
-A native local host (NOT a ``Seam``) that drives the P5 SLA ladder over the P5-1
+A native local host (NOT a ``Port``) that drives the P5 SLA ladder over the P5-1
 ``VirtualClock`` and stamps the fired lifecycle onto the **shared** ``PortalStore`` so the
 running Provider Portal / Ops Dashboard show ``on_track → overdue → reminder → escalated``
 on cue. Deterministic stage time: the clock advances only by an explicit REST call — no

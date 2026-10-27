@@ -482,7 +482,7 @@ class TestChase:
         assert carriers["carrier-b"]["chases"] == 1  # recorded once
 
     def test_misconfigured_outbound_adapter_is_503(self, monkeypatch):
-        monkeypatch.setenv("BRIDGE_SEAM_A2A_CLIENT", "gcp")
+        monkeypatch.setenv("BRIDGE_PORT_A2A_CLIENT", "gcp")
         monkeypatch.delenv("BRIDGE_GATEWAY_HOST", raising=False)
         app = build_dashboard_app(store=InMemoryPortalStore(), rfps=make_board())
         resp = TestClient(app).post(f"/rfps/{RFP_ID}/chase", json={})
@@ -490,8 +490,8 @@ class TestChase:
         assert "BRIDGE_GATEWAY_HOST" in resp.json()["detail"]
 
     def test_lazy_local_adapter_is_built_once(self, monkeypatch):
-        monkeypatch.delenv("BRIDGE_SEAM_A2A_CLIENT", raising=False)
-        monkeypatch.delenv("BRIDGE_SEAM_MODE", raising=False)
+        monkeypatch.delenv("BRIDGE_PORT_A2A_CLIENT", raising=False)
+        monkeypatch.delenv("BRIDGE_PORT_MODE", raising=False)
         client = TestClient(
             build_dashboard_app(store=InMemoryPortalStore(), rfps=make_board())
         )

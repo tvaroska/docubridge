@@ -70,11 +70,11 @@ HOST_ENV = (
     "BRIDGE_EMAIL_DRAIN_INTERVAL",
     "BRIDGE_EMAIL_DRAIN_URL",
     "BRIDGE_EMAIL_MAX_BYTES",
-    "BRIDGE_SEAM_EMAIL_INGRESS",
-    "BRIDGE_SEAM_EXTRACTION",
-    "BRIDGE_SEAM_EXCHANGE_STORE",
-    "BRIDGE_SEAM_TASK_STORE",
-    "BRIDGE_SEAM_MODE",
+    "BRIDGE_PORT_EMAIL_INGRESS",
+    "BRIDGE_PORT_EXTRACTION",
+    "BRIDGE_PORT_EXCHANGE_STORE",
+    "BRIDGE_PORT_TASK_STORE",
+    "BRIDGE_PORT_MODE",
     "BRIDGE_ARTIFACT_BUCKET",
     "BRIDGE_PUBLIC_URL",
     "BRIDGE_EXCHANGE_DB_URL",
@@ -585,7 +585,7 @@ def test_a_non_emergent_collect_skill_fails_at_build(clean_env, dsn):
 
 def test_gcp_without_database_url_is_refused(clean_env):
     clean_env.setenv(RFP_PROCESS_ENV, PROCESS)
-    clean_env.setenv("BRIDGE_SEAM_MODE", "gcp")
+    clean_env.setenv("BRIDGE_PORT_MODE", "gcp")
     with pytest.raises(RuntimeError):
         rfp_board_from_env()
 

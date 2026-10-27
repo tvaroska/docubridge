@@ -27,8 +27,8 @@ from bridge.outbound import (
     Nudge,
     PeerCard,
 )
-from bridge.seams import Seam, SeamMode, get_adapter
-from bridge.seams.gcp import (
+from bridge.ports import Port, PortMode, get_adapter
+from bridge.ports.gcp import (
     BRIDGE_GATEWAY_HOST_ENV,
     BRIDGE_RUNTIME_SA_EMAIL_ENV,
     GcpA2AClient,
@@ -68,7 +68,7 @@ class _RecordingSender:
 def _build(**overrides):
     cfg = {"gateway_host": _GATEWAY_HOST, "sa_email": _SA}
     cfg.update(overrides)
-    return get_adapter(Seam.a2a_client, SeamMode.gcp).build_client(**cfg)
+    return get_adapter(Port.a2a_client, PortMode.gcp).build_client(**cfg)
 
 
 # --- wired, not stubbed ----------------------------------------------------
@@ -76,9 +76,9 @@ def _build(**overrides):
 
 def test_get_adapter_returns_gcp_a2a_client():
     """gcp a2a_client no longer raises NotImplementedError (P7-5)."""
-    adapter = get_adapter(Seam.a2a_client, SeamMode.gcp)
+    adapter = get_adapter(Port.a2a_client, PortMode.gcp)
     assert isinstance(adapter, GcpA2AClient)
-    assert adapter.seam is Seam.a2a_client
+    assert adapter.port is Port.a2a_client
 
 
 def test_built_client_is_a2a_client_protocol():
@@ -96,14 +96,14 @@ def test_build_refuses_without_gateway_host_env(monkeypatch):
     for env in (BRIDGE_GATEWAY_HOST_ENV, BRIDGE_RUNTIME_SA_EMAIL_ENV):
         monkeypatch.delenv(env, raising=False)
     with pytest.raises(RuntimeError, match=BRIDGE_GATEWAY_HOST_ENV):
-        get_adapter(Seam.a2a_client, SeamMode.gcp).build_client()
+        get_adapter(Port.a2a_client, PortMode.gcp).build_client()
 
 
 def test_build_resolves_config_from_env(monkeypatch):
     """With no args, build_client resolves gateway_host + sa_email from env."""
     monkeypatch.setenv(BRIDGE_GATEWAY_HOST_ENV, _GATEWAY_HOST)
     monkeypatch.setenv(BRIDGE_RUNTIME_SA_EMAIL_ENV, _SA)
-    client = get_adapter(Seam.a2a_client, SeamMode.gcp).build_client(
+    client = get_adapter(Port.a2a_client, PortMode.gcp).build_client(
         id_token_fetcher=_RecordingFetcher(), sender=_RecordingSender()
     )
     assert isinstance(client, A2AClient)
@@ -216,9 +216,9 @@ def test_importing_gcp_pkg_does_not_import_google_oauth2():
     them via its a2a-sdk / google-adk deps, not this adapter's module body; the
     adapter's OWN OIDC-minting deps (google.oauth2.id_token + the auth request
     transport) are the ones that must stay lazy."""
-    import bridge.seams.gcp  # noqa: F401
+    import bridge.ports.gcp  # noqa: F401
 
-    assert "bridge.seams.gcp" in sys.modules
+    assert "bridge.ports.gcp" in sys.modules
     assert "google.oauth2" not in sys.modules
     assert "google.auth.transport.requests" not in sys.modules
 
@@ -244,7 +244,7 @@ def test_gcp_a2a_client_live_send():
             "input for the live Agent-Identity dial"
         )
     # The real fetcher/sender path (google.oauth2 + httpx) is exercised only here.
-    client = get_adapter(Seam.a2a_client, SeamMode.gcp).build_client()
+    client = get_adapter(Port.a2a_client, PortMode.gcp).build_client()
     card_url = f"https://{gateway_host}/rpc"
     directory = FakePeerDirectory(
         {card_url: PeerCard("peer", card_url, ("benefits-procurement",))}

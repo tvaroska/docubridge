@@ -1,7 +1,7 @@
 """Artifact resolver — turn an inbound document *reference* into something readable.
 
 ART-2 says documents cross the wire **by reference** (``FileWithUri``, never inline
-bytes), so what actually arrives on the extraction seam is whatever URI the
+bytes), so what actually arrives on the extraction port is whatever URI the
 counterparty put on the part: their signed URL, a ``gs://`` object, our own scoped
 fetch endpoint, or — for the eval corpus — a bare corpus-relative name. This module
 is the one place that turns any of those into a :class:`ResolvedDocument` the engine
@@ -41,7 +41,7 @@ anything else              ``ValueError`` — refuse loud.
 
 Module posture: this module is imported by ``bridge/extraction/gemini.py`` and by
 ``bridge/edge/artifacts.py``, so it must import **no** ``bridge.edge``,
-``bridge.seams`` or ``google.*`` at module level (import cycle +
+``bridge.ports`` or ``google.*`` at module level (import cycle +
 ``tests/test_gemini_extraction.py``'s AST guard). ``httpx`` is imported lazily
 inside the fetch, the repo's idiom for an already-present transitive dependency.
 """

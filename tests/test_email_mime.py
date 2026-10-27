@@ -13,7 +13,7 @@ from bridge.email_ingress.mime import (
     parse_mime,
     sanitize_filename,
 )
-from bridge.seams.protocols import validate_attachment_slot
+from bridge.ports.protocols import validate_attachment_slot
 from tests.email_fixtures import PNG_1PX, compose
 
 PDF = b"%PDF-1.4 synthetic\n%%EOF\n"
@@ -94,7 +94,7 @@ def test_sanitize_caps_length_keeping_the_suffix():
         "a/b\\c\x00d?.pdf",
     ],
 )
-def test_every_sanitized_name_passes_the_seam_validator(raw):
+def test_every_sanitized_name_passes_the_port_validator(raw):
     # Review fix: a sanitized name the adapters reject (ValueError) or the local
     # filesystem refuses (ENAMETOOLONG) would raise out of the drain on every run.
     name = sanitize_filename(raw, index=0, mime_type="application/pdf")

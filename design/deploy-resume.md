@@ -5,7 +5,7 @@ related:
   - "long-running.md"
   - "gcp-substrate.md"
   - "service-agent-architecture.md"
-  - "seams.md"
+  - "ports.md"
 tags: [bridge, deploy]
 ---
 
@@ -21,24 +21,24 @@ A parked leg is `input-required` → a `LongRunningFunctionTool` pause → **the
 |---|---|---|
 | What it needs | Persistent Session store (state + events) + persistent Task store (task + artifacts + `context_id`) + `ResumabilityConfig(is_resumable=True)` | A webhook **receiver** for the `PushNotificationConfig` doorbell + a `task_id`→session index, which then calls `run_async` |
 | Stock vs custom | **Stock ADK** — plain `google.adk.runners.Runner` + `run_async`; no custom Runner subclass. The only custom bit is the send-path `RequestInterceptor` on `RemoteA2aAgent` (resume re-detection under `Workflow` event ordering) | **Custom** — `a2a-sdk` is sender-only; neither SDK ships a receiver; `adk web` can't host one |
-| Deployment-sensitive? | **No** — a config/seam swap, a no-op for the agent | **Yes** — this is where Cloud Run vs Agent Engine actually differ |
+| Deployment-sensitive? | **No** — a config/port swap, a no-op for the agent | **Yes** — this is where Cloud Run vs Agent Engine actually differ |
 
 Because restore runs with **no HTTP**, the deployment target is not load-bearing for it; the target choice only shapes **where the wake receiver lives**.
 
 ## The substrate
 
-The resume path maps onto the GCP substrate ([gcp-substrate](gcp-substrate.md)) as a set of seam swaps ([seams](seams.md)), each a no-op for the agent:
+The resume path maps onto the GCP substrate ([gcp-substrate](gcp-substrate.md)) as a set of port swaps ([ports](ports.md)), each a no-op for the agent:
 
-| Seam | Local (dev) | GCP (deploy) | Role in resume |
+| Port | Local (dev) | GCP (deploy) | Role in resume |
 |---|---|---|---|
-| **Compute / runtime** | local process | **Cloud Run v2** edge + **Vertex AI Agent Engine** (`BRIDGE_AGENT_ENGINE_ID`, `BRIDGE_AGENT_ENGINE_REMOTE=1`, `BRIDGE_AGENT_ENGINE_A2A=1`) | hosts the stock `Runner`, remote `ReasoningEngine`, and `BridgeA2aAgentEngine`; scale-to-zero = **zero cost across a weeks-long park** |
-| **Sessions** | `InMemorySessionService` → `DatabaseSessionService` (SQLite) | `VertexAiSessionService` on Vertex AI Agent Engine when `BRIDGE_AGENT_ENGINE_ID` is set, or `DatabaseSessionService` → Cloud SQL Postgres (`GcpSessions`; asyncpg DSN from `DATABASE_URL`, in-memory refused) | **restore**: reloads state + event history by `(app, user, session_id)`; peer `task_id`/`context_id` ride `event.custom_metadata`, auto-repopulated |
-| **Memory bank** | `InMemoryMemoryService` → `SqliteMemoryService` (`BRIDGE_MEMORY_DB_PATH`) | `VertexAiMemoryBankService` on Vertex AI Agent Engine (`GcpMemoryBank`, `BRIDGE_AGENT_ENGINE_ID`) | durable cross-session ADK `BaseMemoryService` wired into `LlmLeg` |
-| **Task store** | `InMemoryTaskStore` → `DatabaseTaskStore` (SQLite) | Cloud SQL Postgres (`DatabaseTaskStore`); a managed task store would be a one-adapter swap behind this seam | **restore**: task + artifacts + `context_id` survive restart |
+| **Compute / runtime** | local process | **Cloud Run v2** edge + **Gemini platform Agent Engine** (`BRIDGE_AGENT_ENGINE_ID`, `BRIDGE_AGENT_ENGINE_REMOTE=1`, `BRIDGE_AGENT_ENGINE_A2A=1`) | hosts the stock `Runner`, remote `ReasoningEngine`, and `BridgeA2aAgentEngine`; scale-to-zero = **zero cost across a weeks-long park** |
+| **Sessions** | `InMemorySessionService` → `DatabaseSessionService` (SQLite) | `VertexAiSessionService` on Gemini platform Agent Engine when `BRIDGE_AGENT_ENGINE_ID` is set, or `DatabaseSessionService` → Cloud SQL Postgres (`GcpSessions`; asyncpg DSN from `DATABASE_URL`, in-memory refused) | **restore**: reloads state + event history by `(app, user, session_id)`; peer `task_id`/`context_id` ride `event.custom_metadata`, auto-repopulated |
+| **Memory bank** | `InMemoryMemoryService` → `SqliteMemoryService` (`BRIDGE_MEMORY_DB_PATH`) | `VertexAiMemoryBankService` on Gemini platform Agent Engine (`GcpMemoryBank`, `BRIDGE_AGENT_ENGINE_ID`) | durable cross-session ADK `BaseMemoryService` wired into `LlmLeg` |
+| **Task store** | `InMemoryTaskStore` → `DatabaseTaskStore` (SQLite) | Cloud SQL Postgres (`DatabaseTaskStore`); a managed task store would be a one-adapter swap behind this port | **restore**: task + artifacts + `context_id` survive restart |
 | **Resumability** | `ResumabilityConfig(is_resumable=True)` on the `App` | same (`@experimental`) | **restore**: the switch that makes a park survive a restart |
 | **Scheduler** | virtual clock | **Cloud Tasks** (`bridge-followups` queue) | the clock alarm that can *wake* a leg (SLA/escalation), alongside the party-turn webhook |
 
-> **Naming reconciliation (Option A + Option B).** Vertex AI Agent Engine (`aiplatform.googleapis.com` `ReasoningEngine`) hosts managed `VertexAiSessionService`, `VertexAiMemoryBankService`, and remote `App` execution (`async_stream_query`, **Option A**), as well as the full Bridge A2A JSON-RPC 2.0 server (`BridgeA2aAgentEngine` in `bridge/edge/agent_engine_a2a.py` via `BRIDGE_AGENT_ENGINE_A2A=1`, **Option B**). **Cloud Run v2** remains the thin HTTP/webhook/REST edge for custom non-A2A routes (`wake.py`, A2UI portal, `/artifacts/{context_id}/{name}`, email webhook, RFP board) and proxies `GET /.well-known/agent-card.json` and `POST /` to `BridgeA2aAgentEngine`.
+> **Naming reconciliation (Option A + Option B).** Gemini platform Agent Engine (`aiplatform.googleapis.com` `ReasoningEngine`) hosts managed `VertexAiSessionService`, `VertexAiMemoryBankService`, and remote `App` execution (`async_stream_query`, **Option A**), as well as the full Bridge A2A JSON-RPC 2.0 server (`BridgeA2aAgentEngine` in `bridge/edge/agent_engine_a2a.py` via `BRIDGE_AGENT_ENGINE_A2A=1`, **Option B**). **Cloud Run v2** remains the thin HTTP/webhook/REST edge for custom non-A2A routes (`wake.py`, A2UI portal, `/artifacts/{context_id}/{name}`, email webhook, RFP board) and proxies `GET /.well-known/agent-card.json` and `POST /` to `BridgeA2aAgentEngine`.
 
 ## Restore — works on the target as a config swap
 
@@ -46,7 +46,7 @@ Nothing in restore is bespoke. Deployed, it is the headless resume path with the
 
 ```python
 from google.adk.runners import Runner              # stock ADK, no subclass
-sessions = get_adapter(Seam.sessions, resolve_mode(Seam.sessions))
+sessions = get_adapter(Port.sessions, resolve_mode(Port.sessions))
 runner = Runner(
     app=build_address_app(card_url),               # carries ResumabilityConfig
     session_service=sessions.build_session_service(),  # gcp: DatabaseSessionService → Cloud SQL
@@ -71,11 +71,11 @@ The two custom pieces are the whole of the wake delta; everything downstream of 
 ## How the path composes
 
 - **Restore runs headless** via `run_async` — no HTTP, no deploy dependency — so it is exercised independently of any GCP target.
-- **Deploying to GCP** is a seam swap: the GCP adapters are selected by `BRIDGE_SEAM_MODE`. The shared suite runs them with `BRIDGE_TEST_GCP=1`. Restore-across-restart is covered in `tests/address/test_park_resume.py` (lines 96, 150) and `tests/test_durable_seams.py` (line 52).
+- **Deploying to GCP** is a port swap: the GCP adapters are selected by `BRIDGE_PORT_MODE`. The shared suite runs them with `BRIDGE_TEST_GCP=1`. Restore-across-restart is covered in `tests/address/test_park_resume.py` (lines 96, 150) and `tests/test_durable_ports.py` (line 52).
 - **Wake** adds the webhook receiver + `task_id`→session index — the only custom deploy surface — so a leg can be woken by an external event, not just resumed by a hand-fed `FunctionResponse`.
 
 ## Related
 - [A2A consumer](a2a-consumer.md) — the `RemoteA2aAgent` construct, park/resume, and the state-restore breakdown
 - [long-running collection](long-running.md) — the idle-driven, weeks-scale lifecycle the park serves
 - [service-agent reference architecture](service-agent-architecture.md) — the durable `Workflow` graph being deployed
-- [GCP substrate](gcp-substrate.md) · [seams](seams.md) — the managed adapters and the local↔GCP swap discipline
+- [GCP substrate](gcp-substrate.md) · [ports](ports.md) — the managed adapters and the local↔GCP swap discipline

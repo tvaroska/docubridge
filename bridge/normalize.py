@@ -27,17 +27,17 @@ out of ``key_fields``. See DECISIONS.md for the Option-A rationale (kept off the
 ``contract/`` critical path); Option B (first-class on the wire) is a separately scheduled
 ``contract/`` change.
 
-**FX as a fixed table, live FX seam DEFERRED (no silent cap).** ``spec/demos/benefits-demo.md``
-names "a fixed rate table drives the deterministic demo; a live FX seam is the alternative
+**FX as a fixed table, live FX port DEFERRED (no silent cap).** ``spec/demos/benefits-demo.md``
+names "a fixed rate table drives the deterministic demo; a live FX port is the alternative
 shape". This module builds ONLY the fixed table plus a thin ``FxRates`` callable swap point
-(``normalize_quote(..., fx=fixed_fx)``): swapping in a live-FX-seam adapter later is a
-one-arg change. A full local+GCP FX seam is **designed-but-unbuilt this cycle** — logged
-here (per the repo's "No silent caps" rule), not added to the ``Seam`` enum.
+(``normalize_quote(..., fx=fixed_fx)``): swapping in a live-FX-port adapter later is a
+one-arg change. A full local+GCP FX port is **designed-but-unbuilt this cycle** — logged
+here (per the repo's "No silent caps" rule), not added to the ``Port`` enum.
 
 Pure: imports stdlib + pydantic + ``contract/`` only — NO ``google.adk``, NO ``a2a``,
 NEVER ``agents/`` (the ``bridge/`` isolation guard, ``tests/test_isolation_guard.py``).
 The transform is synchronous — it operates on already-extracted fields; only the corpus
-oracle test is async (it calls the extraction seam).
+oracle test is async (it calls the extraction port).
 """
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ _MONEY_FIELDS = ("premium", "deductible")
 _TEXT_FIELDS = ("coverage_limits", "exclusions")
 
 # A thin FX swap point: any code → multiplier. Default reads the fixed table; a live-FX
-# seam adapter would satisfy the same signature (the deferred alternative shape).
+# port adapter would satisfy the same signature (the deferred alternative shape).
 FxRates = Callable[[str], float]
 
 

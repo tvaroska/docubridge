@@ -1,4 +1,4 @@
-"""Extraction agent (ADK layer) — wraps the extraction seam as an AgentTool."""
+"""Extraction agent (ADK layer) — wraps the extraction port as an AgentTool."""
 
 import os
 
@@ -10,7 +10,7 @@ from google.genai import types
 
 from bridge import gatepin
 from bridge.classification import canonicalize_issuer
-from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.ports import Port, get_adapter, resolve_mode
 
 DEFAULT_MODEL = "gemini-3.8-flash"
 WORKHORSE_MODEL = DEFAULT_MODEL
@@ -35,7 +35,7 @@ async def extract_document(
     Returns:
         A dict with classification, key_fields, and signals.
     """
-    adapter = get_adapter(Seam.extraction, resolve_mode(Seam.extraction))
+    adapter = get_adapter(Port.extraction, resolve_mode(Port.extraction))
     result = await adapter.extract(artifact_name)
     if tool_context is not None:
         gatepin.record_extraction(

@@ -274,9 +274,9 @@ run "runtime_enabled_webhook_public_secret_refs_and_board_token_env" {
   assert {
     condition = one([
       for e in google_cloud_run_v2_service.email_webhook[0].template[0].containers[0].env : e.value
-      if e.name == "BRIDGE_SEAM_EMAIL_INGRESS"
+      if e.name == "BRIDGE_PORT_EMAIL_INGRESS"
     ]) == "gcp"
-    error_message = "the webhook must route the email_ingress seam to the GCS adapter"
+    error_message = "the webhook must route the email_ingress port to the GCS adapter"
   }
   assert {
     condition = (google_cloud_run_v2_service_iam_member.email_webhook_public[0].member == "allUsers"

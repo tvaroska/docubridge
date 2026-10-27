@@ -1,6 +1,6 @@
 """Dial-out + Deliver over the fake transport (S1-benefits-4, CUJ-3, OUT-3/4).
 
-Proves the two new outbound activities on the a2a_client seam's local adapter: the Bridge
+Proves the two new outbound activities on the a2a_client port's local adapter: the Bridge
 originating an A2A exchange (Agent-Card discovery GATE → message/send) and Delivering a
 by-reference result outward. Both are idempotent / crash-safe and carry NO bearer token —
 the same invariants the Nudge path enforces.

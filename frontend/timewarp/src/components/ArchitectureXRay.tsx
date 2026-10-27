@@ -1,6 +1,6 @@
 // Architecture X-Ray mode (presenter stage, P6-5, §2g).
 //
-// A static inline SVG of the component/seam diagram (Gateway, A2UI edge, extraction seam,
+// A static inline SVG of the component/port diagram (Gateway, A2UI edge, extraction port,
 // scheduler/clock, portal store). Components "light up" (accent stroke + data-active) driven
 // by the most recent time-warp fired events / lifecycle — a small active-set derived from
 // state, no diagramming lib.
@@ -18,7 +18,7 @@ interface Node {
 const NODES: Node[] = [
   { id: "gateway", label: "Gateway", x: 20 },
   { id: "edge", label: "A2UI edge", x: 170 },
-  { id: "extraction", label: "Extraction seam", x: 320 },
+  { id: "extraction", label: "Extraction port", x: 320 },
   { id: "scheduler", label: "Scheduler / clock", x: 480 },
   { id: "store", label: "Portal store", x: 640 },
 ];

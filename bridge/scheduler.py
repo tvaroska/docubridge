@@ -1,4 +1,4 @@
-"""Virtual clock scheduler — the local adapter behind SEAM-6.
+"""Virtual clock scheduler — the local adapter behind PORT-6.
 
 An in-process, tick-based alarm store. Ticks are virtual-time integers; no wall
 clock or asyncio is involved. Designed to match the Cloud Tasks shape (arm an
@@ -34,7 +34,7 @@ class Alarm:
 
 @runtime_checkable
 class Scheduler(Protocol):
-    """The scheduler seam's abstraction. Local = VirtualClock; GCP = Cloud Tasks (P7)."""
+    """The scheduler port's abstraction. Local = VirtualClock; GCP = Cloud Tasks (P7)."""
 
     def now(self) -> int:
         """Return the current UTC timestamp from the scheduler clock."""
@@ -62,7 +62,7 @@ class Scheduler(Protocol):
 
 
 class VirtualClock:
-    """In-process virtual clock behind the scheduler seam (SEAM-6).
+    """In-process virtual clock behind the scheduler port (PORT-6).
 
     Deterministic and idempotent: re-arming the same ``key`` replaces the pending
     alarm (crash-safe re-arm); advancing fires each due alarm exactly once, in

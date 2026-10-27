@@ -13,7 +13,7 @@ A2A Requirements path onto the shared board. One ``build_a2a_app`` (hybrid edge,
 - **park** an Address exchange (PowerCo accepted, AquaUtil parked on the R3 HITL handoff);
   a control core runs the same park + resolution BEFORE the upload (``BRIDGE_SKILLS_DIR``
   is process-global);
-- **upload** the use case through the ``skill_registry`` seam — same apps, no rebuild;
+- **upload** the use case through the ``skill_registry`` port — same apps, no rebuild;
 - **A2A open** ``onboard-live-2027`` with Requirements (supplier-x / supplier-y × W9 / COI):
   ``INPUT_REQUIRED``, 4 × ``invited``, model-free;
 - the board host lists it (process ``supplier-onboarding``); the carrier checklist accepts
@@ -28,7 +28,7 @@ snapshot, no new model call), the new RFP opened but projected / filed with the 
 process's policy (``benefits-quote`` accept list, ``product_line`` lookup).
 
 The scenario runs locally, through the gcp ``skill_registry`` adapter over a fake bucket
-(credential-free: the policy can only have come through the seam), and as the gated seam
+(credential-free: the policy can only have come through the port), and as the gated port
 parity param against a provisioned bucket — terminal-outcome parity, never
 ledger-identical.
 
@@ -54,8 +54,8 @@ from bridge.edge.wire import META_REASON_CODE, META_REVIEW_CALL_ID
 from bridge.email_ingress.mime import landing_key
 from bridge.exchange_store import SqlExchangeStore
 from bridge.portal.server import build_portal_app
-from bridge.seams import Seam, SeamMode, get_adapter, resolve_mode
-from bridge.seams.gcp import SKILLS_BUCKET_ENV, GcpSkillRegistry
+from bridge.ports import Port, PortMode, get_adapter, resolve_mode
+from bridge.ports.gcp import SKILLS_BUCKET_ENV, GcpSkillRegistry
 from bridge.sla import SKILLS_DIR
 from contract.enums import Disposition, RequirementStatus
 from contract.wire import CollectRequest, Requirement, RequirementsList
@@ -192,9 +192,9 @@ async def _live_rfp_add(monkeypatch, *, control: bool = True) -> dict[str, objec
             # --- 4. Trap guards: nothing may be rebuilt or reconstructed -------------
             constructed = a2a.arm_trap_guards(monkeypatch)
 
-            # --- 5. Upload the use case through the skill_registry seam --------------
+            # --- 5. Upload the use case through the skill_registry port --------------
             registry = get_adapter(
-                Seam.skill_registry, resolve_mode(Seam.skill_registry)
+                Port.skill_registry, resolve_mode(Port.skill_registry)
             )
             metas = install_supplier_onboarding(registry)
             assert [m.kind for m in metas] == ["doctype", "doctype", "process"]
@@ -259,7 +259,7 @@ async def _live_rfp_add(monkeypatch, *, control: bool = True) -> dict[str, objec
                 subject="Re: supplier onboarding",
                 attachments=[("w9.pdf", b"%PDF-1.4 synthetic w9", "application/pdf")],
             )
-            assert board_app.state.email_processor.seam.land(landing_key(raw), raw)
+            assert board_app.state.email_processor.port.land(landing_key(raw), raw)
             (outcome,) = (await host.post("/email/drain")).json()
             assert outcome["status"] == "filed", outcome
             assert (outcome["rfp_id"], outcome["party"]) == (RFP_ID, "supplier-y")
@@ -348,17 +348,17 @@ async def test_live_rfp_policy_comes_through_the_gcp_registry_adapter(
     fake = FakeBucket()
     monkeypatch.setattr(GcpSkillRegistry, "_bucket", lambda self: fake)
     seed_from_dir(fake, SKILLS_DIR, ADDRESS_SKILLS)
-    monkeypatch.setenv("BRIDGE_SEAM_SKILL_REGISTRY", "gcp")
+    monkeypatch.setenv("BRIDGE_PORT_SKILL_REGISTRY", "gcp")
     monkeypatch.setenv(SKILLS_BUCKET_ENV, "fake-skills")
 
     assert await _live_rfp_add(monkeypatch, control=False) == EXPECTED_OUTCOME
     assert f"{PROCESS}/assets/policy.yaml" in fake.objects
-    # The policy can only have come through the seam: the filesystem never had it.
+    # The policy can only have come through the port: the filesystem never had it.
     assert not (Path(os.environ["BRIDGE_SKILLS_DIR"]) / PROCESS).exists()
 
 
 # --------------------------------------------------------------------------- #
-# Seam parity (terminal outcome; gcp gated on BRIDGE_TEST_GCP + a bucket)      #
+# Port parity (terminal outcome; gcp gated on BRIDGE_TEST_GCP + a bucket)      #
 # --------------------------------------------------------------------------- #
 def _gcp_bucket_or_skip() -> str:
     bucket = os.environ.get(SKILLS_BUCKET_ENV, "").strip()
@@ -370,17 +370,17 @@ def _gcp_bucket_or_skip() -> str:
     return bucket
 
 
-@pytest.mark.seam("skill_registry")
+@pytest.mark.port("skill_registry")
 async def test_live_rfp_use_case_add_terminal_outcome_parity(
     adapter, live_rfp_env, monkeypatch
 ):
-    if adapter is SeamMode.local:
+    if adapter is PortMode.local:
         assert await _live_rfp_add(monkeypatch, control=False) == EXPECTED_OUTCOME
         return
 
     _gcp_bucket_or_skip()
-    monkeypatch.setenv("BRIDGE_SEAM_SKILL_REGISTRY", "gcp")
-    reg = get_adapter(Seam.skill_registry, SeamMode.gcp)
+    monkeypatch.setenv("BRIDGE_PORT_SKILL_REGISTRY", "gcp")
+    reg = get_adapter(Port.skill_registry, PortMode.gcp)
     names = {s.name for s in reg.list_skills()}
     if not set(ADDRESS_SKILLS) <= names:
         pytest.skip(f"the skills bucket must hold {ADDRESS_SKILLS} for this param")

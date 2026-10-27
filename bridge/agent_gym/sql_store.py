@@ -259,6 +259,22 @@ class SqlAgentGymEngine(AgentGymEngine):
 
         return self._run(_op())
 
+    def _list_all_signals(self) -> list[ExpertFeedbackSignal]:
+        self._ensure_ready()
+        table = self._signals_table
+        engine = self._engine
+
+        async def _op() -> list[ExpertFeedbackSignal]:
+            from sqlalchemy import select
+
+            async with engine.connect() as conn:
+                res = await conn.execute(
+                    select(table.c.payload_json).order_by(table.c.signal_id.asc())
+                )
+                return [ExpertFeedbackSignal.model_validate_json(row[0]) for row in res]
+
+        return self._run(_op())
+
     def _save_rule(self, rule: TribalKnowledgeRule) -> None:
         self._ensure_ready()
         table = self._rules_table

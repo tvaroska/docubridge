@@ -29,9 +29,9 @@ The human counterparty's [A2UI Path-B](a2ui-edge.md) surface: upload a document,
 
 ## Presentation modes
 
-- **Split-Screen Theater** (default) — provider portal (left, external) ↔ agent console + ops dashboard (right, internal), the Gateway boundary drawn between them. One story, both zones, the seam visible.
+- **Split-Screen Theater** (default) — provider portal (left, external) ↔ agent console + ops dashboard (right, internal), the Gateway boundary drawn between them. One story, both zones, the port visible.
 - **Timeline** — the exchange as an event stream (request → arrivals → chase → escalate → deliver); scrub it.
-- **Architecture X-Ray** — overlay the live traffic on the component/seam diagram; watch calls light up the extraction seam, scheduler, Gateway.
+- **Architecture X-Ray** — overlay the live traffic on the component/port diagram; watch calls light up the extraction port, scheduler, Gateway.
 
 ## Time-warp
 

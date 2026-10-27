@@ -1,7 +1,7 @@
 # GCP Deployment
 
 Feature area for **deploying the Bridge to GCP** — Terraform infrastructure-as-code
-by substrate primitive, GCP seam adapters for every managed-service boundary, and
+by substrate primitive, GCP port adapters for every managed-service boundary, and
 deployed-path parity so the Address golden runs reproduce the same terminal outcomes
 on the provisioned substrate, not just local.
 
@@ -11,20 +11,20 @@ When `/implement` finishes a task, it appends a completed entry below.
 
 **Requirements (THE WHAT) live in `spec/` and `design/`, already authored — do not duplicate here:**
 - `design/gcp-substrate.md` — the GCP substrate architecture, substrate-by-primitive
-  module layout, runtime = Cloud Run v2, managed services for each seam.
+  module layout, runtime = Cloud Run v2, managed services for each port.
 - `design/zones.md` — two-zone network model (external/DMZ + internal), trust boundary,
   isolation, Gateway scoping.
-- `design/seams.md` — every managed-service boundary is a seam with local + GCP adapters
+- `design/ports.md` — every managed-service boundary is a port with local + GCP adapters
   and shared parametrized parity tests.
 
 **Phase 7 breakdown (P7-1…9):**
 - P7-1: Terraform scaffold (network, iam, runtime) + credential-free plan-time tests
-- P7-2: Cloud SQL database module + shared-store seam adapters (sessions, task_store,
+- P7-2: Cloud SQL database module + shared-store port adapters (sessions, task_store,
   exchange_store) with cross-replica parity
 - P7-3: GCS artifacts + skill_registry, signed URLs, retention
 - P7-4: Cloud Tasks module + OIDC callback auth
 - P7-5: Gateway live module + Agent-Identity transport
-- P7-6: Deployed extraction adapter (Gemini engine behind the seam)
+- P7-6: Deployed extraction adapter (Gemini engine behind the port)
 - P7-7: Frontend deploy module
 - P7-8: Service-wiring guard test (no hardcoded in-memory services in `bridge/`) — entry in `docs/features/production-readiness.md`
 - P7-9: Deployed-path parity gate (live provisioned project)
@@ -45,7 +45,7 @@ before any live provisioning.
 - **Root module** (`terraform/`): `versions.tf` (Terraform >= 1.7, google/google-beta
   providers >= 6.0), `variables.tf` (project_id, region, service_name, container_image,
   enable_gateway, labels), `main.tf` (provider config + three module calls with documented
-  extension seams for P7-2…7 primitives), `outputs.tf` (network/SA/runtime references),
+  extension ports for P7-2…7 primitives), `outputs.tf` (network/SA/runtime references),
   `terraform.tfvars.example` (non-secret sample values).
 
 - **`modules/network/`**: Custom-mode VPC with **two-zone model** (`design/zones.md`) —
@@ -62,7 +62,7 @@ before any live provisioning.
 
 - **`modules/runtime/`**: Cloud Run v2 service skeleton — **hosts the ADK App** (FastAPI +
   a2a-sdk edge + A2UI portal), does NOT wrap Vertex Agent Engine (Agent Engine only appears
-  behind the Sessions seam, P7-6). Template runs as the bridge-runtime SA, uses placeholder
+  behind the Sessions port, P7-6). Template runs as the bridge-runtime SA, uses placeholder
   container image (real image wired at deploy/P7-9). **Direct VPC egress** into the internal
   subnet (`egress = "PRIVATE_RANGES_ONLY"`) for the private-IP Cloud SQL path (P7-2) —
   datastore traffic stays on VPC, never forced onto an HTTP hop (avoiding the Gateway
@@ -87,8 +87,8 @@ before any live provisioning.
 Module boundaries are stable **infrastructure primitives** (network, iam, runtime,
 database, tasks, secrets, gateway, frontend) — **not** one module per platform service.
 The Bridge's platform services (Agent Runtime, Sessions/Memory Bank, Skill Registry,
-Gateway, Identity, Extraction) are realized through the **seams' GCP adapters** (config +
-IAM + client code in `bridge/seams/gcp/`), not as same-named Terraform modules. This keeps
+Gateway, Identity, Extraction) are realized through the **ports' GCP adapters** (config +
+IAM + client code in `bridge/ports/gcp/`), not as same-named Terraform modules. This keeps
 the IaC layer stable across substrate swaps and allows the six later primitives (P7-2…7)
 to attach as small deltas to the scaffold without restructuring.
 
@@ -134,7 +134,7 @@ adapters) through P7-7 (frontend deploy) to attach.
 
 **Completed:** 2026-09-07
 
-Built the shared-datastore GCP seam adapters and Terraform infrastructure to avoid the
+Built the shared-datastore GCP port adapters and Terraform infrastructure to avoid the
 **session-affinity trap** — the production bug from `vibeflix-audit` where a per-replica
 in-memory task store caused an 86.8% poll-404 rate on multi-replica deployments (write
 lands on replica A, poll hits replica B, session not found). Our GCP adapters back onto
@@ -161,7 +161,7 @@ lands on replica A, poll hits replica B, session not found). Our GCP adapters ba
   `value_source.secret_key_ref` (version `"latest"`) when the secret ID is set. The DSN
   reaches the app ONLY via this secret env, preserving the private-IP path.
 
-- **`bridge/seams/gcp/` package**: GCP seam adapters for `sessions`, `task_store`,
+- **`bridge/ports/gcp/` package**: GCP port adapters for `sessions`, `task_store`,
   `exchange_store` — the same ADK/a2a-sdk Database\* classes the local adapter builds
   (`DatabaseSessionService`, `DatabaseTaskStore`, `DatabasePushNotificationConfigStore`)
   over a **Postgres DSN** from the `DATABASE_URL` secret env instead of an in-memory or
@@ -189,9 +189,9 @@ lands on replica A, poll hits replica B, session not found). Our GCP adapters ba
   `gcp` it uses the Postgres DSN (skipped unless `BRIDGE_TEST_GCP=1` + a provisioned DSN).
   This is a named P7-9 exit-gate criterion.
 
-- **Updated seam registry** (`bridge/seams/registry.py`): `get_adapter(seam, SeamMode.gcp)`
-  dispatches to `GCP_ADAPTERS[seam]()` for the three implemented seams; other seams still
-  raise `NotImplementedError(f"gcp adapter for {seam.value} lands at P7")` (a2a_client,
+- **Updated port registry** (`bridge/ports/registry.py`): `get_adapter(port, PortMode.gcp)`
+  dispatches to `GCP_ADAPTERS[port]()` for the three implemented ports; other ports still
+  raise `NotImplementedError(f"gcp adapter for {port.value} lands at P7")` (a2a_client,
   scheduler, skill_registry, extraction deferred to P7-3/4/5/6).
 
 - **Plan-time tests** (`terraform/tests/database.tftest.hcl`,
@@ -201,7 +201,7 @@ lands on replica A, poll hits replica B, session not found). Our GCP adapters ba
   that no secret value lives in HCL). All tests run credential-free via `mock_provider`.
 
 - **`pyproject.toml`**: Added optional `gcp` extra with `asyncpg>=0.29` (async Postgres
-  driver). Importing `bridge.seams.gcp` does NOT pull asyncpg at module load — lazy
+  driver). Importing `bridge.ports.gcp` does NOT pull asyncpg at module load — lazy
   imports inside methods preserve the default (non-GCP) suite running without it.
 
 **Why shared stores, not per-replica in-memory:**
@@ -212,7 +212,7 @@ can land on different replicas. With `InMemoryTaskStore`, replica A holds the ta
 replica B returns 404, the polling loop fails. The `vibeflix-audit` reference measured
 86.8% poll-404 rate and a full-run speedup from ~5m to ~1m44s after moving to a single
 shared Cloud SQL store. Our design already specifies shared stores
-(`design/seams.md`), but this task delivers the implementation and proves it via the
+(`design/ports.md`), but this task delivers the implementation and proves it via the
 cross-replica parity test.
 
 **Why Cloud SQL on private IP only:**
@@ -232,19 +232,19 @@ touches an HTTP hop. The `database` module enforces `ipv4_enabled = false` +
   builds. The parity is "same class, Postgres DSN instead of sqlite DSN" + the
   terminal-retry wrapper. This is what makes the mock→real swap transparent to the agent.
 
-- **The cross-replica parity test is terminal-outcome, never ledger-identical.** Seam
+- **The cross-replica parity test is terminal-outcome, never ledger-identical.** Port
   parity is defined as terminal-outcome (same task reaches the same end state), not
   ledger-identical (every write produces byte-identical rows). Two independent engines
   may differ in connection-pool state, timestamps, retry counts — the shared-store
   assertion is that a write via handle A is **visible** to handle B, not that the
   internal ledger is bit-for-bit identical.
 
-- **`ExchangeStoreSeam` stores materialized Exchange records (S0-arch-14).**
+- **`ExchangeStorePort` stores materialized Exchange records (S0-arch-14).**
   `GcpExchangeStore.build_exchange_store()` returns the same `SqlExchangeStore` the local
   adapter builds, over the same `DATABASE_URL` (its own table `bridge_exchange_records`):
   versioned JSON records keyed by `(kind, ref)` with compare-and-set writes, today the RFP
   board. It refuses an in-memory fallback and a sync driver like the other shared stores;
-  `tests/test_exchange_store_seam.py` carries the parity + cross-replica cases.
+  `tests/test_exchange_store_port.py` carries the parity + cross-replica cases.
 
 - **Terminal-retry wrapper is unit-testable without GCP.** The retry behavior is proven
   via a fake inner store (raises once then succeeds → assert WARNING logged + eventual
@@ -266,8 +266,8 @@ touches an HTTP hop. The `database` module enforces `ipv4_enabled = false` +
    `BRIDGE_TEST_GCP`)
 4. Terminal-retry wrapper unit test passes (success-after-one-failure with WARNING logged,
    exhausted-retries with ERROR + raise, non-terminal-no-retry)
-5. Registry dispatch correct — `Seam.sessions`, `task_store`, `exchange_store` return
-   `GcpSessions`, `GcpTaskStore`, `GcpExchangeStore`; unimplemented seams raise
+5. Registry dispatch correct — `Port.sessions`, `task_store`, `exchange_store` return
+   `GcpSessions`, `GcpTaskStore`, `GcpExchangeStore`; unimplemented ports raise
 6. GCP adapter refuses in-memory (the trap guard raises when no DSN configured)
 7. GCP adapter rejects sync/non-async Postgres DSN (clear async-driver error)
 8. Isolation guard green (gcp pkg imports no `agents/`)
@@ -288,7 +288,7 @@ at P7-9 against a provisioned Cloud SQL instance.
 Built the GCS-backed artifact storage and skill registry with time-limited signed URLs
 for secure artifact delivery, plus object-lifecycle retention policies that keep
 artifact GC off the Bridge runtime. Two backends implemented: the native ADK
-`GcsArtifactService` swap and the `skill_registry` GCP seam adapter.
+`GcsArtifactService` swap and the `skill_registry` GCP port adapter.
 
 **What was built:**
 
@@ -325,15 +325,15 @@ artifact GC off the Bridge runtime. Two backends implemented: the native ADK
   guessed paths cannot mint signed URLs. When `signer is None` (local), the handler
   streams bytes exactly as before.
 
-- **`skill_registry` GCS adapter** (`bridge/seams/gcp/__init__.py`): `GcpSkillRegistry`
-  implements the seam by **download-to-temp + reuse `skill_meta_from_dir`** (same format,
+- **`skill_registry` GCS adapter** (`bridge/ports/gcp/__init__.py`): `GcpSkillRegistry`
+  implements the port by **download-to-temp + reuse `skill_meta_from_dir`** (same format,
   different store — mirrors P7-2's "same class, different backend" pattern). Bucket name
   from arg or `BRIDGE_SKILLS_BUCKET` env; refuses (RuntimeError) if neither set (no
   in-memory fallback). Objects laid out `<name>/SKILL.md`, `<name>/assets/<file>` —
   identical to the local dir format. `list_skills()` downloads each skill prefix to a
   tempfile and calls `skill_meta_from_dir`; `install_skill` **reuses the S0-sec-1
   traversal defense** (name `^[a-z0-9-]+$`, every asset must not escape `<name>/`)
-  before uploading. Added to `GCP_ADAPTERS[Seam.skill_registry]`; the seam parity test
+  before uploading. Added to `GCP_ADAPTERS[Port.skill_registry]`; the port parity test
   no longer raises `NotImplementedError`.
 
 - **`pyproject.toml` gcp extra**: Added `google-cloud-storage>=2.18` to the `gcp = [...]`
@@ -348,15 +348,15 @@ artifact GC off the Bridge runtime. Two backends implemented: the native ADK
   `lifecycle_rule` with a Delete action (ART-3 retention exists); IAM grant role ==
   `roles/storage.objectAdmin` scoped per-bucket. All credential-free.
 
-**Why GcsArtifactService is NOT a seam:**
+**Why GcsArtifactService is NOT a port:**
 
 The artifact backend is a **native ADK swap** (`InMemoryArtifactService` ↔ `GcsArtifactService`),
-exactly like Sessions swaps `InMemory…` ↔ `VertexAISessionService`. The seam-in-waiting
+exactly like Sessions swaps `InMemory…` ↔ `VertexAISessionService`. The port-in-waiting
 lives in `bridge/edge/artifacts.py` (the `build_artifact_store()` factory) and is wired
 in `server.py`/`executor.py` via the `artifact_store or build_artifact_store()` idiom
-(injectable param wins). There is **no** `@pytest.mark.seam` artifact parity test and no
-`Seam.artifact` enum entry — the swap point is a documented factory + the P7-8 wiring
-guard, not a seam adapter.
+(injectable param wins). There is **no** `@pytest.mark.port` artifact parity test and no
+`Port.artifact` enum entry — the swap point is a documented factory + the P7-8 wiring
+guard, not a port adapter.
 
 **Why buckets are never public:**
 
@@ -384,9 +384,9 @@ unchanged). Lifecycle is the substrate primitive; do not add Bridge-side GC.
 
 - **Same format, different store.** `GcpSkillRegistry` downloads to temp and reuses
   `skill_meta_from_dir` — does NOT re-implement frontmatter parsing. The format is the
-  seam contract (`design/seams.md`); that one parser gates both sides.
+  port contract (`design/ports.md`); that one parser gates both sides.
 
-- **Lazy imports everywhere.** Importing `bridge.seams.gcp` or `bridge.edge.artifacts`
+- **Lazy imports everywhere.** Importing `bridge.ports.gcp` or `bridge.edge.artifacts`
   must NOT pull `google.cloud.storage`. Lazy-import `from google.cloud.storage import
   Client` and `from bridge.edge.skills import skill_meta_from_dir` inside methods only.
   Mirrors P7-2's asyncpg discipline. Tested by structural unit test (`sys.modules`
@@ -398,9 +398,9 @@ unchanged). Lifecycle is the substrate primitive; do not add Bridge-side GC.
   unlike the DB DSN — bucket names are not sensitive).
 
 - **P7-8 wiring-guard compatibility.** The `artifact_store or build_artifact_store()`
-  injection seam (param wins) is preserved. `build_artifact_store()` may construct
+  injection port (param wins) is preserved. `build_artifact_store()` may construct
   `InMemoryArtifactService` internally — that's the reachable-via-`or` fallback the guard
-  permits; the injectable seam is the point.
+  permits; the injectable port is the point.
 
 **Acceptance verified:**
 
@@ -410,13 +410,13 @@ unchanged). Lifecycle is the substrate primitive; do not add Bridge-side GC.
 3. Isolation guard green (`bridge/` never imports `agents/`)
 4. Terraform plan-time credential-free — `fmt`, `init`, `validate`, `test` all exit 0 with
    no GCP auth
-5. `skill_registry` gcp adapter wired (`get_adapter(Seam.skill_registry, SeamMode.gcp)` →
+5. `skill_registry` gcp adapter wired (`get_adapter(Port.skill_registry, PortMode.gcp)` →
    `GcpSkillRegistry`, no longer raises)
 6. Refuse-without-bucket loud (`BRIDGE_SKILLS_BUCKET` unset → `RuntimeError` mentioning
    the bucket env)
 7. Traversal defense before I/O (`install_skill("../evil", ...)` raises `ValueError` before
    any network)
-8. Lazy imports verified (`import bridge.seams.gcp` → `google.cloud.storage` not in
+8. Lazy imports verified (`import bridge.ports.gcp` → `google.cloud.storage` not in
    `sys.modules`)
 9. Signed-URL endpoint unit tests green (307 redirect to fake signed URL when signer
    provided + blob exists; 404 on missing blob; no-signer path still streams bytes)
@@ -441,7 +441,7 @@ with the deployed-path parity gate.
 
 **What was built:**
 
-- **`GcpScheduler` adapter** (`bridge/seams/gcp/__init__.py`): Implements `SchedulerSeam`
+- **`GcpScheduler` adapter** (`bridge/ports/gcp/__init__.py`): Implements `SchedulerPort`
   backed by Cloud Tasks instead of the local `VirtualClock`. Key design:
   - **Poll→push impedance match**: Cloud Tasks is wall-clock/push-driven (fires by POSTing
     an OIDC callback at `schedule_time`), while the local adapter is poll-driven
@@ -473,7 +473,7 @@ with the deployed-path parity gate.
     session-affinity trap).
   - **Config resolution** from env: `BRIDGE_TASKS_QUEUE` (full queue resource path),
     `BRIDGE_FOLLOWUP_CALLBACK_URL`, `BRIDGE_RUNTIME_SA_EMAIL`.
-  - **Injectable-seam idiom**: `build_scheduler(client=None, *, queue_path=None, ...)` —
+  - **Injectable-port idiom**: `build_scheduler(client=None, *, queue_path=None, ...)` —
     injected fake client wins (used by credential-free structural tests); when `client is
     None` a real `tasks_v2.CloudTasksClient` is lazily built.
 
@@ -482,7 +482,7 @@ with the deployed-path parity gate.
   `rate_limits {}` + `retry_config {}` blocks for testable retry semantics). **No IAM in
   this module** — the enqueuer + token-creator grants live in the iam module (P7-1); a
   header comment states this (mirrors `modules/gcs/`). **No secrets/tasks in HCL** — the
-  queue is a pure container; tasks are runtime data armed through the seam adapter.
+  queue is a pure container; tasks are runtime data armed through the port adapter.
   Outputs: `queue_name`, `queue_id`, constructed `queue_path`
   (`projects/<P>/locations/<L>/queues/bridge-followups`) — the value injected as
   `BRIDGE_TASKS_QUEUE`.
@@ -498,7 +498,7 @@ with the deployed-path parity gate.
 
 - **Root wiring** (`terraform/main.tf` + `outputs.tf`): Added `module "tasks"` (passes
   `project_id`, `region`, `labels`), root outputs (`tasks_queue_name`, `tasks_queue_path`),
-  updated "Extension seams" comment — P7-4 is now BUILT (module.tasks); the token-creator
+  updated "Extension ports" comment — P7-4 is now BUILT (module.tasks); the token-creator
   binding it consumes is already on the SA (module.iam).
 
 - **`pyproject.toml` gcp extra**: Added `google-cloud-tasks>=2.16` to the `gcp = [...]`
@@ -506,7 +506,7 @@ with the deployed-path parity gate.
 
 - **Structural tests** (`tests/test_gcp_scheduler.py`): Credential-free, always-run tests
   with a fake Cloud Tasks client injected via `build_scheduler(client=fake, ...)`.
-  Asserts: `get_adapter(Seam.scheduler, SeamMode.gcp)` returns `GcpScheduler` (no longer
+  Asserts: `get_adapter(Port.scheduler, PortMode.gcp)` returns `GcpScheduler` (no longer
   raises); refuse-without-config loud (`RuntimeError` naming env); `schedule` mints the
   right task (OIDC token with SA email + audience == callback URL, POST to callback URL,
   JSON body, `schedule_time` ≈ `fire_at`); idempotent re-arm (same `key` → same derived
@@ -514,14 +514,14 @@ with the deployed-path parity gate.
   `now()` is an int; `advance` / `advance_to` raise `NotImplementedError` mentioning
   wall-clock/push; lazy import (`google.cloud.tasks` not in `sys.modules`).
 
-- **Seam parity test update** (`tests/test_scheduler_seam.py`): Flipped the gcp branch of
+- **Port parity test update** (`tests/test_scheduler_port.py`): Flipped the gcp branch of
   `test_scheduler_local_builds_virtualclock` — previously raised `NotImplementedError`,
   now asserts `get_adapter` returns `GcpScheduler`, builds it with injected fake client +
   explicit config, asserts `now()` is int, `schedule`/`cancel` drive the fake, and
   `advance` raises. Local branch (full virtual-clock schedule/advance flow) unchanged.
   Other un-parametrized tests (`idempotent_rearm`, `cancel`, `same_tick`, `backwards`)
-  already early-return on gcp — left as-is. One seam marker per seam (DECISIONS.md
-  2026-09-06 S0-arch-3) — `@pytest.mark.seam("scheduler")` stays only on the one test.
+  already early-return on gcp — left as-is. One port marker per port (DECISIONS.md
+  2026-09-06 S0-arch-3) — `@pytest.mark.port("scheduler")` stays only on the one test.
 
 - **Plan-time test** (`terraform/tests/tasks.tftest.hcl`): `mock_provider` +
   `command = plan`. Asserts queue name == `"bridge-followups"`, location tracks region, a
@@ -594,7 +594,7 @@ deploy step sets it from the resolved service URL.
   `BRIDGE_TEST_GCP=1` against a provisioned queue + deployed callback endpoint — that is
   the P7-9 deployed-path parity gate. P7-4 proves the arming half credential-free.
 
-- **Lazy imports everywhere.** Importing `bridge.seams.gcp` must not pull
+- **Lazy imports everywhere.** Importing `bridge.ports.gcp` must not pull
   `google.cloud.tasks` (mirrors P7-2 asyncpg / P7-3 google-cloud-storage discipline).
   Lazy-import `from google.cloud import tasks_v2` inside methods only. Tested by
   structural unit test (`sys.modules` assertion).
@@ -611,14 +611,14 @@ deploy step sets it from the resolved service URL.
 3. Isolation guard green (`bridge/` never imports `agents/`)
 4. Terraform plan-time credential-free — `fmt`, `init`, `validate`, `test` all exit 0 with
    no GCP auth (incl. new `tasks.tftest.hcl`)
-5. `scheduler` gcp adapter wired (`get_adapter(Seam.scheduler, SeamMode.gcp)` →
+5. `scheduler` gcp adapter wired (`get_adapter(Port.scheduler, PortMode.gcp)` →
    `GcpScheduler`, previously raised)
 6. Refuse-without-config loud (`BRIDGE_TASKS_QUEUE` unset → `RuntimeError` mentioning env)
 7. Poll→push divergence honest (`advance(1)` / `advance_to(1)` raise `NotImplementedError`
    mentioning wall-clock/push)
-8. Lazy imports verified (`import bridge.seams.gcp` → `google.cloud.tasks` not in
+8. Lazy imports verified (`import bridge.ports.gcp` → `google.cloud.tasks` not in
    `sys.modules`)
-9. Seam parity + structural tests green (`tests/test_scheduler_seam.py`,
+9. Port parity + structural tests green (`tests/test_scheduler_port.py`,
    `tests/test_gcp_scheduler.py` — gcp branch returns `GcpScheduler`, mints right OIDC
    task with `schedule_time` from `fire_at`, POST to callback URL, idempotent re-arm by
    task name, cancel deletes, advance raises)
@@ -640,7 +640,7 @@ P7-9 (deployed-path parity gate). No live apply in this task.
 **Completed:** 2026-09-07
 
 Built the Gateway Terraform module for external ingress scoping, the `GcpA2AClient`
-a2a_client seam adapter with Agent Identity transport, and the served-card public-URL env
+a2a_client port adapter with Agent Identity transport, and the served-card public-URL env
 to satisfy google-adk >=2.7 same-origin validation. The load-bearing finding: the 2.3-era
 `.mtls` card-repoint hack from vibeflix-audit is **superseded and must NOT be ported** —
 adk 2.7 now enforces same-origin validation, so the fix is served-card-origin +
@@ -670,9 +670,9 @@ refuse-loud reconciliation, not client-side repointing.
   IP, `""` when disabled), `gateway_url` (the authorized public HTTPS URL derived from first
   `ssl_domains` entry, `""`). Added `party_invoker_members` (list(string), default `[]`)
   and `ssl_domains` (list(string), default `[]`) to root variables. Updated "P7-5 gateway"
-  extension-seam comment from future tense to a BUILT note (mirroring the P7-3/P7-4 style).
+  extension-port comment from future tense to a BUILT note (mirroring the P7-3/P7-4 style).
 
-- **`GcpA2AClient` adapter** (`bridge/seams/gcp/__init__.py`): Implements `A2AClientSeam`
+- **`GcpA2AClient` adapter** (`bridge/ports/gcp/__init__.py`): Implements `A2AClientPort`
   backed by an **Agent-Identity transport** over the existing `OutboundClient` (no
   reimplementation of idempotency / crash-safe re-drive; only the transport differs).
   - **Agent Identity = per-call OIDC ID token**, never a message bearer field. The transport
@@ -687,7 +687,7 @@ refuse-loud reconciliation, not client-side repointing.
     silent repoint). This is the explicit reconciliation that the adk 2.7 same-origin
     validation requires: the consumer side (`RemoteA2aAgent`) validates the served card's
     URL origin; the outbound side (our `GcpA2AClient`) reconciles before sending.
-  - **Injectable-seam idiom**: `build_client(*, gateway_host, sa_email, id_token_fetcher,
+  - **Injectable-port idiom**: `build_client(*, gateway_host, sa_email, id_token_fetcher,
     sender)` — the ID-token fetcher and httpx sender are both **injectable** so the unit +
     parity tests run credential-free; the real fetcher/sender path is exercised only under
     `BRIDGE_TEST_GCP` (a P7-9 input).
@@ -699,7 +699,7 @@ refuse-loud reconciliation, not client-side repointing.
     Gateway-authorized host, injected by the runtime module), reuses existing
     `BRIDGE_RUNTIME_SA_EMAIL_ENV` (the same SA mints tokens for scheduler + a2a_client).
   - **Lazy imports**: `google.oauth2`, `google.auth.transport.requests`, and `httpx` are
-    imported inside methods only. Importing `bridge.seams.gcp` pulls neither (mirrors P7-2
+    imported inside methods only. Importing `bridge.ports.gcp` pulls neither (mirrors P7-2
     asyncpg / P7-3 gcs / P7-4 tasks lazy-import discipline).
 
 - **Served-card public-URL env** (`bridge/edge/card.py`, `bridge/edge/server.py`): New env
@@ -720,12 +720,12 @@ refuse-loud reconciliation, not client-side repointing.
   container env untouched (runtime tftest stays green). The actual values are injected
   out-of-band at P7-9 (may not be known at plan time).
 
-- **Seam registry** (`bridge/seams/registry.py`): Updated docstring to move `a2a_client`
+- **Port registry** (`bridge/ports/registry.py`): Updated docstring to move `a2a_client`
   from "still raises" to "built (P7-5)"; only `extraction` (P7-6) and `memory_bank` remain
   raising.
 
-- **Parity tests** (`tests/test_a2a_client_seam.py`, `tests/test_gcp_a2a_client.py`):
-  Flipped the gcp branch of the ONE `@pytest.mark.seam("a2a_client")` test — previously
+- **Parity tests** (`tests/test_a2a_client_port.py`, `tests/test_gcp_a2a_client.py`):
+  Flipped the gcp branch of the ONE `@pytest.mark.port("a2a_client")` test — previously
   raised `NotImplementedError`, now builds `GcpA2AClient` with injected fake fetcher/sender
   + `FakePeerDirectory` (card URLs match `gateway_host` so reconciliation passes), and the
   same three-activity terminal-outcome flow (send/dial/deliver → receipts, no `resent`)
@@ -750,7 +750,7 @@ refuse-loud reconciliation, not client-side repointing.
 **Why adk >=2.7 same-origin supersedes the .mtls repoint hack:**
 
 Before implementing, the task re-verified the card-url repointing question against the
-installed `google-adk 2.7.1` (`a2a-sdk 1.1.2`). The finding:
+installed `google-adk >= 2.11.0` (`a2a-sdk 1.1.2`). The finding:
 `.venv/lib/python3.12/site-packages/google/adk/agents/remote_a2a_agent.py:506-550`
 `RemoteA2aAgent._validate_card_rpc_targets` (new since 2.3) now **enforces**: every
 advertised RPC URL must be `https` (or `http` on loopback), AND every advertised RPC URL's
@@ -761,7 +761,7 @@ so it is deliberately NOT ported. Instead: (a) **Consumer side** (Address's
 `RemoteA2aAgent` → Bridge): the served Bridge Agent Card must advertise the same
 Gateway-authorized origin the consumer fetches it from — satisfied by `BRIDGE_PUBLIC_URL`
 env → `resolved_card_url()` → card `url` + executor `base_url`. (b) **Bridge outbound
-side** (our `a2a_client` seam): reconcile explicitly and refuse loud — host mismatch is a
+side** (our `a2a_client` port): reconcile explicitly and refuse loud — host mismatch is a
 misconfiguration, not something to paper over with a silent repoint.
 
 **Why Gateway governs ingress only:**
@@ -782,7 +782,7 @@ never routed through an HTTP hop.
 
 - **Refuse-loud on host mismatch.** `reconcile_card_host` raises `ValueError` naming both
   hosts (the advertised URL and the Gateway-authorized host) on a mismatch — never a silent
-  repoint, mirroring the seam's refuse-without-config posture.
+  repoint, mirroring the port's refuse-without-config posture.
 
 - **Gateway env + public-URL env are optional at plan time.** Both runtime envs are gated
   (`for_each = var.<x> != "" ? [1] : []`) so the P7-1 default (no gateway) leaves the
@@ -798,12 +798,12 @@ never routed through an HTTP hop.
 1. T1: Full suite green (660 passed, 16 skipped), `ruff check` clean, isolation guard green
 2. Terraform plan-time credential-free (`fmt`, `init`, `validate`, `test` all exit 0 with
    no GCP auth; 13 tftest files passed incl. new `gateway.tftest.hcl` 3 runs)
-3. `a2a_client` gcp adapter wired (`get_adapter(Seam.a2a_client, SeamMode.gcp)` →
+3. `a2a_client` gcp adapter wired (`get_adapter(Port.a2a_client, PortMode.gcp)` →
    `GcpA2AClient`, previously raised)
 4. Refuse-without-config loud (`BRIDGE_GATEWAY_HOST` unset → `RuntimeError` naming env)
 5. Host reconciliation — match passes (`reconcile_card_host('https://host.example/rpc',
    'host.example')` → URL unchanged), mismatch refuses loud (ValueError naming both hosts)
-6. Terminal-outcome parity local↔gcp (`test_a2a_client_seam.py` + `test_gcp_a2a_client.py`
+6. Terminal-outcome parity local↔gcp (`test_a2a_client_port.py` + `test_gcp_a2a_client.py`
    all pass — same send/dial/deliver receipts flow, credential-free via injected fakes)
 7. OIDC token minted with the authorized audience; no bearer field on any outbound message
 8. Served card honors `BRIDGE_PUBLIC_URL` (monkeypatch env → `resolved_card_url()` returns
@@ -818,12 +818,12 @@ P7-9 (deployed-path parity gate) / S1-benefits-6. No live apply in this task.
 
 ---
 
-## P7-6: Deployed extraction adapter (Gemini engine behind the seam)
+## P7-6: Deployed extraction adapter (Gemini engine behind the port)
 
 **Completed:** 2026-09-07
 
-Built the Gemini extraction engine and its GCP seam adapter to support deployed document
-extraction. This is unique among the P7 seams: extraction is the **capability axis**
+Built the Gemini extraction engine and its GCP port adapter to support deployed document
+extraction. This is unique among the P7 ports: extraction is the **capability axis**
 (fixture|gemini|docai), not a local↔gcp storage swap — the deployed engine is selected by
 config, not by switching between local and GCP modes.
 
@@ -835,7 +835,7 @@ config, not by switching between local and GCP modes.
   validated `ExtractionResult` — unit-testable with no client/network), and (b) client
   call in `async def extract(artifact_name)` that reads document bytes, builds a Gemini
   request (JSON schema prompt + document as inline Part), and returns parsed result.
-  - **Injectable seam**: `client` (default None → lazy `google.genai.Client()` on first
+  - **Injectable port**: `client` (default None → lazy `google.genai.Client()` on first
     use) and `resolver` (default corpus-relative byte reader at `wiki/evals/address/`,
     mirrors `bridge/edge/artifacts.py::resolve_bytes` swap point). Tests inject fakes →
     credential-free unit tests.
@@ -846,18 +846,18 @@ config, not by switching between local and GCP modes.
   - **SVG handling**: SVGs ride as **text parts** (corpus images are text SVGs; simpler
     than trying to force bytes as image parts).
 
-- **`GcpExtraction` seam adapter** (`bridge/seams/gcp/__init__.py`): Wraps the engine
-  behind the extraction seam. Engine selection by `BRIDGE_EXTRACTION_ENGINE` env
+- **`GcpExtraction` port adapter** (`bridge/ports/gcp/__init__.py`): Wraps the engine
+  behind the extraction port. Engine selection by `BRIDGE_EXTRACTION_ENGINE` env
   (fixture|gemini|docai):
   - `gemini` (default) → `GeminiExtractor()`
   - `docai` → raises `NotImplementedError` with clear message (Document AI is a logged
     later swap — visible scope-out, never a silent gap)
   - `fixture` → explicit opt-in only (never a silent fallback on the deployed path)
   - Unknown engine → `ValueError` (refuse-loud on misconfiguration)
-  - Registered in `GCP_ADAPTERS[Seam.extraction]`, so `get_adapter(Seam.extraction,
-    SeamMode.gcp)` now returns `GcpExtraction` instead of raising.
+  - Registered in `GCP_ADAPTERS[Port.extraction]`, so `get_adapter(Port.extraction,
+    PortMode.gcp)` now returns `GcpExtraction` instead of raising.
 
-- **Registry updates** (`bridge/seams/registry.py`): Updated docstring — extraction now
+- **Registry updates** (`bridge/ports/registry.py`): Updated docstring — extraction now
   dispatches to GCP_ADAPTERS; only `memory_bank` (deferred by design) still raises
   NotImplementedError.
 
@@ -874,17 +874,17 @@ config, not by switching between local and GCP modes.
   `BRIDGE_TEST_GCP`). Float-equality of confidences is deliberately NOT asserted (parity
   is terminal-outcome, never ledger-identical).
 
-- **Seam test updates** (`tests/test_seams.py`): Removed `Seam.extraction` from the
-  "raises NotImplementedError" loop (left only `Seam.memory_bank`); added positive
+- **Port test updates** (`tests/test_ports.py`): Removed `Port.extraction` from the
+  "raises NotImplementedError" loop (left only `Port.memory_bank`); added positive
   assertion that GCP extraction adapter returns `GcpExtraction` instance.
 
-**Why extraction is different from every other P7 seam:**
+**Why extraction is different from every other P7 port:**
 
-The other seven seams (P7-2…5) swap a **store/infra backend** between local and GCP (in-
+The other seven ports (P7-2…5) swap a **store/infra backend** between local and GCP (in-
 memory sqlite ↔ Cloud SQL, in-memory artifact store ↔ GCS, VirtualClock ↔ Cloud Tasks).
 Extraction swaps the **engine** — fixture|gemini|docai are three capability levels of the
 same extraction function, deployed either way and selected by config. The "GCP adapter" is
-really "the Gemini engine behind the seam," not a local→cloud backend swap.
+really "the Gemini engine behind the port," not a local→cloud backend swap.
 
 **Why terminal-outcome parity, not float-equality:**
 
@@ -892,7 +892,7 @@ A real Gemini call produces stochastic confidence floats that will not bit-for-b
 the fixture corpus values. The corpus reproduction gate is: extracted signals → feed
 `run_disposition_gate` → assert the SAME `expected_disposition` and `expected_gate` for
 all 8 docs. This proves the deployed extraction path reaches the same terminal outcomes
-(accept/reject/HITL/resubmit) as the fixture, which is the seam parity invariant.
+(accept/reject/HITL/resubmit) as the fixture, which is the port parity invariant.
 
 **Why no new dependency:**
 
@@ -903,7 +903,7 @@ Gemini. `pyproject.toml` untouched.
 **Why Document AI is a logged later swap:**
 
 The task shipped Gemini only. Document AI (a richer OCR engine for certain doc types) is a
-documented future capability swap behind the extraction seam. Where the engine is selected,
+documented future capability swap behind the extraction port. Where the engine is selected,
 `docai` raises `NotImplementedError` with a clear message naming Document AI as a later
 swap — a visible scope-out following the "No silent caps" repo rule, never a silent gap.
 
@@ -920,13 +920,13 @@ swap — a visible scope-out following the "No silent caps" repo rule, never a s
   is `gemini`, and a missing/misconfigured engine never silently falls back to fixture.
 
 - **Lazy imports preserve default-suite no-GCP posture.** `google.genai` is imported
-  lazily inside methods (not at module top) so importing `bridge.seams.gcp` or
+  lazily inside methods (not at module top) so importing `bridge.ports.gcp` or
   `bridge.extraction.gemini` pulls no heavy client. Mirrors P7-2 asyncpg / P7-3
   google-cloud-storage / P7-4 tasks discipline.
 
 - **Agent code untouched.** `bridge/extraction/agent.py::extract_document` already
-  resolves via `get_adapter(Seam.extraction, resolve_mode(Seam.extraction))`. With
-  `BRIDGE_SEAM_MODE=gcp` it now returns `GcpExtraction` → Gemini, with no edit needed.
+  resolves via `get_adapter(Port.extraction, resolve_mode(Port.extraction))`. With
+  `BRIDGE_PORT_MODE=gcp` it now returns `GcpExtraction` → Gemini, with no edit needed.
 
 - **Protected corpus is oracle.** `wiki/evals/address/expected.json` is read-only and
   CRITICAL-protected. If the real Gemini engine cannot hit an expected terminal outcome,
@@ -935,7 +935,7 @@ swap — a visible scope-out following the "No silent caps" repo rule, never a s
 
 - **Live corpus test requires credentials.** The `BRIDGE_TEST_GEMINI=1` live test runs
   against the real Gemini API and requires an API key. It stays SKIPPED in the default
-  suite (credential-free), exactly like `BRIDGE_TEST_GCP` live seam tests. The
+  suite (credential-free), exactly like `BRIDGE_TEST_GCP` live port tests. The
   provisioned end-to-end run is P7-9.
 
 **Acceptance verified:**
@@ -944,8 +944,8 @@ swap — a visible scope-out following the "No silent caps" repo rule, never a s
 2. `uv run ruff check` clean
 3. Isolation guard green (`bridge/extraction/gemini.py` imports only `contract/`,
    `bridge.*` (not `agents/`), `google.genai` (lazy), stdlib)
-4. GCP adapter dispatches (`get_adapter(Seam.extraction, SeamMode.gcp)` →
-   `GcpExtraction Seam.extraction`, previously raised NotImplementedError)
+4. GCP adapter dispatches (`get_adapter(Port.extraction, PortMode.gcp)` →
+   `GcpExtraction Port.extraction`, previously raised NotImplementedError)
 5. Importing package pulls no genai client at import time (lazy imports verified; no
    eager client construction)
 6. Document AI is loud scope-out (`GcpExtraction(engine='docai')._resolve_engine()` →
@@ -956,7 +956,7 @@ swap — a visible scope-out following the "No silent caps" repo rule, never a s
    against real Gemini API with credentials is P7-9 provisioned proof, mirroring how
    GcpScheduler/GcpA2AClient gate their live half on `BRIDGE_TEST_GCP`)
 
-Live provisioned end-to-end run (whole seam suite + Address golden runs on deployed path)
+Live provisioned end-to-end run (whole port suite + Address golden runs on deployed path)
 deferred to P7-9 (deployed-path parity gate). No live apply in this task.
 
 ---
@@ -1012,7 +1012,7 @@ URLs are baked into the bundles.
   `enable_frontend`, `ssl_domains = var.frontend_ssl_domains`, `labels`). Root variables:
   `enable_frontend` (bool, default false), `frontend_ssl_domains` (list(string), default
   `[]` — distinct from the gateway's `ssl_domains` since they front different hosts). Root
-  re-exports the five frontend module outputs. Updated extension-seam comment at line ~46
+  re-exports the five frontend module outputs. Updated extension-port comment at line ~46
   from P7-7 reservation to "BUILT (module.frontend) — …" (mirrors P7-3/4/5 entries).
 
 - **Plan-time test** (`terraform/tests/frontend.tftest.hcl`): `mock_provider` +
@@ -1148,7 +1148,7 @@ project stay cleanly skipped as the documented operator step (no silent cap).
 
 **The four exit criteria and where each is proven:**
 
-1. **Whole seam suite with `BRIDGE_TEST_GCP=1`** — the gcp seam params + live roundtrips.
+1. **Whole port suite with `BRIDGE_TEST_GCP=1`** — the gcp port params + live roundtrips.
    Credential-free they skip (doubly gated: `BRIDGE_TEST_GCP=1` enables the param, each test
    also skips without its own resource env — DSN/bucket/queue). Live: `scripts/parity.sh`.
 2. **Deployed Address golden runs** — `tests/test_deployed_parity.py` (new), the second exit
@@ -1157,7 +1157,7 @@ project stay cleanly skipped as the documented operator step (no silent cap).
    same-issuer reject; CUJ-4 resubmit first-turn reject). Gated on `BRIDGE_TEST_GCP=1` AND
    `BRIDGE_DEPLOYED_EDGE_URL`; skips cleanly credential-free naming both envs.
 3. **Plan-time terraform, no credentials** — `terraform test` = 17 passed, 0 failed with
-   `GOOGLE_APPLICATION_CREDENTIALS` unset (up from 16: the new `seam_envs_when_deployed` run).
+   `GOOGLE_APPLICATION_CREDENTIALS` unset (up from 16: the new `port_envs_when_deployed` run).
 4. **Cross-replica read-after-write** — `test_task_store_cross_replica_read_after_write`. The
    `[local]` param (session-affinity guard, two independent handles to one file-DSN store)
    passes credential-free; the `[gcp]` param runs against Cloud SQL under the live env block.
@@ -1186,7 +1186,7 @@ project stay cleanly skipped as the documented operator step (no silent cap).
   (`public_url=""`), inject the DB DSN secret VALUE out-of-band (composed in-memory, piped to
   `gcloud secrets versions add --data-file=-`, NEVER on disk / in HCL), resolve URLs, apply
   phase 2 with the runtime's own-URL envs, build+rsync the frontend apps, print the parity env
-  block. Sets `seam_mode=gcp` + `extraction_engine=gemini` (the seam master switch + the
+  block. Sets `port_mode=gcp` + `extraction_engine=gemini` (the port master switch + the
   deployed extraction engine). `set -euo pipefail`; `bash -n` + shellcheck clean.
 
 - **`scripts/parity.sh`** — runs the exit gate: plan-time terraform, then the whole suite
@@ -1194,18 +1194,18 @@ project stay cleanly skipped as the documented operator step (no silent cap).
   the `[gcp]` cross-replica RAW). Reads config from the environment (the deploy block); the
   DSN is passed through env only, never written to disk.
 
-- **Terraform runtime seam envs** — added gated `seam_mode` / `extraction_engine` vars to
+- **Terraform runtime port envs** — added gated `port_mode` / `extraction_engine` vars to
   `modules/runtime` (mirroring the existing `for_each = var.x != "" ? [1] : []` idiom) so the
-  deployed container gets `BRIDGE_SEAM_MODE=gcp` + `BRIDGE_EXTRACTION_ENGINE=gemini` as plain
+  deployed container gets `BRIDGE_PORT_MODE=gcp` + `BRIDGE_EXTRACTION_ENGINE=gemini` as plain
   envs; default "" leaves the plan untouched. Wired through the root module; new `db_name` /
-  `db_user` root outputs feed the DSN composition. A `seam_envs_when_deployed`
+  `db_user` root outputs feed the DSN composition. A `port_envs_when_deployed`
   `runtime.tftest.hcl` run asserts the deployed shape (and the default asserts no env).
 
 **The parity env map (what the live run consumes):**
 
 | Env | Consumed by |
 |---|---|
-| `BRIDGE_TEST_GCP=1` | the `adapter` fixture (un-skips gcp seam params) + every live test |
+| `BRIDGE_TEST_GCP=1` | the `adapter` fixture (un-skips gcp port params) + every live test |
 | `BRIDGE_GCP_TEST_DSN` | Cloud SQL DSN — durable roundtrip + the cross-replica RAW |
 | `BRIDGE_SKILLS_BUCKET` | live GCS skill-registry roundtrip |
 | `BRIDGE_TASKS_QUEUE` / `BRIDGE_FOLLOWUP_CALLBACK_URL` / `BRIDGE_RUNTIME_SA_EMAIL` | live Cloud Tasks arm→cancel |
@@ -1241,7 +1241,7 @@ OIDC audience, drive the ladder) — call it out before adding, as it is beyond 
    `BRIDGE_TEST_GCP` + `BRIDGE_DEPLOYED_EDGE_URL`.
 3. `uv run pytest "…::test_task_store_cross_replica_read_after_write[local]"` → passed.
 4. `docker build -t bridge:local .` → succeeds; `docker run -e PORT=8080 -e
-   BRIDGE_SEAM_MODE=local -p 8080:8080 bridge:local` then `curl -sf localhost:8080/.well-
+   BRIDGE_PORT_MODE=local -p 8080:8080 bridge:local` then `curl -sf localhost:8080/.well-
    known/agent-card.json` → the card (`"name":"Document Bridge"`) → proves 0.0.0.0:$PORT boot.
 5. `bash -n scripts/deploy.sh && bash -n scripts/parity.sh` clean; shellcheck clean; `grep
    -rnE "password|secret|BEGIN .*PRIVATE" scripts/ Dockerfile` → only env reads + discipline
@@ -1250,13 +1250,13 @@ OIDC audience, drive the ladder) — call it out before adding, as it is beyond 
 
 ---
 
-## S0-arch-14: RFP board persistence through the exchange_store seam
+## S0-arch-14: RFP board persistence through the exchange_store port
 
 **Completed:** 2026-10-01
 
-Built the `exchange_store` seam (previously an empty ABC with `pass` adapters) to persist
+Built the `exchange_store` port (previously an empty ABC with `pass` adapters) to persist
 the RFP aggregate (`RfpCollection`) so RFPs with weeks-scale due dates survive process
-restarts. The seam stores materialized Exchange records with optimistic concurrency control,
+restarts. The port stores materialized Exchange records with optimistic concurrency control,
 supporting both local development (SQLite) and GCP deployment (Cloud SQL PostgreSQL).
 
 **What was built:**
@@ -1272,9 +1272,9 @@ supporting both local development (SQLite) and GCP deployment (Cloud SQL Postgre
   - `SqlExchangeStore`: SQLAlchemy Core over `AsyncEngine` (table `bridge_exchange_records`),
     runs on a private daemon loop thread with sync facade via `run_coroutine_threadsafe`.
     Lazy initialization (thread/loop/engine/table created on first operation, not `__init__`).
-  - `exchange_store_from_env()`: resolves via seam registry.
+  - `exchange_store_from_env()`: resolves via port registry.
 
-- **Seam adapters** (`bridge/seams/protocols.py`, `local/__init__.py`, `gcp/__init__.py`):
+- **Port adapters** (`bridge/ports/protocols.py`, `local/__init__.py`, `gcp/__init__.py`):
   - `LocalExchangeStore.build_exchange_store()`: `BRIDGE_EXCHANGE_DB_URL` empty →
     `InMemoryExchangeStore()`; DSN set → `SqlExchangeStore(dsn)` with async-driver validation.
   - `GcpExchangeStore.build_exchange_store()`: `SqlExchangeStore` over `DATABASE_URL`
@@ -1295,8 +1295,8 @@ supporting both local development (SQLite) and GCP deployment (Cloud SQL Postgre
   - Seed only when absent: `if DEMO_RFP_ID not in board.rfps: _seed(...)` (prevents
     `StaleExchangeWrite` on restart with durable DSN).
 
-- **Tests** (`tests/test_exchange_store_seam.py`, `tests/test_rfp_durable.py`):
-  - Shared seam parity test with `@pytest.mark.seam("exchange_store")` covering durability,
+- **Tests** (`tests/test_exchange_store_port.py`, `tests/test_rfp_durable.py`):
+  - Shared port parity test with `@pytest.mark.port("exchange_store")` covering durability,
     CAS (create-only + version conflicts), creation-order listing, cross-replica
     read-after-write, JSON validation.
   - Board-level restart survival (put → close → new handle sees same state), cross-board
@@ -1315,7 +1315,7 @@ supporting both local development (SQLite) and GCP deployment (Cloud SQL Postgre
 - **Thread-local version tracking**: prevents FastAPI threadpool races where concurrent reads
   could create cross-replica-style conflicts within one process.
 - **Lazy everything**: thread/loop/engine/table initialization deferred to first operation
-  so `get_adapter` never raises and importing `bridge.seams.gcp` doesn't import `asyncpg`.
+  so `get_adapter` never raises and importing `bridge.ports.gcp` doesn't import `asyncpg`.
 - **No 409 mapping for `StaleExchangeWrite` yet**: unhandled conflicts surface as 500 on
   routes or retry in email drain loop; proper retry/409 policy deferred to S0-arch-17
   (multi-replica host).
@@ -1325,7 +1325,7 @@ supporting both local development (SQLite) and GCP deployment (Cloud SQL Postgre
 - Seed-only-when-absent guard required for demo host restart with durable DSN.
 - JSON round-trip on both stores (write and read, `allow_nan=False`) ensures identical
   `TypeError` surface and prevents mutation of stored state via returned dicts.
-- Lazy `bridge.seams` import in `exchange_store_from_env` to avoid circular-import trap
+- Lazy `bridge.ports` import in `exchange_store_from_env` to avoid circular-import trap
   (see DECISIONS.md S0-bug-3 #7).
 - No existing test needed re-read fixes — all write sites already followed fresh-read → put pattern.
 
@@ -1333,7 +1333,7 @@ supporting both local development (SQLite) and GCP deployment (Cloud SQL Postgre
 
 1. `uv run ruff check` clean, `uv run pytest` full suite green (no new skips except existing
    `BRIDGE_TEST_GCP` / `BRIDGE_GCP_TEST_DSN` gates).
-2. Seam parity: `uv run pytest tests/test_exchange_store_seam.py -v -m seam` → all `[local]`
+2. Port parity: `uv run pytest tests/test_exchange_store_port.py -v -m port` → all `[local]`
    passed, `[gcp]` skipped only by gate.
 3. Board durability: `uv run pytest tests/test_rfp_durable.py -v` → all passed.
 4. Manual restart proof (two separate processes, real SQLite file) → second process sees
@@ -1342,7 +1342,7 @@ supporting both local development (SQLite) and GCP deployment (Cloud SQL Postgre
    mentioning session-affinity trap.
 
 **Handoff to S0-arch-17:** deployed board-owning host needs `exchange_store_from_env()`
-with `BRIDGE_SEAM_MODE=gcp`, `StaleExchangeWrite` → 409 / retry policy decision, and
+with `BRIDGE_PORT_MODE=gcp`, `StaleExchangeWrite` → 409 / retry policy decision, and
 store closure on shutdown.
 
 ---

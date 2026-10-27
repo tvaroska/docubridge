@@ -20,7 +20,7 @@ aggregate this cycle — the same posture ``bridge.negotiate`` chose for negotia
 persistence (a leg holds its versions in memory, driven off the corpus). A **durable**
 program store (surviving a process restart) is a later-cycle concern; it is logged here as
 designed-but-unbuilt (no silent cap). This paragraph is about programs only — RFPs persist
-through the ``exchange_store`` seam (below).
+through the ``exchange_store`` port (below).
 
 **RFP board (S0-arch-11, S0-arch-14).** ``RfpBoard`` is the same host glue for RFP
 collections: it projects ``bridge.rfp.rfp_status`` on read, so the dashboard ``/exchanges``
@@ -28,13 +28,13 @@ answers "which quotes are ready, which are waiting on a carrier". ``find_leg`` r
 carrier leg by its ``context_id`` — the per-leg addressing handle the carrier checklist
 (S0-frontend-1) is reached by. The ``RfpCollection`` is the **materialized Exchange
 record** of an emergent Collect (``design/aggregate-model.md``), so the board persists it
-through the ``exchange_store`` seam (``bridge.exchange_store``): one record per RFP,
+through the ``exchange_store`` port (``bridge.exchange_store``): one record per RFP,
 ``kind="rfp"``, keyed by ``rfp_id``, carrying the broker-side A2A ``context_id``. Every read
 goes to the store (no cache — a cache would re-create a per-replica split), and every
 ``put`` is compare-and-set against the version THIS THREAD last read or wrote for that RFP,
 so a write derived from a superseded read raises ``StaleExchangeWrite`` instead of silently
 losing the other writer's change. A board defaults to an in-memory store; a host wires the
-seam-resolved one (``exchange_store_from_env()``, e.g. ``BRIDGE_EXCHANGE_DB_URL``) so an RFP
+port-resolved one (``exchange_store_from_env()``, e.g. ``BRIDGE_EXCHANGE_DB_URL``) so an RFP
 survives a restart.
 
 Isolation: imports ``bridge.*`` + stdlib only; NEVER ``agents/`` (the ``bridge/``
@@ -142,7 +142,7 @@ class _RfpMapping(Mapping[str, RfpCollection]):
 
 class RfpBoard:
     """An injectable board of ``RfpCollection``s under collection (S0-arch-11), persisted
-    through the ``exchange_store`` seam (S0-arch-14).
+    through the ``exchange_store`` port (S0-arch-14).
 
     Same posture as ``ProgramBoard``: ``put`` writes by ``rfp_id`` (a filed quote is a
     re-put), and ``statuses`` / ``get`` project **on read** at ``clock()`` — so both a filed

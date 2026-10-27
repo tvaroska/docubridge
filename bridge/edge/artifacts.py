@@ -8,12 +8,12 @@ consumer reads the ``ExchangeTurn`` and GETs the bytes on demand from that
 endpoint. Every fetch is **leg-scoped**: a foreign ``context_id``/filename → 404
 (a reference is not a capability — ``design/artifacts.md``).
 
-**Not a seam (Decision 1).** The artifact store is NOT one of the managed
-``Seam``s. ``design/artifacts.md`` is explicit that documents use the
+**Not a port (Decision 1).** The artifact store is NOT one of the managed
+``Port``s. ``design/artifacts.md`` is explicit that documents use the
 platform's native ``ArtifactService`` "as-is rather than inventing a store":
 ``InMemoryArtifactService`` locally, ``GcsArtifactService`` on deploy — a native
-backend swap (like Sessions' ``InMemory…↔Vertex``), not a new managed seam. No
-``@pytest.mark.seam`` here; this follows the seam-in-waiting idiom
+backend swap (like Sessions' ``InMemory…↔Vertex``), not a new managed port. No
+``@pytest.mark.port`` here; this follows the port-in-waiting idiom
 (``bridge/edge/intake.py`` Decision 1): a local default + a documented swap point.
 
 **P7-3 swap points (Decision 2 + 7) — now built.**
@@ -213,7 +213,7 @@ def build_artifact_store() -> BaseArtifactService:
     Returns ``GcsArtifactService(bucket_name=$BRIDGE_ARTIFACT_BUCKET)`` when the env
     is set (lazy import — importing this module pulls no ``google.cloud`` client),
     else ``InMemoryArtifactService``. This is the native backend swap point (not a
-    seam, Decision 1). Callers keep the injectable ``param or build_artifact_store()``
+    port, Decision 1). Callers keep the injectable ``param or build_artifact_store()``
     idiom so an explicit store still wins (the P7-8 wiring-guard contract).
     """
     bucket = os.environ.get(ARTIFACT_BUCKET_ENV, "").strip()

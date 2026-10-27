@@ -1,6 +1,6 @@
 """Baseline sanity test so `uv run pytest` is green before P0-1 lands the real tree.
 
-Replaced/expanded by the P0 foundation tasks (isolation-guard, seam harness).
+Replaced/expanded by the P0 foundation tasks (isolation-guard, port harness).
 """
 
 

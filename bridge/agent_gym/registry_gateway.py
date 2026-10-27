@@ -79,8 +79,8 @@ class RegistryGatewayMixin:
             DEFAULT_SPIFFE_AGENT_POLICIES,
         )
 
-        seam_skills = loaded_skills()
-        card = build_agent_card(skills=seam_skills)
+        port_skills = loaded_skills()
+        card = build_agent_card(skills=port_skills)
         all_revs = self.list_skill_revisions()
         revs_by_skill: dict[str, list[SkillRevisionRecord]] = {}
         for rev in all_revs:
@@ -88,7 +88,7 @@ class RegistryGatewayMixin:
 
         skill_containers: list[dict[str, Any]] = []
         seen_names: set[str] = set()
-        for meta in seam_skills:
+        for meta in port_skills:
             seen_names.add(meta.name)
             active_rev = self.get_active_skill_revision(meta.name)
             history = revs_by_skill.get(meta.name, [])

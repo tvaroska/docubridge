@@ -1,8 +1,8 @@
 ---
 type: atom
-up: "seams.md"
+up: "ports.md"
 related:
-  - "seams.md"
+  - "ports.md"
   - "edges.md"
   - "collect.md"
   - "artifacts.md"
@@ -12,7 +12,7 @@ tags: [bridge, edge, collect, email]
 
 # Email intake — a dedicated mailbox, token-correlated, create-only landing
 
-> A carrier answering a **solicited** request by email is just another collection channel. It mails the quote to a dedicated intake mailbox, at a reply address that carries an **exchange token**. The Bridge lands the raw message **create-only**, correlates it to exactly one open leg by token, extracts every attachment through the [extraction seam](seams.md), and files the readable ones through the same disposition gate as an A2A or portal submission. The attachment reaches the exchange as a leg-scoped `ArtifactRef` by reference. Mail the Bridge cannot place is **quarantined, visibly**; an attachment nothing can read is **recorded, never verdicted**.
+> A carrier answering a **solicited** request by email is just another collection channel. It mails the quote to a dedicated intake mailbox, at a reply address that carries an **exchange token**. The Bridge lands the raw message **create-only**, correlates it to exactly one open leg by token, extracts every attachment through the [extraction port](ports.md), and files the readable ones through the same disposition gate as an A2A or portal submission. The attachment reaches the exchange as a leg-scoped `ArtifactRef` by reference. Mail the Bridge cannot place is **quarantined, visibly**; an attachment nothing can read is **recorded, never verdicted**.
 
 ## Why a dedicated mailbox
 
@@ -41,13 +41,13 @@ Carrier ──SMTP──▶ M365 mailbox rfp-quotes@ (app sees ONLY this mailbox
                      ▼
   email webhook  (public, webhook-only; build_email_app with graph bound)
      validationToken handshake · clientState check · GET /users/{mbx}/messages/{id}/$value
-     → EmailIngressSeam.land(key, raw)      [create-only; a Graph re-delivery is a duplicate]
+     → EmailIngressPort.land(key, raw)      [create-only; a Graph re-delivery is a duplicate]
                      │
                      ▼
   EmailProcessor.drain()  (the host that owns the RFP board — build_dashboard_app(rfps=…);
                           deployed: the RFP board host, POST /email/drain by Cloud Scheduler)
      pending() → read → parse_mime → dmarc / limits → find_tokens → correlate → (rfp, leg)
-     per attachment: put_attachment → extract (extraction seam) → signals → dispose_signals
+     per attachment: put_attachment → extract (extraction port) → signals → dispose_signals
      → persist bytes to the ADK artifact store (leg-scoped) → ArtifactRef (scoped fetch uri)
      → acknowledge + rfp.receive / rfp.note_unreadable → board.put → mark_processed(key, outcome)
 ```
@@ -100,13 +100,13 @@ A mail with a valid token but **no attachments** is filed (the carrier is acknow
 
 An attachment whose media type no engine reads (for example `rates.xlsx`), or one the engine deterministically refuses, gets `rfp.note_unreadable`. That is an **audit-only** event, `attachment_unreadable`, with detail `<filename>: <reason>`. The cell does not move, and no disposition or gate is invented. The [disposition gate](collect.md) remains the sole verdict authority. Inline images (`Content-Disposition: inline`, or a `Content-ID` part with no disposition) are signature furniture: they are counted (`skipped_inline`), not filed. A forwarded `message/rfc822` is opened one level deep. A deeper forward is kept as an opaque `.eml` attachment.
 
-## The seam
+## The port
 
-| Seam | Local adapter | GCP adapter |
+| Port | Local adapter | GCP adapter |
 |---|---|---|
 | Email ingress | a landing directory (`BRIDGE_EMAIL_DIR`) of `.eml` + attachments + processed markers | a GCS landing bucket (`BRIDGE_EMAIL_BUCKET`), same object layout, create-only writes |
 
-Graph is the deployed **transport** that feeds `land()`, not part of the ABC (`EmailIngressSeam`). Parity is the terminal outcome: land/duplicate, pending order, round-tripped bytes. See [seams](seams.md).
+Graph is the deployed **transport** that feeds `land()`, not part of the ABC (`EmailIngressPort`). Parity is the terminal outcome: land/duplicate, pending order, round-tripped bytes. See [ports](ports.md).
 
 ## Deployed topology
 

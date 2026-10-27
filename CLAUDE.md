@@ -21,27 +21,27 @@ live status + sequencing is [`TODO.md`](TODO.md); the feature catalog is
 ## Repo shape (the load-bearing invariant)
 ```
 spec/       THE WHAT — requirements (cujs, standards, demos/, open-questions); forkable, protected
-design/     THE HOW — architecture, seams, zones, patterns + per-atom design notes (source of truth)
+design/     THE HOW — architecture, ports, zones, patterns + per-atom design notes (source of truth)
 contract/   shared Pydantic wire types — the ONLY package both bridge/ and agents/ import
 bridge/     the reusable Bridge CORE — NEVER imports agents/
 agents/     service-agent consumers + demo drivers (Address, Benefits carriers, console)
 skills/     Agent Skills the Bridge loads at runtime
 frontend/   the four apps + shared lib + e2e
 terraform/  IaC by substrate primitive
-tests/      the shared seam suite (local + gcp adapters) + demo golden runs;
+tests/      the shared port suite (local + gcp adapters) + demo golden runs;
             conformance/ (Benefits consumer conformance), perf/ (scale harness)
 wiki/evals/ the eval corpus (Address + Benefits oracles) — a runtime fixture, referenced by code + tests
 docs/       planning/ops — roadmap, feature catalog, local-dev, upstream ADK issues
 scripts/    local run-*.sh hosts + _dev-env.sh; deploy.sh / parity.sh (live GCP apply)
 ```
 - `bridge/` **never imports** `agents/`. An isolation-guard test enforces this.
-- Every managed-service boundary is a **Port** (`bridge/ports/`, aliased as `bridge/seams/`):
+- Every managed-service boundary is a **Port** (`bridge/ports/`):
   an ABC/Protocol across all 13 boundaries (`sessions`, `task_store`, `exchange_store`,
   `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`,
   `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`) with a **local** adapter
-  and a **GCP** adapter, exercised by shared parametrized tests (`@pytest.mark.port` /
-  `@pytest.mark.seam`, `adapter` fixture over `("local","gcp")`, GCP gated on
-  `BRIDGE_TEST_GCP`). Parity is **terminal-outcome**, never ledger-identical.
+  (`bridge/ports/local/`) and a **GCP** adapter (`bridge/ports/gcp/`), exercised by shared
+  parametrized tests (`@pytest.mark.port`, `adapter` fixture over `("local","gcp")`, GCP gated
+  on `BRIDGE_TEST_GCP`). Parity is **terminal-outcome**, never ledger-identical.
 
 
 ## Planning Workflow (gen-3)
@@ -57,7 +57,7 @@ Live status lives in ONE place (`TODO.md`); `spec/` and `design/` stay status-fr
 | `DECISIONS.md` | Append-only decision/learning log (committed) |
 | `CRITICAL.md` | Registry of protected/sensitive paths (auto-escalate) |
 | `spec/` | THE WHAT — requirements. Forkable, status-free, **protected**. `cujs.md`, `standards.md`, `demos/*.md`, `open-questions.md` |
-| `design/` | THE HOW (as built) — `architecture.md`, `seams.md`, `zones.md`, `patterns.md` + per-atom design notes; the design source of truth |
+| `design/` | THE HOW (as built) — `architecture.md`, `ports.md`, `zones.md`, `patterns.md` + per-atom design notes; the design source of truth |
 | `docs/` | Planning/ops — `roadmap.md`, `features.md`, `upstream-adk-issues.md` |
 | `wiki/evals/` | The eval corpus (Address + Benefits oracles) — a runtime fixture, referenced by code + tests |
 
@@ -104,7 +104,7 @@ it during `/implement`.
 ## Task workflow (plan-implement)
 - Each task: implement → `uv run pytest` green → flip its `- [ ]` to `- [x]` in `TODO.md`
   → commit path-scoped on the current branch (do not push).
-- Match the style, naming, and seam/adapter idioms of the surrounding code.
+- Match the style, naming, and port/adapter idioms of the surrounding code.
 
 ## Data discipline
 - **Synthetic data only, no real PII.** The eval party "Jordan Lee" is synthetic.
@@ -127,3 +127,7 @@ it during `/implement`.
 6. **Cloud Run Warm Instances & Terraform Auth:**
    - Both `docubridge-showcase-bridge` and `docubridge-showcase-bridge-rfp-board` run with `min_instances = 1` (`terraform/modules/runtime/main.tf`) so live `/demo` showcase sessions have zero cold-start latency.
    - When running `terraform` outside GCE metadata environments, export `GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` or update Cloud Run services directly via `gcloud run services update`.
+7. **Offline `uv.lock` Version Sync, `git rm` `__pycache__` Cleanup & `KnowledgeCatalog` Protocol:**
+   - Whenever `project.version` in `pyproject.toml` is bumped, also update `version = "..."` on the `[[package]] name = "docubridge"` entry in `uv.lock` so `uv run` does not attempt a network re-lock in offline sandboxes.
+   - Running `git rm -rf <pkg>` leaves untracked `__pycache__/` directories on disk; follow with `rm -rf <pkg>` when tests assert directory removal.
+   - `bridge.knowledge_catalog.KnowledgeCatalog` is a `typing.Protocol`; instantiate `InMemoryKnowledgeCatalog(operational_store=...)` when binding `CollectExecutor.bind_enterprise_stores(...)` or `build_a2a_app(...)`.

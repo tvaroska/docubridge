@@ -58,9 +58,9 @@ def build_address_workflow(
         card_url: Bridge Agent Card URL for the collect node.
         max_rounds: Round ceiling — force ``"done"`` after this many collect/gate
             cycles (fail fast on a non-terminating scenario).
-        httpx_client: Test seam forwarded to ``build_bridge_remote_agent`` (points
+        httpx_client: Test port forwarded to ``build_bridge_remote_agent`` (points
             the collect node at an in-process mock over ``ASGITransport``).
-        collect_node: Test seam — inject a stub collect ``FunctionNode`` (or any
+        collect_node: Test port — inject a stub collect ``FunctionNode`` (or any
             ``BaseNode``) instead of the live ``RemoteA2aAgent``, so routing/ceiling
             can be proven without a network or a live park.
 

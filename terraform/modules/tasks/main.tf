@@ -1,6 +1,6 @@
 # tasks — the bridge-followups Cloud Tasks queue (P7-4).
 #
-# The substrate behind the scheduler seam's GCP adapter (GcpScheduler): the
+# The substrate behind the scheduler port's GCP adapter (GcpScheduler): the
 # clock-driven follow-up ladder arms one Cloud Task per exchange, fired by the
 # queue POSTing an OIDC-authenticated request to the runtime's follow-up callback
 # at schedule_time (design/gcp-substrate.md §"tasks = the bridge-followups queue").
@@ -10,7 +10,7 @@
 # in modules/iam (P7-1). P7-4 CONSUMES them; it adds NO new grant.
 #
 # CRITICAL — No secrets / plaintext values / task objects in HCL (CRITICAL.md). A
-# queue is a pure container; tasks are RUNTIME data armed through the seam adapter
+# queue is a pure container; tasks are RUNTIME data armed through the port adapter
 # (GcpScheduler.schedule), never Terraform-managed.
 
 resource "google_cloud_tasks_queue" "bridge_followups" {

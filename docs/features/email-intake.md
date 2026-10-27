@@ -133,7 +133,7 @@ shared durable exchange store, and files extracted attachments into collection c
   - **Board env**: `BRIDGE_RFP_PROCESS`, `BRIDGE_EMAIL_DRAIN_INTERVAL=0` (Cloud Run
     request-based CPU starves a background loop between requests; the drain runs inside
     the Scheduler's request), `DATABASE_URL` secret ref, `BRIDGE_EMAIL_TOKEN_SECRET`
-    secret ref, plus the shared artifact/skills bucket names and seam mode.
+    secret ref, plus the shared artifact/skills bucket names and port mode.
   - **Processor env moved off the A2A runtime**: `google_cloud_run_v2_service.bridge` no
     longer carries `BRIDGE_EMAIL_BUCKET/MAILBOX/TOKEN_SECRET` (dead config there); the
     board service carries them. Per-SA bucket/secret grants unchanged.

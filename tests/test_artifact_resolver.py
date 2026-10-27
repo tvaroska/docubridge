@@ -1,7 +1,7 @@
 """S0-arch-7 — the artifact resolver: a by-reference document is actually readable.
 
 ART-2 puts documents on the wire **by reference**, so what reaches the extraction
-seam is the counterparty's URI. These tests drive the four inbound shapes end to end:
+port is the counterparty's URI. These tests drive the four inbound shapes end to end:
 a ``gs://`` object handed to the model by reference, a party's ``http(s)`` URL fetched
 under the default-deny egress guard, an opt-in ``file://`` path, and the eval corpus's
 bare relative name (whose traversal containment must survive untouched).

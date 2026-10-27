@@ -3,7 +3,7 @@ type: atom
 related:
   - "../design/a2a-edge.md"
   - "../design/a2a-consumer.md"
-  - "../design/seams.md"
+  - "../design/ports.md"
   - "../design/adk.md"
   - "../design/dual-path.md"
 tags: [bridge]
@@ -13,19 +13,19 @@ tags: [bridge]
 
 > Custom code is sometimes unavoidable. The question is never *whether* to be standard — it's *which layer bends when standard and custom conflict.* Three concentric rings, in strict priority order, answer that. This note is the design-spec home and the place the **Ring 1 wire standard** is written down.
 
-**The rings are concentric layers.** Picture concentric circles: the outer ring touches the widest world, the inner core touches only us. The rule in one line: when standard and custom conflict, **deviate at the lowest layer that will absorb it** — keep the wire (Ring 1) and the seams (Ring 2) standard, and push every deviation into implementation (Ring 3).
+**The rings are concentric layers.** Picture concentric circles: the outer ring touches the widest world, the inner core touches only us. The rule in one line: when standard and custom conflict, **deviate at the lowest layer that will absorb it** — keep the wire (Ring 1) and the ports (Ring 2) standard, and push every deviation into implementation (Ring 3).
 
 ## The three rings — priority order
 
 | Ring | What | Who depends on it (blast radius) | Custom-code stance |
 |---|---|---|---|
 | **Ring 1 — Communication (the wire)** | Canonical A2A + A2UI: JSON-RPC 2.0, spec methods, standard task states, artifacts. Domain types travel **inside** standard parts. | The **ecosystem** — third-party agents we will never see. | Last resort; always a recorded risk. |
-| **Ring 2 — Platform services (the seams)** | The seams — Sessions, Task store, Exchange store, Skill registry, Memory bank, Scheduler/Timer, A2A client, Extraction, Email ingress — each typed against the **real** platform ABC where the platform has one; Email ingress is a Bridge-owned external boundary that gets the same seam treatment. | Our **deployment story** — the mock→real / local→GCP swap-is-a-no-op property. | Tolerated only as an *adapter behind the ABC*. See [seams](../design/seams.md). |
+| **Ring 2 — Platform services (the ports)** | The ports — Sessions, Task store, Exchange store, Skill registry, Memory bank, Scheduler/Timer, A2A client, Extraction, Email ingress — each typed against the **real** platform ABC where the platform has one; Email ingress is a Bridge-owned external boundary that gets the same port treatment. | Our **deployment story** — the mock→real / local→GCP swap-is-a-no-op property. | Tolerated only as an *adapter behind the ABC*. See [ports](../design/ports.md). |
 | **Ring 3 — Implementation (the constructs)** | `RemoteA2aAgent`, `Workflow`, `AgentTool`, interceptors, encode/decode glue. | Only **us** — maintenance + coupling. | The **preferred sink** for unavoidable custom code. See [adk](../design/adk.md). |
 
 **The rule, one line:** *push every deviation inward.* A shim at Ring 3 that lets Rings 1–2 stay standard is a correct application of this rule, not a violation of the "prefer the platform-native construct" principle ([adk](../design/adk.md)). A deviation that leaks *outward* — e.g. a non-standard field on the A2A wire — is the expensive kind and must be justified as such. The ordering tracks **blast radius**: the standard-ness of each ring protects a wider circle than the one inside it.
 
-This is what makes the design legible rather than hypocritical: unavoidable custom glue — the consumer's send-path request interceptor, resume-detection, the ADK encode/decode unwrapping — lives at **Ring 3**; the seams stay on the real ABCs; the wire stays canonical A2A. Custom code is the principle resolving a conflict correctly, not breaking it.
+This is what makes the design legible rather than hypocritical: unavoidable custom glue — the consumer's send-path request interceptor, resume-detection, the ADK encode/decode unwrapping — lives at **Ring 3**; the ports stay on the real ABCs; the wire stays canonical A2A. Custom code is the principle resolving a conflict correctly, not breaking it.
 
 ## Ring 1 — the wire standard
 
@@ -43,7 +43,7 @@ The Ring-1 standard is the **A2A contract between a service agent (consumer) and
 
 ## Ring 2 & Ring 3 — pointers
 
-Ring 2 is fully specified in [seams](../design/seams.md) (every seam, two adapters each, one shared test suite). Ring 3 is the construct layer in [adk](../design/adk.md) and [patterns](../design/patterns.md) — where custom code is *meant* to live, priced as internal coupling and watched via the living list of experimental surfaces.
+Ring 2 is fully specified in [ports](../design/ports.md) (every port, two adapters each, one shared test suite). Ring 3 is the construct layer in [adk](../design/adk.md) and [patterns](../design/patterns.md) — where custom code is *meant* to live, priced as internal coupling and watched via the living list of experimental surfaces.
 
 ## Related
-- [A2A edge](../design/a2a-edge.md) · [A2A consumer](../design/a2a-consumer.md) · [seams](../design/seams.md) · [ADK constructs](../design/adk.md)
+- [A2A edge](../design/a2a-edge.md) · [A2A consumer](../design/a2a-consumer.md) · [ports](../design/ports.md) · [ADK constructs](../design/adk.md)

@@ -106,7 +106,7 @@ def build_dashboard_app(
     ``POST /rfps/{rfp_id}/chase``) serves them (S0-frontend-1). ``intake`` is the legs'
     reply addressing (``None`` → ``IntakeAddressing.from_env()``, itself ``None`` when email
     intake is not enabled); ``outbound`` is the chase client (``None`` → the
-    ``a2a_client`` seam adapter, built lazily on the first chase). ``max_ticks`` bounds the
+    ``a2a_client`` port adapter, built lazily on the first chase). ``max_ticks`` bounds the
     SSE stream (testability; §2d).
 
     ``email`` is the inbound-email processor that drains landed mail onto ``rfps``

@@ -12,7 +12,7 @@ scripts/run-all.sh          # five Python hosts + four Vite apps; Ctrl-C tears i
 Or a single surface at a time — each `scripts/run-<surface>.sh` starts just that host,
 and `pnpm --filter <app> dev` starts just that app.
 
-A local run is credential-free: every seam resolves to its local adapter and extraction
+A local run is credential-free: every port resolves to its local adapter and extraction
 is the deterministic fixture engine over `wiki/evals/`. No GCP, no Gemini, no billing.
 
 ## Port map
@@ -109,8 +109,8 @@ uv run python -m bridge.email_ingress land reply.eml
 uv run python -m bridge.email_ingress drain --url http://127.0.0.1:8010/ops
 ```
 
-- `land <file.eml>` lands one raw message on the `email_ingress` seam (`BRIDGE_EMAIL_DIR`
-  locally; `BRIDGE_SEAM_EMAIL_INGRESS=gcp` + `BRIDGE_EMAIL_BUCKET` lands in the deployed
+- `land <file.eml>` lands one raw message on the `email_ingress` port (`BRIDGE_EMAIL_DIR`
+  locally; `BRIDGE_PORT_EMAIL_INGRESS=gcp` + `BRIDGE_EMAIL_BUCKET` lands in the deployed
   bucket).
 - `drain [--url URL] [--timeout S]` asks the board-owning host to drain
   (`POST <url>/email/drain`; `--url` defaults to `BRIDGE_EMAIL_DRAIN_URL`). It never

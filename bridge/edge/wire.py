@@ -122,7 +122,7 @@ def decode_submissions(message: Message) -> list[DocumentSubmission]:
     """Map inbound file Parts to ``DocumentSubmission``s (by-reference only).
 
     Each URI-backed file Part becomes one ``DocumentSubmission`` whose
-    ``artifact_name`` is the URI (the extraction-seam lookup key — for the local
+    ``artifact_name`` is the URI (the extraction-port lookup key — for the local
     fixture adapter that is the corpus path, e.g. ``images/gov-id-clean.svg``).
 
     **Raises** ``ValueError`` on any inline-bytes (``raw``) file Part: document

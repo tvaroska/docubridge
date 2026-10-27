@@ -1,8 +1,8 @@
 """Operator CLI for the email intake (S0-arch-13).
 
-* ``land <file.eml>`` — land one raw message on the ``email_ingress`` seam (the local
+* ``land <file.eml>`` — land one raw message on the ``email_ingress`` port (the local
   analogue of the Graph webhook). Prints ``landed <key>`` or ``duplicate <key>``.
-  Locally set ``BRIDGE_EMAIL_DIR``; ``BRIDGE_SEAM_EMAIL_INGRESS=gcp`` +
+  Locally set ``BRIDGE_EMAIL_DIR``; ``BRIDGE_PORT_EMAIL_INGRESS=gcp`` +
   ``BRIDGE_EMAIL_BUCKET`` lands in the deployed bucket.
 * ``subscribe --notification-url URL`` — create the Graph change-notification
   subscription for the intake mailbox's Inbox (needs ``BRIDGE_EMAIL_GRAPH_*``,
@@ -45,12 +45,12 @@ DEFAULT_DRAIN_TIMEOUT = 120.0
 
 
 def _land(path: str) -> int:
-    from bridge.seams import Seam, get_adapter, resolve_mode
+    from bridge.ports import Port, get_adapter, resolve_mode
 
     raw = Path(path).read_bytes()
     key = landing_key(raw)
-    seam = get_adapter(Seam.email_ingress, resolve_mode(Seam.email_ingress))
-    print(f"{'landed' if seam.land(key, raw) else 'duplicate'} {key}")
+    port = get_adapter(Port.email_ingress, resolve_mode(Port.email_ingress))
+    print(f"{'landed' if port.land(key, raw) else 'duplicate'} {key}")
     return 0
 
 
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None, *, client: httpx.Client | None = None) -
         prog="python -m bridge.email_ingress", description=__doc__.splitlines()[0]
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    land = sub.add_parser("land", help="land one raw .eml on the email_ingress seam")
+    land = sub.add_parser("land", help="land one raw .eml on the email_ingress port")
     land.add_argument("path")
     subscribe = sub.add_parser("subscribe", help="create the Graph subscription")
     subscribe.add_argument("--notification-url", required=True)

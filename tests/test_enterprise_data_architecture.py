@@ -1804,7 +1804,7 @@ def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
 ) -> None:
     """Verify SqlAgentGymEngine and agent_gym_from_env() persist rules, report cards,
     and Programmable Trust state across independent Cloud Run & Vertex AI Agent Engine
-    processes, and refuse in-memory fallback when BRIDGE_SEAM_MODE=gcp."""
+    processes, and refuse in-memory fallback when BRIDGE_PORT_MODE=gcp."""
     import pytest
 
     from bridge.agent_gym import (
@@ -1818,10 +1818,10 @@ def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
     monkeypatch.delenv("BRIDGE_GYM_DB_URL", raising=False)
     monkeypatch.delenv("BRIDGE_OPERATIONAL_DB_URL", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("BRIDGE_SEAM_MODE", "gcp")
+    monkeypatch.setenv("BRIDGE_PORT_MODE", "gcp")
     with pytest.raises(RuntimeError, match="session-affinity trap"):
         agent_gym_from_env()
-    monkeypatch.delenv("BRIDGE_SEAM_MODE", raising=False)
+    monkeypatch.delenv("BRIDGE_PORT_MODE", raising=False)
 
     # 2. Instance A (simulating Cloud Run UI replica) distills & promotes a rule and dials trust
     db_file = tmp_path / "agent_gym_shared.db"
@@ -3169,7 +3169,7 @@ def test_gcp_hardening_sql_stores_and_modular_demo_assets(
         sql_inbox.close()
 
     # 4. Verify GCP fail-fast guards on stores and SPIFFE SVID secret
-    monkeypatch.setenv("BRIDGE_SEAM_MODE", "gcp")
+    monkeypatch.setenv("BRIDGE_PORT_MODE", "gcp")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("BRIDGE_OPERATIONAL_DB_URL", raising=False)
     monkeypatch.delenv("BRIDGE_INBOX_DB_URL", raising=False)
@@ -3188,7 +3188,7 @@ def test_gcp_hardening_sql_stores_and_modular_demo_assets(
     with pytest.raises(SpiffeAuthenticationError, match="BRIDGE_SPIFFE_SVID_SECRET"):
         verify_jwt_svid("eyJhbGciOiJIUzI1NiJ9.e30.sig")
 
-    monkeypatch.setenv("BRIDGE_SEAM_MODE", "local")
+    monkeypatch.setenv("BRIDGE_PORT_MODE", "local")
 
     # 5. Verify modular /demo CSS & JS static routes
     app = build_user_interaction_app()
@@ -3372,3 +3372,98 @@ def test_sql_agent_gym_registry_service_and_binding_persistence_and_model_armor(
         assert replica_2._inspect_with_gcp_model_armor("benign payload") is None
     finally:
         replica_2.close()
+
+
+def test_docai_uptraining_dataset_export_and_verified_filtering(tmp_path: Path) -> None:
+    """Verify AgentGymEngine.export_docai_uptraining_dataset and GET /v1/gym/export/docai-dataset
+    export verified ExpertFeedbackSignal + SourceAnchor bounding polygons in Document AI
+    ImportDocuments format across both InMemory and SQL stores."""
+    from fastapi.testclient import TestClient
+
+    from bridge.agent_gym import SqlAgentGymEngine, TribalRuleCategory
+    from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
+    from bridge.operational_store import InMemoryOperationalStore
+    from bridge.user_interaction import build_user_interaction_app
+    from contract.extraction import SourceAnchor
+
+    dsn = f"sqlite+aiosqlite:///{tmp_path / 'docai_export.db'}"
+    gym = SqlAgentGymEngine(dsn)
+    try:
+        # 1. Verified signal with SourceAnchor (page 3, bbox)
+        sig_verified, _ = gym.distill_from_quarantine_correction(
+            entity_id="MORTGAGE-WESTBROOK-2026",
+            doc_id="doc-westbrook-cd-v2",
+            doctype="closing-disclosure",
+            issuer="First National Bank",
+            field_path="origination_fee",
+            before_value="4250.00",
+            after_value="8500.00",
+            expert_memo="Page 3 Section A rate-lock extension addendum overrides origination fee.",
+            actor_principal="usr:underwriter@docubridge.io",
+            actor_role="underwriter",
+            source_anchor=SourceAnchor(
+                page_number=3,
+                bounding_box=(0.12, 0.44, 0.88, 0.51),
+            ),
+            category=TribalRuleCategory.EXTRACTION_HINT,
+            citation_verified=True,
+            review_dwell_ms=4200,
+        )
+        assert sig_verified.oversight_rsr_score >= 0.90
+
+        # 2. Unverified rubber-stamped signal (citation_verified=False, dwell=150ms)
+        gym.distill_from_quarantine_correction(
+            entity_id="MORTGAGE-WESTBROOK-2026",
+            doc_id="doc-westbrook-rubber-stamp",
+            doctype="closing-disclosure",
+            issuer="First National Bank",
+            field_path="origination_fee",
+            before_value="4250.00",
+            after_value="9999.00",
+            expert_memo="rubber stamp",
+            actor_principal="usr:underwriter@docubridge.io",
+            actor_role="underwriter",
+            category=TribalRuleCategory.EXTRACTION_HINT,
+            citation_verified=False,
+            review_dwell_ms=150,
+        )
+
+        op_store = InMemoryOperationalStore()
+        catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
+        app = build_user_interaction_app(
+            operational_store=op_store,
+            knowledge_catalog=catalog,
+            agent_gym=gym,
+        )
+        client = TestClient(app)
+
+        # Verified-only export (default) excludes the rubber-stamped signal
+        resp = client.get(
+            "/v1/gym/export/docai-dataset",
+            params={"doctype": "closing-disclosure", "verified_only": "true"},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["format"] == "google.cloud.documentai.v1.ImportDocumentsRequest"
+        assert payload["document_count"] == 1
+        exported_doc = payload["documents"][0]
+        assert exported_doc["doc_id"] == "doc-westbrook-cd-v2"
+        entity = exported_doc["document"]["entities"][0]
+        assert entity["type"] == "origination_fee"
+        assert entity["mention_text"] == "8500.00"
+        page_ref = entity["page_anchor"]["page_refs"][0]
+        # 1-based page 3 -> 0-based page "2" in Document AI proto
+        assert page_ref["page"] == "2"
+        verts = page_ref["bounding_poly"]["normalized_vertices"]
+        assert verts[0] == {"x": 0.12, "y": 0.44}
+        assert verts[2] == {"x": 0.88, "y": 0.51}
+
+        # Unfiltered export includes both signals
+        resp_all = client.get(
+            "/v1/gym/export/docai-dataset",
+            params={"doctype": "closing-disclosure", "verified_only": "false"},
+        )
+        assert resp_all.status_code == 200
+        assert resp_all.json()["document_count"] == 2
+    finally:
+        gym.close()

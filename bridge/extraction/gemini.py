@@ -1,16 +1,16 @@
 """Gemini extraction engine — the deployed schema-driven extraction engine (P7-6).
 
 The capability-axis sibling of ``FixtureExtractor``: same ``extract(artifact_name)
--> ExtractionResult`` shape, same module posture ("no ADK or seam imports, avoiding
-import cycles" — never imports ``bridge.edge``/``bridge.seams``/``agents``), but the
+-> ExtractionResult`` shape, same module posture ("no ADK or port imports, avoiding
+import cycles" — never imports ``bridge.edge``/``bridge.ports``/``agents``), but the
 engine is a real Gemini call instead of a corpus lookup. Extraction is the
 **capability** axis (``fixture|gemini|docai``, selected by config), NOT a local↔gcp
-store swap (design/seams.md) — so this "gcp"/deployed engine sits behind the same
-``ExtractionSeam`` the fixture engine does.
+store swap (design/ports.md) — so this "gcp"/deployed engine sits behind the same
+``ExtractionPort`` the fixture engine does.
 
 **Schema-driven (S0-arch-5).** The prompt and the pinned structured-output schema are
 not literals: every installed **doctype** skill's ``bridge-schema`` asset (normally
-``assets/schema.json``) is resolved through the ``skill_registry`` seam — by
+``assets/schema.json``) is resolved through the ``skill_registry`` port — by
 ``bridge/doctypes.py``, the shared reader Path-A validation builds its typed key-field
 models from (S0-arch-8), so the prompt and the validator can never learn to disagree
 about what a doctype declares — its declared
@@ -52,7 +52,7 @@ dashboard / portal hosts). A short document (every Address record, every one-pag
 is still exactly ONE call with the request shape ``[prompt, document]``.
 
 Two independently-testable halves, mirroring the sibling GCP adapters' injectable
-seam:
+port:
 
 1. :func:`_parse_extraction` (plus the pure builders :func:`build_extraction_prompt` /
    :func:`build_response_schema`) — a pure JSON-text → ``ExtractionResult`` parse. No
@@ -66,8 +66,8 @@ seam:
    ``None`` → a real ``google.genai.Client()`` built lazily on first use, exactly like
    ``_GcpCloudTasksScheduler(client=...)``). ``google.genai`` is imported lazily INSIDE
    the method so importing this module pulls no genai/heavy client (a structural test
-   enforces it); the ``bridge.seams`` import is lazy for the same cycle reason
-   (``bridge.seams.local`` imports ``bridge.extraction.fixture`` at module level).
+   enforces it); the ``bridge.ports`` import is lazy for the same cycle reason
+   (``bridge.ports.local`` imports ``bridge.extraction.fixture`` at module level).
 
 **Document inputs (S0-arch-6, S0-arch-7).** The engine's input envelope is a
 *resolved reference*, not a local filename. SVG is passed as a text part; a
@@ -87,7 +87,7 @@ text rides as a third part next to the original document
 prepass the request is exactly ``[prompt, document]`` (design/docai-prepass.md).
 
 Parity with the corpus is **terminal-outcome, never ledger-identical** (CLAUDE.md;
-design/seams.md): a real Gemini call will not reproduce the corpus's exact confidence
+design/ports.md): a real Gemini call will not reproduce the corpus's exact confidence
 floats, so the live gate asserts the extracted signals feed ``run_disposition_gate``
 to the same ``expected_disposition``/``expected_gate``, not float-equality.
 """
@@ -173,7 +173,7 @@ PROMPT_FOOTER = """Rules:
 # Bounded schema-validated retry (S0-bug-2). One malformed token must not lose the
 # document: a rejected payload is sent back with the SPECIFIC rejection reason and
 # re-asked, up to this many attempts. Mirrors the terminal-write retry idiom in
-# bridge/seams/gcp (_TerminalRetryStore: attempts=3, warn per failure, error on
+# bridge/ports/gcp (_TerminalRetryStore: attempts=3, warn per failure, error on
 # exhaustion, raise the last error). There is deliberately NO fixture fallback: a
 # fallback would launder hand-authored corpus values in as if they had been
 # extracted. A missing extraction is a measurable miss; a fabricated one is a lie.
@@ -281,7 +281,7 @@ def build_extraction_prompt(
     """``PROMPT_HEADER`` + the installed-doctype field catalog + ``PROMPT_FOOTER``.
 
     Pure — ``schemas`` is (doctype skill name -> parsed ``bridge-schema`` document),
-    normally read through the registry seam by ``bridge.doctypes.doctype_schemas``.
+    normally read through the registry port by ``bridge.doctypes.doctype_schemas``.
     Doctypes render sorted by name for determinism. A doctype whose schema declares
     no fields (an installed-but-asset-less skill) renders name-only, so it still
     reaches the model's label space. Optional promoted Agent Gym ``extraction_hints``
@@ -633,11 +633,11 @@ def _parse_extraction(text: str) -> ExtractionResult:
 
 
 class GeminiExtractor:
-    """Schema-driven Gemini extraction engine (P7-6) — behind the extraction seam.
+    """Schema-driven Gemini extraction engine (P7-6) — behind the extraction port.
 
     Satisfies the same ``extract(artifact_name) -> ExtractionResult`` shape as
     ``FixtureExtractor``. The ``client``, ``resolver`` and ``schemas`` are injectable
-    (the credential-free test seam): an injected fake ``client`` wins, else a real
+    (the credential-free test port): an injected fake ``client`` wins, else a real
     ``google.genai.Client()`` is built lazily on first ``extract`` — importing this
     module never constructs a client or pulls ``google.genai``. An injected
     ``schemas`` dict wins over the registry read, so the prompt/schema builders are
@@ -730,7 +730,7 @@ class GeminiExtractor:
     def _catalog(self) -> tuple[str, dict | None]:
         """Prompt + pinned response schema — rebuilt only when the catalog changed.
 
-        The only place the extraction path reads the ``skill_registry`` seam. It is
+        The only place the extraction path reads the ``skill_registry`` port. It is
         read on each ``extract`` (not at construction), because one extractor outlives
         the app's start and a doctype skill dropped into ``BRIDGE_SKILLS_DIR`` after
         the first extract must reach the next prompt and response schema (CUJ-9). The
@@ -938,7 +938,7 @@ class GeminiExtractor:
         The genai call is sync; run inline it would block the shared loop (SSE /
         dashboard / portal on the same Cloud Run instance) for its whole latency. Every
         test double implements only ``.models.generate_content``, so the thread hop —
-        not ``client.aio`` — is the seam-neutral fix.
+        not ``client.aio`` — is the port-neutral fix.
         """
         with trace_step(
             "docubridge.extract.call_llm",

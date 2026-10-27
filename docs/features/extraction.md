@@ -132,7 +132,7 @@ The dashboard numbers are the next bottleneck: every SSE frame carries every ent
 **What.** The `docai` extraction engine is now real. It is the schema-driven Gemini engine with the client's existing Document AI processor (`BRIDGE_DOCAI_PROCESSOR`) run once in front as an OCR pre-pass. The OCR text rides as a third part next to the document (`[prompt, document, ocr_text]`), and a retry keeps it. A Document AI error propagates with no plain-Gemini fallback. SVG and other unsupported mimes skip the pre-pass. A `gs://` input rides by reference.
 
 - `bridge/extraction/docai.py` (new): processor parsing, the request builder, the Layout-Parser flattener, the bounded OCR part and `DocAIPrepass`.
-- `bridge/extraction/gemini.py`: the `prepass=` hook. `bridge/seams/gcp/__init__.py`: `docai` → `GeminiExtractor(prepass=DocAIPrepass())`.
+- `bridge/extraction/gemini.py`: the `prepass=` hook. `bridge/ports/gcp/__init__.py`: `docai` → `GeminiExtractor(prepass=DocAIPrepass())`.
 - `pyproject.toml` `gcp` extra: `google-cloud-documentai>=3.0`.
 - Terraform: `docai_processor` → the runtime env plus a cross-project `roles/documentai.apiUser` grant (`manage_docai_grant`, `docai_grant` output).
 - `tests/corpus_scanned_pdf.py`: a deterministic raster-only render of carrier-C with no text layer.
@@ -205,6 +205,6 @@ The live Gemini leg (`BRIDGE_TEST_GEMINI`) was not run here; the schema was only
 - The AST isolation guard holds.
 - Gated runs:
   - the real consumer's models accept the mapped quote (`BRIDGE_TEST_CONSUMER_REPO`);
-  - live Vertex Gemini maps record A onto the quote (`BRIDGE_TEST_GEMINI`).
+  - live Gemini platform maps record A onto the quote (`BRIDGE_TEST_GEMINI`).
 
 T1: `ruff check` clean; `pytest` 906 passed / 34 skipped, 0 failed.

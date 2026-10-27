@@ -28,7 +28,7 @@ over a ``DefaultRequestHandler`` + ``InMemoryTaskStore``). The ONLY substituted 
 is the ``AgentExecutor``: ``ScriptedBridgeExecutor`` replaces ``CollectExecutor``.
 The real edge's ``build_a2a_app`` is left byte-identical.
 
-**Decision 7 — script-driven only.** The mock does NOT touch the extraction seam, the
+**Decision 7 — script-driven only.** The mock does NOT touch the extraction port, the
 artifact store, or the ``Collector``. It has no ``/artifacts`` fetch mount and never
 calls ``save_artifact``; a scenario turn that carries an ``artifact`` uses a plain
 ``ArtifactRef(uri="mock://...")`` literal. That is the point: P3 can run the full
@@ -476,7 +476,7 @@ def build_mock_bridge_app(
     **P4-4:** Accepts push_config_store / push_sender / push_httpx_client for
     webhook emission tests (mirrors ``server.build_a2a_app``).
     """
-    from bridge.seams import Seam, get_adapter, resolve_mode
+    from bridge.ports import Port, get_adapter, resolve_mode
 
     card = agent_card or build_agent_card(url)
     active_executor = executor or ScriptedBridgeExecutor()
@@ -484,9 +484,9 @@ def build_mock_bridge_app(
 
     # P4-4: Build push config store and sender (same logic as server.py)
     if push_config_store is None and push_sender is None:
-        # Build via seam (though for mock, in-memory is most common)
-        store_seam = get_adapter(Seam.task_store, resolve_mode(Seam.task_store))
-        active_push_config_store = store_seam.build_push_config_store()
+        # Build via port (though for mock, in-memory is most common)
+        store_port = get_adapter(Port.task_store, resolve_mode(Port.task_store))
+        active_push_config_store = store_port.build_push_config_store()
     else:
         active_push_config_store = push_config_store
 

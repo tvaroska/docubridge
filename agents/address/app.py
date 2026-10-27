@@ -10,7 +10,7 @@ and pass ``Runner(app=app, …)``.
 This module must NOT import ``bridge/`` (project convention — ``agents/address``
 reaches the Bridge by card URL only; the mock→real swap is a URL change). The
 durable session factory below is therefore a small **stock-ADK** duplicate of
-``bridge.seams.local.LocalSessions.build_session_service`` — parity is by DSN +
+``bridge.ports.local.LocalSessions.build_session_service`` — parity is by DSN +
 ADK class, not a shared object (§1.4). Keep the two identical.
 
 # P7: the local↔GCP swap for the Address consumer's sessions (this factory vs the
@@ -39,7 +39,7 @@ def require_async_driver(dsn: str) -> str:
     an async driver; a bare ``sqlite:///`` URL fails cryptically. Use
     ``sqlite+aiosqlite:///…``.
 
-    NOTE: duplicated identically in ``bridge/seams/local/__init__.py`` (§1.4 —
+    NOTE: duplicated identically in ``bridge/ports/local/__init__.py`` (§1.4 —
     ``agents/`` must not import ``bridge/``).
     """
     if dsn.startswith("sqlite:///") or dsn == "sqlite://":
@@ -57,7 +57,7 @@ def _parse_agent_engine_resource(
     location: str | None = None,
 ) -> tuple[str | None, str | None, str | None]:
     """Parse an Agent Engine ID or full resource name (duplicated from
-    ``bridge.seams.gcp`` so ``agents/`` never imports ``bridge/``)."""
+    ``bridge.ports.gcp`` so ``agents/`` never imports ``bridge/``)."""
     proj = (project or os.environ.get("GOOGLE_CLOUD_PROJECT", "")).strip() or None
     loc = (location or os.environ.get("GOOGLE_CLOUD_LOCATION", "")).strip() or None
     val = (
@@ -146,8 +146,8 @@ def build_address_app(
     Args:
         card_url: Bridge Agent Card URL for the collect node.
         max_rounds: Round ceiling forwarded to the workflow gate.
-        httpx_client: Test seam forwarded to the collect node (in-process mock).
-        collect_node: Test seam — inject a stub collect node instead of the live
+        httpx_client: Test port forwarded to the collect node (in-process mock).
+        collect_node: Test port — inject a stub collect node instead of the live
             ``RemoteA2aAgent``.
         is_resumable: The ``ResumabilityConfig`` switch (default True).
 

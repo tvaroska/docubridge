@@ -315,7 +315,7 @@ class DocAIPrepass:
     The processor is resolved and validated at construction (``RuntimeError`` without
     one, ``ValueError`` when malformed) so a misconfigured engine fails on the first
     extract before any fetch. The client is injectable (the credential-free test
-    seam); ``None`` → a real ``documentai.DocumentProcessorServiceClient`` pointed at
+    port); ``None`` → a real ``documentai.DocumentProcessorServiceClient`` pointed at
     the processor's regional endpoint, built lazily on first use.
     """
 

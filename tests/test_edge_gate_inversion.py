@@ -12,7 +12,7 @@ to the label space), (c) an off-script tool on a genuine document — in three
 harnesses: in-process seeded with the Collector's signals (the R3 source),
 in-process extraction-sourced, and over A2A through the hybrid edge's R4 text route.
 
-Not a seam (no ``adapter`` fixture); fully model-free (``ScriptedLlm``).
+Not a port (no ``adapter`` fixture); fully model-free (``ScriptedLlm``).
 """
 
 from __future__ import annotations

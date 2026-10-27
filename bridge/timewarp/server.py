@@ -11,8 +11,8 @@ replay/reset. The clock advances only by these explicit calls — deterministic 
 dashboard + timewarp so a fast-forward is visible on the dashboard SSE stream; a standalone
 manual ``serve()`` builds its own ``InMemoryPortalStore``.
 
-**Not a seam (§2a).** It composes existing primitives (``VirtualClock``, ``FollowupLadder``,
-``PortalStore``). No new ``Seam`` enum entry, no GCP adapter here (Cloud Tasks is P7).
+**Not a port (§2a).** It composes existing primitives (``VirtualClock``, ``FollowupLadder``,
+``PortalStore``). No new ``Port`` enum entry, no GCP adapter here (Cloud Tasks is P7).
 
 Isolation: imports ``contract/`` + ``bridge.*`` + ``fastapi``/``starlette``/``pydantic`` +
 stdlib only; NEVER ``agents/``.

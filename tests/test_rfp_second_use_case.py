@@ -25,8 +25,8 @@ from bridge.edge.email_ingress import EmailProcessor
 from bridge.email_ingress.mime import landing_key
 from bridge.portal.rfp_checklist import checklist_for
 from bridge.portal.store import InMemoryPortalStore
+from bridge.ports.local import LocalEmailIngress
 from bridge.rfp import load_rfp_policy, open_rfp, receive, to_exchange_turn
-from bridge.seams.local import LocalEmailIngress
 from bridge.signals import dispose_signals, signals_from_result
 from contract.enums import Disposition, RequirementStatus, RfpItemStatus
 from contract.wire import CollectRequest, Requirement, RequirementsList
@@ -141,7 +141,7 @@ def test_receive_files_on_the_skills_item_key(board):
 
 
 async def test_email_drain_uses_the_skills_label_space(board, tmp_path):
-    seam = LocalEmailIngress(tmp_path)
+    port = LocalEmailIngress(tmp_path)
     extraction = StubExtraction(
         {
             "w9.pdf": supplier_result("w9-form", "W9"),
@@ -151,7 +151,7 @@ async def test_email_drain_uses_the_skills_label_space(board, tmp_path):
     )
     proc = EmailProcessor(
         board=board,
-        seam=seam,
+        port=port,
         mailbox=MAILBOX,
         secret=SECRET,
         extraction=extraction,
@@ -168,7 +168,7 @@ async def test_email_drain_uses_the_skills_label_space(board, tmp_path):
             ("quote.pdf", b"%PDF-1.4 synthetic quote", "application/pdf"),
         ],
     )
-    assert seam.land(landing_key(raw), raw)
+    assert port.land(landing_key(raw), raw)
 
     (outcome,) = await proc.drain()
 

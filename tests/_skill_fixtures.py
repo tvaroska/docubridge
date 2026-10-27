@@ -3,11 +3,11 @@
 Shared by the live use-case-add Drivers (``tests/test_live_use_case_add.py``,
 ``tests/test_live_rfp_use_case_add.py``, CUJ-9) and the second-use-case reusability proof
 (``tests/test_rfp_second_use_case.py``). Synthetic and
-test-only: written into tmp dirs (or installed through the ``skill_registry`` seam into a tmp
+test-only: written into tmp dirs (or installed through the ``skill_registry`` port into a tmp
 ``BRIDGE_SKILLS_DIR``), never into ``skills/`` or ``wiki/evals/``.
 
 Also the **bad live upload** (S4-usecase-3): five malformed / half-copied folders, each bad
-for one reason, written raw onto the filesystem (``write_bad_upload``) because the seam's
+for one reason, written raw onto the filesystem (``write_bad_upload``) because the port's
 ``install_skill`` now refuses them before any write.
 """
 
@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from bridge.seams.protocols import SkillRegistrySeam
+from bridge.ports.protocols import SkillRegistryPort
 from contract.extraction import ExtractionFields, ExtractionResult
 
 PROCESS = "supplier-onboarding"  # the synthetic skill under test (lives in tmp_path)
@@ -199,7 +199,7 @@ BAD_UPLOAD_SKILLS: dict[str, tuple[str, dict[str, str]]] = {
 
 
 def write_skill(root: Path, name: str, skill_md: str, assets: dict[str, str]) -> None:
-    """Write one skill folder straight onto the filesystem (no seam)."""
+    """Write one skill folder straight onto the filesystem (no port)."""
     skill = root / name
     (skill / "assets").mkdir(parents=True, exist_ok=True)
     (skill / "SKILL.md").write_text(skill_md)
@@ -214,8 +214,8 @@ def write_supplier_onboarding(root: Path, *, doctypes: bool = True) -> None:
             write_skill(root, name, skill_md, assets)
 
 
-def install_supplier_onboarding(registry: SkillRegistrySeam) -> list:
-    """Install the use case through the ``skill_registry`` seam; return the SkillMetas."""
+def install_supplier_onboarding(registry: SkillRegistryPort) -> list:
+    """Install the use case through the ``skill_registry`` port; return the SkillMetas."""
     return [
         registry.install_skill(name, skill_md, assets=assets)
         for name, (skill_md, assets) in SUPPLIER_ONBOARDING_SKILLS.items()

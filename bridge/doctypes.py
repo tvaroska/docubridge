@@ -12,7 +12,7 @@ learn to disagree:
    document is rejected at validation, for *every* installed doctype rather than the
    two a hand-maintained dict used to name.
 
-Both read the same asset through the ``skill_registry`` seam, so installing a doctype
+Both read the same asset through the ``skill_registry`` port, so installing a doctype
 skill folder gives that doctype extraction **and** validation with no code change and
 no redeploy — the no-redeploy property the registry already promises.
 
@@ -37,10 +37,10 @@ for ``ExtractionFields.tables`` — declared tables optional, each row an
 ``extra="forbid"`` model with the ``items.required`` columns mandatory — by the same
 rules as the key-field model.
 
-Module posture: stdlib + ``pydantic`` at module level only. The ``bridge.seams``
+Module posture: stdlib + ``pydantic`` at module level only. The ``bridge.ports``
 import inside :func:`doctype_schemas` is **lazy on purpose** —
-``bridge/seams/local/__init__.py`` imports ``bridge.extraction.fixture`` at module
-level, so a module-level seam import here would close an import cycle (and
+``bridge/ports/local/__init__.py`` imports ``bridge.extraction.fixture`` at module
+level, so a module-level port import here would close an import cycle (and
 ``bridge/patha.py``, which imports this module, is itself imported from
 ``bridge/__init__.py``). Same precedent as ``bridge/edge/skills.py::loaded_skills``.
 """
@@ -278,7 +278,7 @@ def tables_model(doctype: str, schema: dict) -> type[BaseModel]:
 
 
 def doctype_schemas() -> dict[str, dict]:
-    """Read every installed doctype skill's ``bridge-schema`` asset through the seam.
+    """Read every installed doctype skill's ``bridge-schema`` asset through the port.
 
     Half-installed policy (deliberately asymmetric): a declared-but-ABSENT asset is a
     legitimate registry state (a skill installed with no assets), so that doctype
@@ -286,12 +286,12 @@ def doctype_schemas() -> dict[str, dict]:
     extraction. A PRESENT but unparsable asset is an unambiguous authoring bug and gets
     the repo's refuse-loud treatment (``ValueError`` naming the skill and the asset).
     """
-    # Lazy seam import (mirrors ``bridge/edge/skills.py::loaded_skills``):
-    # ``bridge.seams.local`` imports ``bridge.extraction.fixture`` at module level, so
+    # Lazy port import (mirrors ``bridge/edge/skills.py::loaded_skills``):
+    # ``bridge.ports.local`` imports ``bridge.extraction.fixture`` at module level, so
     # a module-level import here would close an import cycle.
-    from bridge.seams import Seam, get_adapter, resolve_mode
+    from bridge.ports import Port, get_adapter, resolve_mode
 
-    registry = get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+    registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
     schemas: dict[str, dict] = {}
     for meta in registry.list_skills():
         if meta.kind != "doctype":

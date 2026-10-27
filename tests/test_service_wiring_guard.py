@@ -2,7 +2,7 @@
 
 The invariant (see ``design/patterns.md`` — "Host-controlled wiring"): a ``bridge/``
 factory must NEVER construct an ``InMemory*`` session / task / artifact / push-config
-store **unconditionally**. The host owns durability wiring (from CLI URIs / seam
+store **unconditionally**. The host owns durability wiring (from CLI URIs / port
 adapters / env), so an in-memory default may appear only behind a config gate:
 
 * an ``or`` operand — ``param or InMemory…()`` (the injectable idiom), or
@@ -15,7 +15,7 @@ The anti-pattern this fences against is DECISIONS.md 2026-09-07 — "Remove test
 ``InMemorySessionService()`` unconditionally (no param, no gate, zero production
 callers). An unconditional in-memory store in a core factory silently puts a
 per-replica store on the deployed path — the session-affinity trap
-(``design/seams.md``): a peer reference measured an 86.8% poll-404 rate on a
+(``design/ports.md``): a peer reference measured an 86.8% poll-404 rate on a
 multi-replica substrate. This guard turns that regression into a red test.
 
 Scope: ``bridge/`` only (the production zone). ``agents/`` (drivers, carriers,

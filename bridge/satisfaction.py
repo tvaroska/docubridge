@@ -17,7 +17,7 @@ never worse than the per-entry list.
 
 Opt-in: ``BRIDGE_SATISFACTION=llm`` (resolved once at app build by
 :func:`resolve_assessor`); unset/blank/``off`` → no assessor, every turn model-free.
-Not a seam (the model resolves like the ``document_bridge`` agent's, ``BRIDGE_MODEL``).
+Not a port (the model resolves like the ``document_bridge`` agent's, ``BRIDGE_MODEL``).
 
 ADK-free: imports ``contract`` + stdlib + pydantic only; the model-backed assessor
 lives in :mod:`bridge.satisfaction_llm` and is imported lazily.

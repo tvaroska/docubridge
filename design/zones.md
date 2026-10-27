@@ -21,7 +21,7 @@ External zone (untrusted)  ─ingress→  Bridge (DMZ)  ←Agent Identity→  In
 - **Carrier-vs-carrier confidentiality is addressing, not a wall.** Competing carriers share the external zone; a carrier can't see another's bid because it can't address another leg's context (Gateway scoping + per-leg isolation).
 - **No per-customer logical multi-tenancy.** One deployment serves one trust domain; cross-org tenant scoping is out of scope.
 
-**Deployment-only, not a seam.** Unlike the storage [seams](seams.md), the Gateway has no local equivalent — local dev runs no gateway. So the deploy path provides **validated deploy-spec builders** for the gateway, workload identity, and network zone that fold into the deployment spec only when a gateway is configured. Provisioning the runtime is separate from provisioning the gateway.
+**Deployment-only, not a port.** Unlike the storage [ports](ports.md), the Gateway has no local equivalent — local dev runs no gateway. So the deploy path provides **validated deploy-spec builders** for the gateway, workload identity, and network zone that fold into the deployment spec only when a gateway is configured. Provisioning the runtime is separate from provisioning the gateway.
 
 ## Related
 - [GCP substrate](gcp-substrate.md), [two edges](edges.md)

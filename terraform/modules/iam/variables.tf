@@ -23,7 +23,7 @@ variable "base_roles" {
   ]
 }
 
-# Extension seam: later primitives (tasks P7-4, etc.) can add grants without
+# Extension port: later primitives (tasks P7-4, etc.) can add grants without
 # editing this module. Empty by default.
 variable "extra_roles" {
   type        = set(string)

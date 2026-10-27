@@ -115,7 +115,7 @@ def test_gate_deterministic(record):
     assert result1 == result2, f"{record['id']}: gate not deterministic"
 
 
-# ========== D. Full collect-path parity + determinism (parametrized, async, seam) ==========
+# ========== D. Full collect-path parity + determinism (parametrized, async, port) ==========
 
 
 @pytest.mark.parametrize(
@@ -171,7 +171,7 @@ async def test_collect_path_parity(record):
     )
 
 
-# ========== E. Fixture ↔ corpus resolution (parametrized, async, seam) ==========
+# ========== E. Fixture ↔ corpus resolution (parametrized, async, port) ==========
 
 
 @pytest.mark.parametrize(

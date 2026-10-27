@@ -48,7 +48,7 @@ multi-currency, multi-language carrier quotes rendered as one apples-to-apples c
 with gaps flagged, a multi-turn revise loop against a **non-ADK** (LangGraph) counterparty,
 and bind → rollup — all from a single "ask once" per carrier. Closed 2026-09-07 (Sprint 1, T3-green); every `S1-benefits-*` task is archived under Completed Work.
 
-**Architecture note:** the outbound seam, trust boundary, and wire contracts are already
+**Architecture note:** the outbound port, trust boundary, and wire contracts are already
 whole ([outbound](../../design/outbound.md)) — this cycle adds demand-driven capability (Programs, FX/multilingual
 normalization, standard-gap disposition, Negotiate/versioning, dial-out/Deliver, the
 interop counterparties), not new machinery. The pattern set is closed — Negotiate/Deliver
@@ -89,7 +89,7 @@ updates the requirements. The board host then drains carrier replies onto that R
 - **Aggregate (`bridge/rfp.py`).** `RfpLeg.chases` / `last_chased_at` (kept across `update_requirements`), `chaseable_items`, `record_chase` (audit-only `chased` event; no cell moves) and `chase_message`. `RfpCarrierView` carries the chase count.
 - **Outbound.** `Nudge.seq`: a manual chase is keyed `nudge:<leg ctx>:chase-<seq>`, so a second chase is a new send and a re-drive dedupes. The ladder key is unchanged.
 - **Reply addressing.** `IntakeAddressing` (`bridge/email_ingress/correlation.py`): mailbox + secret → a leg's reply address and subject tag; `from_env()` reads `BRIDGE_EMAIL_MAILBOX` + `BRIDGE_EMAIL_TOKEN_SECRET`.
-- **Consumer read API** (dashboard host, `bridge/dashboard/rfp_api.py`): `GET /rfps`, `GET /rfps/{id}` (the `RfpStatusView` plus `api_version` "1" and per-carrier `reply_address` / `reply_subject_tag`), and `POST /rfps/{id}/chase` (one carrier or every chaseable one; 404 / 409 / 502 / 503). The outbound client is injected or built lazily from the `a2a_client` seam.
+- **Consumer read API** (dashboard host, `bridge/dashboard/rfp_api.py`): `GET /rfps`, `GET /rfps/{id}` (the `RfpStatusView` plus `api_version` "1" and per-carrier `reply_address` / `reply_subject_tag`), and `POST /rfps/{id}/chase` (one carrier or every chaseable one; 404 / 409 / 502 / 503). The outbound client is injected or built lazily from the `a2a_client` port.
 - **Carrier checklist** (portal host, `bridge/portal/rfp_checklist.py`): `GET /rfp/legs/{context_id}`, filtered to that carrier only, and `POST /rfp/legs/{context_id}/uploads`. The upload files a quote into a named row through extract → gate → ledger → fresh read → acknowledge → `receive(product_line=…)` → put (404 / 409 / 422, board untouched on refusal).
 - **Local demo host** (`bridge/demos/rfp_demo.py`): one seeded RFP (3 carriers × CI / HI, seeded through the real upload path) behind `/ops` + `/portal` on one shared board.
 - **Frontend.**
@@ -108,7 +108,7 @@ updates the requirements. The board host then drains carrier replies onto that R
 **Ownership.** The Bridge owns the edge: email is a collection channel under Benefits Consumer S0-arch-3's split, and the reply is solicited (correlated by token), not cold push. See `DECISIONS.md` 2026-09-30 S0-arch-13.
 
 **What was built.**
-- **A ninth seam, `email_ingress`** (`EmailIngressSeam`): `land` / `pending` / `read` / `put_attachment` / `mark_processed` / `processed` over one layout (`inbox/<key>.eml`, `attachments/<key>/<i>/<filename>`, `processed/<key>.json`). Every write is create-only:
+- **A ninth port, `email_ingress`** (`EmailIngressPort`): `land` / `pending` / `read` / `put_attachment` / `mark_processed` / `processed` over one layout (`inbox/<key>.eml`, `attachments/<key>/<i>/<filename>`, `processed/<key>.json`). Every write is create-only:
   - `LocalEmailIngress` (`BRIDGE_EMAIL_DIR`): temp file + `os.link`.
   - `GcpEmailIngress` (`BRIDGE_EMAIL_BUCKET`): `if_generation_match=0`; 412 = duplicate, 403 = duplicate only if the object exists.
 - **`bridge/email_ingress/`** (pure, no ADK):
@@ -129,10 +129,10 @@ updates the requirements. The board host then drains carrier replies onto that R
   - runtime envs (`BRIDGE_EMAIL_BUCKET`, `BRIDGE_EMAIL_MAILBOX`, the `BRIDGE_EMAIL_TOKEN_SECRET` secret ref)
   - the webhook-only Cloud Run service with its deliberate `allUsers` invoker
   - `tests/email.tftest.hcl` (10 runs).
-- **Design:** `design/email-intake.md` (new), plus `seams.md`, `bridge.md`, `edges.md`, `gcp-substrate.md`.
+- **Design:** `design/email-intake.md` (new), plus `ports.md`, `bridge.md`, `edges.md`, `gcp-substrate.md`.
 
 **Verification.**
-- T1: ruff clean. pytest 1063 passed / 41 skipped after the CRITICAL-review fixes (1046 before them; the new skips are live legs only). `-m seam` 12 / 11. `uv lock --check` OK. terraform fmt/validate clean; `terraform test` 31 passed.
+- T1: ruff clean. pytest 1063 passed / 41 skipped after the CRITICAL-review fixes (1046 before them; the new skips are live legs only). `-m port` 12 / 11. `uv lock --check` OK. terraform fmt/validate clean; `terraform test` 31 passed.
 - T2: `/tmp/s0arch13_t2.py` 9/9 PASS:
   - the handshake
   - notification → land → drain: 2 filed, xlsx unreadable, inline skipped; CI received, HI incomplete `flagged_fields`, carrier-b invited
@@ -146,7 +146,7 @@ updates the requirements. The board host then drains carrier replies onto that R
 - Live Graph / GCS / Gemini legs are gated and deferred to the provisioned run.
 
 **Proposals / follow-ups.** See `DECISIONS.md`:
-- spec "nine seams"
+- spec "nine ports"
 - a CUJ Driver line
 - an optional `wiki/evals/rfp` reply case
 - the Benefits Consumer S0-infra-7 owner
@@ -254,7 +254,7 @@ values using only stdlib code and verified with a byte-equality drift guard.
   `_document_part` docstring: SVG stays a text part; every other mime (notably
   `application/pdf`) rides as inline bytes. States the boundary: a **scanned/raster** PDF
   (no text layer) is the deferred **Document AI** adapter.
-- **`design/seams.md`** — one status-free sentence: the Gemini engine takes native-digital
+- **`design/ports.md`** — one status-free sentence: the Gemini engine takes native-digital
   documents (text SVG, images, native-digital PDF); scanned/raster PDF (OCR) is the Document
   AI adapter's envelope.
 
@@ -267,7 +267,7 @@ Resolving a PDF through `bridge/edge/artifacts.py::resolve_bytes` (S0-arch-7, Ad
 corpus) and the whole-journey A2A conformance run (S0-arch-9) are out of scope.
 
 **Verification.** T1: full suite green (715 passed / 30 skipped, baseline 708/29 + 7 new
-credential-free + 1 gated), `ruff check` clean, `-m seam` unchanged. T2: `pdftotext` prints
+credential-free + 1 gated), `ruff check` clean, `-m port` unchanged. T2: `pdftotext` prints
 the quote with accents intact; `uv run python -m tests.corpus_pdf` + `cmp` is BYTE-STABLE;
 fake-client run prints `mime: application/pdf bytes: 1186 doctype: benefits-quote`; both
 legs reproduce `expected_normalized` (premium 1100.00, deductible 550.00, USD/en) with no
@@ -409,7 +409,7 @@ _Added 2026-09-06._
 
 The CUJ-11 payoff tail: versioned revise loop, per-leg bind (sense B), program rollup,
 and audit trail. Shipped as one cohesive Bridge-side aggregate composing the prior beats
-(program, normalize, standard, comparison) with no `contract/` change and no new `Seam`.
+(program, normalize, standard, comparison) with no `contract/` change and no new `Port`.
 
 - **`bridge/negotiate.py`** — the whole beats-5,6 surface in one module: domain-object-level
   versioned revise loop (a leg holds an ordered tuple of `QuoteVersion`s; attempt N is
@@ -423,7 +423,7 @@ and audit trail. Shipped as one cohesive Bridge-side aggregate composing the pri
   `bridge.normalize`/`standard`/`comparison` + `bridge.sla._load_policy_doc` + escalate
   constants; NEVER `agents/` (isolation guard green).
 - **One-module choice.** bind / rollup / audit / revise all operate on the same
-  versioned-leg state, so one cohesive aggregate is the right seam (not four modules).
+  versioned-leg state, so one cohesive aggregate is the right port (not four modules).
   Cohesive because bind/rollup/audit all operate on the same versioned-leg state.
 - **Policy loader reuses `bridge.sla._load_policy_doc`** (the same trick
   `bridge/standard.py` used) so `bridge/sla.py` stayed off the change surface.
@@ -517,7 +517,7 @@ S1-benefits-5).
 - **Deferred, not dropped (no silent cap):** `route` as a `contract/` wire enum
   (S1-benefits-4/5); the versioned re-flag on a revised quote (S1-benefits-5); an
   agent-override *channel* (supported by construction — `flag_quote` takes an explicit
-  `ProgramStandard` — but wiring the channel is out of scope). No seam / no `contract/`
+  `ProgramStandard` — but wiring the channel is out of scope). No port / no `contract/`
   change: a pure Bridge transform consuming `NormalizedQuote` + a declared skill asset.
 
 **Verification.** T1: full suite green (566 passed, 13 skipped), `ruff check` clean,
@@ -535,7 +535,7 @@ _Added 2026-09-06._
 
 ### S1-benefits-4 — Dial-out + Deliver (beat 2 · CUJ-3)
 
-The two remaining outbound activities on the existing `a2a_client` seam: **dial-out**
+The two remaining outbound activities on the existing `a2a_client` port: **dial-out**
 (Bridge-as-client originates an A2A exchange: Agent-Card discovery → `message/send`) and
 **Deliver** (push the finished normalized comparison outward by reference). First concrete
 use of the designed-but-unbuilt dial-out/Deliver flows.
@@ -618,7 +618,7 @@ Negotiate, bind, or rollup (those are S1-benefits-2..7 and consume what this lay
   aggregate — `Leg(party, context_id)`, `Program(program_id, legs)`, `open_program`,
   `add_leg`, `fan_out`. Beat-1 scope is fan-out + the **isolation invariant**: N legs →
   N distinct minted `context_id`s, each party a distinct leg/context (competitors never
-  share a context); duplicate party raises `ValueError`. No seam, no persistence, no ADK,
+  share a context); duplicate party raises `ValueError`. No port, no persistence, no ADK,
   no wire type.
 - **Deferred, not dropped (no silent cap):** `program_id` on the wire (adding it to
   `contract.CollectRequest`) is deferred to S1-benefits-4 (dial-out fan-out); per-leg
@@ -649,8 +649,8 @@ one apples-to-apples schema for comparison and gap-flagging.
   isolation guard enforced).
 - **FX swap point (deferred).** Thin `FxRates = Callable[[str], float]` protocol with a
   default `fixed_fx` reading the fixed rate table; `normalize_quote` takes `fx: FxRates =
-  fixed_fx`. Live-FX-seam (real exchange rate lookup) is **designed but unbuilt** (no
-  silent cap) — the fixed table satisfies the deterministic-demo requirement; a live seam
+  fixed_fx`. Live-FX-port (real exchange rate lookup) is **designed but unbuilt** (no
+  silent cap) — the fixed table satisfies the deterministic-demo requirement; a live port
   swap is one argument change. Module docstring logs the deferral.
 - **Currency/language on the wire (Option A decision, load-bearing).** The wire extraction
   shape (`contract.ExtractionFields`) has no top-level `currency`/`language` fields, but

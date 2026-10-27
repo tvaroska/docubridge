@@ -1,4 +1,4 @@
-"""Tests for the extraction seam and fixture engine."""
+"""Tests for the extraction port and fixture engine."""
 
 import json
 from pathlib import Path
@@ -7,7 +7,7 @@ import pytest
 
 from bridge.disposition import run_disposition_gate
 from bridge.extraction.fixture import FixtureExtractor
-from bridge.seams import Seam, SeamMode, get_adapter
+from bridge.ports import Port, PortMode, get_adapter
 from contract.extraction import ExtractionResult
 
 # Load the corpus for oracle tests
@@ -96,14 +96,14 @@ async def test_unknown_key_raises_loudly():
     assert "known ids:" in error_message
 
 
-@pytest.mark.seam("extraction")
-async def test_seam_adapter_parity():
-    """Seam adapter (local) returns same results as direct fixture."""
-    # Get adapter via seam harness
-    adapter = get_adapter(Seam.extraction, SeamMode.local)
+@pytest.mark.port("extraction")
+async def test_port_adapter_parity():
+    """Port adapter (local) returns same results as direct fixture."""
+    # Get adapter via port harness
+    adapter = get_adapter(Port.extraction, PortMode.local)
 
-    # Check seam identity
-    assert adapter.seam is Seam.extraction
+    # Check port identity
+    assert adapter.port is Port.extraction
 
     # Extract via adapter
     adapter_result = await adapter.extract("gov-id-clean")

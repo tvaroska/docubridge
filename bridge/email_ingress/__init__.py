@@ -1,7 +1,7 @@
 """Inbound email intake (S0-arch-13): a carrier answers a solicited RFP by email.
 
 A dedicated M365 mailbox receives the carrier's reply; a Graph change notification
-feeds the raw RFC 5322 bytes onto the ``email_ingress`` seam (create-only landing);
+feeds the raw RFC 5322 bytes onto the ``email_ingress`` port (create-only landing);
 the intake edge (``bridge.edge.email_ingress``) parses them, correlates the reply to
 one open RFP leg by its intake token, and files each attachment through the same
 extraction → disposition gate → ledger path as an A2A or portal submission.

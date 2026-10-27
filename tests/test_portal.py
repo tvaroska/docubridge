@@ -307,10 +307,10 @@ async def test_hitl_reviewer_can_reject():
 
 
 # --------------------------------------------------------------------------- #
-# Seam usage — one extract() per upload                                        #
+# Port usage — one extract() per upload                                        #
 # --------------------------------------------------------------------------- #
-async def test_seam_extracts_once_per_upload():
-    """One extraction-seam call per upload (via an injected spy on the engine)."""
+async def test_port_extracts_once_per_upload():
+    """One extraction-port call per upload (via an injected spy on the engine)."""
     from bridge.portal import session as engine
 
     class SpyExtractor:

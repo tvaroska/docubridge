@@ -2,7 +2,7 @@
 
 A standalone ASGI host over the P6-1 engines (``bridge.pathb`` + ``bridge.edge.a2ui`` +
 ``bridge.policy``): it drives the Path-B graph in-process across parks, persists
-``PathBState`` between HTTP requests (``PortalStore``, a native swap — NOT a ``Seam``),
+``PathBState`` between HTTP requests (``PortalStore``, a native swap — NOT a ``Port``),
 and relays each ``reason_code``/``message`` verbatim across the HTTP boundary (A2UI-1).
 
 **Isolation guard:** under ``bridge/`` → must NEVER import ``agents/``

@@ -1,4 +1,4 @@
-"""Seam-parity durability tests for the sessions/task_store seams (P4-1, DUR-1/DUR-2).
+"""Port-parity durability tests for the sessions/task_store ports (P4-1, DUR-1/DUR-2).
 
 Both local adapters must build a **file-backed durable** service/store: write through
 it, dispose the engine, re-open on the same DSN, and read the record back. This is the
@@ -17,7 +17,7 @@ import os
 
 import pytest
 
-from bridge.seams import Seam, SeamMode, get_adapter
+from bridge.ports import Port, PortMode, get_adapter
 
 # The Postgres DSN env the gcp params of the roundtrip/cross-replica cases read
 # (a provisioned Cloud SQL DSN, a P7-9 input). Absent → skip even under
@@ -36,38 +36,38 @@ def _gcp_dsn_or_skip() -> str:
     return dsn
 
 
-# --- sessions seam (DUR-1) -------------------------------------------------
+# --- sessions port (DUR-1) -------------------------------------------------
 
 
-@pytest.mark.seam("sessions")
+@pytest.mark.port("sessions")
 async def test_sessions_durable_roundtrip(adapter, tmp_path, monkeypatch):
     """The sessions adapter builds a durable DatabaseSessionService that survives
     an engine dispose/reopen. local → tmp_path sqlite; gcp → Cloud SQL Postgres
     DSN (same ADK class), skipped without a provisioned DSN."""
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         dsn = _gcp_dsn_or_skip()
     else:
         monkeypatch.delenv("BRIDGE_SESSION_DB_URL", raising=False)
         dsn = f"sqlite+aiosqlite:///{tmp_path}/s.db"
 
-    svc = get_adapter(Seam.sessions, adapter).build_session_service(db_url=dsn)
+    svc = get_adapter(Port.sessions, adapter).build_session_service(db_url=dsn)
     await svc.create_session(
         app_name="address", user_id="u1", session_id="sess-1", state={"k": "v"}
     )
     # Dispose the engine — the record must survive a fresh connection pool.
     await svc.db_engine.dispose()
 
-    svc2 = get_adapter(Seam.sessions, adapter).build_session_service(db_url=dsn)
+    svc2 = get_adapter(Port.sessions, adapter).build_session_service(db_url=dsn)
     got = await svc2.get_session(app_name="address", user_id="u1", session_id="sess-1")
     assert got is not None
     assert got.id == "sess-1"
     assert got.state == {"k": "v"}
 
 
-# --- task_store seam (DUR-2) -----------------------------------------------
+# --- task_store port (DUR-2) -----------------------------------------------
 
 
-@pytest.mark.seam("task_store")
+@pytest.mark.port("task_store")
 async def test_task_store_durable_roundtrip(adapter, tmp_path, monkeypatch):
     """The task_store adapter builds a durable DatabaseTaskStore that survives an
     engine dispose/reopen. local → tmp_path sqlite; gcp → Cloud SQL Postgres DSN
@@ -75,7 +75,7 @@ async def test_task_store_durable_roundtrip(adapter, tmp_path, monkeypatch):
     from a2a.server.context import ServerCallContext, UnauthenticatedUser
     from a2a.types import Task, TaskState, TaskStatus
 
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         dsn = _gcp_dsn_or_skip()
     else:
         monkeypatch.delenv("BRIDGE_TASK_DB_URL", raising=False)
@@ -87,11 +87,11 @@ async def test_task_store_durable_roundtrip(adapter, tmp_path, monkeypatch):
         status=TaskStatus(state=TaskState.TASK_STATE_COMPLETED),
     )
 
-    store = get_adapter(Seam.task_store, adapter).build_task_store(db_url=dsn)
+    store = get_adapter(Port.task_store, adapter).build_task_store(db_url=dsn)
     await store.save(task, ctx)
     await _engine_of(store).dispose()
 
-    store2 = get_adapter(Seam.task_store, adapter).build_task_store(db_url=dsn)
+    store2 = get_adapter(Port.task_store, adapter).build_task_store(db_url=dsn)
     got = await store2.get("task-1", ctx)
     assert got is not None
     assert got.id == "task-1"
@@ -108,7 +108,7 @@ def _engine_of(store):
 # --- cross-replica read-after-write (the session-affinity trap) ------------
 
 
-@pytest.mark.seam("task_store")
+@pytest.mark.port("task_store")
 async def test_task_store_cross_replica_read_after_write(
     adapter, tmp_path, monkeypatch
 ):
@@ -117,7 +117,7 @@ async def test_task_store_cross_replica_read_after_write(
 
     Two independent ``build_task_store(db_url=dsn)`` calls = two independent
     engines/pools = the two-replica shape. This is the design's mandated case
-    (design/seams.md, "the session-affinity trap") and a P7-9 exit-gate criterion:
+    (design/ports.md, "the session-affinity trap") and a P7-9 exit-gate criterion:
     terminal-outcome parity alone passes trivially single-process and would MISS a
     per-replica store. local MUST use a tmp_path FILE sqlite DSN (in-memory sqlite
     is per-connection and would fail); gcp uses the Cloud SQL Postgres DSN.
@@ -125,7 +125,7 @@ async def test_task_store_cross_replica_read_after_write(
     from a2a.server.context import ServerCallContext, UnauthenticatedUser
     from a2a.types import Task, TaskState, TaskStatus
 
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         dsn = _gcp_dsn_or_skip()
     else:
         monkeypatch.delenv("BRIDGE_TASK_DB_URL", raising=False)
@@ -138,12 +138,12 @@ async def test_task_store_cross_replica_read_after_write(
     )
 
     # Handle A (replica 1) writes the terminal task.
-    handle_a = get_adapter(Seam.task_store, adapter).build_task_store(db_url=dsn)
+    handle_a = get_adapter(Port.task_store, adapter).build_task_store(db_url=dsn)
     await handle_a.save(task, ctx)
 
     # Handle B (replica 2) — an INDEPENDENT engine/pool — reads it back, NO
     # dispose between. This is the shared-store proof.
-    handle_b = get_adapter(Seam.task_store, adapter).build_task_store(db_url=dsn)
+    handle_b = get_adapter(Port.task_store, adapter).build_task_store(db_url=dsn)
     got = await handle_b.get("task-xrep", ctx)
 
     assert got is not None
@@ -160,14 +160,14 @@ async def test_task_store_cross_replica_read_after_write(
 
 def test_sessions_async_driver_guard():
     """A bare sync sqlite DSN is rejected with a clear async-driver message."""
-    adapter = get_adapter(Seam.sessions, SeamMode.local)
+    adapter = get_adapter(Port.sessions, PortMode.local)
     with pytest.raises(ValueError, match="async driver"):
         adapter.build_session_service(db_url="sqlite:///x.db")
 
 
 def test_task_store_async_driver_guard():
     """A bare sync sqlite DSN is rejected with a clear async-driver message."""
-    adapter = get_adapter(Seam.task_store, SeamMode.local)
+    adapter = get_adapter(Port.task_store, PortMode.local)
     with pytest.raises(ValueError, match="async driver"):
         adapter.build_task_store(db_url="sqlite:///x.db")
 
@@ -180,7 +180,7 @@ def test_sessions_in_memory_default(monkeypatch):
     from google.adk.sessions import InMemorySessionService
 
     monkeypatch.delenv("BRIDGE_SESSION_DB_URL", raising=False)
-    svc = get_adapter(Seam.sessions, SeamMode.local).build_session_service()
+    svc = get_adapter(Port.sessions, PortMode.local).build_session_service()
     assert isinstance(svc, InMemorySessionService)
 
 
@@ -189,7 +189,7 @@ def test_task_store_in_memory_default(monkeypatch):
     from a2a.server.tasks import InMemoryTaskStore
 
     monkeypatch.delenv("BRIDGE_TASK_DB_URL", raising=False)
-    store = get_adapter(Seam.task_store, SeamMode.local).build_task_store()
+    store = get_adapter(Port.task_store, PortMode.local).build_task_store()
     assert isinstance(store, InMemoryTaskStore)
 
 
@@ -200,7 +200,7 @@ def test_sessions_env_dsn_builds_durable(monkeypatch, tmp_path):
     monkeypatch.setenv(
         "BRIDGE_SESSION_DB_URL", f"sqlite+aiosqlite:///{tmp_path}/env.db"
     )
-    svc = get_adapter(Seam.sessions, SeamMode.local).build_session_service()
+    svc = get_adapter(Port.sessions, PortMode.local).build_session_service()
     assert isinstance(svc, DatabaseSessionService)
 
 
@@ -209,7 +209,7 @@ def test_task_store_env_dsn_builds_durable(monkeypatch, tmp_path):
     from a2a.server.tasks import DatabaseTaskStore
 
     monkeypatch.setenv("BRIDGE_TASK_DB_URL", f"sqlite+aiosqlite:///{tmp_path}/env.db")
-    store = get_adapter(Seam.task_store, SeamMode.local).build_task_store()
+    store = get_adapter(Port.task_store, PortMode.local).build_task_store()
     assert isinstance(store, DatabaseTaskStore)
 
 
@@ -221,7 +221,7 @@ def test_push_config_store_in_memory_default(monkeypatch):
     from a2a.server.tasks import InMemoryPushNotificationConfigStore
 
     monkeypatch.delenv("BRIDGE_TASK_DB_URL", raising=False)
-    store = get_adapter(Seam.task_store, SeamMode.local).build_push_config_store()
+    store = get_adapter(Port.task_store, PortMode.local).build_push_config_store()
     assert isinstance(store, InMemoryPushNotificationConfigStore)
 
 
@@ -230,12 +230,12 @@ def test_push_config_store_durable_with_dsn(monkeypatch, tmp_path):
     from a2a.server.tasks import DatabasePushNotificationConfigStore
 
     monkeypatch.setenv("BRIDGE_TASK_DB_URL", f"sqlite+aiosqlite:///{tmp_path}/push.db")
-    store = get_adapter(Seam.task_store, SeamMode.local).build_push_config_store()
+    store = get_adapter(Port.task_store, PortMode.local).build_push_config_store()
     assert isinstance(store, DatabasePushNotificationConfigStore)
 
 
 def test_push_config_store_async_driver_guard():
     """A bare sync sqlite DSN is rejected with a clear async-driver message."""
-    adapter = get_adapter(Seam.task_store, SeamMode.local)
+    adapter = get_adapter(Port.task_store, PortMode.local)
     with pytest.raises(ValueError, match="async driver"):
         adapter.build_push_config_store(db_url="sqlite:///x.db")

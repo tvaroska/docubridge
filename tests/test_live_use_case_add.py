@@ -8,7 +8,7 @@ One ``build_a2a_app`` (hybrid edge, ``ScriptedLlm``, in-memory stores) over a tm
 - **(b)** a control, identical second core runs the same park + reviewer resolution to its
   terminal outcome, before any upload;
 - **(c)** the synthetic ``supplier-onboarding`` use case (two doctype skills, then the
-  process) is installed through the ``skill_registry`` seam — same app object, no rebuild;
+  process) is installed through the ``skill_registry`` port — same app object, no rebuild;
 - **(d)** the next Agent Card GET advertises the new process with both doctype tags;
 - **(e)** the parked exchange is finished by the reviewer: its terminal outcome, reason code
   and ledger equal the control's;
@@ -32,7 +32,7 @@ folders raw into the same kind of live registry while an Address exchange is par
 Each is skipped with a logged reason and absent from the card; discovery, Address Path-A
 and the parked exchange are undisturbed; a process with no installed candidate rejects
 everything ``unsupported_doctype`` (never Address's label space, S0-arch-18); a malformed
-seam re-upload is refused before any write; and each folder is picked up once repaired.
+port re-upload is refused before any write; and each folder is picked up once repaired.
 
 Synthetic data only (the corpus party ``jordan-lee``; suppliers ``supplier-x``).
 """
@@ -49,7 +49,7 @@ from a2a.types import GetTaskRequest, TaskState
 from bridge.edge import encode_collect_request
 from bridge.edge.skills import loaded_skills
 from bridge.edge.wire import META_REASON_CODE, META_REVIEW_CALL_ID
-from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.sla import SKILLS_DIR
 from contract.enums import Disposition, Gate
 from contract.wire import CollectRequest
@@ -199,8 +199,8 @@ async def test_whole_use_case_added_live_while_an_exchange_is_in_flight(
         # --- Trap guards: from here on nothing may be rebuilt or reconstructed --------
         constructed = a2a.arm_trap_guards(monkeypatch)
 
-        # --- (c) Upload the whole use case through the skill_registry seam ------------
-        registry = get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+        # --- (c) Upload the whole use case through the skill_registry port ------------
+        registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
         metas = install_supplier_onboarding(registry)
         assert [m.kind for m in metas] == ["doctype", "doctype", "process"]
         assert tuple(metas[-1].candidate_doctypes) == CANDIDATES
@@ -338,7 +338,7 @@ async def test_bad_live_upload_is_refused_not_propagated(
 ):
     live = a2a.core()
     control = a2a.core()
-    registry = get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+    registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
 
     with caplog.at_level(logging.WARNING, logger=SKILLS_LOGGER):
         async with a2a.client(live.app, REVIEWER) as (hc, client):
@@ -429,7 +429,7 @@ async def test_bad_live_upload_is_refused_not_propagated(
             a2a.assert_same_outcome(task, control_task)
             calls_resumed = live.llm.call_count
 
-            # --- (f) Refused through the seam ... -------------------------------------
+            # --- (f) Refused through the port ... -------------------------------------
             address_md = (clean_env / "address-proof" / "SKILL.md").read_text()
             with pytest.raises(ValueError):
                 registry.install_skill("address-proof", TRUNCATED_W9_SKILL_MD)
@@ -457,7 +457,7 @@ async def test_bad_live_upload_is_refused_not_propagated(
                 (COI[0], Disposition.rejected, Gate.unsupported, "unsupported_doctype"),
             ]
 
-            # Full repair: insurance-cert re-uploaded good through the seam.
+            # Full repair: insurance-cert re-uploaded good through the port.
             coi_md, coi_assets = SUPPLIER_ONBOARDING_SKILLS["insurance-cert"]
             registry.install_skill("insurance-cert", coi_md, assets=coi_assets)
             card = await a2a.card_skills(hc)

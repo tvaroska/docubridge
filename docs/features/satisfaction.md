@@ -58,7 +58,7 @@ Completed-work archive for this feature area (`docs/features/`). This holds the 
 
 **Gotchas:**
 - The S0-arch-15 core-names-no-skill guard holds: the assessor prompt and all string constants are skill-agnostic.
-- The assessor is not a seam (no local/GCP adapter pair). It's resolved like the extraction agent's model.
+- The assessor is not a port (no local/GCP adapter pair). It's resolved like the extraction agent's model.
 - Best-effort never fails a turn and is never worse than today's per-entry fallback.
 - The proposal never touches `terminal`, task state, or the disposition gate.
 - A "looks done" proposal does not prevent the app from rejecting the set (e.g. `agents.address.gate.is_satisfied` still enforces the distinct-issuer constraint — the app's gate owns done, the Bridge's proposal is advisory).

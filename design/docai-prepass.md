@@ -1,8 +1,8 @@
 ---
 type: atom
-up: "seams.md"
+up: "ports.md"
 related:
-  - "seams.md"
+  - "ports.md"
   - "skills.md"
   - "artifacts.md"
   - "gcp-substrate.md"
@@ -15,7 +15,7 @@ tags: [bridge, extraction]
 
 ## Why a pre-pass, not a parallel adapter
 
-The [extraction seam](seams.md) is a capability axis (`fixture|gemini|docai`). A per-doctype Document AI adapter would need a custom processor and an entity→field map for **every** doctype, and it would duplicate what the Gemini engine already does from the doctype skill: classify the document, map the carrier's own terms onto the doctype's fields, and report the review signals. What Document AI adds that Gemini multimodal lacks is a **machine-read text layer for a scanned/raster page**. So Document AI contributes exactly that, and it is added to the same request.
+The [extraction port](ports.md) is a capability axis (`fixture|gemini|docai`). A per-doctype Document AI adapter would need a custom processor and an entity→field map for **every** doctype, and it would duplicate what the Gemini engine already does from the doctype skill: classify the document, map the carrier's own terms onto the doctype's fields, and report the review signals. What Document AI adds that Gemini multimodal lacks is a **machine-read text layer for a scanned/raster page**. So Document AI contributes exactly that, and it is added to the same request.
 
 - `BRIDGE_EXTRACTION_ENGINE=gemini`: request contents `[prompt, document]`.
 - `BRIDGE_EXTRACTION_ENGINE=docai`: request contents `[prompt, document, ocr_text]`.
@@ -73,7 +73,7 @@ A consumer with its own Gemini extraction path, such as the consumer's `engine/e
 Both engines then read a scanned quote the same way, and delegating extraction to the Bridge over A2A changes nothing about the result.
 
 ## Read next
-- [seams](seams.md): the extraction capability axis
+- [ports](ports.md): the extraction capability axis
 - [skills](skills.md): doctype skills, the catalog the Gemini leg maps onto
 - [artifacts](artifacts.md): how a by-reference document reaches the engine
 - [gcp-substrate](gcp-substrate.md): the Extraction row and its IAM

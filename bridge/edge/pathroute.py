@@ -21,7 +21,7 @@ every message to Path-A or the model-free Collector exactly as ``classify_path``
 ``hybrid`` additionally hands text-only intents to the ``document_bridge`` LlmAgent leg
 and recognises the human-review resolution / pending-review routes. Structured traffic
 (assertions, ``CollectRequest``s, file submissions) never reaches the model in either
-mode. The edge mode is a routing mode, not a seam (no local/GCP adapter pair).
+mode. The edge mode is a routing mode, not a port (no local/GCP adapter pair).
 
 Imports ``a2a.*`` (the edge already does) + ``contract.*``; NEVER ``agents/``.
 """
@@ -118,7 +118,7 @@ def resolve_edge_mode(value: EdgeMode | str | None = None) -> EdgeMode:
     An explicit ``value`` wins (test / app injection); a ``None`` or blank value falls
     through to ``BRIDGE_EDGE_MODE``; unset/blank env → ``EdgeMode.deterministic``. The
     match is exact and case-sensitive; any other value raises ``ValueError`` (mirrors
-    ``bridge.seams.config.resolve_mode``). Not a seam.
+    ``bridge.ports.config.resolve_mode``). Not a port.
     """
     if isinstance(value, EdgeMode):
         return value

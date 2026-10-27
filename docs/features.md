@@ -1,8 +1,8 @@
 # Feature catalog
 
-The build broken into named, individually-verifiable features, each pinned to its ADK/A2A construct, the **area** it belongs to (Core · Address · Benefits · RFP · Deploy), the [CUJ](../spec/cujs.md) it serves, and a one-line acceptance check. This is the *what*; [`TODO.md`](../TODO.md) is the *in what order*, and [`roadmap.md`](roadmap.md) is the milestone view. Each feature links back to the design note ([`design/`](../design/bridge.md)) that specifies it — this catalog re-specifies nothing.
+The build broken into named, individually-verifiable features, each pinned to its ADK/A2A construct, the **area** it belongs to (Core · Address · Benefits · RFP · Enterprise · Deploy), the [CUJ](../spec/cujs.md) it serves, and a one-line acceptance check. This is the *what*; [`TODO.md`](../TODO.md) is the *in what order*, and [`roadmap.md`](roadmap.md) is the milestone view. Each feature links back to the design note ([`design/`](../design/bridge.md)) that specifies it — this catalog re-specifies nothing.
 
-**Area legend.** `Core` = the reusable Bridge (`bridge/`, `contract/`); `Address` / `Benefits` / `RFP` = the demo whose skills/consumer exercise it; `Deploy` = GCP substrate. Area is a *decision*, not progress — this catalog carries no status markers.
+**Area legend.** `Core` = the reusable Bridge (`bridge/`, `contract/`); `Address` / `Benefits` / `RFP` = the demo whose skills/consumer exercise it; `Enterprise` = the 6-Zone Enterprise Data Architecture, Agent Gym, Agent Registry & Gateway, and BigQuery SQL Trace Evaluation; `Deploy` = GCP substrate. Area is a *decision*, not progress — this catalog carries no status markers.
 
 **Acceptance oracle.** Wherever a feature touches Address behavior, the enforced check is the eval corpus in `wiki/evals/address/` (8 synthetic docs, party `jordan-lee`) and the golden runs — not prose. Benefits behavior is checked against `wiki/evals/benefits/` (5 carrier-quote records + `conformance.json`) and its golden runs. See [CUJ catalog](../spec/cujs.md).
 
@@ -21,7 +21,6 @@ The build broken into named, individually-verifiable features, each pinned to it
 | CORE‑7 | Agent-authored explanations | `Requirement`/`RequirementsList`/`RequirementStatus`; `reason_code` + `message` | Core | 4 | Rejected entry and each outstanding requirement carry both a machine `reason_code` and human `message` |
 | CORE‑8 | Off-script intent routing | `LlmAgent` → `handle_deletion_request` / `reject_submission` / escalation | Core | — | Deletion request, wrong file, out-of-scope each route correctly; a new intent needs a tool + a line, not a new flow; reachable agent-to-agent on the hybrid edge (a text-only A2A message → the LlmAgent leg; the outcome rides status.message.metadata.reason_code), and model text never reaches the wire |
 | CORE‑9 | Disposition gate as the published review contract + calibration corridor | `bridge/disposition.py` review vocabulary; `bridge/calibration.py`; `tests/test_disposition_calibration.py` | Core | 4,5 | Published disposition states + confidence/flagged-fields calibration thresholds gate verdicts |
-| CORE‑9 | Disposition gate as the published review contract + calibration corridor | `bridge/disposition.py` review vocabulary; `bridge/calibration.py`; `tests/test_disposition_calibration.py` | Core | 4,5 | Published disposition states + confidence/flagged-fields calibration thresholds gate verdicts |
 
 **Invariants** (verified across the above): *LLM routes, code decides*; **Sense A** (per-artifact: legible/type/unexpired/issuer — Bridge, authoritative) vs **Sense B** (set completeness / deal — app decides, Bridge advisory) ([disposition](../design/disposition.md), [collect](../design/collect.md)).
 
@@ -36,8 +35,6 @@ The build broken into named, individually-verifiable features, each pinned to it
 | COLL‑3 | Status vocabulary as the only language | `required \| optional \| satisfied \| waived` | Core | 10 | `required`/`optional` acts as a chase knob, not a judgment; conditionals are *reasoned* next turn, never encoded |
 | COLL‑4 | Request (pull) = one-turn Collect | same Collect code path | Core | 1 | Single-doc request returns normalized doc in one turn, no loop |
 | COLL‑5 | Emergent Collect (agent-mutated requirements) | `RequirementsList` mutation; thinner Bridge best-effort | RFP | 13 | RFP: agent mutates requirements at runtime, N suppliers — same Bridge code |
-| COLL‑6 | RFP collection process (`benefits-rfp`) | `bridge/rfp.py` pure aggregate; `RfpPolicy` from the process skill (`load_rfp_policy`); lifecycle derived on read, due-date-anchored ladder | RFP | 13 | Process skill metadata drives policy; lifecycle states computed from due dates |
-| COLL‑7 | RFP opened over A2A onto the durable board | the deployed A2A runtime's RFP opener → `exchange_store` (CAS) | RFP | 13 | A `CollectRequest` on the deployed runtime opens an RFP on the shared durable board |
 | COLL‑6 | RFP collection process (`benefits-rfp`) | `bridge/rfp.py` pure aggregate; `RfpPolicy` from the process skill (`load_rfp_policy`); lifecycle derived on read, due-date-anchored ladder | RFP | 13 | Process skill metadata drives policy; lifecycle states computed from due dates |
 | COLL‑7 | RFP opened over A2A onto the durable board | the deployed A2A runtime's RFP opener → `exchange_store` (CAS) | RFP | 13 | A `CollectRequest` on the deployed runtime opens an RFP on the shared durable board |
 
@@ -127,11 +124,11 @@ The build broken into named, individually-verifiable features, each pinned to it
 | ID | Feature | Construct | Area | CUJ | Acceptance |
 |---|---|---|---|---|---|
 | PROA‑1 | SLA escalation ladder | `on_track→overdue→reminder→escalated` from process-skill policy | Core | 6 | Advance the (virtual) clock → ladder steps once, event recorded, next alarm re-armed; zero compute between |
-| PROA‑2 | Durable scheduler | scheduler seam: in-process `VirtualClock` (local) / Cloud Tasks (`bridge-followups`) | Core | 6 | Alarms idempotent + crash-safe; timer state persists and recovers on restart |
+| PROA‑2 | Durable scheduler | scheduler port: in-process `VirtualClock` (local) / Cloud Tasks (`bridge-followups`) | Core | 6 | Alarms idempotent + crash-safe; timer state persists and recovers on restart |
 | PROA‑3 | Wake path | webhook receiver + `task_id`→session index + `PushNotificationConfig` (Cloud Run–hosted) | Core | 6,7 | Doorbell delivers "task X changed" only; restore from persistent stores; then `run_async` |
-| OUT‑1 | Outbound A2A-client seam | `a2a_client` seam: fake transport (local) / Agent-Identity transport (GCP) | Core | 6 | Idempotent, crash-safe send; never carries a long-lived party bearer token |
+| OUT‑1 | Outbound A2A-client port | `a2a_client` port: fake transport (local) / Agent-Identity transport (GCP) | Core | 6 | Idempotent, crash-safe send; never carries a long-lived party bearer token |
 | OUT‑2 | Real party-channel nudge | the actual chase send riding the outbound path | Core | 6 | A silent party gets a real reminder (email / portal link / party agent) on the ladder |
-| OUT‑3 | Bridge-as-client dial-out | `DialOut` activity on the `a2a_client` seam (`bridge/outbound.py`: card discovery → capability check against `process` → `message/send`) | Benefits | 11,12 | Bridge originates an A2A exchange against a counterparty |
+| OUT‑3 | Bridge-as-client dial-out | `DialOut` activity on the `a2a_client` port (`bridge/outbound.py`: card discovery → capability check against `process` → `message/send`) | Benefits | 11,12 | Bridge originates an A2A exchange against a counterparty |
 | OUT‑4 | Deliver pattern | `Delivery` activity (`bridge/outbound.py`, by-reference `ArtifactRef`, no bytes, no bearer field) | Benefits | 3 | Bridge pushes a finished document outward |
 
 ---
@@ -144,44 +141,46 @@ The build broken into named, individually-verifiable features, each pinned to it
 | SKILL‑2 | Doctype skill `gov-id` | schema `assets/schema.json`; key fields `name·address·doc_number·issuing_authority·expiry`; rules `not_expired`,`complete_fields` | Address | 10 | Matches the eval corpus field names; expired ID → flagged |
 | SKILL‑3 | Doctype skill `utility-bill` | `issuer` (canonical) + key fields `name·service_address·statement_date`; rules `recent_bill(window_days:90)`,`address_present` | Address | 10 | Matches the eval corpus; issuer variants canonicalize identically |
 | SKILL‑4 | Live doctype-add | skill folder → registry → Agent Card regenerates | Core | 8 | Upload a doctype skill to the running core; card updates, no redeploy |
-| SKILL‑5 | Live use-case-add | process skill + its doctype skills installed through the `skill_registry` seam; every per-request consumer (card, label space, policy loaders, extraction catalog, RFP board `live_policy`) reads the registry per call | RFP | 9 | Upload a whole use case to the running core while an exchange of another process is in flight: the next card GET advertises the new process, it is usable on the same app (Collect; an emergent-Collect process opens RFPs on the shared board), and the in-flight exchange reaches the terminal outcome it reaches without the upload; a malformed upload is skipped with a logged reason and refused at install, never removing an advertised skill |
+| SKILL‑5 | Live use-case-add | process skill + its doctype skills installed through the `skill_registry` port; every per-request consumer (card, label space, policy loaders, extraction catalog, RFP board `live_policy`) reads the registry per call | RFP | 9 | Upload a whole use case to the running core while an exchange of another process is in flight: the next card GET advertises the new process, it is usable on the same app (Collect; an emergent-Collect process opens RFPs on the shared board), and the in-flight exchange reaches the terminal outcome it reaches without the upload; a malformed upload is skipped with a logged reason and refused at install, never removing an advertised skill |
 
 ---
 
-## K. Seams — Ring 2 ([seams](../design/seams))
+## K. Ports & Adapters — Ring 2 ([ports](../design/ports.md))
 
-> Nine seams, each with a local + GCP adapter designed together; one shared parametrized test suite (`@pytest.mark.seam(...)`, `adapter` fixture over `("local","gcp")`). Parity is **terminal-outcome**, not ledger-identical; consuming code never keys off the active adapter.
+> Thirteen Hexagonal ports, each with a local + GCP adapter designed together; one shared parametrized test suite (`@pytest.mark.port(...)`, `adapter` fixture over `("local","gcp")`). Parity is **terminal-outcome**, not ledger-identical; consuming code never keys off the active adapter.
 
-| ID | Seam | Local / GCP adapter | Acceptance |
+| ID | Port | Local / GCP adapter | Acceptance |
 |---|---|---|---|
-| SEAM‑1 | `sessions` | `DatabaseSessionService` on async sqlite (in-memory without a DSN) / the same `DatabaseSessionService` on Cloud SQL Postgres | No-op swap; terminal-outcome parity |
-| SEAM‑2 | `task_store` | local embedded / Cloud SQL (path to managed task store) | Adopting the managed store is a one-adapter swap |
-| SEAM‑3 | `exchange_store` | in-memory or sqlite / Cloud SQL — one relational impl both sides | Materialized Exchange records (the RFP board): `(kind, ref)` key, A2A context indexed, JSON doc column, version compare-and-set (create-only at 0); cross-replica read-after-write parity |
-| SEAM‑4 | `skill_registry` | directory / GCS bucket (one loader `skill_meta_from_dir` → `SkillMeta` on both) | Skill authored once installs unchanged both sides; card from same metadata; a malformed skill folder is skipped from the listing with a logged reason (never raised), and install validates before any write |
-| SEAM‑5 | `memory_bank` | an empty adapter — the seam declares no methods / none (the registry raises) | Advisory-only party-memory interface intent; nothing reads or writes it |
-| SEAM‑6 | `scheduler` | `VirtualClock` / Cloud Tasks | Idempotent crash-safe alarms; recover on restart |
-| SEAM‑7 | `a2a_client` | fake transport / Agent-Identity transport | Crash-safe re-drivable send; no long-lived party token |
-| SEAM‑8 | `extraction` | fixture / Gemini / Document AI (**capability axis**, not local/gcp) — engine selected per deployment (`BRIDGE_EXTRACTION_ENGINE`: fixture \| gemini \| docai = Gemini + one Document AI OCR pre-pass) | Gates read signals engine-agnostically; never hard-fails on an uncovered doctype |
-| SEAM‑9 | `email_ingress` | landing directory of `.eml` + attachments + processed markers / GCS landing bucket, same object layout (link: [email-intake](../design/email-intake.md)) | Create-only writes on both sides (landing is the idempotency check; inbox − processed = queue); shared parity test `tests/test_email_ingress_seam.py` |
-| SEAM‑9 | `email_ingress` | landing directory of `.eml` + attachments + processed markers / GCS landing bucket, same object layout (link: [email-intake](../design/email-intake.md)) | Create-only writes on both sides (landing is the idempotency check; inbox − processed = queue); shared parity test `tests/test_email_ingress_seam.py` |
+| PORT‑1 | `sessions` | `DatabaseSessionService` on async sqlite (in-memory without a DSN) / `VertexAiSessionService` or `DatabaseSessionService` on Cloud SQL Postgres | No-op swap; terminal-outcome parity |
+| PORT‑2 | `task_store` | local embedded / Cloud SQL Postgres | Adopting the managed store is a one-adapter swap |
+| PORT‑3 | `exchange_store` | in-memory or sqlite / Cloud SQL Postgres — one relational impl both sides | Materialized Exchange records (the RFP board): `(kind, ref)` key, A2A context indexed, JSON doc column, version compare-and-set (create-only at 0); cross-replica read-after-write parity |
+| PORT‑4 | `skill_registry` | directory / GCS bucket (one loader `skill_meta_from_dir` → `SkillMeta` on both) | Skill authored once installs unchanged both sides; card from same metadata; a malformed skill folder is skipped from the listing with a logged reason (never raised), and install validates before any write |
+| PORT‑5 | `memory_bank` | `InMemoryMemoryService` or SQLite / `VertexAiMemoryBankService` | Advisory-only party-memory interface; never consulted as a disposition or completeness gate input |
+| PORT‑6 | `scheduler` | `VirtualClock` / Cloud Tasks | Idempotent crash-safe alarms; recover on restart |
+| PORT‑7 | `a2a_client` | fake transport / Agent-Identity transport | Crash-safe re-drivable send; no long-lived party token |
+| PORT‑8 | `extraction` | fixture / Gemini / Document AI (**capability axis**, not local/gcp) — engine selected per deployment (`BRIDGE_EXTRACTION_ENGINE`: fixture \| gemini \| docai = Gemini + one Document AI OCR pre-pass) | Gates read signals engine-agnostically; never hard-fails on an uncovered doctype |
+| PORT‑9 | `email_ingress` | landing directory of `.eml` + attachments + processed markers / GCS landing bucket, same object layout (link: [email-intake](../design/email-intake.md)) | Create-only writes on both sides (landing is the idempotency check; inbox − processed = queue); shared parity test `tests/test_email_ingress_port.py` |
+| PORT‑10 | `audit_vault` | `InMemoryAuditVaultStore` / `GcpAuditVaultStore` (7-year WORM GCS bucket) | Write-once lock with SHA-256 verification and `BRIDGE_PORT_MODE=gcp` fail-fast guard |
+| PORT‑11 | `operational_store` | `InMemoryOperationalStore` / `SqlOperationalStore` (AlloyDB / Cloud SQL Postgres) | Bi-temporal append-only facts (`recorded_at` vs `effective_from`), `Decimal` consolidation, and role-based views |
+| PORT‑12 | `action_inbox` | `InMemoryActionInboxStore` / `SqlActionInboxStore` | A2UI v0.9 Action Inbox with `4+1` governance verbs and immutable RFC 6902 JSON Patch audit trails |
+| PORT‑13 | `agent_gym` | `InMemoryAgentGymEngine` / `SqlAgentGymEngine` | Continuous learning, Two-Sided Oversight (`RSR`), 3-Tier evaluation gate, Programmable Trust, and `SKILL.md` compilation |
 
 ---
 
 ## L. GCP substrate & zones ([substrate](../design/gcp-substrate.md), [zones](../design/zones.md))
 
-> Terraform is organized **by substrate primitive** (what it provisions), never one-module-per-platform-service. "Terraform provisions substrate; the seams provision services."
+> Terraform is organized **by substrate primitive** (what it provisions), never one-module-per-platform-service. "Terraform provisions substrate; the ports provision services."
 
 | ID | Feature | Terraform / construct | Acceptance |
 |---|---|---|---|
-| GCP‑1 | Runtime | `runtime` — Cloud Run v2 hosting the ADK `App` + the custom HTTP endpoints (A2UI, artifact fetch, webhooks); state via the Cloud SQL-backed seams | Hosts custom HTTP endpoints; state via Cloud SQL-backed seams |
+| GCP‑1 | Runtime | `runtime` — Cloud Run v2 hosting the ADK `App` + the custom HTTP endpoints (A2UI, artifact fetch, webhooks); state via the Cloud SQL-backed ports | Hosts custom HTTP endpoints; state via Cloud SQL-backed ports |
 | GCP‑2 | Network + zones | `network` — two subnets (trust zones) + firewall isolation | Isolation at the network layer; one deployment = one trust domain |
-| GCP‑3 | Gateway (ingress) | `gateway` — HTTPS LB → Serverless NEG (`enable_gateway`) + per-party scoping | A party agent addresses only its own leg's context |
-| GCP‑4 | Identity | `iam` — `bridge-runtime` SA + grants + Cloud Tasks OIDC token-creator | Bridge↔backend/managed calls authenticate as workloads |
-| GCP‑5 | Database | `database` — Cloud SQL Postgres 16, private IP | Backs task/exchange/session stores + SLA read-model |
-| GCP‑6 | Tasks | `tasks` — `bridge-followups` Cloud Tasks queue | Backs the scheduler seam GCP adapter |
-| GCP‑7 | Secrets / Skill Registry / frontend | `secrets` (DSN via secret env), GCS module (registry), `frontend` | DB DSN never plaintext; registry holds skill folders; surfaces deployed by zone |
+| GCP‑3 | Gateway (ingress) | `gateway` — HTTPS LB + Cloud Armor WAF → Serverless NEG (`enable_gateway`) + per-party scoping | A party agent addresses only its own leg's context |
+| GCP‑4 | Identity | `iam` — `bridge-runtime` SA + grants + Cloud Tasks OIDC token-creator + Cloud SQL IAM user | Bridge↔backend/managed calls authenticate as workloads |
+| GCP‑5 | Database | `database` — Cloud SQL Postgres 16, private IP, `cloudsql.iam_authentication = "on"` | Backs task/exchange/session/operational/inbox/gym stores + SLA read-model |
+| GCP‑6 | Tasks | `tasks` — `bridge-followups` Cloud Tasks queue | Backs the scheduler port GCP adapter |
+| GCP‑7 | Secrets / Skill Registry / frontend | `secrets` (DSN via secret env), GCS module (registry + WORM audit vault), `frontend` | DB DSN never plaintext; registry holds skill folders; surfaces deployed by zone |
 | GCP‑8 | Deployed-path parity | single deploy step; `terraform test` + `mock_provider` (plan-time); provisioned parity run | Address runs deployed, not just local; credential-free plan tests green |
-| GCP‑9 | Deployed RFP board host + email processor | internal-only board host, the one public `allUsers` email webhook (clientState-authenticated), Cloud Scheduler driving `/email/drain` | Board host serves RFP board + drains the email landing bucket; the email webhook is the public Gateway exception |
 | GCP‑9 | Deployed RFP board host + email processor | internal-only board host, the one public `allUsers` email webhook (clientState-authenticated), Cloud Scheduler driving `/email/drain` | Board host serves RFP board + drains the email landing bucket; the email webhook is the public Gateway exception |
 
 ---
@@ -191,12 +190,11 @@ The build broken into named, individually-verifiable features, each pinned to it
 | ID | Feature | Construct | Acceptance |
 |---|---|---|---|
 | CONTRACT‑1 | Shared `contract/` package | pydantic-only (no ADK / no a2a-sdk); editable path dep | Only package both `bridge/` and `agents/` import; `bridge/` never imports `agents/` (isolation-guard test) |
-| TEST‑1 | Shared seam suite | `Seam` enum; `@pytest.mark.seam`; `adapter` fixture; `BRIDGE_TEST_GCP` gate | Same body asserts local + gcp; invalid seam name rejected at collection |
+| TEST‑1 | Shared port suite | `Port` enum; `@pytest.mark.port`; `adapter` fixture; `BRIDGE_TEST_GCP` gate | Same body asserts local + gcp; invalid port name rejected at collection |
 | TEST‑2 | Eval corpus parity | `tests/address/_corpus.py`, `test_corpus.py`; `expected.json`, `timeline.json` | Well-formedness, gate + collect-path parity, canonicalization parity, category coverage, no-PII, timeline validity; every corpus id resolves through the fixture extractor; every provider-portal sample id (`UploadPrompt.tsx` `CORPUS_IDS`) resolves to a corpus doc |
 | TEST‑3 | Golden runs | Path-A instant, distinct-issuer accept, same-issuer reject, resubmission, HITL, escalation | Run against fixture and Gemini adapters, and on the deterministic and hybrid edges, to the same terminal outcome |
 | TEST‑4 | Experimental-surface register | living list: `RemoteA2aAgent` (`@a2a_experimental`, `use_legacy=True`), `ResumabilityConfig` (`@experimental`, on `App`) | Each surface has an owner + revisit trigger; re-audit on any `google-adk` minor bump |
 | TEST‑5 | Consumer conformance run | `tests/conformance/test_benefits_conformance.py`, `wiki/evals/benefits/conformance.json` | Carrier PDF by reference → A2A → the consumer's `BenefitsQuote` |
-| TEST‑5 | Consumer conformance run | `tests/conformance/test_benefits_conformance.py`, `wiki/evals/benefits/conformance.json` | Carrier PDF by reference → A2A → the consumer's `BenefitsQuote` |
 
 ---
 
@@ -225,7 +223,7 @@ The build broken into named, individually-verifiable features, each pinned to it
 
 ---
 
-## P. Extraction depth ([seams](../design/seams.md), [docai-prepass](../design/docai-prepass.md))
+## P. Extraction depth ([ports](../design/ports.md), [docai-prepass](../design/docai-prepass.md))
 
 | ID | Feature | Construct | Area | CUJ | Acceptance |
 |---|---|---|---|---|---|
@@ -234,37 +232,18 @@ The build broken into named, individually-verifiable features, each pinned to it
 
 ---
 
-## N. Benefits — Negotiate over a program ([patterns](../design/patterns.md), [aggregate-model](../design/aggregate-model.md), [fulfillment-graph](../design/fulfillment-graph.md), [outbound](../design/outbound.md))
+## Q. 6-Zone Enterprise Data Architecture, Agent Gym & BigQuery SQL Eval ([agent-gym](../design/agent-gym.md), [harness-evolve](../design/harness-evolve.md))
 
 | ID | Feature | Construct | Area | CUJ | Acceptance |
 |---|---|---|---|---|---|
-| BEN‑1 | Programs fan-out with per-leg isolation | `bridge/program.py` `fan_out`/`add_leg`; `tests/test_program.py` | Benefits | 11 | Each carrier leg isolated; program state aggregates across legs |
-| BEN‑2 | Multilingual extraction + FX normalization | `bridge/normalize.py`, `FxRates`/`fixed_fx`, currency/language inside `key_fields`; `tests/test_normalize.py` | Benefits | 11 | Non-USD quotes normalized to USD; non-English text extracted |
-| BEN‑3 | Standard-gap flagger, sense A | `bridge/standard.py` `flag_quote`/`flag_program` | Benefits | 11 | Bridge flags quotes/programs that deviate from standard thresholds |
-| BEN‑4 | Program comparison view, recompute-on-read | `bridge/comparison.py`, dashboard `GET /programs` + SSE; `tests/test_program_comparison_view.py` | Benefits | 11 | Live comparison view recomputes on every read; no stale cache |
-| BEN‑5 | Versioned revise loop → bind → rollup + audit, cap → escalate | `bridge/negotiate.py` `revise`/`bind_leg`/`roll_up`; `tests/test_cuj11_negotiate_bind_rollup.py` | Benefits | 11 | Multi-turn revise; bind locks a leg; rollup aggregates; cap escalates |
-| BEN‑6 | Cross-framework A2A interop | `agents/benefits/carrier_a_adk.py` + `carrier_b_langgraph.py`; `tests/test_cuj12_interop.py` | Benefits | 11,12 | ADK and LangGraph carriers interoperate over the same A2A wire |
-| BEN‑7 | Structured rate-table rows | sibling `tables` map, contract minor bump | Benefits | 3 | Rate tables as structured sibling field, not opaque blob |
-
----
-
-## O. RFP views & email intake ([rfp-views](../design/rfp-views.md), [email-intake](../design/email-intake.md))
-
-| ID | Feature | Construct | Area | CUJ | Acceptance |
-|---|---|---|---|---|---|
-| RFP‑1 | Consumer read API + manual chase | `bridge/dashboard/rfp_api.py`: `GET /rfps`, `GET /rfps/{id}`, `POST /rfps/{id}/chase`, seq-keyed `Nudge`; `tests/test_rfp_views.py` | RFP | 13 | RFP board exposes read API; operator can manually chase a carrier |
-| RFP‑2 | Leg-addressed carrier checklist + RFP board views | `frontend/shared` `domain/rfp.ts`, `RfpChecklist` | RFP | 13 | UI components render RFP state + per-carrier checklist |
-| EMAIL‑1 | Dedicated M365 mailbox via Microsoft Graph, token-correlated, create-only landing | `bridge/email_ingress/` `graph.py`/`correlation.py`/`mime.py`; `tests/test_email_correlation.py`, `tests/test_email_graph.py` | Benefits | — | Email ingested via Microsoft Graph; correlated by token; landed create-only |
-| EMAIL‑2 | Drain on the board-owning host | served drain + poll loop + `python -m bridge.email_ingress drain` CLI; `tests/test_email_served.py` | Benefits | — | Landed email drained by the board-owning host; CLI verb available |
-
----
-
-## P. Extraction depth ([seams](../design/seams.md), [docai-prepass](../design/docai-prepass.md))
-
-| ID | Feature | Construct | Area | CUJ | Acceptance |
-|---|---|---|---|---|---|
-| EXT‑1 | Page-window chunking for large documents | `bridge/extraction/chunking.py`, explicit `max_output_tokens`, bisect on truncation, `ExtractionTruncated`; scale harness `tests/perf/`; `tests/test_extraction_chunking.py`, `tests/test_gemini_chunking.py` | Core | — | Large docs chunked into page windows; truncation handled via bisect; scale tests validate |
-| EXT‑2 | Document AI OCR pre-pass | `bridge/extraction/docai.py`; `tests/test_docai_extraction.py` | Core | — | Document AI runs OCR pre-pass; output fed to Gemini |
+| ENT‑1 | Zone 3 WORM Audit Vault + Edge PII Redaction | `bridge/vault.py` (`redact_personal_data`, `GcpAuditVaultStore`) | Enterprise | 1,2 | Redacts SSN/TIN/DOB/routing numbers before storage; write-once SHA-256 retention lock |
+| ENT‑2 | Zone 3–4 Bi-Temporal Operational Store + Decimal Consolidation | `bridge/operational_store/` (`SqlOperationalStore`, `ConsolidationEngine`) | Enterprise | 1,10 | Append-only `recorded_at` vs `effective_from` facts, Source Priority Hierarchy, and `Decimal` math |
+| ENT‑3 | Zone 4 Role-Based Views + BigQuery Iceberg Sync | `bridge/operational_store/` (`broker_view`, `claims_view`, `underwriter_view`, `export_bigquery_sync_batch`) | Enterprise | — | Click-to-source-page bounding-box traceability and watermarked incremental Iceberg CDC |
+| ENT‑4 | Zone 5 A2UI v0.9 Action Inbox & Governed Surfaces | `bridge/a2ui_inbox/`, `bridge/user_interaction/` | Enterprise | 2,5 | Security-zone catalog isolation, `4+1` governance verbs, and immutable RFC 6902 JSON Patch audit trails |
+| ENT‑5 | Zone 6 Knowledge Catalog + SPIFFE Zero-Trust Identity | `bridge/knowledge_catalog.py`, `bridge/identity.py` | Enterprise | — | 6-hop lineage graph, asymmetric `RS256`/`ES256` SPIFFE JWT-SVIDs, and OBO least-privilege intersection |
+| ENT‑6 | Agent Gym Continuous Learning & Programmable Trust | `bridge/agent_gym/`, `bridge/calibration.py` | Enterprise | 5 | Two-Sided Oversight (`RSR >= 0.80`), 3-Tier evaluation gate, Programmable Trust ladder, and `SKILL.md` compilation |
+| ENT‑7 | Gemini platform Agent Registry + Agent Gateway | `bridge/agent_gym/registry_gateway.py` | Enterprise | 8,9 | 4 Registry component types (`urn:agent`, `urn:mcp`, `urn:endpoint`, `urn:skill`), `CLIENT_TO_AGENT` Model Armor/DLP, and `AGENT_TO_ANYWHERE` CEL |
+| ENT‑8 | OpenTelemetry `gen_ai.*` + BigQuery 3-Tier SQL Trace Eval | `bridge/telemetry/`, `terraform/modules/telemetry/` (`v_trace_sql_evaluation`) | Enterprise | — | 22 pipeline steps traced to Cloud Trace v2 + BigQuery `otel_spans`; 5 `Rule 0` SQL gates (`$0`), selective `AI.GENERATE_TABLE`, and Rogan-Gladen debiasing |
 
 ---
 

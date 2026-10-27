@@ -9,7 +9,7 @@ The internal-zone Ops Dashboard host gains three routes over its injected ``RfpB
   iframe); the dashboard frontend renders the same matrix off the SSE row.
 * ``POST /rfps/{rfp_id}/chase`` body ``{"party": <carrier> | null}`` — the operator's manual
   chase. One ``bridge.outbound.Nudge`` per targeted carrier (``party`` named, or every
-  carrier with something chaseable) over the ``a2a_client`` seam, keyed ``seq = leg.chases``
+  carrier with something chaseable) over the ``a2a_client`` port, keyed ``seq = leg.chases``
   so a second chase is a new send and a re-drive dedupes. The board records the chase
   (``bridge.rfp.record_chase``: audit-only, no cell moves). 404 for an unknown RFP/carrier,
   409 when there is nothing outstanding to chase, 503 when the outbound adapter is
@@ -20,7 +20,7 @@ its fresh read → mutate → ``put`` with no ``await`` in between. The chase ro
 ``async``: the (possibly blocking) sends run in the threadpool first, then the fresh read →
 ``record_chase`` → ``put`` runs on the loop without yielding.
 
-**Client wiring.** An injected ``outbound`` (any ``A2AClient``) wins; otherwise the seam's
+**Client wiring.** An injected ``outbound`` (any ``A2AClient``) wins; otherwise the port's
 adapter is built lazily on the first chase (never at app construction — the gcp adapter
 refuses without ``BRIDGE_GATEWAY_HOST``) and reused, so its receipt store dedupes re-drives.
 
@@ -38,8 +38,8 @@ from starlette.concurrency import run_in_threadpool
 
 from bridge.dashboard import readmodel
 from bridge.outbound import Nudge
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.rfp import chase_message, chaseable_items, record_chase
-from bridge.seams import Seam, get_adapter, resolve_mode
 
 if TYPE_CHECKING:
     from bridge.dashboard.board import RfpBoard
@@ -73,7 +73,7 @@ def mount_rfp_routes(
         if "client" not in built:
             try:
                 built["client"] = get_adapter(
-                    Seam.a2a_client, resolve_mode(Seam.a2a_client)
+                    Port.a2a_client, resolve_mode(Port.a2a_client)
                 ).build_client()
             except RuntimeError as e:
                 raise HTTPException(status_code=503, detail=str(e)) from e

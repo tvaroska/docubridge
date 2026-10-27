@@ -5,7 +5,7 @@ The Address driver is an **App/Runner host** — it builds the Address ``Workflo
 ``ExchangeTurn``, and prints it. This is NOT an ADK agent — it is a driver/host.
 
 The driver reaches the Bridge by **card URL only** — it never imports ``bridge/``
-(keeps the mock→real swap a URL change). Test seams inject an in-process mock via
+(keeps the mock→real swap a URL change). Test ports inject an in-process mock via
 ``httpx_client`` (ASGITransport over ``build_mock_bridge_app``).
 
 Defaults to the plain ``Runner(node=...)`` path; ``run_collection(durable=True)``
@@ -280,7 +280,7 @@ async def run_collection(
     documents: list[DocRef] | None = None,
     max_rounds: int = DEFAULT_MAX_ROUNDS,
     max_resumes: int | None = None,  # durable resume-loop cap (defaults to max_rounds)
-    httpx_client: httpx.AsyncClient | None = None,  # test seam (in-process mock)
+    httpx_client: httpx.AsyncClient | None = None,  # test port (in-process mock)
     user_id: str = "address-driver",
     session_id: str | None = None,
     session_service: Any = None,  # default InMemorySessionService()
@@ -311,7 +311,7 @@ async def run_collection(
             message (the real edge extracts them; the mock ignores them). Default
             None (text-only seed).
         max_rounds: Round ceiling — force done after this many collect/gate cycles.
-        httpx_client: Test seam — injected client for in-process mock (via
+        httpx_client: Test port — injected client for in-process mock (via
             ASGITransport). Do not close an injected client (the caller owns it).
         user_id: ADK user_id (default "address-driver").
         session_id: ADK session_id (defaults to a fresh hex UUID).

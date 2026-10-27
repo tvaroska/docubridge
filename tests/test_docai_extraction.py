@@ -15,7 +15,7 @@ Layout Parser flattening, the lazy import, and that the **scanned** carrier-C PD
 outcome under a replayed extraction. The live tests are gated on
 ``BRIDGE_TEST_DOCAI=1`` + ``BRIDGE_DOCAI_PROCESSOR`` and SKIP in the default suite.
 
-Parity is **terminal-outcome, never ledger-identical** (CLAUDE.md; design/seams.md).
+Parity is **terminal-outcome, never ledger-identical** (CLAUDE.md; design/ports.md).
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ from bridge.extraction.docai import (
 from bridge.extraction.gemini import GeminiExtractor
 from bridge.extraction.resolve import ResolvedDocument
 from bridge.normalize import NormalizedQuote, normalize_from_extraction
-from bridge.seams.gcp import GcpExtraction
+from bridge.ports.gcp import GcpExtraction
 from bridge.standard import ROUTE_NONE, flag_quote, load_program_standard
 from contract.extraction import ExtractionResult
 from tests import corpus_scanned_pdf
@@ -460,13 +460,13 @@ def test_docai_imports_documentai_lazily_not_at_module_level():
     assert nested, "expected a lazy google.cloud.documentai import inside a method"
 
 
-def test_docai_imports_no_edge_seams_or_agents():
+def test_docai_imports_no_edge_ports_or_agents():
     """Portable/vendorable: stdlib + ``bridge.extraction.resolve`` only."""
     tree = ast.parse((REPO / "bridge/extraction/docai.py").read_text())
     for stmt in tree.body:
         if isinstance(stmt, ast.ImportFrom) and stmt.module:
             assert not stmt.module.startswith(
-                ("bridge.edge", "bridge.seams", "agents")
+                ("bridge.edge", "bridge.ports", "agents")
             ), stmt.module
             if stmt.module.startswith("bridge"):
                 assert stmt.module == "bridge.extraction.resolve", stmt.module

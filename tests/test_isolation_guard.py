@@ -6,7 +6,7 @@ Two directions are load-bearing:
   consumer-agnostic (`CRITICAL.md`: bridge/ "never imports agents/").
 * ``agents/`` must never import ``bridge/`` — the mock→real Bridge swap property
   depends on consumers talking to the Bridge only over the A2A wire + ``contract/``,
-  never by reaching into the core (`bridge/seams/local/__init__.py` §1.4).
+  never by reaching into the core (`bridge/ports/local/__init__.py` §1.4).
 
 ``contract/`` is the ONLY package both may import.
 """

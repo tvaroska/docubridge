@@ -3,7 +3,7 @@
 Covers: the D4 projection reads tool function responses only (never model text);
 the D9 session key == artifact key (real erase, cross-context isolation, party
 resolution); the App is resumable and a fresh Runner is built per invocation; the
-sessions come from the seam (durable, no hardcoded InMemory); the
+sessions come from the port (durable, no hardcoded InMemory); the
 ``ResumabilityConfig`` import is the registered TEST-4 FQN; Decision 2 holds (no
 ``google.adk.a2a`` import in ``bridge/``).
 """
@@ -40,8 +40,8 @@ from bridge.offscript import (
     escalate_submission,
     reject_submission,
 )
-from bridge.seams import Seam
-from bridge.seams.seam import seam_env_var
+from bridge.ports import Port
+from bridge.ports.port import port_env_var
 from bridge.signals import Signals
 from contract.enums import Disposition, Gate, LifecycleStatus
 from contract.wire import ArtifactRef, LedgerEntry
@@ -615,10 +615,10 @@ def test_session_key_requires_context_id():
         llm_leg.session_key(InMemoryArtifactService(), party="p", context_id="")
 
 
-async def test_session_service_from_seam(monkeypatch, tmp_path):
+async def test_session_service_from_port(monkeypatch, tmp_path):
     monkeypatch.setenv("BRIDGE_SESSION_DB_URL", f"sqlite+aiosqlite:///{tmp_path}/s.db")
-    monkeypatch.delenv("BRIDGE_SEAM_MODE", raising=False)
-    monkeypatch.delenv(seam_env_var(Seam.sessions), raising=False)
+    monkeypatch.delenv("BRIDGE_PORT_MODE", raising=False)
+    monkeypatch.delenv(port_env_var(Port.sessions), raising=False)
     leg = LlmLeg(model=ScriptedLlm(), artifact_store=InMemoryArtifactService())
     assert isinstance(leg.session_service, DatabaseSessionService)
     r = await leg.run(party="jordan-lee", context_id=CTX, message="hello")

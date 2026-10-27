@@ -41,7 +41,7 @@ DEFAULT_URL = "http://localhost:8000/"
 # ``RemoteA2aAgent`` passes the ``google-adk >=2.7`` same-origin card validation
 # (``_validate_card_rpc_targets``: a network-fetched card may only aim RPC traffic at
 # the origin it was fetched from). This is the served-card half of the P7-5
-# same-origin fix (the outbound half is ``bridge.seams.gcp.reconcile_card_host``).
+# same-origin fix (the outbound half is ``bridge.ports.gcp.reconcile_card_host``).
 PUBLIC_URL_ENV = "BRIDGE_PUBLIC_URL"
 
 

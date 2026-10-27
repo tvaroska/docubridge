@@ -32,7 +32,7 @@ Concretely, each concern lands on its native construct:
 | Durable session / state | `SessionService` | a bespoke store adapter |
 | Local ↔ deployed | swap the service backend (`InMemory…` ↔ `Database…` on Cloud SQL / `Gcs…`) | a custom durability layer |
 
-The reward for staying standard: the same agent code runs locally and deployed by swapping service backends — the deployed runtime is Cloud Run v2 hosting the ADK `App` (sessions, tasks and exchange records ride Cloud SQL behind their seams; see [gcp-substrate](gcp-substrate.md)) — and a reader who knows ADK already knows how the Bridge works.
+The reward for staying standard: the same agent code runs locally and deployed by swapping service backends — the deployed runtime is Cloud Run v2 hosting the ADK `App` (sessions, tasks and exchange records ride Cloud SQL behind their ports; see [gcp-substrate](gcp-substrate.md)) — and a reader who knows ADK already knows how the Bridge works.
 
 ## The one inversion we keep — and why it's still standard
 
@@ -83,9 +83,9 @@ The application stack is chosen to run *with* the platform it showcases — the 
 | **Schemas / validation** | **Pydantic** — doctype schemas, Gemini constrained JSON, per-document validation, disposition signals. |
 | **Data store** | **Cloud SQL for PostgreSQL** — indexed relational keys + a JSONB document column; one implementation serves both the local and GCP adapters. |
 | **Frontend (3 surfaces + A2UI renderer)** | **React + TypeScript + Vite**, **MUI (Material UI)**. |
-| **HITL / graph durability** | **ADK runtime session durability** — suspend/resume via `LongRunningFunctionTool` + id-matched `FunctionResponse`, recovered from the persisted `SessionService`. No bespoke workflow engine; delegate behind a seam only if the fulfillment graph ever outgrows session-persisted states. |
+| **HITL / graph durability** | **ADK runtime session durability** — suspend/resume via `LongRunningFunctionTool` + id-matched `FunctionResponse`, recovered from the persisted `SessionService`. No bespoke workflow engine; delegate behind a port only if the fulfillment graph ever outgrows session-persisted states. |
 | **IaC** | **Terraform** (organized by substrate primitive — see [gcp-substrate](gcp-substrate.md)). |
-| **Tests** | **pytest** (the shared seam suite, run against local + GCP adapters) · **Playwright** (frontend/e2e). |
+| **Tests** | **pytest** (the shared port suite, run against local + GCP adapters) · **Playwright** (frontend/e2e). |
 | **Tooling** | **uv** (Python) · **pnpm** (frontend). |
 
 The KYC accept/reject is a **deterministic pure-function tool** (`run_disposition_gate`), exposed to the `LlmAgent` as an authoritative tool — the model routes intent, the gate decides, and a model may never mint a compliance acceptance (the inversion described above). This is standard agent+tool shape, not a deviation from "as standard as possible." Canonical A2A is chosen so that *any* A2A-conformant agent can talk to the Bridge; a bespoke REST dialect would interoperate only with our own client and hide the protocol the showcase advertises.
@@ -96,16 +96,16 @@ The KYC accept/reject is a **deterministic pure-function tool** (`run_dispositio
 
 The reusable Bridge core (`bridge/`) is separate from the processing agents (`agents/`) that consume it. The load-bearing invariant is **`bridge/` never imports `agents/`**: the core is a reusable showcase artifact, the agents are consumers, and a consumer importing the producer would be backward.
 
-Both projects nonetheless share the **domain contract types** — the Pydantic models carried inside A2A `Message`/`Part`/`Artifact` (`CollectRequest`, `ExchangeTurn`, `CollectionStatus`, `RequirementsList`, `LedgerEntry`, extraction field schemas). These are the wire contract under validation and must stay synchronized. The design: a **single top-level `contract/` uv package** that both `agents/` and `bridge/` depend on as a path dependency (`[tool.uv.sources]`, editable). Neither project imports the other; both import the shared third package (explicitly permitted by the invariant). The package is lightweight — `pydantic` only, no ADK or `a2a-sdk` — so contract changes rarely force re-locks of the consumers. Heavier logic that must agree across the two projects (canonicalization, disposition, `is_satisfied`) is kept in parity **by discipline** — enforced by the shared seam suite and an isolation guard test, never by import.
+Both projects nonetheless share the **domain contract types** — the Pydantic models carried inside A2A `Message`/`Part`/`Artifact` (`CollectRequest`, `ExchangeTurn`, `CollectionStatus`, `RequirementsList`, `LedgerEntry`, extraction field schemas). These are the wire contract under validation and must stay synchronized. The design: a **single top-level `contract/` uv package** that both `agents/` and `bridge/` depend on as a path dependency (`[tool.uv.sources]`, editable). Neither project imports the other; both import the shared third package (explicitly permitted by the invariant). The package is lightweight — `pydantic` only, no ADK or `a2a-sdk` — so contract changes rarely force re-locks of the consumers. Heavier logic that must agree across the two projects (canonicalization, disposition, `is_satisfied`) is kept in parity **by discipline** — enforced by the shared port suite and an isolation guard test, never by import.
 
 ## Experimental ADK surfaces — pin and isolate
 
-The "prefer the native construct" principle commits the design to a few ADK surfaces that are experimental in the pinned release. These are handled as a plain design discipline: **pin the versions, isolate each surface behind a seam or a Ring-3 construct, and keep a living list of them** so a breaking SDK change surfaces immediately in the shared seam suite. The list is design guidance, not a gate to pass:
+The "prefer the native construct" principle commits the design to a few ADK surfaces that are experimental in the pinned release. These are handled as a plain design discipline: **pin the versions, isolate each surface behind a port or a Ring-3 construct, and keep a living list of them** so a breaking SDK change surfaces immediately in the shared port suite. The list is design guidance, not a gate to pass:
 
 - **`RemoteA2aAgent`** (`@a2a_experimental`) — the native agent→agent A2A consumer ([a2a-consumer](a2a-consumer.md)). Pin the integration mode (`use_legacy=True`) until the newer integration-extension path is validated against the mock.
 - **`ResumabilityConfig(is_resumable=True)`** (`@experimental`) — the durable pause/resume configuration for long-running HITL; it lives on the ADK `App`, not on a bare Runner, so a parked leg survives a restart. The edge's LlmAgent App carries ResumabilityConfig(is_resumable=True).
 
-`Workflow` itself is a public, non-experimental graph primitive and is not on this list. Every experimental surface is covered by the shared seam suite (mock and real exercise the same surfaces), the SDK versions are pinned and guarded in CI, and each surface has an owner and a revisit trigger (validate before flipping a mode; re-audit on any `google-adk` minor bump for breaking changes or graduation to stable).
+`Workflow` itself is a public, non-experimental graph primitive and is not on this list. Every experimental surface is covered by the shared port suite (mock and real exercise the same surfaces), the SDK versions are pinned and guarded in CI, and each surface has an owner and a revisit trigger (validate before flipping a mode; re-audit on any `google-adk` minor bump for breaking changes or graduation to stable).
 
 ## Read next
 - [disposition](disposition.md) — the KYC decision the gate tool wraps

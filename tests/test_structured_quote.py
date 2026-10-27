@@ -260,7 +260,7 @@ async def _client(app):
 
 class _NoExtraction:
     async def extract(self, artifact_name: str):
-        raise AssertionError("Path A must not call the extraction seam")
+        raise AssertionError("Path A must not call the extraction port")
 
 
 async def _send_assertion(assertion: dict) -> ExchangeTurn:

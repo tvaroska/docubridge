@@ -1,6 +1,6 @@
-"""Fixture extraction engine — deterministic corpus-based extraction (SEAM-8).
+"""Fixture extraction engine — deterministic corpus-based extraction (PORT-8).
 
-This module provides the pure extraction engine with no ADK or seam imports,
+This module provides the pure extraction engine with no ADK or port imports,
 avoiding import cycles.
 """
 

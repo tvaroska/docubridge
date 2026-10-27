@@ -1,4 +1,4 @@
-"""Exchange store (S0-arch-14) — materialized Exchange records behind the ``exchange_store`` seam.
+"""Exchange store (S0-arch-14) — materialized Exchange records behind the ``exchange_store`` port.
 
 By default an Exchange is a derived view over its tasks (``design/aggregate-model.md``).
 It **materializes** into a stored record only when exchange-only state appears — an
@@ -37,9 +37,9 @@ read blocks the calling event loop for one database round-trip (fine at RFP scal
 Implementations: :class:`InMemoryExchangeStore` (the local default with no DSN) and
 :class:`SqlExchangeStore` (sqlite+aiosqlite locally, Cloud SQL Postgres+asyncpg on GCP —
 one implementation, one table ``bridge_exchange_records``). Hosts resolve one through
-the seam with :func:`exchange_store_from_env`.
+the port with :func:`exchange_store_from_env`.
 
-Isolation: stdlib-only top-level imports (SQLAlchemy and ``bridge.seams`` are imported
+Isolation: stdlib-only top-level imports (SQLAlchemy and ``bridge.ports`` are imported
 lazily); NEVER ``agents/``.
 """
 
@@ -426,14 +426,14 @@ class SqlExchangeStore(ExchangeStore):
 
 
 def exchange_store_from_env() -> ExchangeStore:
-    """The exchange store the ``exchange_store`` seam resolves for this process's env.
+    """The exchange store the ``exchange_store`` port resolves for this process's env.
 
     Local: ``BRIDGE_EXCHANGE_DB_URL`` (an async DSN) → :class:`SqlExchangeStore`, unset →
     :class:`InMemoryExchangeStore`. GCP: the Cloud SQL ``DATABASE_URL`` (required — no
-    in-memory fallback). ``bridge.seams`` is imported lazily (it pulls
+    in-memory fallback). ``bridge.ports`` is imported lazily (it pulls
     ``bridge.extraction``; ``bridge.dashboard`` imports this module).
     """
-    from bridge.seams import Seam, get_adapter, resolve_mode
+    from bridge.ports import Port, get_adapter, resolve_mode
 
-    adapter = get_adapter(Seam.exchange_store, resolve_mode(Seam.exchange_store))
+    adapter = get_adapter(Port.exchange_store, resolve_mode(Port.exchange_store))
     return adapter.build_exchange_store()  # type: ignore[attr-defined]

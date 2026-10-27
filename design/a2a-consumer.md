@@ -84,7 +84,7 @@ A weeks-scale pause (mechanism 2) only pays off if the caller can **come back to
 The webhook is a **doorbell, not a restore**: `PushNotificationConfig` delivers only "task X changed" — it neither carries the caller's state nor puts the agent back where it paused. Restore is a *separate* mechanism (persistent stores + resumability); the wake signal is *necessary but not sufficient*.
 
 - **DEFAULT (config swap, no custom code):** `DatabaseSessionService` (sqlite locally, Cloud SQL deployed) (session state + event history, reloadable by `(app, user, session_id)`); `DatabaseTaskStore` (task + artifacts + `context_id`); `tasks/get`/`tasks/resubscribe`; peer ids ride `event.custom_metadata`, auto-repopulated on resume; the Runner auto-matches a `FunctionResponse` to the paused call; push-notification **sender** on the Bridge.
-- **EXPERIMENTAL:** `ResumabilityConfig(is_resumable=True)` — the switch that makes a park survive a restart (`@experimental`, 2.7.0; pin + seam-cover, [adk](adk.md) SDK-risk).
+- **EXPERIMENTAL:** `ResumabilityConfig(is_resumable=True)` — the switch that makes a park survive a restart (`@experimental`, 2.7.0; pin + port-cover, [adk](adk.md) SDK-risk).
 - **CUSTOM (small, mechanical):** a **webhook receiver** (a2a-sdk is sender-only; `adk web` can't host one) + a **`task_id`→session index**; the receiver then calls `runner.run_async(...)` and everything downstream is DEFAULT.
 
 Durable park/resume across a restart needs only the DEFAULT stores + the EXPERIMENTAL switch — **no HTTP, resumable by feeding a `FunctionResponse` to `run_async` directly.** The webhook path adds only the two CUSTOM pieces, and only when a leg must outlive the process. How this maps onto the deployed substrate (Cloud Run runtime, Cloud SQL sessions, where the wake receiver lives) is [its own atom](deploy-resume.md).
@@ -145,7 +145,7 @@ The Bridge side stays green in each case: the cells are carried verbatim and the
 - **Consumer construct:** `RemoteA2aAgent` is the canonical consumer; waits are `input-required` (native pause), progress is `TaskStatusUpdateEvent.status.message`; the integration-extension mode is pinned (`use_legacy=True` until the new extension is validated against the mock).
 - **Durable construct:** the consumer hangs off the caller as a node in a native `Workflow` graph (service-agent shape above and in [service-agent-architecture](service-agent-architecture.md)); state restore is mostly DEFAULT.
 - **In the edge:** `_status_for` maps a non-terminal turn (`ExchangeTurn.terminal=False`) → `INPUT_REQUIRED` ([a2a-edge](a2a-edge.md)); native HITL pause/resume ([adk](adk.md)).
-- **Experimental surfaces:** `RemoteA2aAgent` is `@a2a_experimental` and `ResumabilityConfig` is `@experimental` in `google-adk` 2.7.0 — pin versions and isolate behind the shared seam suite so a breaking change is caught immediately.
+- **Experimental surfaces:** `RemoteA2aAgent` is `@a2a_experimental` and `ResumabilityConfig` is `@experimental` in `google-adk` 2.7.0 — pin versions and isolate behind the shared port suite so a breaking change is caught immediately.
 
 ## Related
 - [A2A edge](a2a-edge.md) (server side), [running on ADK](adk.md), [long-running collection](long-running.md), [Collect](collect.md), [Collect scenarios](collect-scenarios.md) (rejection · delays · keeping context)

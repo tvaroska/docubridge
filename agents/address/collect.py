@@ -53,7 +53,7 @@ def build_bridge_remote_agent(
         rerun_on_resume: Design requirement — a parked collect leg resumes
             mid-flight rather than being fast-forwarded (architecture atom,
             "collect node"). Defaults ``True``.
-        httpx_client: A test seam so an in-process ``ASGITransport`` client can
+        httpx_client: A test port so an in-process ``ASGITransport`` client can
             point the agent at the in-process mock Bridge. ``None`` in prod
             (``RemoteA2aAgent`` makes its own client).
         timeout: A2A request timeout in seconds.

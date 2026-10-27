@@ -1,12 +1,12 @@
-"""A live-added RFP process is served per RFP, through the skill_registry seam (S4-usecase-4).
+"""A live-added RFP process is served per RFP, through the skill_registry port (S4-usecase-4).
 
 Unit tests for the core change behind the CUJ-9 board companion Driver
 (``tests/test_live_rfp_use_case_add.py``):
 
 - the pure RFP-policy parser (``bridge.rfp.rfp_policy_from_docs``) is the one validator of
-  both the build-time filesystem loader and the live seam reader, with the check order kept;
+  both the build-time filesystem loader and the live port reader, with the check order kept;
 - ``bridge.edge.skills.rfp_policy_for`` reads the live registry on every call, through the
-  seam (credential-free gcp proof: a fake bucket, an empty filesystem registry), and returns
+  port (credential-free gcp proof: a fake bucket, an empty filesystem registry), and returns
   the narrowed label space;
 - ``RfpBoard`` live mode: home process as-is, live processes resolved per RFP, an RFP whose
   skill was removed is skipped on the listing / 404 on a single read;
@@ -32,10 +32,10 @@ from bridge.edge.email_ingress import REASON_PROCESS_UNAVAILABLE, EmailProcessor
 from bridge.edge.rfp_open import open_or_update_rfp
 from bridge.edge.skills import rfp_policy_for
 from bridge.email_ingress.mime import landing_key
+from bridge.ports import Port, PortMode, get_adapter, resolve_mode
+from bridge.ports.gcp import GcpSkillRegistry
+from bridge.ports.local import LocalEmailIngress
 from bridge.rfp import load_rfp_policy, open_rfp, rfp_policy_from_docs
-from bridge.seams import Seam, SeamMode, get_adapter, resolve_mode
-from bridge.seams.gcp import GcpSkillRegistry
-from bridge.seams.local import LocalEmailIngress
 from bridge.sla import SKILLS_DIR, _load_policy_doc, _load_skill_frontmatter
 from contract.enums import RequirementStatus
 from contract.wire import CollectRequest, Requirement, RequirementsList
@@ -84,7 +84,7 @@ def skills(tmp_path, monkeypatch):
 
 
 def _registry():
-    return get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+    return get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
 
 
 def _supplier_request(**kw) -> CollectRequest:
@@ -114,7 +114,7 @@ def _live_board(skills) -> RfpBoard:
 
 
 # --------------------------------------------------------------------------- #
-# The pure parser: one validator for the filesystem loader and the seam reader #
+# The pure parser: one validator for the filesystem loader and the port reader #
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("name", [HOME, PROCESS])
 def test_rfp_policy_from_docs_equals_the_filesystem_loader(skills, name):
@@ -197,12 +197,12 @@ def test_rfp_policy_for_uses_the_narrowed_label_space(skills):
 
 def test_rfp_policy_for_reads_through_the_gcp_adapter(tmp_path, monkeypatch):
     """Credential-free: the gcp adapter over a fake bucket, an EMPTY filesystem registry —
-    the policy can only have come through the seam."""
+    the policy can only have come through the port."""
     for name in ENV_TO_CLEAR:
         monkeypatch.delenv(name, raising=False)
     fake = FakeBucket()
     monkeypatch.setattr(GcpSkillRegistry, "_bucket", lambda self: fake)
-    monkeypatch.setenv("BRIDGE_SEAM_SKILL_REGISTRY", "gcp")
+    monkeypatch.setenv("BRIDGE_PORT_SKILL_REGISTRY", "gcp")
     monkeypatch.setenv("BRIDGE_SKILLS_BUCKET", "fake-skills")
     empty = tmp_path / "empty-skills"
     empty.mkdir()
@@ -211,7 +211,7 @@ def test_rfp_policy_for_reads_through_the_gcp_adapter(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="not an installed process skill"):
         rfp_policy_for(PROCESS)
-    install_supplier_onboarding(get_adapter(Seam.skill_registry, SeamMode.gcp))
+    install_supplier_onboarding(get_adapter(Port.skill_registry, PortMode.gcp))
     assert f"{PROCESS}/assets/policy.yaml" in fake.objects
 
     policy = rfp_policy_for(PROCESS)
@@ -320,11 +320,11 @@ async def test_email_quarantines_process_unavailable_before_extraction(
     install_supplier_onboarding(_registry())
     board.put(open_rfp(_supplier_request(), now=NOW, rfp_id="onboard-1"))
     before = board.rfps["onboard-1"]
-    seam = LocalEmailIngress(tmp_path / "mail")
+    port = LocalEmailIngress(tmp_path / "mail")
     extraction = StubExtraction({"w9.pdf": supplier_result("w9-form", "W9")})
     proc = EmailProcessor(
         board=board,
-        seam=seam,
+        port=port,
         mailbox=MAILBOX,
         secret=SECRET,
         extraction=extraction,
@@ -338,7 +338,7 @@ async def test_email_quarantines_process_unavailable_before_extraction(
         subject="Re: supplier onboarding",
         attachments=[("w9.pdf", b"%PDF-1.4 synthetic w9", "application/pdf")],
     )
-    assert seam.land(landing_key(raw), raw)
+    assert port.land(landing_key(raw), raw)
 
     shutil.rmtree(skills / PROCESS)  # removed after the RFP opened
     (outcome,) = await proc.drain()

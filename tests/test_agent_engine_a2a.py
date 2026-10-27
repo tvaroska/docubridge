@@ -61,7 +61,7 @@ from bridge.edge.wire import (
     META_REVIEW_CALL_ID,
 )
 from bridge.extraction.fixture import FixtureExtractor
-from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.sla import SKILLS_DIR
 from contract.enums import Disposition, Gate
 from contract.wire import HumanReviewResolution
@@ -144,9 +144,9 @@ async def test_live_agent_card_reflects_new_skill_without_redeploy(
     assert "doctype:utility-bill" in ap1["tags"]
     assert "doctype:gov-id" not in ap1["tags"]
 
-    # Drop the gov-id doctype skill at runtime via the skill_registry seam — no rebuild.
+    # Drop the gov-id doctype skill at runtime via the skill_registry port — no rebuild.
     src = SKILLS_DIR / "gov-id"
-    reg = get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+    reg = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
     reg.install_skill(
         "gov-id",
         (src / "SKILL.md").read_text(),

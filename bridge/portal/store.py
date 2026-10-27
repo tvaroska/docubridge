@@ -4,10 +4,10 @@ The portal drives ``bridge.pathb.step`` across ``INPUT_REQUIRED`` parks (resubmi
 HITL), so the (small, serializable) ``PathBState`` and the active park must survive
 *between* HTTP requests. That persistence lives here.
 
-**Not a seam (Decision, §2b of the plan).** Mirroring ``bridge/edge/artifacts.py``
+**Not a port (Decision, §2b of the plan).** Mirroring ``bridge/edge/artifacts.py``
 Decision 1 (the ADK ``ArtifactService`` is a native backend swap, not a managed
-``Seam``): the portal store is a **local default + a documented durable swap point**,
-NOT an entry in the ``Seam`` enum. No ``@pytest.mark.seam`` here.
+``Port``): the portal store is a **local default + a documented durable swap point**,
+NOT an entry in the ``Port`` enum. No ``@pytest.mark.port`` here.
 
 **P7 durable swap.** ``PathBState`` is a small serializable value
 (``candidate_doctypes``/``ledger`` are tuples of pydantic models; ``attempts`` /
@@ -58,7 +58,7 @@ class PortalSessionRecord:
 
 
 class PortalStore(Protocol):
-    """The persistence seam-in-waiting for portal sessions (native swap, §2b)."""
+    """The persistence port-in-waiting for portal sessions (native swap, §2b)."""
 
     def create(self, rec: PortalSessionRecord) -> None:
         """Create and persist a new portal upload session record."""
@@ -81,7 +81,7 @@ class InMemoryPortalStore:
     """Local default: an in-process dict of session records.
 
     P7 swaps this for a durable store (P4 ``DatabaseSessionService`` / Cloud SQL); the
-    ``PortalStore`` protocol is the swap boundary. NOT a managed ``Seam`` (§2b).
+    ``PortalStore`` protocol is the swap boundary. NOT a managed ``Port`` (§2b).
     """
 
     def __init__(self) -> None:

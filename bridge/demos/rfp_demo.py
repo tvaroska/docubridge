@@ -44,7 +44,7 @@ conformance PDFs::
     uv run python -m bridge.email_ingress land reply.eml
     uv run python -m bridge.email_ingress drain --url http://127.0.0.1:8010/ops
 
-The board persists through the ``exchange_store`` seam (S0-arch-14): unset, the demo RFP
+The board persists through the ``exchange_store`` port (S0-arch-14): unset, the demo RFP
 lives in memory and is re-seeded on every start; point ``BRIDGE_EXCHANGE_DB_URL`` at an
 async sqlite file and the RFP (uploads, chases, the audit trail) survives a host restart —
 the seed runs only when the store does not already hold ``acme-vb-2027``::

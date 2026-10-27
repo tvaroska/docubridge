@@ -54,7 +54,7 @@ Same core serves two different industries; a whole demo added live with no redep
 - **No pattern work.** Collect is a **built-in flow** ([closed pattern set](../../design/patterns.md)); RFP selects it via `pattern` and adds skills. There is no workflow DSL and nothing to "lift into the skill" — "adding a demo is configuration" holds because the flow already exists and the emergent behavior lives in the agent's per-turn reply.
 - **Showcase runner** — boots one core with all demos loaded and exercises Address + Benefits + RFP concurrently on one Agent Card and one dashboard — the proof of multi-use-case coexistence.
 
-**Core machinery the demo relies on:** both edges, dual-path, extraction seam, disposition, HITL, proactive, seams, network zones, programs.
+**Core machinery the demo relies on:** both edges, dual-path, extraction port, disposition, HITL, proactive, ports, network zones, programs.
 
 **Demo data:** **synthetic** supplier bundle — proposal, pricing sheet, a wrong "insurance cert," an unlabeled scan, plus the later tax-residency form. Doubles as fixtures + test corpus.
 

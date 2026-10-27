@@ -28,7 +28,7 @@ client that sends one:
 same bodies on a live Gemini model (extraction pinned to the fixture engine), plus the
 S3-edge-4 adversaries over A2A asserting only model-independent invariants.
 
-Not a seam (no ``adapter`` fixture). Synthetic data only (the corpus party
+Not a port (no ``adapter`` fixture). Synthetic data only (the corpus party
 ``jordan-lee``).
 """
 
@@ -262,7 +262,7 @@ def leg(request, monkeypatch):
     """``(kind, make_llm)``: ``make_llm(review_doc_ids)`` builds the hybrid model."""
     if request.param == "scripted":
         return "scripted", lambda docs: _review_llm(*docs)
-    monkeypatch.setenv("BRIDGE_SEAM_EXTRACTION", "local")  # fixture extraction only
+    monkeypatch.setenv("BRIDGE_PORT_EXTRACTION", "local")  # fixture extraction only
     return "gemini", lambda _docs: _CountingGemini(model=resolve_model(None))
 
 
@@ -745,7 +745,7 @@ def _assert_no_minted_accept(turn: ExchangeTurn, record: dict, state: dict) -> N
 @pytest.mark.parametrize("kind", list(INJECTIONS))
 @pytest.mark.parametrize("rid", list(RECORDS))
 async def test_live_adversary_a2a_hybrid(rid, kind, monkeypatch):
-    monkeypatch.setenv("BRIDGE_SEAM_EXTRACTION", "local")
+    monkeypatch.setenv("BRIDGE_PORT_EXTRACTION", "local")
     llm = _CountingGemini(model=resolve_model(None))
     leg = LlmLeg(model=llm, session_service=InMemorySessionService())
     app = build_a2a_app(

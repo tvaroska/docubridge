@@ -76,7 +76,7 @@ async def test_signal_provider_is_abstract():
 
 
 async def test_injected_extractor_works():
-    """ExtractionSignalProvider works with an injected extractor (no seam)."""
+    """ExtractionSignalProvider works with an injected extractor (no port)."""
     # Construct with explicit fixture
     provider = ExtractionSignalProvider(extractor=FixtureExtractor())
 

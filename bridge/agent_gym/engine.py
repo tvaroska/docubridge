@@ -35,6 +35,7 @@ from bridge.agent_gym.models import (
     _infer_rule_category,
     _skills_bucket,
     _strip_legal_suffix,
+    _vault_bucket,
     generate_synthetic_stress_suite,
 )
 from bridge.agent_gym.registry_gateway import RegistryGatewayMixin
@@ -72,6 +73,10 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
     @abc.abstractmethod
     def _get_signal(self, signal_id: str) -> ExpertFeedbackSignal | None:
         raise NotImplementedError
+
+    def _list_all_signals(self) -> list[ExpertFeedbackSignal]:
+        """Return all persisted ExpertFeedbackSignal records (implemented by InMemory and Sql stores)."""
+        return []
 
     @abc.abstractmethod
     def _save_rule(self, rule: TribalKnowledgeRule) -> None:
@@ -747,7 +752,7 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
         *,
         doctype: str = "closing-disclosure",
         issuer_pattern: str = "*",
-        install_to_seam: bool = False,
+        install_to_port: bool = False,
     ) -> dict[str, Any]:
         """Harness Evolve Nightly Compiler: fold daytime SQL tribal rules into a versioned
         `SKILL.md` package via `gemini-4-argon` and register an immutable `SkillRevision`
@@ -950,11 +955,11 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
             )
             self._save_skill_revision(rev_record)
 
-            if install_to_seam:
-                from bridge.seams import Seam, get_adapter, resolve_mode
+            if install_to_port:
+                from bridge.ports import Port, get_adapter, resolve_mode
 
                 registry = get_adapter(
-                    Seam.skill_registry, resolve_mode(Seam.skill_registry)
+                    Port.skill_registry, resolve_mode(Port.skill_registry)
                 )
                 registry.install_skill(
                     doctype,
@@ -1427,6 +1432,110 @@ class AgentGymEngine(RegistryGatewayMixin, abc.ABC):
     def _clear_rules_and_signals(self) -> None:
         """Clear accumulated demo signals, candidate/promoted rules, and report cards."""
 
+    def list_signals(
+        self,
+        *,
+        doctype: str | None = None,
+        verified_only: bool = False,
+    ) -> list[ExpertFeedbackSignal]:
+        """List ExpertFeedbackSignal records optionally filtered by doctype and oversight verification."""
+        signals = self._list_all_signals()
+        if doctype is not None:
+            norm_doc = doctype.strip().lower()
+            signals = [s for s in signals if s.doctype.strip().lower() == norm_doc]
+        if verified_only:
+            signals = [
+                s
+                for s in signals
+                if s.citation_verified and s.oversight_rsr_score >= 0.50
+            ]
+        return sorted(signals, key=lambda s: s.recorded_at)
+
+    def export_docai_uptraining_dataset(
+        self,
+        *,
+        doctype: str | None = None,
+        verified_only: bool = True,
+    ) -> dict[str, Any]:
+        """Export verified ExpertFeedbackSignal + SourceAnchor records in Document AI ImportDocuments format.
+
+        Translates human-verified field corrections and normalized bounding boxes `(x0, y0, x1, y1)`
+        into Document AI `Document` JSON records (`entities[].page_anchor.page_refs[].bounding_poly.normalized_vertices`)
+        ready for Document AI Custom Extractor uptraining (`ImportDocuments`).
+        """
+        with trace_step(
+            "docubridge.agent_gym.export_docai_dataset",
+            {
+                "docubridge.zone": "6_knowledge_catalog_agent_gym",
+                "docubridge.doctype": doctype or "*",
+                "docubridge.verified_only": verified_only,
+            },
+        ) as span:
+            signals = self.list_signals(doctype=doctype, verified_only=verified_only)
+            documents: list[dict[str, Any]] = []
+            for sig in signals:
+                anchor = sig.source_anchor
+                page_index = (
+                    max(0, anchor.page_number - 1)
+                    if anchor is not None and anchor.page_number >= 1
+                    else 0
+                )
+                if anchor is not None and anchor.bounding_box is not None:
+                    x0, y0, x1, y1 = anchor.bounding_box
+                else:
+                    x0, y0, x1, y1 = (0.10, 0.20, 0.85, 0.28)
+                normalized_vertices = [
+                    {"x": round(float(x0), 4), "y": round(float(y0), 4)},
+                    {"x": round(float(x1), 4), "y": round(float(y0), 4)},
+                    {"x": round(float(x1), 4), "y": round(float(y1), 4)},
+                    {"x": round(float(x0), 4), "y": round(float(y1), 4)},
+                ]
+                entity_record = {
+                    "id": sig.signal_id,
+                    "type": sig.field_path,
+                    "mention_text": sig.after_value,
+                    "confidence": 1.0,
+                    "normalized_value": {"text": sig.after_value},
+                    "page_anchor": {
+                        "page_refs": [
+                            {
+                                "page": str(page_index),
+                                "layout_type": "VISUAL_ELEMENT",
+                                "bounding_poly": {
+                                    "normalized_vertices": normalized_vertices,
+                                },
+                            }
+                        ]
+                    },
+                }
+                documents.append(
+                    {
+                        "uri": f"gs://{_vault_bucket()}/vault/{sig.entity_id}/{sig.doc_id}.pdf",
+                        "mime_type": "application/pdf",
+                        "doc_id": sig.doc_id,
+                        "entity_id": sig.entity_id,
+                        "doctype": sig.doctype,
+                        "issuer": sig.issuer,
+                        "signal_id": sig.signal_id,
+                        "oversight_rsr_score": sig.oversight_rsr_score,
+                        "citation_verified": sig.citation_verified,
+                        "document": {
+                            "uri": f"gs://{_vault_bucket()}/vault/{sig.entity_id}/{sig.doc_id}.pdf",
+                            "mime_type": "application/pdf",
+                            "text": f"{sig.field_path}: {sig.after_value}",
+                            "entities": [entity_record],
+                        },
+                    }
+                )
+            span.set_attribute("docubridge.exported_document_count", len(documents))
+            return {
+                "format": "google.cloud.documentai.v1.ImportDocumentsRequest",
+                "doctype_filter": doctype or "*",
+                "verified_only": verified_only,
+                "document_count": len(documents),
+                "documents": documents,
+            }
+
 
 class InMemoryAgentGymEngine(AgentGymEngine):
     """In-memory Agent Gym store for local unit tests without a database DSN."""
@@ -1465,6 +1574,9 @@ class InMemoryAgentGymEngine(AgentGymEngine):
 
     def _get_signal(self, signal_id: str) -> ExpertFeedbackSignal | None:
         return self._signals.get(signal_id)
+
+    def _list_all_signals(self) -> list[ExpertFeedbackSignal]:
+        return list(self._signals.values())
 
     def _save_rule(self, rule: TribalKnowledgeRule) -> None:
         self._rules[rule.rule_id] = rule

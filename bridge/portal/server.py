@@ -41,7 +41,7 @@ from bridge.portal import rfp_checklist
 from bridge.portal import session as engine
 from bridge.portal.session import NoActivePark
 from bridge.portal.store import InMemoryPortalStore, PortalSessionRecord, PortalStore
-from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.user_interaction import build_user_interaction_router
 from contract.enums import Disposition
 from contract.wire import ArtifactRef
@@ -121,7 +121,7 @@ def build_portal_app(
     §2b); tests inject a fresh one per case. ``rfps`` (optional, S0-frontend-1) is the
     shared ``RfpBoard`` the carrier RFP checklist routes read and file into; ``intake`` the
     legs' reply addressing (``None`` → ``IntakeAddressing.from_env()``); ``extraction`` the
-    engine an RFP upload runs through (``None`` → the extraction seam adapter, resolved
+    engine an RFP upload runs through (``None`` → the extraction port adapter, resolved
     lazily at the first upload).
     """
     active_store: PortalStore = store or InMemoryPortalStore()
@@ -195,7 +195,7 @@ def build_portal_app(
             return extraction
         if "extraction" not in engines:
             engines["extraction"] = get_adapter(
-                Seam.extraction, resolve_mode(Seam.extraction)
+                Port.extraction, resolve_mode(Port.extraction)
             )
         return engines["extraction"]
 

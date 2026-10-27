@@ -3,7 +3,7 @@
 # This is the compute host for the deployed ADK `App` (FastAPI + a2a-sdk A2A edge
 # + A2UI portal + scoped artifact-fetch + webhook receiver). It does NOT wrap
 # Vertex Agent Engine — the managed session/Memory Bank appears only behind the
-# Sessions seam's GCP adapter (P7-2 config), never as the compute host
+# Sessions port's GCP adapter (P7-2 config), never as the compute host
 # (design/gcp-substrate.md §"runtime = Cloud Run v2 … It does NOT wrap Vertex
 # Agent Engine").
 
@@ -60,7 +60,7 @@ locals {
     BRIDGE_RFP_PROCESS          = var.rfp_process
     BRIDGE_RUNTIME_SA_EMAIL     = var.runtime_sa_email
     BRIDGE_GATEWAY_HOST         = var.gateway_host
-    BRIDGE_SEAM_MODE            = var.seam_mode
+    BRIDGE_PORT_MODE            = var.port_mode
     BRIDGE_ARTIFACT_BUCKET      = var.artifacts_bucket
     BRIDGE_VAULT_BUCKET         = var.vault_bucket
     BRIDGE_SKILLS_BUCKET        = var.skills_bucket
@@ -72,9 +72,9 @@ locals {
     GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY = var.agent_engine_id != "" ? "true" : ""
     BRIDGE_MODEL                               = var.agent_engine_id != "" ? "gemini-3.8-flash" : ""
     BRIDGE_REASONING_MODEL                     = var.agent_engine_id != "" ? "gemini-4-argon" : ""
-    GOOGLE_GENAI_USE_VERTEXAI   = var.seam_mode == "gcp" ? "TRUE" : ""
-    GOOGLE_CLOUD_PROJECT        = var.seam_mode == "gcp" ? var.project_id : ""
-    GOOGLE_CLOUD_LOCATION       = var.seam_mode == "gcp" ? var.region : ""
+    GOOGLE_GENAI_USE_VERTEXAI   = var.port_mode == "gcp" ? "TRUE" : ""
+    GOOGLE_CLOUD_PROJECT        = var.port_mode == "gcp" ? var.project_id : ""
+    GOOGLE_CLOUD_LOCATION       = var.port_mode == "gcp" ? var.region : ""
     BRIDGE_PUBLIC_URL           = local.effective_public_url
     BRIDGE_EMAIL_BUCKET         = var.email_bucket
     BRIDGE_EMAIL_MAILBOX        = var.email_mailbox
@@ -192,8 +192,8 @@ resource "google_cloud_run_v2_service" "bridge" {
         }
       }
 
-      # The seam master switch (P7-9) — BRIDGE_SEAM_MODE routes EVERY seam through
-      # its adapter (bridge/seams/config.py:resolve_mode). The deployed container sets
+      # The port master switch (P7-9) — BRIDGE_PORT_MODE routes EVERY port through
+      # its adapter (bridge/ports/config.py:resolve_mode). The deployed container sets
       # it to "gcp" so sessions/task_store/exchange_store hit Cloud SQL, skill_registry
       # GCS, scheduler Cloud Tasks, a2a_client Agent Identity — never a per-replica
       # in-memory store (the session-affinity trap, DECISIONS.md 2026-08-24). PLAIN env
@@ -201,15 +201,15 @@ resource "google_cloud_run_v2_service" "bridge" {
       # container env untouched (runtime tests stay green); the P7-8 service-wiring
       # guard is the static backstop if this is ever missed.
       dynamic "env" {
-        for_each = var.seam_mode != "" ? [1] : []
+        for_each = var.port_mode != "" ? [1] : []
         content {
-          name  = "BRIDGE_SEAM_MODE"
-          value = var.seam_mode
+          name  = "BRIDGE_PORT_MODE"
+          value = var.port_mode
         }
       }
 
       dynamic "env" {
-        for_each = var.seam_mode == "gcp" ? [1] : []
+        for_each = var.port_mode == "gcp" ? [1] : []
         content {
           name  = "GOOGLE_GENAI_USE_VERTEXAI"
           value = "TRUE"
@@ -217,7 +217,7 @@ resource "google_cloud_run_v2_service" "bridge" {
       }
 
       dynamic "env" {
-        for_each = var.seam_mode == "gcp" ? [1] : []
+        for_each = var.port_mode == "gcp" ? [1] : []
         content {
           name  = "GOOGLE_CLOUD_PROJECT"
           value = var.project_id
@@ -225,7 +225,7 @@ resource "google_cloud_run_v2_service" "bridge" {
       }
 
       dynamic "env" {
-        for_each = var.seam_mode == "gcp" ? [1] : []
+        for_each = var.port_mode == "gcp" ? [1] : []
         content {
           name  = "GOOGLE_CLOUD_LOCATION"
           value = var.region
@@ -234,7 +234,7 @@ resource "google_cloud_run_v2_service" "bridge" {
 
       # The extraction capability axis (P7-6) — BRIDGE_EXTRACTION_ENGINE selects the
       # deployed extraction engine (fixture|gemini|docai). The deployed container sets
-      # it to "gemini" (the GcpExtraction default) so the extraction seam runs real
+      # it to "gemini" (the GcpExtraction default) so the extraction port runs real
       # Gemini. PLAIN env (an engine name is not a secret). Gated so the P7-1/local
       # default ("") leaves the container env untouched (runtime tests stay green).
       dynamic "env" {
@@ -332,7 +332,7 @@ resource "google_cloud_run_v2_service" "bridge" {
       # The RFP opener (S0-arch-19): with the RFP board service enabled, this A2A
       # runtime OPENS RFPs of that process (a broker agent's CollectRequest) onto the
       # durable exchange store the board service reads — the same Cloud SQL DB
-      # (DATABASE_URL + BRIDGE_SEAM_MODE=gcp). It holds an opener-only board: it still
+      # (DATABASE_URL + BRIDGE_PORT_MODE=gcp). It holds an opener-only board: it still
       # binds no email processor and carries no BRIDGE_EMAIL_* (S0-arch-17) — the
       # processor envs ride the RFP board service below.
       dynamic "env" {
@@ -410,9 +410,9 @@ resource "google_cloud_run_v2_service" "email_webhook" {
         name  = "BRIDGE_EMAIL_GRAPH_CLIENT_ID"
         value = var.email_graph_client_id
       }
-      # Only the email_ingress seam is used here; route it to the GCS adapter.
+      # Only the email_ingress port is used here; route it to the GCS adapter.
       env {
-        name  = "BRIDGE_SEAM_EMAIL_INGRESS"
+        name  = "BRIDGE_PORT_EMAIL_INGRESS"
         value = "gcp"
       }
 

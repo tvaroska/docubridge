@@ -267,9 +267,9 @@ def _resolve_svid_signing_secret(secret: str | None = None) -> str:
     env_secret = os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip()
     if env_secret:
         return env_secret
-    if os.environ.get("BRIDGE_SEAM_MODE", "").strip().lower() == "gcp":
+    if os.environ.get("BRIDGE_PORT_MODE", "").strip().lower() == "gcp":
         raise SpiffeAuthenticationError(
-            f"{SPIFFE_SVID_SECRET_ENV} must be configured when BRIDGE_SEAM_MODE=gcp; "
+            f"{SPIFFE_SVID_SECRET_ENV} must be configured when BRIDGE_PORT_MODE=gcp; "
             "refusing fallback to DEFAULT_DEV_SVID_SECRET."
         )
     return DEFAULT_DEV_SVID_SECRET

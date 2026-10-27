@@ -1,9 +1,9 @@
 """Path-A validate-only tests (P6-1, PATH-A; schema-driven validation S0-arch-8).
 
 A structured extraction-assertion (party-with-agent) is schema-validated + disposed
-with the extraction seam **never called**; a malformed assertion (missing a required
+with the extraction port **never called**; a malformed assertion (missing a required
 key field) is rejected at Pydantic validation before disposition; and the edge Path-A
-branch returns a terminal turn without any extraction (proven with a seam spy).
+branch returns a terminal turn without any extraction (proven with a port spy).
 
 The typed key-field model is built from the asserted doctype's installed skill schema
 (``bridge/doctypes.py``), so the coverage here is every installed doctype — including
@@ -31,7 +31,7 @@ from bridge.collect import Collector, project_ledger_entry
 from bridge.doctypes import doctype_schemas, key_field_model
 from bridge.edge import CollectExecutor, build_a2a_app, encode_collect_request
 from bridge.edge.wire import KIND_EXCHANGE_TURN, META_KIND
-from bridge.seams import Seam, SeamMode, get_adapter
+from bridge.ports import Port, PortMode, get_adapter
 from contract.enums import Disposition, Gate
 from contract.extraction import (
     ExtractionResult,
@@ -104,8 +104,8 @@ def _pay_stub_schema() -> str:
 
 
 def _install_pay_stub(assets: dict[str, str] | None) -> None:
-    """Install a pay-stub doctype skill through the skill_registry seam."""
-    registry = get_adapter(Seam.skill_registry, SeamMode.local)
+    """Install a pay-stub doctype skill through the skill_registry port."""
+    registry = get_adapter(Port.skill_registry, PortMode.local)
     registry.install_skill(
         "pay-stub",
         "---\nname: pay-stub\ndescription: A pay stub.\n"
@@ -124,18 +124,18 @@ def _pay_stub_assertion(key_fields: dict[str, str]) -> dict:
 
 
 class SpyExtractor:
-    """Fails the test if extract() is ever called (Path A must not touch the seam)."""
+    """Fails the test if extract() is ever called (Path A must not touch the port)."""
 
     def __init__(self) -> None:
         self.calls: list[str] = []
 
     async def extract(self, artifact_name: str):
         self.calls.append(artifact_name)
-        raise AssertionError("Path A must not call the extraction seam")
+        raise AssertionError("Path A must not call the extraction port")
 
 
 async def test_validate_only_accepts_without_extraction():
-    """Gate #5: a well-formed assertion disposes accepted; no seam is consulted."""
+    """Gate #5: a well-formed assertion disposes accepted; no port is consulted."""
     verdict = await patha.validate_only(
         _gov_id_clean_assertion(), candidate_doctypes=DOCTYPES
     )
@@ -199,7 +199,7 @@ def _turn_from_task(task) -> ExchangeTurn:
 
 async def test_edge_path_a_branch_skips_extraction():
     """Gate #8: a structured-assertion message routes to Path A — terminal turn with the
-    accepted entry, and the injected seam spy is NEVER called."""
+    accepted entry, and the injected port spy is NEVER called."""
     spy = SpyExtractor()
     executor = CollectExecutor(collector=Collector(spy))
     app = build_a2a_app(url=URL, executor=executor)
@@ -221,7 +221,7 @@ async def test_edge_path_a_branch_skips_extraction():
         assert turn.terminal is True
         assert len(turn.status.entries) == 1
         assert turn.status.entries[0].disposition is Disposition.accepted
-        # The seam was never called (Path A is validate-only).
+        # The port was never called (Path A is validate-only).
         assert spy.calls == []
 
 
@@ -323,7 +323,7 @@ def test_dynamic_key_field_model_matches_contract_models(doctype, reference):
 def test_live_doctype_add_validates_new_doctype(tmp_path, monkeypatch):
     """The no-redeploy property, extended to validation: install a folder, get a check.
 
-    ``get_adapter(Seam.skill_registry, …)`` reads ``BRIDGE_SKILLS_DIR`` per call and
+    ``get_adapter(Port.skill_registry, …)`` reads ``BRIDGE_SKILLS_DIR`` per call and
     Path A reads the catalog per assertion, so the new doctype validates immediately —
     with zero change to ``bridge/``.
     """

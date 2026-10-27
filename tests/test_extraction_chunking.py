@@ -5,7 +5,7 @@ compressed object stream, garbage, a decompression bomb, the raster scanned PDF)
 planning/bisection, the code-side merge rules (rows concatenated in order with no dedupe,
 first-wins scalars with flagged disagreement, min confidence, ``legible`` conjunction) and
 row-path rebasing (incl. coarsening an un-emitted row index with a warning), plus the
-import-isolation guard (vendorable: no ``google*`` / ``agents`` / ``bridge.seams`` /
+import-isolation guard (vendorable: no ``google*`` / ``agents`` / ``bridge.ports`` /
 ``bridge.edge``).
 """
 
@@ -422,7 +422,7 @@ def test_chunking_imports_only_stdlib_and_contract():
             names.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             names.append(node.module or "")
-    banned = ("google", "agents", "bridge.seams", "bridge.edge", "pypdf", "fitz")
+    banned = ("google", "agents", "bridge.ports", "bridge.edge", "pypdf", "fitz")
     assert not [n for n in names if n.split(".")[0] in banned or n.startswith(banned)]
     assert {n.split(".")[0] for n in names} <= {
         "__future__",

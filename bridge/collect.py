@@ -16,8 +16,8 @@ from pydantic import BaseModel, ConfigDict
 
 from bridge.classification import canonicalize_issuer
 from bridge.disposition import DispositionVerdict
-from bridge.seams import Seam, get_adapter, resolve_mode
-from bridge.seams.protocols import ExtractionSeam
+from bridge.ports import Port, get_adapter, resolve_mode
+from bridge.ports.protocols import ExtractionPort
 from bridge.signals import dispose_signals, signals_from_result
 from bridge.telemetry import trace_step
 from bridge.vault import redact_personal_data
@@ -44,7 +44,7 @@ class DocumentSubmission(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     doc_id: str
-    artifact_name: str  # extraction-seam lookup key
+    artifact_name: str  # extraction-port lookup key
     artifact: ArtifactRef | None = None
 
 
@@ -120,20 +120,20 @@ def project_collection_status(
 
 
 class Collector:
-    """The deterministic one-turn collect path (COLL-4). Reads the extraction seam,
+    """The deterministic one-turn collect path (COLL-4). Reads the extraction port,
     disposes per the pure gate, projects the classified ledger, and optionally promotes
     accepted entries through the Audit Vault, Operational Store, and Knowledge Catalog."""
 
     def __init__(
         self,
-        extractor: ExtractionSeam | None = None,
+        extractor: ExtractionPort | None = None,
         *,
         redact_pii: bool | None = None,
         vault_store: AuditVaultStore | None = None,
         operational_store: OperationalStore | None = None,
         knowledge_catalog: KnowledgeCatalog | None = None,
     ) -> None:
-        self._extractor = extractor  # None -> resolve the extraction seam lazily
+        self._extractor = extractor  # None -> resolve the extraction port lazily
         self._redact_pii = redact_pii
         self._vault_store = vault_store
         self._operational_store = operational_store
@@ -155,7 +155,7 @@ class Collector:
         leaves the behaviour identical.
         """
         extractor = self._extractor or get_adapter(
-            Seam.extraction, resolve_mode(Seam.extraction)
+            Port.extraction, resolve_mode(Port.extraction)
         )
         context_id = request.context_id or uuid.uuid4().hex
         entity_id = request.party or context_id

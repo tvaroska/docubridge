@@ -1,9 +1,9 @@
 # database — Cloud SQL PostgreSQL 16 on PRIVATE IP only (P7-2).
 #
 # The shared relational store behind the sessions / task_store / exchange_store
-# GCP seam adapters. It MUST be a shared store, never per-replica in-memory — a
+# GCP port adapters. It MUST be a shared store, never per-replica in-memory — a
 # peer reference measured 86.8% poll-404s with a per-replica store on multi-replica
-# Agent Runtime (design/seams.md, "the session-affinity trap"; DECISIONS.md
+# Agent Runtime (design/ports.md, "the session-affinity trap"; DECISIONS.md
 # 2026-08-24). The Bridge→Cloud SQL path is PRIVATE IP over the VPC via Private
 # Services Access — ipv4_enabled = false, no public IP, never an HTTP hop.
 #

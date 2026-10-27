@@ -1,10 +1,10 @@
-"""GCP shared-store seam adapter unit tests (P7-2).
+"""GCP shared-store port adapter unit tests (P7-2).
 
 These run ALWAYS (no ``adapter`` fixture, no BRIDGE_TEST_GCP gate): they exercise
 the structural, GCP-credential-free surface of the Cloud SQL adapters — the
 terminal-write retry wrapper, the async-Postgres driver guard, and the
 refuse-in-memory (session-affinity trap) guard. The end-to-end Cloud SQL roundtrip
-is in ``test_durable_seams.py`` (gcp params, P7-9).
+is in ``test_durable_ports.py`` (gcp params, P7-9).
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ import logging
 
 import pytest
 
-from bridge.seams import Seam, SeamMode, get_adapter
-from bridge.seams.gcp import (
+from bridge.ports import Port, PortMode, get_adapter
+from bridge.ports.gcp import (
     BRIDGE_AGENT_ENGINE_ID_ENV,
     BRIDGE_GCP_LOCATION_ENV,
     BRIDGE_GCP_PROJECT_ENV,
@@ -72,7 +72,7 @@ async def test_terminal_retry_succeeds_after_one_failure(caplog):
     inner = _FakeInner(fail_times=1)
     store = _TerminalRetryTaskStore(inner)
 
-    with caplog.at_level(logging.WARNING, logger="bridge.seams.gcp"):
+    with caplog.at_level(logging.WARNING, logger="bridge.ports.gcp"):
         await store.save(_task(terminal=True), context=None)
 
     assert inner.save_calls == 2  # failed once, then succeeded
@@ -87,7 +87,7 @@ async def test_terminal_retry_exhausts_then_reraises(caplog):
     inner = _FakeInner(fail_times=99)
     store = _TerminalRetryTaskStore(inner, attempts=3)
 
-    with caplog.at_level(logging.WARNING, logger="bridge.seams.gcp"):  # noqa: SIM117
+    with caplog.at_level(logging.WARNING, logger="bridge.ports.gcp"):  # noqa: SIM117
         with pytest.raises(RuntimeError, match="boom 3"):
             await store.save(_task(terminal=True), context=None)
 
@@ -104,7 +104,7 @@ async def test_terminal_retry_skips_non_terminal_write(caplog):
     inner = _FakeInner(fail_times=99)
     store = _TerminalRetryTaskStore(inner, attempts=3)
 
-    with caplog.at_level(logging.WARNING, logger="bridge.seams.gcp"):  # noqa: SIM117
+    with caplog.at_level(logging.WARNING, logger="bridge.ports.gcp"):  # noqa: SIM117
         with pytest.raises(RuntimeError, match="boom 1"):
             await store.save(_task(terminal=False), context=None)
 
@@ -140,7 +140,7 @@ def test_gcp_task_store_rejects_sync_postgres_dsn():
     """Building a gcp task_store with a sync postgres DSN raises the async-driver
     error (before any create_async_engine — asyncpg need not be installed)."""
     with pytest.raises(ValueError, match="async Postgres driver"):
-        get_adapter(Seam.task_store, SeamMode.gcp).build_task_store(
+        get_adapter(Port.task_store, PortMode.gcp).build_task_store(
             db_url="postgresql://u:p@h/db"
         )
 
@@ -153,7 +153,7 @@ def test_gcp_refuses_in_memory_without_dsn(monkeypatch):
     back to an in-memory store (that IS the session-affinity trap)."""
     monkeypatch.delenv(DATABASE_URL_ENV, raising=False)
     with pytest.raises(RuntimeError, match="session-affinity trap"):
-        get_adapter(Seam.task_store, SeamMode.gcp).build_task_store()
+        get_adapter(Port.task_store, PortMode.gcp).build_task_store()
 
 
 def test_resolve_dsn_reads_secret_env(monkeypatch):
@@ -178,9 +178,9 @@ def test_gcp_exchange_store_refuses_in_memory_and_sync_pg(monkeypatch):
 
     from bridge.exchange_store import SqlExchangeStore
 
-    inst = get_adapter(Seam.exchange_store, SeamMode.gcp)
+    inst = get_adapter(Port.exchange_store, PortMode.gcp)
     assert isinstance(inst, GcpExchangeStore)
-    assert inst.seam is Seam.exchange_store
+    assert inst.port is Port.exchange_store
 
     monkeypatch.delenv(DATABASE_URL_ENV, raising=False)
     with pytest.raises(RuntimeError, match="session-affinity"):
@@ -201,8 +201,8 @@ def test_gcp_exchange_store_refuses_in_memory_and_sync_pg(monkeypatch):
 
 
 def test_gcp_sessions_and_task_store_types():
-    assert isinstance(get_adapter(Seam.sessions, SeamMode.gcp), GcpSessions)
-    assert isinstance(get_adapter(Seam.task_store, SeamMode.gcp), GcpTaskStore)
+    assert isinstance(get_adapter(Port.sessions, PortMode.gcp), GcpSessions)
+    assert isinstance(get_adapter(Port.task_store, PortMode.gcp), GcpTaskStore)
 
 
 # --- importing the gcp pkg pulls no heavy deps -----------------------------
@@ -213,9 +213,9 @@ def test_importing_gcp_pkg_does_not_import_asyncpg():
     must not pull asyncpg (the default non-gcp suite runs without the gcp extra)."""
     import sys
 
-    # bridge.seams.gcp is already imported by this test module's top-level import;
+    # bridge.ports.gcp is already imported by this test module's top-level import;
     # the invariant is simply that doing so did not import asyncpg.
-    assert "bridge.seams.gcp" in sys.modules
+    assert "bridge.ports.gcp" in sys.modules
     assert "asyncpg" not in sys.modules
 
 
@@ -265,7 +265,7 @@ def test_gcp_memory_bank_requires_agent_engine_id_and_builds_service(monkeypatch
     """GcpMemoryBank refuses loudly when BRIDGE_AGENT_ENGINE_ID is unset and builds
     VertexAiMemoryBankService when configured."""
     monkeypatch.delenv(BRIDGE_AGENT_ENGINE_ID_ENV, raising=False)
-    adapter = get_adapter(Seam.memory_bank, SeamMode.gcp)
+    adapter = get_adapter(Port.memory_bank, PortMode.gcp)
     assert isinstance(adapter, GcpMemoryBank)
 
     with pytest.raises(RuntimeError, match="BRIDGE_AGENT_ENGINE_ID"):
@@ -297,7 +297,7 @@ def test_local_memory_bank_in_memory_and_sqlite(monkeypatch, tmp_path):
     from google.adk.memory import InMemoryMemoryService, SqliteMemoryService
 
     monkeypatch.delenv("BRIDGE_MEMORY_DB_PATH", raising=False)
-    local_mb = get_adapter(Seam.memory_bank, SeamMode.local)
+    local_mb = get_adapter(Port.memory_bank, PortMode.local)
     assert isinstance(local_mb.build_memory_service(), InMemoryMemoryService)
 
     db_file = str(tmp_path / "memory.sqlite")

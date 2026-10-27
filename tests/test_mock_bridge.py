@@ -379,7 +379,7 @@ async def test_parity_smoke_terminal_outcome_matches_real_edge():
     """Mock and real edge reach the same terminal outcome for gov-id-clean.
 
     Parity = terminal state + accepted-issuer set (NOT ledger-identical). The real
-    side exercises the extraction seam; the mock is script-driven.
+    side exercises the extraction port; the mock is script-driven.
     """
     # Mock side: path-a-instant.
     async with _client(_mock_app()) as (_hc, client):

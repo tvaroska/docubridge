@@ -89,7 +89,7 @@ TF_VARS=(
   -var "deletion_protection=false"
   -var "ssl_domains=[\"${SSL_DOMAIN}\"]"
   -var "frontend_ssl_domains=[\"${FRONTEND_SSL_DOMAIN}\"]"
-  -var "seam_mode=gcp"
+  -var "port_mode=gcp"
   -var "extraction_engine=gemini"
 )
 if [[ -n "${PARTY_INVOKER_MEMBERS}" ]]; then

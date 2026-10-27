@@ -144,9 +144,9 @@ class CloudTraceV2SpanExporter(SpanExporter):
             "true",
         }:
             return False
-        seam_mode = os.environ.get("BRIDGE_SEAM_MODE", "").strip().lower()
+        port_mode = os.environ.get("BRIDGE_PORT_MODE", "").strip().lower()
         return bool(self._project_id()) and (
-            seam_mode == "gcp"
+            port_mode == "gcp"
             or bool(os.environ.get("K_SERVICE"))
             or bool(os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID"))
         )

@@ -71,14 +71,14 @@ run "ingress_when_gateway_disabled" {
     error_message = "enable_gateway = false (local/dev default) must accept all ingress"
   }
 
-  # The seam-mode/extraction-engine envs default "" → no env at plan time (the
+  # The port-mode/extraction-engine envs default "" → no env at plan time (the
   # P7-1/local default; keeps the container env untouched).
   assert {
     condition = length([
       for e in google_cloud_run_v2_service.bridge.template[0].containers[0].env
-      : e if e.name == "BRIDGE_SEAM_MODE" || e.name == "BRIDGE_EXTRACTION_ENGINE" || e.name == "BRIDGE_DOCAI_PROCESSOR"
+      : e if e.name == "BRIDGE_PORT_MODE" || e.name == "BRIDGE_EXTRACTION_ENGINE" || e.name == "BRIDGE_DOCAI_PROCESSOR"
     ]) == 0
-    error_message = "no seam-mode/extraction-engine/docai-processor env at the default (empty) plan"
+    error_message = "no port-mode/extraction-engine/docai-processor env at the default (empty) plan"
   }
 
   # Gateway-less: the service advertises its OWN deterministic run.app URL as
@@ -92,9 +92,9 @@ run "ingress_when_gateway_disabled" {
   }
 }
 
-# The P7-9 deploy shape: seam_mode = "gcp" + extraction_engine = "gemini" inject the
-# seam master switch and the deployed extraction engine as PLAIN envs on the container.
-run "seam_envs_when_deployed" {
+# The P7-9 deploy shape: port_mode = "gcp" + extraction_engine = "gemini" inject the
+# port master switch and the deployed extraction engine as PLAIN envs on the container.
+run "port_envs_when_deployed" {
   command = plan
 
   module {
@@ -109,16 +109,16 @@ run "seam_envs_when_deployed" {
     service_account_email = "bridge-runtime@test-project.iam.gserviceaccount.com"
     vpc_network           = "projects/test-project/global/networks/bridge-vpc"
     egress_subnet         = "projects/test-project/regions/us-central1/subnetworks/bridge-vpc-internal"
-    seam_mode             = "gcp"
+    port_mode             = "gcp"
     extraction_engine     = "gemini"
   }
 
   assert {
     condition = length([
       for e in google_cloud_run_v2_service.bridge.template[0].containers[0].env
-      : e if e.name == "BRIDGE_SEAM_MODE" && e.value == "gcp"
+      : e if e.name == "BRIDGE_PORT_MODE" && e.value == "gcp"
     ]) == 1
-    error_message = "seam_mode = gcp must inject BRIDGE_SEAM_MODE=gcp (the seam master switch)"
+    error_message = "port_mode = gcp must inject BRIDGE_PORT_MODE=gcp (the port master switch)"
   }
 
   assert {
@@ -147,7 +147,7 @@ run "docai_envs_when_deployed" {
     service_account_email = "bridge-runtime@test-project.iam.gserviceaccount.com"
     vpc_network           = "projects/test-project/global/networks/bridge-vpc"
     egress_subnet         = "projects/test-project/regions/us-central1/subnetworks/bridge-vpc-internal"
-    seam_mode             = "gcp"
+    port_mode             = "gcp"
     extraction_engine     = "docai"
     docai_processor       = "projects/client-project/locations/eu/processors/abc123"
   }
@@ -184,7 +184,7 @@ run "agent_engine_a2a_envs_when_deployed" {
     service_account_email = "bridge-runtime@test-project.iam.gserviceaccount.com"
     vpc_network           = "projects/test-project/global/networks/bridge-vpc"
     egress_subnet         = "projects/test-project/regions/us-central1/subnetworks/bridge-vpc-internal"
-    seam_mode             = "gcp"
+    port_mode             = "gcp"
     agent_engine_id       = "projects/test-project/locations/us-central1/reasoningEngines/5963861295097708544"
     agent_engine_remote   = "1"
     agent_engine_a2a      = "1"

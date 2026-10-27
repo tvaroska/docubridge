@@ -1,4 +1,4 @@
-"""Outbound A2A client seam (SEAM-7): nudge (OUT-1/2), dial-out + Deliver (OUT-3/4).
+"""Outbound A2A client port (PORT-7): nudge (OUT-1/2), dial-out + Deliver (OUT-3/4).
 
 The local adapter is an OutboundClient over an *injected fake transport* (an in-process
 outbox). Every send is idempotent and crash-safe: replaying the same idempotency key
@@ -232,7 +232,7 @@ class FakeTransport:
 
 @runtime_checkable
 class A2AClient(Protocol):
-    """The a2a_client seam's outbound abstraction. Local = OutboundClient; GCP = P7."""
+    """The a2a_client port's outbound abstraction. Local = OutboundClient; GCP = P7."""
 
     def send(self, nudge: Nudge) -> NudgeReceipt:
         """Enqueue and deliver an outbound message or nudge with idempotency protection."""
@@ -252,7 +252,7 @@ class A2AClient(Protocol):
 
 
 class OutboundClient:
-    """Idempotent, crash-safe outbound client (SEAM-7 local, OUT-1/3/4).
+    """Idempotent, crash-safe outbound client (PORT-7 local, OUT-1/3/4).
 
     Wraps an injected transport (default FakeTransport). Every activity — send (nudge),
     dial (dial-out), deliver (Deliver) — is keyed by its message's idempotency_key;

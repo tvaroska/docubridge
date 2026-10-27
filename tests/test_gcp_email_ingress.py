@@ -4,7 +4,7 @@ An in-memory fake bucket (no google-cloud-storage installed) exercises the
 create-only contract: ``if_generation_match=0`` → 412 is a duplicate; a 403 (an
 objectCreator-only identity attempting an overwrite) is a duplicate only when the
 object exists, else re-raised. The live roundtrip is the gcp param of
-``tests/test_email_ingress_seam.py``.
+``tests/test_email_ingress_port.py``.
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from google.api_core.exceptions import Forbidden, PreconditionFailed
 
-from bridge.seams import Seam, SeamMode, get_adapter
-from bridge.seams.gcp import EMAIL_BUCKET_ENV, GcpEmailIngress
+from bridge.ports import Port, PortMode, get_adapter
+from bridge.ports.gcp import EMAIL_BUCKET_ENV, GcpEmailIngress
 
 KEY = "0123456789abcdef0123456789abcdef"
 
@@ -72,62 +72,62 @@ class _FakeBucket:
 
 @pytest.fixture
 def pair(monkeypatch) -> tuple[GcpEmailIngress, _FakeBucket]:
-    seam = GcpEmailIngress("mailbox-bucket")
+    port = GcpEmailIngress("mailbox-bucket")
     fake = _FakeBucket()
-    monkeypatch.setattr(seam, "_bucket", lambda: fake)
-    return seam, fake
+    monkeypatch.setattr(port, "_bucket", lambda: fake)
+    return port, fake
 
 
 def test_get_adapter_returns_gcp_email_ingress():
-    adapter = get_adapter(Seam.email_ingress, SeamMode.gcp)
+    adapter = get_adapter(Port.email_ingress, PortMode.gcp)
     assert isinstance(adapter, GcpEmailIngress)
-    assert adapter.seam is Seam.email_ingress
+    assert adapter.port is Port.email_ingress
 
 
 def test_land_412_is_a_duplicate_and_writes_are_create_only(pair):
-    seam, fake = pair
-    assert seam.land(KEY, b"raw") is True
-    assert seam.land(KEY, b"other") is False
+    port, fake = pair
+    assert port.land(KEY, b"raw") is True
+    assert port.land(KEY, b"other") is False
     assert fake.objects[f"inbox/{KEY}.eml"] == b"raw"
     assert {u[2] for u in fake.uploads} == {0}  # every write if_generation_match=0
     assert fake.uploads[0][1] == "message/rfc822"
 
 
 def test_403_with_existing_object_is_a_duplicate(pair):
-    seam, fake = pair
-    seam.land(KEY, b"raw")
+    port, fake = pair
+    port.land(KEY, b"raw")
     fake.forbid_writes = True
-    assert seam.land(KEY, b"raw") is False
+    assert port.land(KEY, b"raw") is False
 
 
 def test_403_without_the_object_is_re_raised(pair):
-    seam, fake = pair
+    port, fake = pair
     fake.forbid_writes = True
     with pytest.raises(Forbidden):
-        seam.land(KEY, b"raw")
+        port.land(KEY, b"raw")
 
 
 def test_pending_orders_by_creation_not_by_name(pair):
-    seam, _ = pair
+    port, _ = pair
     later, earlier = "f" * 32, "0" * 32
-    seam.land(later, b"1")
-    seam.land(earlier, b"2")
-    assert seam.pending() == [later, earlier]
-    seam.mark_processed(later, {"status": "filed"})
-    assert seam.pending() == [earlier]
-    assert seam.processed(later) == {"status": "filed"}
-    assert seam.mark_processed(later, {"status": "again"}) is False
+    port.land(later, b"1")
+    port.land(earlier, b"2")
+    assert port.pending() == [later, earlier]
+    port.mark_processed(later, {"status": "filed"})
+    assert port.pending() == [earlier]
+    assert port.processed(later) == {"status": "filed"}
+    assert port.mark_processed(later, {"status": "again"}) is False
 
 
 def test_read_and_attachment_uri_shape(pair):
-    seam, _fake = pair
+    port, _fake = pair
     with pytest.raises(KeyError):
-        seam.read(KEY)
-    seam.land(KEY, b"raw")
-    assert seam.read(KEY) == b"raw"
-    uri = seam.put_attachment(KEY, 2, "quote.pdf", b"%PDF", "application/pdf")
+        port.read(KEY)
+    port.land(KEY, b"raw")
+    assert port.read(KEY) == b"raw"
+    uri = port.put_attachment(KEY, 2, "quote.pdf", b"%PDF", "application/pdf")
     assert uri == f"gs://mailbox-bucket/attachments/{KEY}/2/quote.pdf"
-    assert seam.put_attachment(KEY, 2, "quote.pdf", b"%PDF", "application/pdf") == uri
+    assert port.put_attachment(KEY, 2, "quote.pdf", b"%PDF", "application/pdf") == uri
 
 
 def test_no_bucket_refuses_before_any_storage_import(monkeypatch):
@@ -139,7 +139,7 @@ def test_no_bucket_refuses_before_any_storage_import(monkeypatch):
 
 def test_importing_the_gcp_adapters_does_not_import_storage():
     code = (
-        "import sys, bridge.seams.gcp; "
+        "import sys, bridge.ports.gcp; "
         "sys.exit(1 if 'google.cloud.storage' in sys.modules else 0)"
     )
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0

@@ -26,16 +26,16 @@ The **core is the solicited spine** — the servicer always asks first:
 
 Whatever the pattern, a human-fulfilled step runs the same [extraction graph](fulfillment-graph.md), and every arriving artifact passes [disposition](disposition.md) before it counts.
 
-**The pattern set is closed — there is no workflow DSL.** These few patterns are the domain primitives of document mediation; industries don't differ in *flow*, they differ in *which documents* and *what policy*. So `pattern` is a **selector over a closed set of built-in flows** (code the Bridge team owns), and industry-agnosticism comes from the [skills](skills.md) layered over them — doctype schemas, process policy, candidate doctypes — plus, for [Collect](collect.md) and Negotiate, the **agent's per-turn decisions** in the multi-turn exchange. A new industry is new *skills*, not new *flow*; *policy* lives in the skill. For Collect, the process skill selects the flow and supplies its label space and item key; the emergent Collect aggregate names no skill. If a future use-case ever needs author-defined flow, the design delegates to an existing engine behind a [seam](seams.md) rather than building a bespoke one.
+**The pattern set is closed — there is no workflow DSL.** These few patterns are the domain primitives of document mediation; industries don't differ in *flow*, they differ in *which documents* and *what policy*. So `pattern` is a **selector over a closed set of built-in flows** (code the Bridge team owns), and industry-agnosticism comes from the [skills](skills.md) layered over them — doctype schemas, process policy, candidate doctypes — plus, for [Collect](collect.md) and Negotiate, the **agent's per-turn decisions** in the multi-turn exchange. A new industry is new *skills*, not new *flow*; *policy* lives in the skill. For Collect, the process skill selects the flow and supplies its label space and item key; the emergent Collect aggregate names no skill. If a future use-case ever needs author-defined flow, the design delegates to an existing engine behind a [port](ports.md) rather than building a bespoke one.
 
 ## Host-controlled wiring (no hardcoded in-memory services)
 
 A `bridge/` factory never constructs an `InMemory*` session / task / artifact store
-unconditionally — the host owns durability wiring (CLI URIs, seam adapters, env), so an
+unconditionally — the host owns durability wiring (CLI URIs, port adapters, env), so an
 in-memory default appears only behind a config gate: the injectable `param or InMemory…()`
 idiom, or a DSN/env-gated backend swap (an `if`/`else` branch or the fall-through of an
 early-return guard clause). An unconditional in-memory store in a core factory silently
-puts a per-replica store on the deployed path — the session-affinity trap ([seams](seams.md)).
+puts a per-replica store on the deployed path — the session-affinity trap ([ports](ports.md)).
 The fence is `tests/test_service_wiring_guard.py`.
 
 ## Read next

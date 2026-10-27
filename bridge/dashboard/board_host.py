@@ -27,7 +27,7 @@ Dashboard app mounted at the root over it — the consumer RFP read API (``GET /
 * **The home process skill comes from env** (``BRIDGE_RFP_PROCESS``; S0-arch-15: the core
   names no skill), loaded once at build. The board is live (S4-usecase-4): it also serves
   every emergent-Collect process installed in the skill registry later
-  (``bridge.edge.skills.rfp_policy_for``, read through the ``skill_registry`` seam per
+  (``bridge.edge.skills.rfp_policy_for``, read through the ``skill_registry`` port per
   RFP, per read), so a live-added use case's RFPs list, checklist and file by email with
   no restart. Each RFP is projected with its OWN process's policy.
 * **Cross-replica safety** lives in the processor (CAS retry + re-file guard,
@@ -89,7 +89,7 @@ def build_rfp_board_app(
     The email processor is built from env onto THIS board
     (``email_processor_from_env(board, extraction=extraction)``; ``None`` when email
     intake / a landing location is not configured — ``extraction`` injects the engine,
-    default the extraction seam). A bound processor over an in-memory store →
+    default the extraction port). A bound processor over an in-memory store →
     ``RuntimeError``. ``email_drain_interval`` overrides
     ``BRIDGE_EMAIL_DRAIN_INTERVAL`` (deployed: ``0``, Scheduler-driven); ``outbound`` is
     the chase client; ``max_ticks`` bounds the dashboard SSE stream. The host seeds
@@ -156,7 +156,7 @@ def serve_rfp_board_container() -> None:  # pragma: no cover
     """Cloud Run entrypoint for the internal RFP board service (S0-arch-17).
 
     Everything from env: the process skill (``BRIDGE_RFP_PROCESS``), the durable store
-    (``BRIDGE_SEAM_MODE=gcp`` → Cloud SQL via ``DATABASE_URL``), the processor
+    (``BRIDGE_PORT_MODE=gcp`` → Cloud SQL via ``DATABASE_URL``), the processor
     (``BRIDGE_EMAIL_MAILBOX`` + ``BRIDGE_EMAIL_BUCKET`` + ``BRIDGE_EMAIL_TOKEN_SECRET``)
     and ``BRIDGE_EMAIL_DRAIN_INTERVAL=0`` (Cloud Scheduler drives ``POST /email/drain``).
     Binds ``0.0.0.0:$PORT`` like ``bridge.edge.server.serve_container``.

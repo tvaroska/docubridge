@@ -13,7 +13,7 @@ tags: [bridge]
 
 The current design is otherwise entirely **reactive** — something arrives, we react. Follow-up is behavior with no trigger, so it introduces a new runtime pillar:
 
-- **A durable Scheduler/Timer seam** — a clock behind a [seam](seams.md) like every other managed service: local adapter (in-process, with an **injectable virtual clock** for tests) + GCP adapter (**Cloud Tasks**). Idempotent, crash-safe — timer state persists and recovers on restart.
+- **A durable Scheduler/Timer port** — a clock behind a [port](ports.md) like every other managed service: local adapter (in-process, with an **injectable virtual clock** for tests) + GCP adapter (**Cloud Tasks**). Idempotent, crash-safe — timer state persists and recovers on restart.
 - **An SLA / policy engine** — cadence, deadlines, max nudges, escalation ladder — read from the [process-skill policy](skills.md), so **policy lives in the skill**; `pattern` stays a [selector over built-in flows](patterns.md), not skill-defined.
 - **Egress via the visibility read-model *and* a real send** — a stalled request always stamps internal overdue / escalated events and party status on the [dashboard](a2ui-edge.md), so a stall is visible even with no send. The real party-channel nudge (the actual send) rides the [outbound path](outbound.md) — ladder nudges on `overdue`/`reminder` via `build_nudge_notifier`; `escalated` stamps the stall and sends nothing.
 

@@ -26,7 +26,7 @@ The exchange is the [A2A context](aggregate-model.md); each leg's work is an **A
 
 ## Three things must survive weeks (and restarts)
 
-Each has a durable home behind a [seam](seams.md), so a weeks-long collection survives process restarts:
+Each has a durable home behind a [port](ports.md), so a weeks-long collection survives process restarts:
 
 | State | Durable home |
 |---|---|
@@ -34,7 +34,7 @@ Each has a durable home behind a [seam](seams.md), so a weeks-long collection su
 | Documents (versioned per resubmission) | `GcsArtifactService` |
 | SLA timers + follow-up read-model | **Cloud Tasks** alarms + Bridge-owned relational store |
 
-A local adapter (in-memory session/artifact store, an in-process `VirtualClock`) mirrors each seam for development; because it is not persisted it does not survive a restart, which is exactly why the durable adapters are the substrate for a weeks-long horizon. Interrupt/resume is recovered from the **persisted session**, so multi-day HITL resume is crash-safe ([aggregate-model](aggregate-model.md)).
+A local adapter (in-memory session/artifact store, an in-process `VirtualClock`) mirrors each port for development; because it is not persisted it does not survive a restart, which is exactly why the durable adapters are the substrate for a weeks-long horizon. Interrupt/resume is recovered from the **persisted session**, so multi-day HITL resume is crash-safe ([aggregate-model](aggregate-model.md)).
 
 The durable session driver has a hard requirement: `DatabaseSessionService` needs an **async** driver (e.g. `sqlite+aiosqlite:///`, not bare `sqlite:///`, which raises "the asyncio extension requires an async driver"), and `ResumabilityConfig(is_resumable=True)` lives on the `App`, not on a bare `agent=`/`node=` Runner — a durable run must go through the `App` path or a parked leg won't be resumable across a restart.
 

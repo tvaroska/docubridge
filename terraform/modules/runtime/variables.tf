@@ -274,11 +274,11 @@ variable "email_drain_schedule" {
   default     = "* * * * *"
 }
 
-variable "seam_mode" {
+variable "port_mode" {
   type        = string
   description = <<-EOT
-    The seam master switch, injected as the BRIDGE_SEAM_MODE plain env (P7-9). Set to
-    "gcp" on the deployed container so every seam routes through its Gcp adapter (Cloud
+    The port master switch, injected as the BRIDGE_PORT_MODE plain env (P7-9). Set to
+    "gcp" on the deployed container so every port routes through its Gcp adapter (Cloud
     SQL / GCS / Cloud Tasks / Agent Identity) instead of a per-replica in-memory store
     (the session-affinity trap, DECISIONS.md 2026-08-24). Empty ("") = no env (the
     P7-1/local default; keeps runtime tests green). Set to "gcp" at deploy (P7-9).
@@ -291,7 +291,7 @@ variable "extraction_engine" {
   description = <<-EOT
     The deployed extraction engine, injected as the BRIDGE_EXTRACTION_ENGINE plain env
     (P7-6: the fixture|gemini|docai capability axis). Set to "gemini" on the deployed
-    container so the extraction seam runs real Gemini. Empty ("") = no env (the
+    container so the extraction port runs real Gemini. Empty ("") = no env (the
     P7-1/local default; GcpExtraction still defaults to gemini when routed). Set to
     "gemini" at deploy (P7-9). "docai" (Gemini with the Document AI OCR pre-pass)
     also needs docai_processor, or the engine refuses to run.

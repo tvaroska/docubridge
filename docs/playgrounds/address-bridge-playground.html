@@ -11,7 +11,7 @@
     --agent:#2ea043; --agent-fill:#0f2a1c;
     --wire:#d29922; --wire-fill:#2b2410;
     --bridge:#388bfd; --bridge-fill:#0f2036;
-    --seam:#a371f7; --seam-fill:#211433;
+    --port:#a371f7; --port-fill:#211433;
     --substrate:#f778ba; --substrate-fill:#33101f;
     --config:#39c5cf; --config-fill:#08272b;
     --c-data:#58a6ff; --c-tool:#3fb950; --c-event:#f85149; --c-pause:#db6d28; --c-dep:#8b949e;
@@ -142,7 +142,7 @@ const LAYERS = [
   {id:'agent',     name:'Address agent (internal)', color:'var(--agent)',     fill:'#0f2a1c', stroke:'#2ea043'},
   {id:'wire',      name:'A2A wire (Ring 1)',        color:'var(--wire)',      fill:'#2b2410', stroke:'#d29922'},
   {id:'bridge',    name:'Document Bridge core (DMZ)',color:'var(--bridge)',   fill:'#0f2036', stroke:'#388bfd'},
-  {id:'seam',      name:'Managed-service seams',    color:'var(--seam)',      fill:'#211433', stroke:'#a371f7'},
+  {id:'port',      name:'Managed-service ports',    color:'var(--port)',      fill:'#211433', stroke:'#a371f7'},
   {id:'substrate', name:'GCP substrate / external', color:'var(--substrate)', fill:'#33101f', stroke:'#f778ba'},
   {id:'config',    name:'Skills (config)',          color:'var(--config)',    fill:'#08272b', stroke:'#39c5cf'},
 ];
@@ -185,10 +185,10 @@ const nodes = [
   {id:'hitl',     layer:'bridge', label:'request_human_review (HITL)', sub:'LongRunningFunctionTool', x:600, y:424, w:236, desc:'The platform\'s own pause for a human — low confidence, flagged field, escalation. Resumed by an id-matched FunctionResponse; durability rides the SessionService. Not reimplemented.'},
   {id:'ledger',   layer:'bridge', label:'Classified ledger',     sub:'bridge/ledger.py', x:600, y:496, w:236, desc:'The Bridge-owned "what we have": append-only LedgerEntry (doctype · disposition · canonical issuer · key fields) + best-effort "still outstanding". Cumulative per context_id. Delivered as CollectionStatus.'},
 
-  // seams + substrate + config
-  {id:'seamextract',layer:'seam',label:'Extraction seam',        sub:'fixture | gemini | docai', x:600, y:568, w:236, desc:'Extraction behind a swappable seam. Fixture adapter (deterministic tests) + Gemini (schema-driven constrained JSON) + Document AI (per-doctype processor). Disposition reads the four signals engine-agnostically.'},
-  {id:'scheduler',layer:'seam',  label:'Scheduler seam',         sub:'virtual clock | Cloud Tasks', x:312, y:568, w:186, desc:'The clock that drives proactive follow-up (overdue → reminder → escalated) — the only pillar with no inbound trigger. Local virtual clock for the demo\'s time-warp; Cloud Tasks on deploy.'},
-  {id:'gemini',   layer:'substrate',label:'Gemini / Vertex',     sub:'~$0.10 / 1k pages', x:888, y:352, w:170, desc:'The deployed extraction engine behind the seam. Multimodal, no OCR pipeline; constrained JSON per the doctype skill\'s schema.'},
+  // ports + substrate + config
+  {id:'portextract',layer:'port',label:'Extraction port',        sub:'fixture | gemini | docai', x:600, y:568, w:236, desc:'Extraction behind a swappable port. Fixture adapter (deterministic tests) + Gemini (schema-driven constrained JSON) + Document AI (per-doctype processor). Disposition reads the four signals engine-agnostically.'},
+  {id:'scheduler',layer:'port',  label:'Scheduler port',         sub:'virtual clock | Cloud Tasks', x:312, y:568, w:186, desc:'The clock that drives proactive follow-up (overdue → reminder → escalated) — the only pillar with no inbound trigger. Local virtual clock for the demo\'s time-warp; Cloud Tasks on deploy.'},
+  {id:'gemini',   layer:'substrate',label:'Gemini / Vertex',     sub:'~$0.10 / 1k pages', x:888, y:352, w:170, desc:'The deployed extraction engine behind the port. Multimodal, no OCR pipeline; constrained JSON per the doctype skill\'s schema.'},
   {id:'party',    layer:'substrate',label:'Party / portal',      sub:'Path B — human upload', x:888, y:136, w:170, desc:'The human counterparty (Jordan Lee, synthetic). Uploads bill/ID PDFs through the A2UI portal in the external zone. A party turn is what WAKES a parked leg.'},
   {id:'webhook',  layer:'substrate',label:'Webhook receiver (wake)', sub:'PushNotificationConfig doorbell', x:40, y:664, w:220, desc:'The only custom deploy surface for wake: a receiver + task_id→session index. The doorbell delivers only "task X changed" — it does not carry state; restore is done by the persistent stores. Then it calls run_async.'},
   {id:'skills',   layer:'config', label:'Skills (address-proof, gov-id, utility-bill)', sub:'skills/ · Agent Skills format', x:888, y:64, w:170, desc:'Demos as configuration. Process skill (pattern=collect, candidate doctypes, policy) + doctype skills (schema + prompt + validation). Uploading a folder regenerates the Agent Card — no redeploy.'},
@@ -229,9 +229,9 @@ const connections = [
   {from:'bridgeagent', to:'ledger',      type:'dataflow', label:'update'},
   {from:'disposition', to:'ledger',      type:'dataflow', label:'verdict'},
   {from:'ledger',      to:'a2aedge',     type:'dataflow', label:'CollectionStatus'},
-  // seams / substrate / config
-  {from:'extraction',  to:'seamextract', type:'dependency', label:'seam'},
-  {from:'seamextract', to:'gemini',      type:'dependency', label:'adapter'},
+  // ports / substrate / config
+  {from:'extraction',  to:'portextract', type:'dependency', label:'port'},
+  {from:'portextract', to:'gemini',      type:'dependency', label:'adapter'},
   {from:'party',       to:'a2uiedge',    type:'dataflow',   label:'PDF upload'},
   {from:'a2aedge',     to:'webhook',     type:'event',      label:'PushNotificationConfig'},
   {from:'webhook',     to:'collect',     type:'event',      label:'wake → FunctionResponse'},
@@ -242,11 +242,11 @@ const connections = [
 
 /* ---------- presets ---------- */
 const PRESETS = {
-  'Full System':      {layers:['agent','wire','bridge','seam','substrate','config'], conns:['dataflow','toolcall','event','pause','dependency']},
+  'Full System':      {layers:['agent','wire','bridge','port','substrate','config'], conns:['dataflow','toolcall','event','pause','dependency']},
   'The A2A conversation':{layers:['agent','wire','bridge'], conns:['dataflow','pause','event']},
   'Collect loop':     {layers:['agent','wire','bridge'], conns:['dataflow','toolcall']},
   'Park & resume':    {layers:['agent','wire','bridge','substrate'], conns:['pause','event','dependency']},
-  'Inside the Bridge':{layers:['bridge','seam','substrate','config'], conns:['dataflow','toolcall','dependency']},
+  'Inside the Bridge':{layers:['bridge','port','substrate','config'], conns:['dataflow','toolcall','dependency']},
 };
 
 /* ---------- state ---------- */

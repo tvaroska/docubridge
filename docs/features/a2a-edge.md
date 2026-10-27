@@ -82,7 +82,7 @@ the edge deterministic-only. The A2A edge now routes by message shape and task s
 **Key mechanisms:**
 
 - **Flag:** `BRIDGE_EDGE_MODE=deterministic|hybrid` (default deterministic). Read once at
-  app build; invalid value → `ValueError` fail-closed. It is a routing mode, not a seam.
+  app build; invalid value → `ValueError` fail-closed. It is a routing mode, not a port.
   
 - **HITL handoff opt-in:** Skill frontmatter `bridge-hitl: park | report` (default
   `report`). The Benefits Consumer Benefits process uses `report` (consumer owns review, turn is
@@ -124,7 +124,7 @@ unchanged. `CONTRACT_VERSION` "1.3" → "1.4" (additive).
 **Non-collapsing completing path:**
 
 On the LLM leg, HITL park or escalate is one durable task that parks and resumes on the
-same `task_id`/`context_id`, with ADK session durable via the `sessions` seam and
+same `task_id`/`context_id`, with ADK session durable via the `sessions` port and
 `ResumabilityConfig(is_resumable=True)`. On the deterministic completing path, each round
 genuinely completes, so a new task per round under the same exchange `context_id` remains
 correct — the `context_id` is the aggregate, the per-round task is the completed unit.
@@ -183,7 +183,7 @@ The LLM leg's execution runtime, independently testable without Gemini or networ
 via a plain ADK Runner (never imports `google.adk.a2a` or `A2aAgentExecutor`):
 
 - `run(party, context_id, message) -> LlmLegResult(key, events, projection)` —
-  host-controlled wiring with session/artifact services injected via the sessions seam
+  host-controlled wiring with session/artifact services injected via the sessions port
 - `SessionKey(app_name, user_id, session_id)` where `(app_name, user_id, session_id) =
   ("document_bridge", <party>, <context_id>)` — session key == artifact key (D9), enabling
   `handle_deletion_request` to erase exactly the artifacts the Collector saved
@@ -225,7 +225,7 @@ Model-free test double:
 
 **Key decisions & gotchas:**
 
-- **D4 clarification (G1):** In ADK 2.7.1 a `LongRunningFunctionTool` returning non-None
+- **D4 clarification (G1):** In ADK >= 2.11.0 a `LongRunningFunctionTool` returning non-None
   (today's `request_human_review` returns a dict) does NOT pause a resumable invocation —
   ADK emits the function_response and calls the model again. Only a `None` return pauses
   (call carries `long_running_tool_ids`, no response). The projection treats a
@@ -237,7 +237,7 @@ Model-free test double:
 - **G6:** Resumable runs emit an empty trailing event; the projection tolerates
   `content is None` / empty `parts`.
 - **P7-8 guard:** Only `or`-gated defaults in `llm_leg.py`; no `InMemory*()` constructions
-  (session service from the sessions seam, artifact store from `build_artifact_store`).
+  (session service from the sessions port, artifact store from `build_artifact_store`).
 
 **Files created/modified:**
 
@@ -250,7 +250,7 @@ Model-free test double:
 - T1: Full suite green → 1259 passed / 42 skipped (+31 new tests in `test_llm_leg.py`, +2
   in `test_agent.py`)
 - T2: Model-free gate script (no network, no API key) → `1 pending hitl_review True 2`;
-  real-erase via session key works; `DatabaseSessionService` wired from seam
+  real-erase via session key works; `DatabaseSessionService` wired from port
 - Isolation guards green (no `google.adk.a2a` imports in `bridge/`, no `agents/` imports
   from `bridge/`)
 
@@ -269,7 +269,7 @@ ratified the architecture, S3-edge-2 built the LLM leg runtime; this task wires 
 
 - **`BRIDGE_EDGE_MODE` flag** — `deterministic` (default, unset/blank) or `hybrid`.
   Read once at app build (`build_a2a_app`); invalid value → `ValueError` fail-closed
-  (mirrors the seam `resolve_mode` idiom). Not a seam itself — it's a routing mode, not
+  (mirrors the port `resolve_mode` idiom). Not a port itself — it's a routing mode, not
   a substrate swap point.
 
 - **Route classification** — pure `classify_route(message, mode, task_state,

@@ -1,1 +1,1 @@
-"""Test suite: shared seam parity tests + demo golden runs."""
+"""Test suite: shared port parity tests + demo golden runs."""

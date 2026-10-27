@@ -31,7 +31,7 @@ from bridge.edge.skills import (
     loaded_skills,
     resolve_label_spaces,
 )
-from bridge.seams.local import LocalSkillRegistry
+from bridge.ports.local import LocalSkillRegistry
 from bridge.sla import SKILLS_DIR
 from tests._skill_fixtures import (
     BROKEN_POLICY_YAML,
@@ -127,8 +127,8 @@ BAD_FOLDERS = [
 
 @pytest.fixture
 def root(tmp_path, monkeypatch):
-    """A tmp registry seeded with the Address skills; the ambient seam env cleared."""
-    for name in ("BRIDGE_SEAM_MODE", "BRIDGE_SEAM_SKILL_REGISTRY"):
+    """A tmp registry seeded with the Address skills; the ambient port env cleared."""
+    for name in ("BRIDGE_PORT_MODE", "BRIDGE_PORT_SKILL_REGISTRY"):
         monkeypatch.delenv(name, raising=False)
     skills = tmp_path / "skills"
     skills.mkdir()
@@ -291,7 +291,7 @@ def test_skipped_process_does_not_defeat_the_single_process_text_fallback(root):
 
 
 # --------------------------------------------------------------------------- #
-# Install refusal: a malformed seam upload is refused before any write        #
+# Install refusal: a malformed port upload is refused before any write        #
 # --------------------------------------------------------------------------- #
 def test_install_refuses_a_malformed_new_skill_and_writes_nothing(root):
     with pytest.raises(ValueError, match="frontmatter"):

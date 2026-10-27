@@ -36,7 +36,7 @@ fails; this module never sees a partial set. Partial rows masquerading as a comp
 sheet is exactly the silent loss chunking exists to remove.
 
 Vendorable like ``docai.py``: no ``google*`` import, never ``bridge.edge`` /
-``bridge.seams`` / ``agents``.
+``bridge.ports`` / ``agents``.
 """
 
 from __future__ import annotations

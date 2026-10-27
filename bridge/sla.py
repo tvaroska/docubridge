@@ -70,9 +70,9 @@ class SlaPolicy:
 def parse_skill_frontmatter(raw: str, *, where: str) -> dict:
     """Parse the YAML frontmatter mapping out of raw ``SKILL.md`` text.
 
-    The pure half of ``_load_skill_frontmatter``, shared with the live seam reader
+    The pure half of ``_load_skill_frontmatter``, shared with the live port reader
     (``bridge.edge.skills.rfp_policy_for``, which reads ``SKILL.md`` through the
-    ``skill_registry`` seam). ``where`` names the source in error messages. Raises
+    ``skill_registry`` port). ``where`` names the source in error messages. Raises
     ``ValueError`` when the ``---`` fence is missing or the frontmatter is not a mapping.
     """
     parts = raw.split("---\n", 2)
@@ -141,8 +141,8 @@ def load_sla_policy(skill_name: str, *, skills_dir: Path | None = None) -> SlaPo
 def sla_policy_from_doc(policy_doc: dict, *, where: str) -> SlaPolicy:
     """Parse + validate the ``sla:`` block of an already-loaded policy doc.
 
-    The pure half of ``load_sla_policy``, shared with the live seam reader (the policy
-    doc read through the ``skill_registry`` seam). ``where`` names the source in error
+    The pure half of ``load_sla_policy``, shared with the live port reader (the policy
+    doc read through the ``skill_registry`` port). ``where`` names the source in error
     messages. Validates the monotone ladder, escalate==deadline and max_nudges==2.
     """
     policy_path = where

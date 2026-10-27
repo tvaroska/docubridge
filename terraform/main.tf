@@ -16,7 +16,7 @@ provider "google-beta" {
 }
 
 # ---------------------------------------------------------------------------
-# Extension seams — declared here, built by later P7 tasks as small deltas.
+# Extension ports — declared here, built by later P7 tasks as small deltas.
 # The substrate-by-primitive module set is the STABLE BASE these attach to; do
 # NOT restructure it (design/gcp-substrate.md §"substrate primitives"). Each
 # entry names the root wiring point the later primitive consumes:
@@ -56,8 +56,8 @@ provider "google-beta" {
 #
 # The platform-native services (Agent Runtime, Sessions/Memory Bank, Skill
 # Registry, Gateway, Agent Identity, Extraction) deliberately do NOT appear as
-# same-named modules — they are realized through the seams' GCP adapters
-# (config + IAM + client code). Terraform provisions substrate; the seams
+# same-named modules — they are realized through the ports' GCP adapters
+# (config + IAM + client code). Terraform provisions substrate; the ports
 # provision services (design/gcp-substrate.md).
 # ---------------------------------------------------------------------------
 
@@ -85,8 +85,8 @@ module "iam" {
 }
 
 # database — Cloud SQL PG16 on private IP via PSA (P7-2). The shared relational
-# store behind the sessions/task_store/exchange_store GCP seam adapters (never
-# per-replica in-memory — the session-affinity trap, design/seams.md). Peers into
+# store behind the sessions/task_store/exchange_store GCP port adapters (never
+# per-replica in-memory — the session-affinity trap, design/ports.md). Peers into
 # the VPC over Private Services Access; ipv4_enabled = false (no public IP).
 module "database" {
   source = "./modules/database"
@@ -145,7 +145,7 @@ module "gcs" {
 }
 
 # tasks — the bridge-followups Cloud Tasks queue (P7-4). The substrate behind the
-# scheduler seam's GCP adapter (GcpScheduler): the follow-up ladder arms one Cloud
+# scheduler port's GCP adapter (GcpScheduler): the follow-up ladder arms one Cloud
 # Task per exchange, fired by the queue POSTing an OIDC-authenticated callback at
 # schedule_time. NO new IAM — the enqueuer + SA-scoped token-creator grants are
 # already on the SA (module.iam); this module provisions only the queue container.
@@ -231,11 +231,11 @@ module "runtime" {
   # (BRIDGE_RUNTIME_SA_EMAIL + BRIDGE_GATEWAY_HOST) for its chase route.
   gateway_host         = var.gateway_host
   email_drain_schedule = var.email_drain_schedule
-  # The seam master switch + extraction engine (P7-9/P7-6) — plain envs routing every
-  # seam through its Gcp adapter (BRIDGE_SEAM_MODE=gcp) and selecting the Gemini
+  # The port master switch + extraction engine (P7-9/P7-6) — plain envs routing every
+  # port through its Gcp adapter (BRIDGE_PORT_MODE=gcp) and selecting the Gemini
   # extraction engine (BRIDGE_EXTRACTION_ENGINE=gemini). Default "" = no env at plan
   # time / P7-1 default (keeps runtime tests green); set at deploy (P7-9).
-  seam_mode         = var.seam_mode
+  port_mode         = var.port_mode
   extraction_engine = var.extraction_engine
   # The client's Document AI processor for the docai engine (BRIDGE_DOCAI_PROCESSOR
   # plain env); default "" = no env.

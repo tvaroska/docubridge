@@ -47,8 +47,8 @@ from bridge.disposition import (
     DispositionVerdict,
 )
 from bridge.offscript import REASON_ESCALATED, REASON_HUMAN_REVIEW
-from bridge.seams import Seam, get_adapter, resolve_mode
-from bridge.seams.protocols import ExtractionSeam
+from bridge.ports import Port, get_adapter, resolve_mode
+from bridge.ports.protocols import ExtractionPort
 from bridge.signals import dispose_signals, signals_from_result
 from contract.enums import Disposition, Gate
 from contract.wire import ArtifactRef, LedgerEntry
@@ -101,16 +101,16 @@ async def step(
     doc_id: str,
     artifact_name: str,
     artifact: ArtifactRef | None = None,
-    extractor: ExtractionSeam | None = None,
+    extractor: ExtractionPort | None = None,
 ) -> PathBStep:
     """extract → dispose → route. One node-traversal of the Path-B graph.
 
-    Resolves the extraction seam lazily (like ``bridge.collect.Collector``) unless
+    Resolves the extraction port lazily (like ``bridge.collect.Collector``) unless
     injected. Appends a ``LedgerEntry`` (reusing ``project_ledger_entry``). Routes on
     ``verdict.gate`` per §2a/§2b. RESUBMIT/HITL/ESCALATE are non-terminal parks;
     ACCEPT/REJECT are terminal.
     """
-    ext = extractor or get_adapter(Seam.extraction, resolve_mode(Seam.extraction))
+    ext = extractor or get_adapter(Port.extraction, resolve_mode(Port.extraction))
     result = await ext.extract(artifact_name)
     signals = signals_from_result(
         result, candidate_doctypes=list(state.candidate_doctypes)

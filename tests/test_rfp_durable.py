@@ -1,8 +1,8 @@
-"""RFP board durability through the exchange_store seam (S0-arch-14).
+"""RFP board durability through the exchange_store port (S0-arch-14).
 
 An RFP has weeks-scale due dates, so the ``RfpCollection`` (the materialized Exchange
 record of an emergent Collect) must survive the process: the board reads and writes it
-through the ``exchange_store`` seam. These tests prove a board over a file-backed store
+through the ``exchange_store`` port. These tests prove a board over a file-backed store
 survives a close/reopen with an identical aggregate and projection, the fully seeded demo
 RFP round-trips through JSON losslessly, a superseded write is refused (compare-and-set),
 default boards stay in memory and isolated, and the demo host keeps a portal upload across
@@ -26,6 +26,8 @@ from bridge.exchange_store import (
     SqlExchangeStore,
     StaleExchangeWrite,
 )
+from bridge.ports import Port, PortMode, get_adapter
+from bridge.ports.local import EXCHANGE_DB_URL_ENV
 from bridge.rfp import (
     RfpCollection,
     acknowledge,
@@ -35,8 +37,6 @@ from bridge.rfp import (
     record_chase,
     update_requirements,
 )
-from bridge.seams import Seam, SeamMode, get_adapter
-from bridge.seams.local import EXCHANGE_DB_URL_ENV
 from contract.enums import Disposition, Gate, LifecycleStatus, RequirementStatus
 from contract.wire import CollectRequest, LedgerEntry, Requirement, RequirementsList
 from tests.email_fixtures import DUE, NOW, RFP_ID
@@ -48,11 +48,11 @@ SECOND_RFP = "acme-dental-2027"
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    """Only what each test sets reaches the seams and the demo host."""
+    """Only what each test sets reaches the ports and the demo host."""
     for env in (
         EXCHANGE_DB_URL_ENV,
-        "BRIDGE_SEAM_MODE",
-        "BRIDGE_SEAM_EXCHANGE_STORE",
+        "BRIDGE_PORT_MODE",
+        "BRIDGE_PORT_EXCHANGE_STORE",
         "BRIDGE_EMAIL_MAILBOX",
         "BRIDGE_EMAIL_TOKEN_SECRET",
         "BRIDGE_EMAIL_DIR",
@@ -67,7 +67,7 @@ def stores(tmp_path):
     handles: list[ExchangeStore] = []
 
     def make() -> ExchangeStore:
-        store = get_adapter(Seam.exchange_store, SeamMode.local).build_exchange_store(
+        store = get_adapter(Port.exchange_store, PortMode.local).build_exchange_store(
             db_url=dsn
         )
         assert isinstance(store, SqlExchangeStore)

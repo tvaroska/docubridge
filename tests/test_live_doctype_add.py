@@ -4,7 +4,7 @@ Proves the no-redeploy claim: seed a temp registry with a *subset* (address-proo
 utility-bill only); the running edge app's Agent Card advertises
 ``doctype:utility-bill`` but **not** ``doctype:gov-id``. After the ``gov-id`` doctype
 skill folder is **dropped into** ``BRIDGE_SKILLS_DIR`` at runtime (via the
-skill_registry seam), a GET of the **same app's** card now advertises
+skill_registry port), a GET of the **same app's** card now advertises
 ``doctype:gov-id`` — no app rebuild between the two GETs, no HTTP write surface
 (the unauthenticated install endpoint was removed, S0-sec-1).
 """
@@ -18,7 +18,7 @@ import httpx
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
 
 from bridge.edge import build_a2a_app, build_agent_card
-from bridge.seams import Seam, get_adapter, resolve_mode
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.sla import SKILLS_DIR
 
 BASE = "http://test"
@@ -59,9 +59,9 @@ async def test_live_doctype_add_regenerates_card(tmp_path, monkeypatch):
         assert "doctype:gov-id" not in tags
 
         # Drop the gov-id doctype skill into the live registry at runtime, via the
-        # skill_registry seam (the filesystem-backed live doctype-add mechanism).
+        # skill_registry port (the filesystem-backed live doctype-add mechanism).
         src = SKILLS_DIR / "gov-id"
-        reg = get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+        reg = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
         installed = reg.install_skill(
             "gov-id",
             (src / "SKILL.md").read_text(),
@@ -93,7 +93,7 @@ def test_install_then_build_agent_card_reflects_it(tmp_path, monkeypatch):
     assert "doctype:gov-id" not in ap.tags
 
     src = SKILLS_DIR / "gov-id"
-    reg = get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+    reg = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
     reg.install_skill("gov-id", (src / "SKILL.md").read_text())
     assert "gov-id" in {s.name for s in reg.list_skills()}
 

@@ -13,7 +13,7 @@ own ``CollectExecutor``, and every turn on the wire is the domain ``ExchangeTurn
 projected here — never ADK's event-to-A2A conversion.
 
 **Host-controlled wiring (P7-8).** The session service comes from the **sessions
-seam** (durable ``DatabaseSessionService`` when ``BRIDGE_SESSION_DB_URL`` is set
+port** (durable ``DatabaseSessionService`` when ``BRIDGE_SESSION_DB_URL`` is set
 locally, the GCP adapter on deploy) and the artifact store is injected — shared with
 the Collector path so a deletion erases exactly what the edge persisted (ART-2
 Decision 4) — or built by :func:`bridge.edge.artifacts.build_artifact_store`. Every
@@ -94,7 +94,7 @@ from bridge.offscript import (
     REASON_NOTHING_TO_DELETE,
     REASON_OFF_SCRIPT_REJECT,
 )
-from bridge.seams import Seam, SeamMode, get_adapter, resolve_mode
+from bridge.ports import Port, PortMode, get_adapter, resolve_mode
 from bridge.signals import dispose_signals
 from contract.enums import Disposition, Gate, LifecycleStatus
 from contract.wire import ExchangeTurn, LedgerEntry
@@ -640,22 +640,22 @@ class LlmResumeResult:
 
 
 def _default_memory_service() -> BaseMemoryService | None:
-    """Resolve the default ``BaseMemoryService`` from the memory_bank seam.
+    """Resolve the default ``BaseMemoryService`` from the memory_bank port.
 
     In local mode, always builds the local adapter (`InMemoryMemoryService` or
     `SqliteMemoryService` when `BRIDGE_MEMORY_DB_PATH` is set). In GCP mode, builds
     `VertexAiMemoryBankService` when `BRIDGE_AGENT_ENGINE_ID` (or an explicit
-    `BRIDGE_SEAM_MODE_MEMORY_BANK=gcp` override) is set; returns `None` when GCP mode
+    `BRIDGE_PORT_MEMORY_BANK=gcp` override) is set; returns `None` when GCP mode
     is running on Cloud SQL without an Agent Engine ID.
     """
-    mode = resolve_mode(Seam.memory_bank)
+    mode = resolve_mode(Port.memory_bank)
     if (
-        mode is SeamMode.gcp
+        mode is PortMode.gcp
         and not os.environ.get("BRIDGE_AGENT_ENGINE_ID", "").strip()
-        and not os.environ.get("BRIDGE_SEAM_MODE_MEMORY_BANK", "").strip()
+        and not os.environ.get("BRIDGE_PORT_MEMORY_BANK", "").strip()
     ):
         return None
-    return get_adapter(Seam.memory_bank, mode).build_memory_service()
+    return get_adapter(Port.memory_bank, mode).build_memory_service()
 
 
 def _default_remote_engine() -> Any | None:
@@ -664,7 +664,7 @@ def _default_remote_engine() -> Any | None:
     flag = os.environ.get(BRIDGE_AGENT_ENGINE_REMOTE_ENV, "").strip().lower()
     if flag not in {"1", "true", "yes"}:
         return None
-    from bridge.seams.gcp import parse_agent_engine_resource
+    from bridge.ports.gcp import parse_agent_engine_resource
 
     proj, loc, eid = parse_agent_engine_resource(None)
     import vertexai
@@ -690,12 +690,12 @@ def _coerce_event(item: Event | Mapping[str, Any]) -> Event:
 class LlmLeg:
     """Runtime for the LLM leg: the resumable ``document_bridge`` App on a fresh
     ``Runner`` per invocation (or a remote Vertex AI Agent Engine ``ReasoningEngine``),
-    over seam-wired sessions, memory bank, and the shared artifact store.
+    over port-wired sessions, memory bank, and the shared artifact store.
 
     Every collaborator is injectable; the defaults are host-controlled (P7-8): the
     App from :func:`bridge.agent.build_app` (``model`` may be a name or a
-    ``BaseLlm``), the session service from the sessions seam, the memory service
-    from the memory_bank seam, and the artifact store from
+    ``BaseLlm``), the session service from the sessions port, the memory service
+    from the memory_bank port, and the artifact store from
     :func:`bridge.edge.artifacts.build_artifact_store`.
     """
 
@@ -713,7 +713,7 @@ class LlmLeg:
         self._sessions = (
             session_service
             or get_adapter(
-                Seam.sessions, resolve_mode(Seam.sessions)
+                Port.sessions, resolve_mode(Port.sessions)
             ).build_session_service()
         )
         self._store = artifact_store or artifacts.build_artifact_store()
@@ -736,7 +736,7 @@ class LlmLeg:
 
     @property
     def session_service(self) -> BaseSessionService:
-        """The seam-wired session service."""
+        """The port-wired session service."""
         return self._sessions
 
     @property
@@ -746,7 +746,7 @@ class LlmLeg:
 
     @property
     def memory_service(self) -> BaseMemoryService | None:
-        """The seam-wired memory service (`BaseMemoryService`), if configured."""
+        """The port-wired memory service (`BaseMemoryService`), if configured."""
         return self._memory
 
     @property

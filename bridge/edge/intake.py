@@ -4,9 +4,9 @@ Routes inbound messages to a ``CollectRequest`` by content: structured JSON
 (primary) or free text (fallback). Free text is parsed deterministically (no
 LLM) — Decision 1 / Decision 3.
 
-**Decision 1 (not a managed seam):** Free-text → ``CollectRequest`` parsing is
-NOT one of the managed seams (``bridge.seams.seam.Seam`` enum) — it's not
-a managed-service boundary. No local+GCP adapter pair; no ``@pytest.mark.seam``
+**Decision 1 (not a managed port):** Free-text → ``CollectRequest`` parsing is
+NOT one of the managed ports (``bridge.ports.port.Port`` enum) — it's not
+a managed-service boundary. No local+GCP adapter pair; no ``@pytest.mark.port``
 test. ``parse_text_request`` is the deterministic text intake: it serves every
 text message in deterministic edge mode, and text accompanying a ``CollectRequest``
 or file part in hybrid mode. In hybrid mode (``BRIDGE_EDGE_MODE=hybrid``) a

@@ -2,7 +2,7 @@
 
 Hosts the Bridge's full A2A server — :class:`~bridge.edge.executor.CollectExecutor`,
 :class:`~bridge.edge.server.EdgeRequestHandler`, dynamic :func:`~bridge.edge.card.build_agent_card`
-(over ``loaded_skills()``), ``TaskStore`` (via ``Seam.task_store``),
+(over ``loaded_skills()``), ``TaskStore`` (via ``Port.task_store``),
 ``PushNotificationConfigStore`` (via :func:`~bridge.edge.pushguard.guarded_push_config_store`),
 shared ``BaseArtifactService`` (:func:`~bridge.edge.artifacts.build_artifact_store`),
 ``LlmLeg`` (in ``EdgeMode.hybrid``), ``SatisfactionAssessor``, and ``RfpBoard`` opener —
@@ -57,8 +57,8 @@ from bridge.edge.executor import CollectExecutor
 from bridge.edge.pathroute import EdgeMode, resolve_edge_mode
 from bridge.edge.pushguard import guarded_push_config_store
 from bridge.edge.rfp_open import rfp_board_from_env
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.satisfaction import SatisfactionAssessor, resolve_assessor
-from bridge.seams import Seam, get_adapter, resolve_mode
 from bridge.telemetry import (
     format_outgoing_trace_headers,
     parent_trace_context_from_headers,
@@ -107,13 +107,13 @@ def resolve_a2a_engine(a2a_engine: Any = None) -> Any | None:
     ``BRIDGE_AGENT_ENGINE_A2A=1`` is set in the environment.
 
     When resolved from the environment, connects to the ``ReasoningEngine`` named by
-    ``BRIDGE_AGENT_ENGINE_ID`` (via :func:`bridge.seams.gcp.parse_agent_engine_resource`).
+    ``BRIDGE_AGENT_ENGINE_ID`` (via :func:`bridge.ports.gcp.parse_agent_engine_resource`).
     """
     if a2a_engine is not None:
         return a2a_engine
     if not is_agent_engine_a2a_enabled():
         return None
-    from bridge.seams.gcp import parse_agent_engine_resource
+    from bridge.ports.gcp import parse_agent_engine_resource
 
     proj, loc, eid = parse_agent_engine_resource(None)
     import vertexai
@@ -288,7 +288,7 @@ class BridgeA2aAgentEngine:
 
     def set_up(self) -> None:
         """Construct the A2A Starlette dispatcher, ``CollectExecutor``, ``EdgeRequestHandler``,
-        and seam-backed stores inside the Vertex AI Agent Engine worker."""
+        and port-backed stores inside the Vertex AI Agent Engine worker."""
         if self._app is not None:
             return
 
@@ -309,15 +309,15 @@ class BridgeA2aAgentEngine:
         if ae_id and not os.environ.get("BRIDGE_AGENT_ENGINE_ID"):
             os.environ["BRIDGE_AGENT_ENGINE_ID"] = ae_id
         if (
-            os.environ.get("BRIDGE_SEAM_MODE", "").strip() == "gcp"
+            os.environ.get("BRIDGE_PORT_MODE", "").strip() == "gcp"
             and not os.environ.get("DATABASE_URL", "").strip()
         ):
-            os.environ.setdefault("BRIDGE_SEAM_TASK_STORE", "local")
+            os.environ.setdefault("BRIDGE_PORT_TASK_STORE", "local")
             os.environ.setdefault(
                 "BRIDGE_TASK_DB_URL",
                 "sqlite+aiosqlite:////tmp/bridge_tasks.sqlite",
             )
-            os.environ.setdefault("BRIDGE_SEAM_EXCHANGE_STORE", "local")
+            os.environ.setdefault("BRIDGE_PORT_EXCHANGE_STORE", "local")
             os.environ.setdefault(
                 "BRIDGE_EXCHANGE_DB_URL",
                 "sqlite+aiosqlite:////tmp/bridge_exchange.sqlite",
@@ -358,13 +358,13 @@ class BridgeA2aAgentEngine:
         board = self._injected.get("rfp_board") or rfp_board_from_env()
         active_executor.bind_rfp(board)
 
-        store_seam = get_adapter(Seam.task_store, resolve_mode(Seam.task_store))
+        store_port = get_adapter(Port.task_store, resolve_mode(Port.task_store))
         active_task_store = (
-            self._injected.get("task_store") or store_seam.build_task_store()
+            self._injected.get("task_store") or store_port.build_task_store()
         )
         active_push_config_store = guarded_push_config_store(
             self._injected.get("push_config_store")
-            or store_seam.build_push_config_store()
+            or store_port.build_push_config_store()
         )
 
         push_sender = self._injected.get("push_sender")

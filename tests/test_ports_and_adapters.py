@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -54,7 +55,6 @@ from bridge.ports.local import (
     LocalAuditVault,
     LocalOperationalStore,
 )
-from bridge.seams import Seam, SeamMode, seam_env_var
 from bridge.sql_runtime import (
     IAM_AUTH_ENV,
     create_async_engine_with_iam,
@@ -70,7 +70,10 @@ from bridge.vault import (
 
 
 def test_ports_package_unifies_all_thirteen_boundaries():
-    """Verify `bridge.ports` defines all 13 managed-service boundaries and aliases `bridge.seams`."""
+    """Verify `bridge.ports` defines all 13 managed-service boundaries and `bridge/seams` is removed."""
+    repo_root = Path(__file__).resolve().parents[1]
+    assert not (repo_root / "bridge" / "seams").exists()
+
     expected = {
         "sessions",
         "task_store",
@@ -88,8 +91,6 @@ def test_ports_package_unifies_all_thirteen_boundaries():
     }
     assert expected == PORT_NAMES
     assert len(Port) == 13
-    assert Port is Seam
-    assert PortMode is SeamMode
     assert AdapterMode is PortMode
 
     for port in Port:
@@ -104,30 +105,20 @@ def test_ports_package_unifies_all_thirteen_boundaries():
         assert gcp_inst.port is port
 
 
-def test_port_env_var_precedence_and_backwards_compatibility(monkeypatch):
-    """Verify `BRIDGE_PORT_<NAME>` -> `BRIDGE_SEAM_<NAME>` -> `BRIDGE_PORT_MODE` -> `BRIDGE_SEAM_MODE` -> `local`."""
+def test_port_env_var_precedence(monkeypatch):
+    """Verify `BRIDGE_PORT_<NAME>` -> `BRIDGE_PORT_MODE` -> `local` precedence."""
     for p in Port:
         monkeypatch.delenv(port_env_var(p), raising=False)
-        monkeypatch.delenv(seam_env_var(p), raising=False)
     monkeypatch.delenv("BRIDGE_PORT_MODE", raising=False)
-    monkeypatch.delenv("BRIDGE_SEAM_MODE", raising=False)
 
     assert port_env_var(Port.operational_store) == "BRIDGE_PORT_OPERATIONAL_STORE"
     assert resolve_port_mode(Port.operational_store) is PortMode.local
 
-    # Legacy global fallback
-    monkeypatch.setenv("BRIDGE_SEAM_MODE", "gcp")
+    # Global port mode applies when per-port override is unset
+    monkeypatch.setenv("BRIDGE_PORT_MODE", "gcp")
     assert resolve_port_mode(Port.operational_store) is PortMode.gcp
 
-    # Primary global wins over legacy global
-    monkeypatch.setenv("BRIDGE_PORT_MODE", "local")
-    assert resolve_port_mode(Port.operational_store) is PortMode.local
-
-    # Legacy per-seam override wins over global
-    monkeypatch.setenv("BRIDGE_SEAM_OPERATIONAL_STORE", "gcp")
-    assert resolve_port_mode(Port.operational_store) is PortMode.gcp
-
-    # Primary per-port override wins over legacy per-seam override
+    # Per-port override wins over global
     monkeypatch.setenv("BRIDGE_PORT_OPERATIONAL_STORE", "local")
     assert resolve_port_mode(Port.operational_store) is PortMode.local
 
@@ -357,3 +348,48 @@ def test_cloud_sql_iam_auth_do_connect_token_injection(monkeypatch):
     engine.sync_engine.dialect.dispatch.do_connect(None, None, (), cparams_explicit)
     assert cparams_explicit["password"] == "explicit-secret-password"
     assert len(minted_tokens) == 1
+
+
+@pytest.mark.asyncio
+async def test_collect_executor_and_build_a2a_app_enterprise_store_binding():
+    """Verify `CollectExecutor` and `build_a2a_app` bind Zone 3–6 stores (`vault_store`, `operational_store`, `knowledge_catalog`)."""
+    from bridge.collect import DocumentSubmission
+    from bridge.edge.executor import CollectExecutor
+    from bridge.edge.server import build_a2a_app
+    from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
+    from contract.wire import ArtifactRef, CollectRequest
+
+    vault = InMemoryAuditVaultStore()
+    op_store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
+
+    executor = CollectExecutor()
+    app = build_a2a_app(
+        executor=executor,
+        vault_store=vault,
+        operational_store=op_store,
+        knowledge_catalog=catalog,
+    )
+    assert app is not None
+    assert executor._collector._vault_store is vault
+    assert executor._collector._operational_store is op_store
+    assert executor._collector._knowledge_catalog is catalog
+
+    turn = await executor._collector.collect(
+        CollectRequest(
+            process="address-change",
+            context_id="ctx-edge-ent-1",
+            party="PARTY-ENT-001",
+        ),
+        documents=[
+            DocumentSubmission(
+                doc_id="doc-ent-1",
+                artifact_name="bill-powerco-clean.pdf",
+                artifact=ArtifactRef(uri="memory://bill-powerco-clean.pdf"),
+            )
+        ],
+        candidate_doctypes=["utility-bill", "bank-statement"],
+    )
+    assert len(turn.status.entries) == 1
+    assert vault.get_record("ctx-edge-ent-1", "doc-ent-1", 1) is not None
+    assert len(op_store.list_facts("PARTY-ENT-001")) > 0

@@ -1,6 +1,6 @@
 """Skill metadata source for the dynamic Agent Card (WIRE-4) — the live, resolved view.
 
-``loaded_skills()`` reads the ``skill_registry`` seam on every call (a directory of
+``loaded_skills()`` reads the ``skill_registry`` port on every call (a directory of
 Agent Skills folders locally, a GCS bucket on GCP), so a skill folder added at runtime
 regenerates the Agent Card and reaches the executor with no redeploy (SKILL-4, CUJ-8/9).
 The card-generation logic (``bridge.edge.card.agent_card_from_skills``) stays pure; this
@@ -74,7 +74,7 @@ class SkillMeta(BaseModel):
         "text/plain",
     )  # WIRE-5 dual-mode intake
     # Skill-relative pointer to the doctype's field schema (metadata.bridge-schema);
-    # read through the registry seam's ``read_asset``. NOT named ``schema`` — that
+    # read through the registry port's ``read_asset``. NOT named ``schema`` — that
     # shadows ``BaseModel.schema`` and pydantic v2 warns on it.
     schema_asset: str = ""
     # Who owns a Collector ``hitl_review`` verdict (metadata.bridge-hitl, S3-edge-1
@@ -100,13 +100,13 @@ def _contained_asset(skill_dir: Path, rel: str, where: Path, key: str) -> Path:
 def skill_meta_from_dir(skill_dir: Path) -> SkillMeta:
     """Parse a skill folder's ``SKILL.md`` frontmatter into a ``SkillMeta``.
 
-    Pure (no seam import) — mirrors ``bridge.sla._load_policy_doc``'s frontmatter
+    Pure (no port import) — mirrors ``bridge.sla._load_policy_doc``'s frontmatter
     split. Bridge-specific metadata keys live under ``metadata.bridge-*``:
     ``bridge-kind``, ``bridge-candidate-doctypes`` (space-separated), ``bridge-tags``
     (space-separated), optional ``bridge-input-modes`` (space-separated; defaults to
     the ``SkillMeta`` dual-mode default when absent, preserving WIRE-5), optional
     ``bridge-schema`` (a skill-relative path to the doctype's field schema asset,
-    read at extraction time through the registry seam's ``read_asset``), optional
+    read at extraction time through the registry port's ``read_asset``), optional
     ``bridge-hitl`` (``park`` | ``report``; absent → ``report``; any other value fails
     the load with a ``ValidationError``), optional ``bridge-satisfaction`` (prose,
     advisory; absent → ``""``).
@@ -294,7 +294,7 @@ def validate_skill_upload(
 
 
 def loaded_skills() -> list[SkillMeta]:
-    """Return the resolved, loaded skill metadata via the ``skill_registry`` seam (SKILL-4).
+    """Return the resolved, loaded skill metadata via the ``skill_registry`` port (SKILL-4).
 
     Reads the live registry (``LocalSkillRegistry`` — a directory of Agent Skills
     folders rooted at ``BRIDGE_SKILLS_DIR`` / the repo ``skills/`` dir). Because the
@@ -306,12 +306,12 @@ def loaded_skills() -> list[SkillMeta]:
     a process with none installed is not loaded (S4-usecase-3).
 
     Only process skills become ``AgentSkill``s (Decision 4); doctype skills are the
-    label space. The seam import is lazy to avoid an import cycle (the local adapter
+    label space. The port import is lazy to avoid an import cycle (the local adapter
     lazily imports ``skill_meta_from_dir`` from this module).
     """
-    from bridge.seams import Seam, get_adapter, resolve_mode
+    from bridge.ports import Port, get_adapter, resolve_mode
 
-    registry = get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+    registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
     return resolve_label_spaces(registry.list_skills())
 
 
@@ -363,7 +363,7 @@ def rfp_policy_for(process: str) -> RfpPolicy:
 
     The live resolver an ``RfpBoard`` binds as ``live_policy`` on the deployed hosts
     (``rfp_board_from_env``, ``build_rfp_board_app``): read on EVERY call, entirely
-    through the ``skill_registry`` seam, so a process installed after the host was built
+    through the ``skill_registry`` port, so a process installed after the host was built
     — locally or into the GCS bucket — opens, lists, checklists and files as an RFP with
     no rebuild:
 
@@ -384,8 +384,8 @@ def rfp_policy_for(process: str) -> RfpPolicy:
     nothing broader is caught. A sync registry read — callers on the event loop accept
     that, like ``candidate_doctypes_for``.
     """
+    from bridge.ports import Port, get_adapter, resolve_mode
     from bridge.rfp import rfp_policy_from_docs
-    from bridge.seams import Seam, get_adapter, resolve_mode
     from bridge.sla import parse_skill_frontmatter
 
     meta = next(
@@ -394,7 +394,7 @@ def rfp_policy_for(process: str) -> RfpPolicy:
     )
     if meta is None:
         raise ValueError(f"skill {process!r} is not an installed process skill")
-    registry = get_adapter(Seam.skill_registry, resolve_mode(Seam.skill_registry))
+    registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
     try:
         frontmatter = parse_skill_frontmatter(
             registry.read_asset(process, "SKILL.md"), where=f"{process}/SKILL.md"

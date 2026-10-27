@@ -17,7 +17,7 @@ def _build_runner(
     """Test-local host for the document_bridge App.
 
     The Runner + its service wiring is owned by the serving surface (adk cli /
-    Cloud Run hosting the ``App``, with services swapped behind seams), never by
+    Cloud Run hosting the ``App``, with services swapped behind ports), never by
     the ``bridge/`` core — so this in-memory assembly lives with the tests that
     exercise the LlmAgent in isolation, not in ``bridge/agent.py``.
     """

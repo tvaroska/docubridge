@@ -212,7 +212,7 @@ def build_app(
 
     ``gemini`` passes **no** ``schemas=``: the prompt and pinned response schema are
     built from the installed ``skills/benefits-quote/assets/schema.json`` read through
-    the ``skill_registry`` seam — that is what "extracted against the skill schema"
+    the ``skill_registry`` port — that is what "extracted against the skill schema"
     means here. ``live`` is the real engine (credentials required).
 
     ``edge_mode`` / ``llm`` default to the module-level :data:`EDGE`. In hybrid mode

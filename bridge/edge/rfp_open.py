@@ -7,12 +7,12 @@ and every drained reply correlated to nothing (``no_exchange_token``). This modu
 the edge executor calls instead, for every process the bound board serves: the HOME process
 named by ``BRIDGE_RFP_PROCESS`` (``bridge.rfp.RFP_PROCESS_ENV`` — the same home process the
 board host runs), plus any emergent-Collect process installed live in the skill registry
-(``bridge.edge.skills.rfp_policy_for``, read through the ``skill_registry`` seam on every
+(``bridge.edge.skills.rfp_policy_for``, read through the ``skill_registry`` port on every
 check — S4-usecase-4). Every RFP is projected with its OWN process's policy
 (``RfpBoard.policy_for``):
 
 * **An opener-only board, durable or nothing.** :func:`rfp_board_from_env` builds one
-  live ``RfpBoard`` (home policy + ``live_policy=rfp_policy_for``) over the seam-resolved
+  live ``RfpBoard`` (home policy + ``live_policy=rfp_policy_for``) over the port-resolved
   ``exchange_store`` (local
   ``BRIDGE_EXCHANGE_DB_URL``, gcp ``DATABASE_URL`` — the same Cloud SQL DB the board host
   reads). It refuses an ``InMemoryExchangeStore``: an RFP opened into a per-process store

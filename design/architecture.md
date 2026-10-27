@@ -3,7 +3,7 @@ type: reference
 up: "bridge.md"
 related:
   - "adk.md"
-  - "seams.md"
+  - "ports.md"
   - "gcp-substrate.md"
   - "../spec/demos/demo-suite.md"
   - "../spec/cujs.md"
@@ -24,7 +24,7 @@ docubridge/
 │   ├── portal/      A2UI Path-B host + carrier checklist
 │   ├── dashboard/   ops read-model + SSE, /rfps API, RFP board host
 │   ├── timewarp/    local-only time-warp host
-│   ├── seams/       local/ + gcp/ adapters, registry.py
+│   ├── ports/       local/ + gcp/ adapters, registry.py
 │   ├── extraction/  extraction engine (fixture, gemini with Agent Gym hints, docai OCR pre-pass)
 │   ├── email_ingress/  email intake + correlation
 │   ├── demos/       fenced demo-host glue (seeding) — the core never imports it
@@ -51,7 +51,7 @@ docubridge/
 │   └── e2e/         Playwright, network-stubbed
 ├── terraform/       IaC, organized by GCP substrate primitive
 ├── scripts/         local run-*.sh launchers, deploy.sh, parity.sh
-├── tests/           the shared seam suite (local + GCP adapters) + demo golden runs
+├── tests/           the shared port suite (local + GCP adapters) + demo golden runs
 │   ├── conformance/, perf/
 │   └── address/, test_*.py
 ├── spec/            THE WHAT — requirements: cujs.md, standards.md, demos/, open-questions.md (forkable, protected)
@@ -63,10 +63,10 @@ docubridge/
 
 **Design vs. planning.** `design/` is the design source of truth (status-free), and `spec/` holds forkable requirements. Sequencing lives outside them: `docs/features.md` (the feature catalog), `docs/roadmap.md` (milestones), and `TODO.md` (the phased plan + live status). These reference `design/`; it does not depend on them.
 
-**The load-bearing invariant:** `bridge/` **never imports** `agents/` ([shared contract types](adk.md)). The core is a reusable artifact; the agents consume it. Both may import `contract/` (the shared third package) — that is the only permitted cross-link. Parity of logic that must agree across the two (canonicalization, disposition, `is_satisfied`) is held by the **shared seam suite + an isolation-guard test**, never by import.
+**The load-bearing invariant:** `bridge/` **never imports** `agents/` ([shared contract types](adk.md)). The core is a reusable artifact; the agents consume it. Both may import `contract/` (the shared third package) — that is the only permitted cross-link. Parity of logic that must agree across the two (canonicalization, disposition, `is_satisfied`) is held by the **shared port suite + an isolation-guard test**, never by import.
 
 ### `bridge/` — the core
-The [`LlmAgent` `document_bridge`](adk.md) + tools; extraction as an `AgentTool`; HITL as a `LongRunningFunctionTool`; the [seams](seams.md) behind their ABCs (each with a local + GCP adapter); the [A2A edge](a2a-edge.md) and [A2UI edge](a2ui-edge.md); disposition + classification (`bridge.classification.canonicalize_issuer`); the extraction fixture table (`bridge.extraction.fixture`); the [outbound A2A client](outbound.md).
+The [`LlmAgent` `document_bridge`](adk.md) + tools; extraction as an `AgentTool`; HITL as a `LongRunningFunctionTool`; the [ports](ports.md) behind their ABCs (each with a local + GCP adapter); the [A2A edge](a2a-edge.md) and [A2UI edge](a2ui-edge.md); disposition + classification (`bridge.classification.canonicalize_issuer`); the extraction fixture table (`bridge.extraction.fixture`); the [outbound A2A client](outbound.md).
 
 HTTP hosts: `bridge.edge.server:build_a2a_app` (A2A JSON-RPC server + `/artifacts` fetch), `bridge.portal.server:build_portal_app` (provider portal), `bridge.dashboard.server:build_dashboard_app` (ops dashboard, SSE, `/rfps` routes), `bridge.dashboard.board_host:build_rfp_board_app` (deployed RFP board host), `bridge.edge.email_ingress:build_email_app` (email intake webhook), `bridge.timewarp.server:build_timewarp_app` (local-only), `bridge.demos.rfp_demo:build_rfp_demo_app` (fenced local RFP demo host), `bridge.demos.showcase:build_showcase_app` (fenced local showcase runner), `bridge/edge/mock.py` (mock Bridge).
 
@@ -108,7 +108,7 @@ The eval corpus is the enforced source of truth for field names + expected dispo
 `e2e/` holds Playwright end-to-end tests, stubbed at the network boundary. See [frontend](frontend.md).
 
 ### `terraform/` — substrate primitives
-`network`, `runtime` (Cloud Run v2), `gateway`, `iam`, `database` (Cloud SQL), `tasks` (Cloud Tasks), `secrets`, `frontend`, and the `gcs` module holding the Skill Registry, Artifacts and email-landing buckets ([substrate](gcp-substrate.md)). Terraform provisions substrate; the seams provision services.
+`network`, `runtime` (Cloud Run v2), `gateway`, `iam`, `database` (Cloud SQL), `tasks` (Cloud Tasks), `secrets`, `frontend`, and the `gcs` module holding the Skill Registry, Artifacts and email-landing buckets ([substrate](gcp-substrate.md)). Terraform provisions substrate; the ports provision services.
 
 ## Settled design decisions
 - **ADK is pinned `google-adk >= 2.11.0, < 3`** — the [experimental-surfaces list](adk.md) is the risk register.
@@ -119,4 +119,4 @@ The eval corpus is the enforced source of truth for field names + expected dispo
 Remaining genuinely-open items live in [open-questions](../spec/open-questions.md).
 
 ## Related
-- [the Bridge](bridge.md) · [running on ADK](adk.md) · [seams](seams.md) · [Agent Gym & Programmable Trust](agent-gym.md) · [demos](../spec/demos/demo-suite.md) · [CUJ catalog](../spec/cujs.md)
+- [the Bridge](bridge.md) · [running on ADK](adk.md) · [ports](ports.md) · [Agent Gym & Programmable Trust](agent-gym.md) · [demos](../spec/demos/demo-suite.md) · [CUJ catalog](../spec/cujs.md)

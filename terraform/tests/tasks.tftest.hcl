@@ -5,7 +5,7 @@
 #
 # CRITICAL invariant (CRITICAL.md): the module declares NO IAM and NO task objects
 # — a queue is a pure container; the enqueuer + OIDC token-creator grants already
-# live in modules/iam (P7-1) and tasks are runtime data armed through the seam
+# live in modules/iam (P7-1) and tasks are runtime data armed through the port
 # adapter (GcpScheduler.schedule), never Terraform-managed.
 
 mock_provider "google" {}

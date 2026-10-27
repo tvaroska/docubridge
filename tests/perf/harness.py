@@ -112,7 +112,7 @@ def rows_match(got: list[dict], want: list[dict], *, canonical: bool) -> int:
 
 
 class _Static:
-    """An extraction-seam double returning one fixed result (the portal leg)."""
+    """An extraction-port double returning one fixed result (the portal leg)."""
 
     def __init__(self, result: ExtractionResult) -> None:
         self.result = result

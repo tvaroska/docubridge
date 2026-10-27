@@ -2,7 +2,7 @@
 
 Proves the resumability switch reaches the ``Runner`` (the thing P4-2's durable
 park/resume relies on) and that the agent-side session factory mirrors the sessions
-seam without importing ``bridge/``.
+port without importing ``bridge/``.
 """
 
 from __future__ import annotations

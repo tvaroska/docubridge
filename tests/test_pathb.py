@@ -3,7 +3,7 @@
 Drives the deterministic graph over the eval corpus: clean → auto-approve one step;
 wrong doctype → terminal reject; the corpus multi-step (timeline exchange-2 t5-7)
 blurry → resubmit park → clear → HITL park → resolved accept; and the resubmit-cap
-escalation (escalation-is-NOT-rejection, §2a/§2b). The extraction seam is proven to
+escalation (escalation-is-NOT-rejection, §2a/§2b). The extraction port is proven to
 be called once per step via a spy.
 """
 
@@ -28,7 +28,7 @@ def _artifact(doc_id: str) -> str:
 
 
 class SpyExtractor:
-    """Wraps FixtureExtractor, counting extract() calls (seam-call assertion)."""
+    """Wraps FixtureExtractor, counting extract() calls (port-call assertion)."""
 
     def __init__(self) -> None:
         self._inner = FixtureExtractor()
@@ -154,8 +154,8 @@ async def test_resubmit_cap_escalates_not_rejects():
     assert esc.state.attempts == 4
 
 
-async def test_seam_called_once_per_document():
-    """One extract() call per graph step (seam spy)."""
+async def test_port_called_once_per_document():
+    """One extract() call per graph step (port spy)."""
     spy = SpyExtractor()
     await pathb.step(
         _state(),

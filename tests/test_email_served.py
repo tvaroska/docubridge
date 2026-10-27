@@ -29,7 +29,7 @@ from bridge.demos.rfp_demo import DEMO_RFP_ID, build_rfp_demo_app
 from bridge.edge.email_ingress import EmailProcessor
 from bridge.email_ingress.__main__ import main as cli
 from bridge.email_ingress.mime import landing_key
-from bridge.seams.local import LocalEmailIngress
+from bridge.ports.local import LocalEmailIngress
 from contract.enums import RfpItemStatus
 from tests.email_fixtures import (
     BASE_URL,
@@ -54,9 +54,9 @@ EMAIL_ENV = (
     "BRIDGE_EMAIL_DRAIN_INTERVAL",
     "BRIDGE_EMAIL_DRAIN_URL",
     "BRIDGE_EMAIL_MAX_BYTES",
-    "BRIDGE_SEAM_EMAIL_INGRESS",
-    "BRIDGE_SEAM_EXTRACTION",
-    "BRIDGE_SEAM_MODE",
+    "BRIDGE_PORT_EMAIL_INGRESS",
+    "BRIDGE_PORT_EXTRACTION",
+    "BRIDGE_PORT_MODE",
     "BRIDGE_ARTIFACT_BUCKET",
     "BRIDGE_PUBLIC_URL",
 )
@@ -167,7 +167,7 @@ def test_cli_drain_reports_a_quarantine(intake_env, tmp_path, capsys):
 def test_poll_loop_drains_without_any_explicit_call(intake_env, tmp_path):
     intake_env.setenv("BRIDGE_EMAIL_DRAIN_INTERVAL", "0.05")
     app = build_rfp_demo_app(now=NOW)
-    seam = LocalEmailIngress(tmp_path / "mail")
+    port = LocalEmailIngress(tmp_path / "mail")
     with TestClient(app) as client:
         assert _cells(client)[("carrier-b", "CRITICAL_ILLNESS")] == "acknowledged"
         raw = compose(
@@ -177,16 +177,16 @@ def test_poll_loop_drains_without_any_explicit_call(intake_env, tmp_path):
             attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
         )
         key = landing_key(raw)
-        assert seam.land(key, raw)
+        assert port.land(key, raw)
         assert _wait_for(
             lambda: _cells(client)[("carrier-b", "CRITICAL_ILLNESS")] == "received"
         )
-    assert seam.pending() == []
-    assert seam.processed(key)["status"] == "filed"
+    assert port.pending() == []
+    assert port.processed(key)["status"] == "filed"
 
 
 def test_poll_loop_survives_a_failing_drain(clean_env, tmp_path, caplog):
-    seam = LocalEmailIngress(tmp_path)
+    port = LocalEmailIngress(tmp_path)
     board = make_board()
 
     class Flaky:
@@ -195,7 +195,7 @@ def test_poll_loop_survives_a_failing_drain(clean_env, tmp_path, caplog):
 
     proc = EmailProcessor(
         board=board,
-        seam=seam,
+        port=port,
         mailbox=MAILBOX,
         secret=SECRET,
         extraction=Flaky(),
@@ -208,7 +208,7 @@ def test_poll_loop_survives_a_failing_drain(clean_env, tmp_path, caplog):
         attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
     )
     key = landing_key(raw)
-    assert seam.land(key, raw)
+    assert port.land(key, raw)
 
     def failures() -> int:
         return sum(
@@ -217,12 +217,12 @@ def test_poll_loop_survives_a_failing_drain(clean_env, tmp_path, caplog):
 
     with TestClient(app):
         assert _wait_for(lambda: failures() >= 2)  # the loop kept going
-        assert seam.pending() == [key]  # still queued, board untouched
+        assert port.pending() == [key]  # still queued, board untouched
         assert board.rfps[RFP_ID].cell("carrier-a", "CRITICAL_ILLNESS").status is (
             RfpItemStatus.invited
         )
         proc.extraction = extractor()
-        assert _wait_for(lambda: seam.processed(key) is not None)
+        assert _wait_for(lambda: port.processed(key) is not None)
     cell = board.rfps[RFP_ID].cell("carrier-a", "CRITICAL_ILLNESS")
     assert cell.status is RfpItemStatus.received
 
@@ -276,7 +276,7 @@ def test_zero_and_unset_drain_interval(intake_env):
 def _proc(board, tmp_path) -> EmailProcessor:
     return EmailProcessor(
         board=board,
-        seam=LocalEmailIngress(tmp_path),
+        port=LocalEmailIngress(tmp_path),
         mailbox=MAILBOX,
         secret=SECRET,
         extraction=extractor(),

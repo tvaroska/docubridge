@@ -10,7 +10,7 @@ The core commitment: **one deployed core on the Gemini platform running Address,
 
 | # | Milestone | Proves | Unlocks (CUJ) | Phase |
 |---|---|---|---|---|
-| **M0** | Skeleton stands up | Repo, contracts, and the shared seam harness exist; `bridge/` can't import `agents/` | — | P0 |
+| **M0** | Skeleton stands up | Repo, contracts, and the shared port harness exist; `bridge/` can't import `agents/` | — | P0 |
 | **M1** | The Bridge judges one document | Sense-A disposition is deterministic and auditable; the LLM can't mint an acceptance | 1, 2 (core) | P1 |
 | **M2** | Agents can talk to the Bridge | Canonical A2A wire + a stable mock double; domain rides inside A2A parts | 1, 2 (wire) | P2 |
 | **M3** | Address collects, end-to-end | The reusable `Workflow` shape works; **code, not a model, mints "done"** | 1, 4, 10 | P3 |
@@ -27,7 +27,7 @@ Jordan Lee is asked for proof of address, submits two bills from the **same** co
 - Every [`features.md`](features.md) item marked `C1` behaves as its acceptance line states.
 - The Address eval corpus (`wiki/evals/address/expected.json` + `timeline.json`) reproduces on **fixture and Gemini** extraction adapters, against **mock and real** Bridge, **local and deployed**.
 - CUJ‑1, 2, 4, 5, 6, 7, 8, 10 pass. Park/resume survives a real process restart. The proactive chase fires a real send.
-- The seam suite passes with `BRIDGE_TEST_GCP=1`; plan-time Terraform tests pass with no credentials.
+- The port suite passes with `BRIDGE_TEST_GCP=1`; plan-time Terraform tests pass with no credentials.
 
 ## Beyond Cycle 1
 
@@ -35,9 +35,9 @@ Jordan Lee is asked for proof of address, submits two bills from the **same** co
 |---|---|---|
 | **Benefits** | Negotiate over a program, FX normalization, ADK↔LangGraph A2A interop, Bridge-as-client dial-out + Deliver | 3, 11, 12 |
 | **RFP** | Emergent Collect (agent-mutated requirements, N suppliers), email reply intake, live use-case-add | 9, 13, 15 |
-| **Later swaps** | Cold unsolicited inbound push (the Extract edge). Both Vertex AI Agent Engine migration steps are built: Option A (Agent Engine Sessions, Memory Bank, and ADK `App` runtime) and Option B (`BridgeA2aAgentEngine` hosting the A2A JSON-RPC server, `CollectExecutor`, and dynamic Agent Card on Agent Engine behind `BRIDGE_AGENT_ENGINE_A2A=1`) | — |
+| **Later swaps** | Cold unsolicited inbound push (the Extract edge). Both Gemini platform Agent Engine migration steps are built: Option A (Agent Engine Sessions, Memory Bank, and ADK `App` runtime) and Option B (`BridgeA2aAgentEngine` hosting the A2A JSON-RPC server, `CollectExecutor`, and dynamic Agent Card on Agent Engine behind `BRIDGE_AGENT_ENGINE_A2A=1`) | — |
 
-The architecture is whole from day one — outbound seam, trust boundary, contracts — so these cycles add demand-driven capability, not new machinery. See [layout & scope](../design/architecture.md) and [open questions](../spec/open-questions.md).
+The architecture is whole from day one — outbound port, trust boundary, contracts — so these cycles add demand-driven capability, not new machinery. See [layout & scope](../design/architecture.md) and [open questions](../spec/open-questions.md).
 
 ## See also
 - [`TODO.md`](../TODO.md) — the detailed phase plan · [`features.md`](features.md) — the feature catalog · [the Bridge](../design/bridge.md) — design source of truth

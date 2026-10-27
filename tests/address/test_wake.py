@@ -433,7 +433,7 @@ async def test_emitter_receiver_loop_via_captured_doorbell(tmp_path):
     the body. Step (2): the captured body drives ``extract_task_id`` + ``wake_task``
     against the (now quiescent) Bridge. The task id is the only load-bearing field,
     so the captured id keys the parked leg via the index — the emitter↔receiver
-    seam, without live re-entrancy.
+    port, without live re-entrancy.
     """
     import uuid
 

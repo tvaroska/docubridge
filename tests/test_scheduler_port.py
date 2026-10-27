@@ -1,4 +1,4 @@
-"""Seam-parity test for the scheduler seam (P5-1/SEAM-6, gcp P7-4).
+"""Port-parity test for the scheduler port (P5-1/PORT-6, gcp P7-4).
 
 The local adapter builds a working ``VirtualClock`` (schedule/advance/cancel/
 idempotent re-arm/fire-once); the gcp adapter (P7-4) builds a Cloud Tasks-backed
@@ -8,16 +8,16 @@ ledger-identical (Cloud Tasks is wall-clock/push-driven, so ``advance`` raises).
 
 import pytest
 
+from bridge.ports import Port, PortMode, get_adapter
 from bridge.scheduler import Scheduler
-from bridge.seams import Seam, SeamMode, get_adapter
 
 
-@pytest.mark.seam("scheduler")
+@pytest.mark.port("scheduler")
 def test_scheduler_local_builds_virtualclock(adapter):
     """Local builds a working VirtualClock; gcp builds a Cloud Tasks GcpScheduler
     that mints/cancels via the injected client and honestly raises on advance (P7-4)."""
-    if adapter is SeamMode.gcp:
-        from bridge.seams.gcp import GcpScheduler
+    if adapter is PortMode.gcp:
+        from bridge.ports.gcp import GcpScheduler
 
         _queue = "projects/p/locations/us-central1/queues/bridge-followups"
         _callback = "https://bridge-runtime.a.run.app/followup"
@@ -41,11 +41,11 @@ def test_scheduler_local_builds_virtualclock(adapter):
                 return list(self.tasks.values())
 
         # get_adapter returns a GcpScheduler (no longer raises NotImplementedError).
-        seam = get_adapter(Seam.scheduler, adapter)
-        assert isinstance(seam, GcpScheduler)
+        port = get_adapter(Port.scheduler, adapter)
+        assert isinstance(port, GcpScheduler)
 
         fake = _FakeClient()
-        sched = seam.build_scheduler(
+        sched = port.build_scheduler(
             client=fake, queue_path=_queue, callback_url=_callback, oidc_sa_email=_sa
         )
         assert isinstance(sched, Scheduler)
@@ -63,7 +63,7 @@ def test_scheduler_local_builds_virtualclock(adapter):
         return
 
     # Build a scheduler and verify it's a Scheduler Protocol instance
-    sched = get_adapter(Seam.scheduler, adapter).build_scheduler()
+    sched = get_adapter(Port.scheduler, adapter).build_scheduler()
     assert sched.now() == 0
     assert isinstance(sched, Scheduler)
 
@@ -105,10 +105,10 @@ def test_scheduler_local_builds_virtualclock(adapter):
 
 def test_scheduler_idempotent_rearm(adapter):
     """Idempotent re-arm: scheduling the same key twice overwrites the first."""
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         return  # skip gcp (already tested in main test)
 
-    sched = get_adapter(Seam.scheduler, adapter).build_scheduler()
+    sched = get_adapter(Port.scheduler, adapter).build_scheduler()
     sched.schedule("x", 5, payload="first")
     sched.schedule("x", 7, payload="second")  # overwrites
 
@@ -121,10 +121,10 @@ def test_scheduler_idempotent_rearm(adapter):
 
 def test_scheduler_cancel(adapter):
     """cancel(key) removes a pending alarm; returns True if it existed, False otherwise."""
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         return  # skip gcp
 
-    sched = get_adapter(Seam.scheduler, adapter).build_scheduler()
+    sched = get_adapter(Port.scheduler, adapter).build_scheduler()
     sched.schedule("y", 9)
 
     assert sched.cancel("y") is True
@@ -134,10 +134,10 @@ def test_scheduler_cancel(adapter):
 
 def test_scheduler_same_tick_insertion_order(adapter):
     """Same-tick alarms fire in insertion order (stable tiebreak)."""
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         return  # skip gcp
 
-    sched = get_adapter(Seam.scheduler, adapter).build_scheduler()
+    sched = get_adapter(Port.scheduler, adapter).build_scheduler()
     sched.schedule("a", 2, payload="a")
     sched.schedule("b", 2, payload="b")
 
@@ -148,10 +148,10 @@ def test_scheduler_same_tick_insertion_order(adapter):
 
 def test_scheduler_backwards_guard(adapter):
     """advance(-1) and advance_to(now-1) raise ValueError."""
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         return  # skip gcp
 
-    sched = get_adapter(Seam.scheduler, adapter).build_scheduler()
+    sched = get_adapter(Port.scheduler, adapter).build_scheduler()
     sched.advance_to(5)
 
     with pytest.raises(ValueError, match="backwards"):

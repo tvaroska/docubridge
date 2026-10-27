@@ -8,7 +8,7 @@ from bridge.outbound import (
     Nudge,
     PeerCard,
 )
-from bridge.seams import Seam, SeamMode, get_adapter
+from bridge.ports import Port, PortMode, get_adapter
 from contract.enums import LifecycleStatus
 from contract.wire import ArtifactRef
 
@@ -29,16 +29,16 @@ class _RecordingSender:
         self.posts.append({"url": url, "headers": headers, "body": body})
 
 
-@pytest.mark.seam("a2a_client")
+@pytest.mark.port("a2a_client")
 def test_a2a_client_builds_outbound_client(adapter):
     """One parametrized parity test (local + gcp): both adapters build an A2AClient and
     the SAME send/dial/deliver flow yields non-resent receipts — terminal-outcome
     parity, credential-free. The gcp branch swaps only the transport (Agent-Identity
     OIDC + Gateway-host reconciliation); card URLs keep host == the Gateway host so
     reconciliation passes (the mismatch case lives in test_gcp_a2a_client.py)."""
-    if adapter is SeamMode.gcp:
+    if adapter is PortMode.gcp:
         card_url = f"https://{_GATEWAY_HOST}/rpc"
-        client = get_adapter(Seam.a2a_client, adapter).build_client(
+        client = get_adapter(Port.a2a_client, adapter).build_client(
             gateway_host=_GATEWAY_HOST,
             sa_email="bridge-runtime@test-project.iam.gserviceaccount.com",
             id_token_fetcher=lambda audience: f"id-token-for::{audience}",
@@ -46,7 +46,7 @@ def test_a2a_client_builds_outbound_client(adapter):
         )
     else:
         card_url = "card://carrier-a"
-        client = get_adapter(Seam.a2a_client, adapter).build_client()
+        client = get_adapter(Port.a2a_client, adapter).build_client()
     assert isinstance(client, A2AClient)
 
     # Nudge — the party-channel chase (OUT-1/2).

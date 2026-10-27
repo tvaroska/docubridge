@@ -279,6 +279,17 @@ def register_gym_routes(
             for r in gym.get_extraction_hints(issuer=issuer, doctype=doctype)
         ]
 
+    @router.get("/v1/gym/export/docai-dataset")
+    def export_docai_uptraining_dataset_endpoint(
+        doctype: str | None = None,
+        verified_only: bool = True,
+    ) -> dict[str, Any]:
+        """Export verified SME feedback signals and SourceAnchor bounding polygons in Document AI ImportDocuments format."""
+        return gym.export_docai_uptraining_dataset(
+            doctype=doctype,
+            verified_only=verified_only,
+        )
+
     @router.get("/v1/gym/trust-policies")
     def list_gym_trust_policies_endpoint() -> list[dict[str, Any]]:
         """List all Programmable Trust slice policies with readiness status and A2UI v0.9 controls."""

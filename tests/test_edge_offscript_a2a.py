@@ -65,7 +65,7 @@ from bridge.offscript import (
     escalate_submission,
     reject_submission,
 )
-from bridge.seams import Seam, get_adapter
+from bridge.ports import Port, get_adapter
 from contract.enums import Disposition, Gate, LifecycleStatus
 from contract.wire import ArtifactRef, CollectRequest, ExchangeTurn, LedgerEntry
 from tests._scripted_llm import Reply, ScriptedLlm, ToolCall
@@ -473,7 +473,7 @@ async def test_escalate_input_required_survives_tasks_get_and_restart(tmp_path):
     reason = "party asked for a person"
     expected_text = escalate_submission(reason)["message"]
     dsn = f"sqlite+aiosqlite:///{tmp_path}/offscript.db"
-    task_store = get_adapter(Seam.task_store, "local").build_task_store(db_url=dsn)
+    task_store = get_adapter(Port.task_store, "local").build_task_store(db_url=dsn)
     llm = _escalate_llm(reason)
     app, _leg = _app(llm, task_store=task_store)
     async with _client(app) as (_hc, client):
@@ -496,7 +496,7 @@ async def test_escalate_input_required_survives_tasks_get_and_restart(tmp_path):
 
     await task_store.engine.dispose()  # the restart boundary
 
-    store2 = get_adapter(Seam.task_store, "local").build_task_store(db_url=dsn)
+    store2 = get_adapter(Port.task_store, "local").build_task_store(db_url=dsn)
     quiet = ScriptedLlm(max_calls=0)
     app2, _leg2 = _app(quiet, task_store=store2)
     try:

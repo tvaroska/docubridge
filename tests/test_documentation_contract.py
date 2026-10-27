@@ -259,14 +259,14 @@ def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
 
 
 def test_secondary_docs_list_all_13_hexagonal_ports() -> None:
-    """``design/seams.md`` and ``TODO.md`` enumerate all 13 Hexagonal ``Port`` names."""
+    """``design/ports.md`` and ``TODO.md`` enumerate all 13 Hexagonal ``Port`` names."""
     from bridge.ports import Port
 
-    seams_doc = (REPO_ROOT / "design/seams.md").read_text(encoding="utf-8")
+    ports_doc = (REPO_ROOT / "design/ports.md").read_text(encoding="utf-8")
     todo_doc = (REPO_ROOT / "TODO.md").read_text(encoding="utf-8")
     for port in Port:
-        assert port.value in seams_doc, (
-            f"design/seams.md missing Hexagonal Port {port.value!r}"
+        assert port.value in ports_doc, (
+            f"design/ports.md missing Hexagonal Port {port.value!r}"
         )
         assert port.value in todo_doc, f"TODO.md missing Hexagonal Port {port.value!r}"
 

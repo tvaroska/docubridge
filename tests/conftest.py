@@ -1,18 +1,18 @@
 """Shared pytest fixtures and hooks.
 
-The `adapter` fixture yields SeamMode (local/gcp), for use with get_adapter:
-    def test_my_seam(adapter):
-        instance = get_adapter(Seam.sessions, adapter)
+The `adapter` fixture yields PortMode (local/gcp), for use with get_adapter:
+    def test_my_port(adapter):
+        instance = get_adapter(Port.sessions, adapter)
         ...
 
-The collection guard aborts on invalid @pytest.mark.seam names.
+The collection guard aborts on invalid @pytest.mark.port names.
 """
 
 import os
 
 import pytest
 
-from bridge.seams import SEAM_NAMES, SeamMode, is_valid_seam
+from bridge.ports import PORT_NAMES, PortMode, is_valid_port
 
 # Enable pytester for collection-guard tests
 pytest_plugins = ["pytester"]
@@ -27,9 +27,9 @@ _GCP = os.environ.get("BRIDGE_TEST_GCP") == "1"
 
 @pytest.fixture(
     params=[
-        pytest.param(SeamMode.local, id="local"),
+        pytest.param(PortMode.local, id="local"),
         pytest.param(
-            SeamMode.gcp,
+            PortMode.gcp,
             id="gcp",
             marks=pytest.mark.skipif(
                 not _GCP, reason="set BRIDGE_TEST_GCP=1 to run gcp adapters"
@@ -37,22 +37,21 @@ _GCP = os.environ.get("BRIDGE_TEST_GCP") == "1"
         ),
     ]
 )
-def adapter(request) -> SeamMode:
+def adapter(request) -> PortMode:
     """Parametrized adapter mode fixture (local always, gcp gated on BRIDGE_TEST_GCP=1)."""
     return request.param
 
 
 def pytest_collection_modifyitems(config, items):
-    """Abort collection on invalid @pytest.mark.port or @pytest.mark.seam names."""
+    """Abort collection on invalid @pytest.mark.port names."""
     bad = []
     for item in items:
-        for marker_name in ("port", "seam"):
-            for marker in item.iter_markers(name=marker_name):
-                name = marker.args[0] if marker.args else None
-                if not (isinstance(name, str) and is_valid_seam(name)):
-                    bad.append((item.nodeid, f"{marker_name}={name!r}"))
+        for marker in item.iter_markers(name="port"):
+            name = marker.args[0] if marker.args else None
+            if not (isinstance(name, str) and is_valid_port(name)):
+                bad.append((item.nodeid, f"port={name!r}"))
     if bad:
         lines = "\n".join(f"  {nodeid}: {entry}" for nodeid, entry in bad)
         raise pytest.UsageError(
-            f"invalid @pytest.mark.port / @pytest.mark.seam name(s); valid ports are {sorted(SEAM_NAMES)}:\n{lines}"
+            f"invalid @pytest.mark.port name(s); valid ports are {sorted(PORT_NAMES)}:\n{lines}"
         )

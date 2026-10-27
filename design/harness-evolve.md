@@ -5,7 +5,7 @@ related:
   - "agent-gym.md"
   - "skills.md"
   - "docai-prepass.md"
-  - "seams.md"
+  - "ports.md"
   - "disposition.md"
 tags: [bridge, agent-gym, harness-evolve, extraction, docai, optimization]
 ---
@@ -68,10 +68,10 @@ DocuBridge's declarative `skills/` architecture (`design/skills.md`), BigQuery O
 
 Used alone, Agent Gym eventually accumulates hundreds of granular `TribalKnowledgeRule` rows in Cloud SQL (`gym_tribal_rules`). Injecting 200 raw one-off hints into every extraction prompt causes context bloat and rule collisions.
 
-Combining **Agent Gym (Daytime Capture)** with **Harness Evolve (Nightly Skill Compiler)** resolves this through DocuBridge's existing **`skill_registry` seam** (`design/skills.md:142-148`):
+Combining **Agent Gym (Daytime Capture)** with **Harness Evolve (Nightly Skill Compiler)** resolves this through DocuBridge's existing **`skill_registry` port** (`design/skills.md:142-148`):
 
 ```
-DAYTIME (Online — bridge/agent_gym.py + bridge/a2ui_inbox.py)
+DAYTIME (Online — bridge/agent_gym/ + bridge/a2ui_inbox/)
 1. Broker / Underwriter / Credit Officer fixes a field in Zone 2 Quarantine or Zone 5 A2UI Inbox.
 2. Agent Gym distills an immediate, high-precision TribalKnowledgeRule ("Example of One")
    for tactical patching AND logs the verified (doc, SourceAnchor, patch, OTel trace) as a
@@ -100,20 +100,20 @@ PROMOTION (Zero Redeploy — skill_registry.install_skill)
 
 ## 3. Multi-Tier Extraction Evolution: Adding Document AI Standard & Custom Extractors
 
-Today, `docubridge` uses `GeminiExtractor` (with an optional deployment-wide `DocAIPrepass` OCR text layer in `bridge/extraction/docai.py`) as a clean baseline. As doctypes graduate to **Document AI Standard Extractors** (e.g., Identity/Driver License, Utility Bill, Closing Disclosure) and **Document AI Custom Extractors** (Foundation-Model Custom Extractor with uptraining for carrier quotes, credit agreements, and appraisals), the architecture preserves **100% downstream compatibility** while adapting what Agent Gym and Harness Evolve optimize inside `Seam.extraction`.
+Today, `docubridge` uses `GeminiExtractor` (with an optional deployment-wide `DocAIPrepass` OCR text layer in `bridge/extraction/docai.py`) as a clean baseline. As doctypes graduate to **Document AI Standard Extractors** (e.g., Identity/Driver License, Utility Bill, Closing Disclosure) and **Document AI Custom Extractors** (Foundation-Model Custom Extractor with uptraining for carrier quotes, credit agreements, and appraisals), the architecture preserves **100% downstream compatibility** while adapting what Agent Gym and Harness Evolve optimize inside `Port.extraction`.
 
 ### 3.1 What Stays 100% Unchanged
 
-Because `Seam.extraction` returns the canonical `ExtractionResult` wire contract (`contract/extraction.py`), **every layer downstream of extraction is completely invariant to the extractor engine**:
+Because `Port.extraction` returns the canonical `ExtractionResult` wire contract (`contract/extraction.py`), **every layer downstream of extraction is completely invariant to the extractor engine**:
 
 - **Disposition & Calibration:** `run_disposition_gate` (`bridge/disposition.py`) and `threshold_corridor` (`bridge/calibration.py`) consume `ExtractionResult` signals identically.
 - **Consolidation & Deterministic Math:** Stage 2 `OperationalStore` promotion, `Decimal` financial math, and bi-temporal AlloyDB views are untouched.
-- **A2UI Inbox & Programmable Trust:** Zone 5 A2UI cards (`bridge/a2ui_inbox.py`), `ExpertFeedbackSignal` capture, and `ProgrammableTrustPolicy` autonomy dials (`shadow_mode` → `guided_review` → `trusted_auto_approve`) work without change.
-- **Skill Packaging Contract:** `design/skills.md:45-58` and `design/seams.md:42` **already reserved** `metadata.bridge-docai-processor` in `SKILL.md` plus `assets/docai-entity-map.yaml` inside each doctype skill folder.
+- **A2UI Inbox & Programmable Trust:** Zone 5 A2UI cards (`bridge/a2ui_inbox/`), `ExpertFeedbackSignal` capture, and `ProgrammableTrustPolicy` autonomy dials (`shadow_mode` → `guided_review` → `trusted_auto_approve`) work without change.
+- **Skill Packaging Contract:** `design/skills.md:45-58` and `design/ports.md:42` **already reserved** `metadata.bridge-docai-processor` in `SKILL.md` plus `assets/docai-entity-map.yaml` inside each doctype skill folder.
 
-### 3.2 One Structural Addition Inside `Seam.extraction`: Per-Doctype Processor Routing
+### 3.2 One Structural Addition Inside `Port.extraction`: Per-Doctype Processor Routing
 
-Whereas `DocAIPrepass` runs a single deployment-wide OCR processor (`BRIDGE_DOCAI_PROCESSOR`) *before* doctype classification, **Standard and Custom Document AI Extractors are bound per doctype** (`metadata.bridge-docai-processor` in `skills/<doctype>/SKILL.md`). Because `extract(artifact_name)` receives an untyped document reference, `Seam.extraction` adds a lightweight routing step:
+Whereas `DocAIPrepass` runs a single deployment-wide OCR processor (`BRIDGE_DOCAI_PROCESSOR`) *before* doctype classification, **Standard and Custom Document AI Extractors are bound per doctype** (`metadata.bridge-docai-processor` in `skills/<doctype>/SKILL.md`). Because `extract(artifact_name)` receives an untyped document reference, `Port.extraction` adds a lightweight routing step:
 
 1. **Single-Candidate Fast Path:** When an exchange's active process skill declares a single candidate doctype carrying a `bridge-docai-processor` (e.g., `benefits-rfp` → `benefits-quote`), route directly to that processor and map `document.entities` via `assets/docai-entity-map.yaml`.
 2. **Multi-Candidate Classifier Path:** When multiple candidate doctypes exist (e.g., `address-proof` accepts `gov-id` or `utility-bill`, or must reject an out-of-label-space `passport`), run a fast **Document AI Custom Classifier** (or 1-page `Gemini 3.5 Flash-Lite` classification pass) to identify the doctype → dispatch to `skills/<doctype>/SKILL.md`'s `bridge-docai-processor`.
@@ -125,13 +125,13 @@ Whereas `DocAIPrepass` runs a single deployment-wide OCR processor (`BRIDGE_DOCA
 | :--- | :--- | :--- | :--- |
 | **Tier 1: Gemini Extractor**<br>(`bridge-docai-processor: ""`) | Newly onboarded or long-tail doctypes | Distills SME fixes into `EXTRACTION_HINT` and `ENTITY_ALIAS` rules. | • **`WikiSkill` / `APO`:** Mutates and compresses `SKILL.md` prompt instructions and `assets/schema.json` descriptions. |
 | **Tier 2: DocAI Standard Extractor**<br>(Fixed Google weights & entity schema) | `gov-id` (ID Proofing / Driver License)<br>`utility-bill` (Utility Parser)<br>`closing-disclosure` | Captures **issuer-specific entity-mapping overrides** (e.g., when a utility provider prints `service_address` in a block DocAI tags as `billing_address`). | • **Cannot mutate Google-managed processor weights.**<br>• Evolves **`assets/docai-entity-map.yaml`** priority/fallback chains.<br>• **Recalibrates confidence corridors** in `bridge/calibration.py` (`auto_approve_at`, `resubmit_below`).<br>• Tunes **selective Gemini fallback rules** (saving ~80% of LLM tokens). |
-| **Tier 3: DocAI Custom Extractor**<br>(Foundation-Model Custom Extractor + Uptraining) | `benefits-quote`<br>`credit-agreement`<br>`lloyds-quote`<br>`appraisal` | **Turns SME fixes into labeled DocAI training examples:** `ExpertFeedbackSignal.source_anchor` (`page_number` + `bounding_box`) + `after_value` maps 1:1 to a Document AI labeled `Document` proto. | • **Evolves Custom Extractor property descriptions** (zero-shot/few-shot schema prompts inside DocAI).<br>• **Triggers & gates DocAI Uptraining** on a **50/50 Train/Holdout split**.<br>• Pins the winning `/processorVersions/{v}` in `SKILL.md` via `install_skill`. |
+| **Tier 3: DocAI Custom Extractor**<br>(Foundation-Model Custom Extractor + Uptraining) | `benefits-quote`<br>`credit-agreement`<br>`lloyds-quote`<br>`appraisal` | **Turns SME fixes into labeled DocAI training examples:** `ExpertFeedbackSignal.source_anchor` (`page_number` + `bounding_box`) + `after_value` maps 1:1 to a Document AI labeled `Document` proto (`export_docai_uptraining_dataset` / `GET /v1/gym/export/docai-dataset`). | • **Evolves Custom Extractor property descriptions** (zero-shot/few-shot schema prompts inside DocAI).<br>• **Triggers & gates DocAI Uptraining** on a **50/50 Train/Holdout split**.<br>• Pins the winning `/processorVersions/{v}` in `SKILL.md` via `install_skill`. |
 
 ### 3.4 Three High-Leverage Synergies with Document AI
 
 1. **`SourceAnchor` + `ExpertFeedbackSignal` = Turnkey Document AI Uptraining Dataset:**
-   - `extract_docai_source_anchors()` (`bridge/extraction/docai.py:245-302`) and `ExpertFeedbackSignal.source_anchor` (`bridge/agent_gym.py:134`) already capture the **exact PDF URI, 1-based page number, normalized bounding box `(x0, y0, x1, y1)`, field path, and corrected value** whenever a reviewer edits a field in Zone 2 Quarantine or Zone 5 A2UI Inbox.
-   - That tuple translates directly into Document AI's `ImportDocuments` dataset format (`Document.entities[].page_anchor.page_refs[].bounding_poly`). Daytime reviews in the A2UI Inbox automatically build the labeled uptraining dataset for Document AI Custom Extractors with zero separate labeling tool.
+   - `extract_docai_source_anchors()` (`bridge/extraction/docai.py:245-302`) and `ExpertFeedbackSignal.source_anchor` (`bridge/agent_gym/models.py`) already capture the **exact PDF URI, 1-based page number, normalized bounding box `(x0, y0, x1, y1)`, field path, and corrected value** whenever a reviewer edits a field in Zone 2 Quarantine or Zone 5 A2UI Inbox.
+   - `AgentGymEngine.export_docai_uptraining_dataset()` (`bridge/agent_gym/engine.py`, exposed at `GET /v1/gym/export/docai-dataset`) translates those verified tuples directly into Document AI's `ImportDocuments` dataset format (`Document.entities[].page_anchor.page_refs[].bounding_poly.normalized_vertices`). Daytime reviews in the A2UI Inbox automatically build the labeled uptraining dataset for Document AI Custom Extractors with zero separate labeling tool.
 2. **Confidence Corridor Recalibration (`bridge/calibration.py`) Across Engines:**
    - Gemini self-reported `field_confidence` values (`0.80–0.98`) have a different calibration curve than Document AI optical/entity confidence scores (`0.62–0.99`).
    - Whenever a doctype switches from `gemini` to a Document AI Standard or Custom processor, Harness Evolve's Meta-Optimizer runs `bridge.calibration.threshold_corridor()` against the 50/50 split to compute engine-calibrated `(auto_approve_at, resubmit_below)` thresholds in `assets/policy.yaml`.
@@ -139,20 +139,18 @@ Whereas `DocAIPrepass` runs a single deployment-wide OCR processor (`BRIDGE_DOCA
    - `_PROCESSOR_RE` (`bridge/extraction/docai.py:81-89`) already accepts version-pinned resource names:
      `projects/{project}/locations/{location}/processors/{id}/processorVersions/{version}`
    - When an uptrained Document AI Custom Extractor version passes the **50% Holdout gate** and `GymReportCard`, Harness Evolve promotes it by updating `metadata.bridge-docai-processor` in `skills/<doctype>/SKILL.md` from `.../processorVersions/v1` to `.../processorVersions/v2` via `install_skill`.
-   - If `record_shadow_comparison()` (`bridge/agent_gym.py:1125-1207`) later detects carrier format drift, **Instant Safety Dial-Back** reverts both the `ProgrammableTrustPolicy` autonomy level *and* the pinned `/processorVersions/{v}` in `SKILL.md` with zero redeploy.
+   - If `record_shadow_comparison()` (`bridge/agent_gym/engine.py`) later detects carrier format drift, **Instant Safety Dial-Back** reverts both the `ProgrammableTrustPolicy` autonomy level *and* the pinned `/processorVersions/{v}` in `SKILL.md` with zero redeploy.
 
 ---
 
-## 4. Post-Demo Implementation Roadmap (Next Phase)
+## 4. Implementation Status & Roadmap (`v1.14.0`)
 
-To preserve full stability for the current `v1.11.0-bq-telemetry` demo builds, implementation is sequenced into four self-contained post-demo steps:
-
-| Step | Scope | Key Modules & Seams | Verification Gate |
+| Step | Scope | Key Modules & Ports | Status & Verification Gate |
 | :--- | :--- | :--- | :--- |
-| **Phase 1: Daytime Hint Injection & Live Stress Replay** | Wire `AgentGymEngine.get_extraction_hints()` into `GeminiExtractor` prompt assembly and replay real fixture/signal documents inside `evaluate_candidate_rule()`. | `bridge/agent_gym.py`<br>`bridge/extraction/gemini.py` | Unit + seam tests verifying a promoted `EXTRACTION_HINT` alters the extraction prompt and passes live replay. |
-| **Phase 2: Per-Doctype DocAI Standard & Custom Extractor Routing** | Activate `metadata.bridge-docai-processor` + `assets/docai-entity-map.yaml` per doctype skill, with `Document.entities` → `ExtractionResult` mapping and selective Gemini fallback. | `bridge/extraction/docai.py`<br>`bridge/doctypes.py`<br>`skills/*/SKILL.md` | Shared seam parity tests (`tests/test_docai_extraction.py`) verifying entity mapping, `SourceAnchor` bboxes, and terminal-outcome parity. |
-| **Phase 3: Harness Evolve Offline Skill Compiler (`bridge/harness_evolve.py`)** | Build offline compiler folding promoted `gym_tribal_rules` into `SKILL.md` / `schema.json` / `docai-entity-map.yaml`, running `APO` prompt compression, and gating on a 50/50 split + `threshold_corridor()`. | `bridge/harness_evolve.py`<br>`bridge/calibration.py`<br>`Seam.skill_registry` | Holdout evaluation gate (`passed_gate=True`, `threshold_corridor.feasible=True`) + hot-reload via `install_skill`. |
-| **Phase 4: DocAI Custom Extractor Dataset Export & Two-Sided HITL Calibration** | Export verified `ExpertFeedbackSignal` + `SourceAnchor` records to Document AI `ImportDocuments` format, and wire Pre-Commitment / Reasoning Probes / `RAIR`+`RSR` metrics in A2UI Inbox. | `bridge/agent_gym.py`<br>`bridge/a2ui_inbox.py` | End-to-end test exporting labeled `Document` protos and enforcing verified `consecutive_matches` before `trusted_auto_approve`. |
+| **Phase 1: Daytime Hint Injection & Live Stress Replay** | Wire `AgentGymEngine.get_extraction_hints()` into `GeminiExtractor` prompt assembly and replay real fixture/signal documents inside `evaluate_candidate_rule()`. | `bridge/agent_gym/engine.py`<br>`bridge/extraction/gemini.py` | **Implemented (`v1.14.0`):** Unit + port tests verify a promoted `EXTRACTION_HINT` alters the extraction prompt and passes live 3-tier evaluation. |
+| **Phase 2: Per-Doctype DocAI Standard & Custom Extractor Routing** | Activate `metadata.bridge-docai-processor` + `assets/docai-entity-map.yaml` per doctype skill, with `Document.entities` → `ExtractionResult` mapping and selective Gemini fallback. | `bridge/extraction/docai.py`<br>`bridge/doctypes.py`<br>`skills/*/SKILL.md` | **Design Ready:** Pre-pass OCR + `SourceAnchor` bbox extraction is active (`tests/test_docai_extraction.py`); per-doctype `docai-entity-map.yaml` routing is next. |
+| **Phase 3: Skill Compiler (`compile_rules_to_skill`)** | Fold promoted `gym_tribal_rules` into content-addressed `SkillRevisionRecord`s (`POST /v1/gym/compile-skill`) with 1-click rollback (`POST /v1/gym/skills/{skill_name}/rollback`). | `bridge/agent_gym/engine.py`<br>`bridge/calibration.py`<br>`Port.skill_registry` | **Implemented (`v1.14.0`):** Verified in `tests/test_enterprise_data_architecture.py`. |
+| **Phase 4: DocAI Custom Extractor Dataset Export & Two-Sided HITL Calibration** | Export verified `ExpertFeedbackSignal` + `SourceAnchor` records to Document AI `ImportDocuments` format (`GET /v1/gym/export/docai-dataset`), and enforce Pre-Commitment / `RSR` metrics in A2UI Inbox. | `bridge/agent_gym/engine.py`<br>`bridge/a2ui_inbox/` | **Implemented (`v1.14.0`):** End-to-end test exporting labeled `Document` protos and enforcing verified `consecutive_matches` before `trusted_auto_approve`. |
 
 ## Related
-- [Agent Gym & Programmable Trust](agent-gym.md) · [Skills](skills.md) · [Document AI pre-pass](docai-prepass.md) · [Managed-Service Seams](seams.md) · [Disposition](disposition.md)
+- [Agent Gym & Programmable Trust](agent-gym.md) · [Skills](skills.md) · [Document AI pre-pass](docai-prepass.md) · [Managed-Service Ports](ports.md) · [Disposition](disposition.md)

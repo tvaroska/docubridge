@@ -5,7 +5,7 @@ the structural, API-key-free surface — the pure parse helper, a fake-client ex
 the lazy-import guard, the engine-select refuse-loud, and the adapter identity. The
 live corpus terminal-outcome parity test is gated on ``BRIDGE_TEST_GEMINI=1`` (the
 extraction analogue of ``BRIDGE_TEST_GCP``) and SKIPS in the default suite, exactly
-like the live seam tests — it is the "reproduce the Address eval corpus on the
+like the live port tests — it is the "reproduce the Address eval corpus on the
 deployed extraction path" gate, run against a provisioned project (P7-9).
 """
 
@@ -29,8 +29,8 @@ from bridge.extraction.gemini import (
     build_response_schema,
     build_retry_correction,
 )
-from bridge.seams import Seam, SeamMode, get_adapter
-from bridge.seams.gcp import GcpExtraction
+from bridge.ports import Port, PortMode, get_adapter
+from bridge.ports.gcp import GcpExtraction
 from contract.extraction import ExtractionResult, fields_requiring_review
 
 _GEMINI = os.environ.get("BRIDGE_TEST_GEMINI") == "1"
@@ -326,7 +326,7 @@ async def test_extract_pins_response_schema_from_installed_skills():
 
 async def test_schema_catalog_is_read_per_extract_not_at_construction(monkeypatch):
     """The registry is read on each extract (live doctype-add), never at construction."""
-    from bridge.seams.local import LocalSkillRegistry
+    from bridge.ports.local import LocalSkillRegistry
 
     reads = {"n": 0}
     original = LocalSkillRegistry.list_skills
@@ -361,7 +361,7 @@ async def test_doctype_added_after_first_extract_reaches_the_next_prompt(
     await extractor.extract("a.svg")
     assert "w9-form" not in str(client.models.calls[0])
 
-    get_adapter(Seam.skill_registry, SeamMode.local).install_skill(
+    get_adapter(Port.skill_registry, PortMode.local).install_skill(
         "w9-form",
         "---\nname: w9-form\ndescription: A W-9.\nmetadata:\n  bridge-kind: doctype\n"
         "---\n\nExtract the W-9.\n",
@@ -373,9 +373,9 @@ async def test_doctype_added_after_first_extract_reaches_the_next_prompt(
 async def test_new_doctype_skill_changes_the_prompt_with_no_code_change(
     tmp_path, monkeypatch
 ):
-    """Installing a doctype skill through the seam changes extraction — no code change."""
+    """Installing a doctype skill through the port changes extraction — no code change."""
     monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(tmp_path))
-    registry = get_adapter(Seam.skill_registry, SeamMode.local)
+    registry = get_adapter(Port.skill_registry, PortMode.local)
     registry.install_skill(
         "pay-stub",
         "---\n"
@@ -454,7 +454,7 @@ def test_half_installed_doctype_contributes_name_only(tmp_path, monkeypatch):
     from bridge.doctypes import doctype_schemas
 
     monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(tmp_path))
-    registry = get_adapter(Seam.skill_registry, SeamMode.local)
+    registry = get_adapter(Port.skill_registry, PortMode.local)
     registry.install_skill(
         "pay-stub",
         "---\nname: pay-stub\ndescription: A pay stub.\n"
@@ -469,20 +469,20 @@ def test_unparsable_doctype_schema_is_refused_not_propagated(
 ):
     """A PRESENT but corrupt schema asset is an authoring bug (S0-arch-5, S4-usecase-3).
 
-    Refused loud at the seam's install (``ValueError`` naming the skill, nothing
+    Refused loud at the port's install (``ValueError`` naming the skill, nothing
     written); dropped raw into the registry it is NOT INSTALLED — skipped with a logged
     reason — so it can never take down every other doctype's extraction / Path-A.
     """
     from bridge.doctypes import doctype_schemas
 
     monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(tmp_path))
-    registry = get_adapter(Seam.skill_registry, SeamMode.local)
+    registry = get_adapter(Port.skill_registry, PortMode.local)
     skill_md = (
         "---\nname: pay-stub\ndescription: A pay stub.\n"
         "metadata:\n  bridge-kind: doctype\n  bridge-schema: assets/schema.json\n---\n\nx\n"
     )
 
-    # (i) Through the seam: refused before any write.
+    # (i) Through the port: refused before any write.
     with pytest.raises(ValueError, match="pay-stub"):
         registry.install_skill(
             "pay-stub", skill_md, assets={"assets/schema.json": "{not json"}
@@ -756,7 +756,7 @@ def test_gemini_imports_genai_lazily_not_at_module_level():
     ``import bridge``, so a ``sys.modules`` check is meaningless. The load-bearing
     guarantee is structural: ``bridge/extraction/gemini.py`` adds NO module-level
     google import (it stays edge-free/cycle-free like ``fixture.py``) and builds no
-    client eagerly — the credential-free test seam.
+    client eagerly — the credential-free test port.
     """
     src = (
         Path(__file__).resolve().parents[1] / "bridge/extraction/gemini.py"
@@ -834,9 +834,9 @@ def test_gcp_extraction_env_selects_engine(monkeypatch):
 
 def test_get_adapter_extraction_gcp_is_gcp_extraction():
     """P7-6: extraction dispatches to GcpExtraction in gcp mode (no longer raises)."""
-    adapter = get_adapter(Seam.extraction, SeamMode.gcp)
+    adapter = get_adapter(Port.extraction, PortMode.gcp)
     assert isinstance(adapter, GcpExtraction)
-    assert adapter.seam is Seam.extraction
+    assert adapter.port is Port.extraction
 
 
 # --- live corpus terminal-outcome parity (gated) ---------------------------
@@ -855,7 +855,7 @@ async def test_live_corpus_terminal_outcome_parity(record):
     disposition gate the fixture path uses, and assert the same
     expected_disposition/expected_gate. Terminal-outcome parity only — a real Gemini
     call will not reproduce the corpus's exact confidence floats (CLAUDE.md;
-    design/seams.md), so confidences are NOT asserted.
+    design/ports.md), so confidences are NOT asserted.
     """
     extractor = GeminiExtractor()
     result = await extractor.extract(record["artifact"])

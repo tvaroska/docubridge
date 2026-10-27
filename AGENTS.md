@@ -1,12 +1,12 @@
 # AGENTS.md — A2A Document Bridge Agent Guide & Lessons Learned
 
-This file mirrors [`CLAUDE.md`](CLAUDE.md) and captures the repository invariants, architecture boundaries, verification gates, and operational lessons learned across the 6-Zone Enterprise Data Architecture, Agent Gym, Vertex AI Agent Engine, and GCP (`docubridge-showcase`) deployments.
+This file mirrors [`CLAUDE.md`](CLAUDE.md) and captures the repository invariants, architecture boundaries, verification gates, and operational lessons learned across the 6-Zone Enterprise Data Architecture, Agent Gym, Gemini platform Agent Engine, and GCP (`docubridge-showcase`) deployments.
 
 ## 1. Repository Map & Core Invariants
 
 ```
 spec/       THE WHAT — requirements (cujs, standards, demos/, open-questions); forkable, protected
-design/     THE HOW — architecture, seams, zones, patterns, agent-gym, harness-evolve (source of truth)
+design/     THE HOW — architecture, ports, zones, patterns, agent-gym, harness-evolve (source of truth)
 contract/   shared Pydantic wire types — the ONLY package both bridge/ and agents/ import
 bridge/     the reusable Bridge CORE — NEVER imports agents/
 agents/     service-agent consumers + demo drivers (Address, Benefits carriers, console)
@@ -14,11 +14,11 @@ skills/     Agent Skills the Bridge loads at runtime
 demo/       5-scene Enterprise Showcase Console (enterprise-demo.html) + GCP video recorder
 frontend/   the four React/Vite apps + shared lib + e2e
 terraform/  IaC by substrate primitive (network, iam, database, secrets, gcs, tasks, telemetry, runtime, gateway, frontend)
-tests/      the shared seam suite (local + gcp adapters) + enterprise architecture + conformance + perf
+tests/      the shared port suite (local + gcp adapters) + enterprise architecture + conformance + perf
 ```
 
 - **Isolation Invariant (`tests/test_isolation_guard.py`):** `bridge/` **never imports** `agents/`, and `agents/` **never imports** `bridge/`. Both import `contract/`.
-- **Ports & Adapters (`bridge/ports/` & `bridge/seams/`):** All 13 managed-service boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`) resolve through `resolve_port_mode(port)` (`BRIDGE_PORT_<NAME>` → `BRIDGE_SEAM_<NAME>` → `BRIDGE_PORT_MODE` → `BRIDGE_SEAM_MODE` → `local`) and `get_port_adapter(port, mode)`.
+- **Ports & Adapters (`bridge/ports/`):** All 13 managed-service boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`) resolve through `resolve_port_mode(port)` (`BRIDGE_PORT_<NAME>` → `BRIDGE_PORT_MODE` → `local`) and `get_port_adapter(port, mode)`, decomposed into `bridge/ports/local/{stores,services,enterprise,__init__}.py` and `bridge/ports/gcp/{common,stores,services,enterprise,__init__}.py`. Legacy `seams` terminology (`bridge/seams/`, `BRIDGE_SEAM_*`, `@pytest.mark.seam`) is permanently removed.
 - **Skill-Name Literal Guard (`test_core_names_no_skill`):** `tests/test_isolation_guard.py` scans every Python AST string literal in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring literal equals an installed folder name in `skills/` (`address-proof`, `gov-id`, `utility-bill`, `benefits-procurement`, `benefits-quote`, `benefits-rfp`, `commercial-loan-underwriting`, `trid-closing-disclosure`). Never hardcode an installed skill folder name inside `bridge/` core modules.
 
 - **Protected Spec (`CRITICAL.md`):** Never edit `spec/` during implementation tasks; propose spec changes in `DECISIONS.md` instead.
@@ -39,7 +39,7 @@ tests/      the shared seam suite (local + gcp adapters) + enterprise architectu
    - `contract.enums.Disposition` only defines `accepted`, `rejected`, and `pending` (there is no `Disposition.parked`). Endpoints accepting `status="parked"` (`IngestSubmissionRequest`) must map `"parked"` to `Disposition.pending` (`Gate.hitl_review`), and Day-2 Agent Gym auto-promotion upgrades `Disposition.pending` → `Disposition.accepted` (`Gate.auto_approve`).
 4. **End-to-End Agent Gym Day-2 Payoff Wiring:**
    - Promoted `EXTRACTION_HINT` rules in `AgentGymEngine` (`bridge/agent_gym/`) are wired in two places: (a) `GeminiExtractor._catalog()` / `build_extraction_prompt(schemas, extraction_hints=...)` (`bridge/extraction/gemini.py`) dynamically rebuilds the extraction prompt when promoted rule IDs change, and (b) `ingest_accepted_submission()` (`bridge/user_interaction/surfaces.py`) applies matching hints to `key_fields`, auto-promotes `Disposition.pending` → `Disposition.accepted`, and records `docubridge.applied_extraction_hints` on the OpenTelemetry span.
-5. **Vertex AI Agent Engine (`BridgeA2aAgentEngine`) Gotchas:**
+5. **Gemini platform Agent Engine (`BridgeA2aAgentEngine`) Gotchas:**
    - `vertexai.preview.reasoning_engines.A2aAgent` in `google-cloud-aiplatform==1.165.1` targets `a2a-sdk 0.3.x` and rejects `capabilities.streaming=True`; `BridgeA2aAgentEngine` (`bridge/edge/agent_engine_a2a.py`) implements `OperationRegistrable` + `Cloneable` directly on `a2a-sdk==1.1.2` and strips C-extension protobuf descriptors in `__getstate__`/`clone()` for `cloudpickle`.
    - `resolve_a2a_engine()` must explicitly `import vertexai.agent_engines` (not just `import vertexai`).
 6. **Cloud Build `uv.lock` Index & Headless Chrome DevTools Proxy Bypass:**
@@ -48,3 +48,7 @@ tests/      the shared seam suite (local + gcp adapters) + enterprise architectu
 7. **Cloud Run Warm Instances & Terraform Auth:**
    - Both `docubridge-showcase-bridge` and `docubridge-showcase-bridge-rfp-board` are configured with `min_instances = 1` (`terraform/modules/runtime/main.tf`) to prevent cold starts during live demos.
    - When running `terraform` outside GCE metadata environments, either export `GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` or update Cloud Run services via `gcloud run services update`.
+8. **Offline `uv.lock` Version Sync, `git rm` `__pycache__` Cleanup & `KnowledgeCatalog` Protocol:**
+   - Whenever `project.version` in `pyproject.toml` is bumped, also update `version = "..."` on the `[[package]] name = "docubridge"` entry in `uv.lock`; otherwise `uv run` detects a lockfile mismatch and attempts to re-resolve dependencies over the network (failing in offline sandboxes).
+   - Running `git rm -rf <pkg>` removes tracked `.py` files but leaves untracked `__pycache__/` directories on disk, causing `Path("<pkg>").exists()` checks to remain `True` until `rm -rf <pkg>` is also executed.
+   - `bridge.knowledge_catalog.KnowledgeCatalog` is a `typing.Protocol` (cannot be instantiated directly); always instantiate `InMemoryKnowledgeCatalog(operational_store=...)` when binding `CollectExecutor.bind_enterprise_stores(...)` or `build_a2a_app(...)` in local/test runs.

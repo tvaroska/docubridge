@@ -6,7 +6,7 @@ consumer loop (`run_collection`, the real `agents/address/driver.py`) against th
 **deployed** edge — the Cloud Run runtime behind the Gateway — and asserts the corpus's
 **terminal outcomes** reproduce on the deployed path.
 
-**Parity is terminal-outcome, NEVER ledger-identical** (design/seams.md; every P7
+**Parity is terminal-outcome, NEVER ledger-identical** (design/ports.md; every P7
 DECISIONS entry). The deployed edge runs real Gemini extraction over a real Cloud SQL
 task store with real timestamps, so it will NOT byte-match the fixture. These assertions
 pin only accept / reject / satisfied — the disposition/gate/satisfaction the corpus
@@ -15,7 +15,7 @@ oracle names — not confidence floats or row contents.
 **Auth (Agent Identity, P7-5).** The deployed edge sits behind the Gateway with per-party
 `roles/run.invoker`. The consumer presents a per-call OIDC **ID token** (audience = the
 service origin) as an `Authorization: Bearer` header — the same Agent-Identity pattern as
-`bridge.seams.gcp.GcpA2AClient` (a per-call OIDC id token, never a message bearer field).
+`bridge.ports.gcp.GcpA2AClient` (a per-call OIDC id token, never a message bearer field).
 The token rides an injected httpx client used by the collect node's `RemoteA2aAgent` for
 BOTH the card fetch and the RPC send, so the served card's Gateway-authorized origin also
 passes the adk >=2.7 same-origin validation.
@@ -77,7 +77,7 @@ class _OidcAuth(httpx.Auth):
 
     Mirrors ``GcpA2AClient._fetch_id_token``: mint a workload OIDC ID token with
     ``audience == the deployed service origin`` via ``google.oauth2.id_token`` and
-    present it as a bearer header. Lazy imports (like the seam adapter) so importing
+    present it as a bearer header. Lazy imports (like the port adapter) so importing
     this test module credential-free pulls no google.auth machinery.
     """
 

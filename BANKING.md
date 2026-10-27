@@ -87,4 +87,23 @@ open http://localhost:8080/demo
 - `GET /v1/catalog/glossary` & `GET /v1/catalog/lineage/LOAN-MERIDIAN-001/origination_fee` — Inspect business glossary terms, SPIFFE agents, and 6-hop W3C PROV-O field lineage.
 - `GET /v1/registry/catalog`, `GET /v1/registry/lineage/LOAN-MERIDIAN-001`, & `GET /v1/gateway/status` — Inspect the Gemini platform Agent & Skill Registry, process-instance skill lineage, and Agent Gateway (`CLIENT_TO_AGENT` + `AGENT_TO_ANYWHERE` UAP CEL).
 - `GET /v1/gym/rules` & `GET /v1/gym/trust-policies` — View distilled Tribal Knowledge Rules, 3-Tier evaluation report cards, and Programmable Trust autonomy slices.
+- `GET /v1/gym/export/docai-dataset` — Export verified SME feedback signals (`ExpertFeedbackSignal` + `SourceAnchor` bounding polygons) as a ready-to-import Document AI `ImportDocuments` Custom Extractor uptraining dataset.
 - `GET /v1/telemetry/analytics` & `GET /v1/telemetry/sql-eval` — Query 22-step OpenTelemetry `gen_ai.*` trace analytics and the 5-gate BigQuery `Rule 0` SQL evaluation + Rogan-Gladen debiased pass rate.
+
+---
+
+## 4. FSI Tech Risk & CISO Governance Matrix (GA Terraform vs. Control-Plane Emulators)
+
+For regulated financial institutions (e.g., Tier-1 banks with strict **GA-only** production gates under SR 11-7 / OCC Model Risk Management), the table below distinguishes between **GA GCP Infrastructure Provisioned via Terraform** (`terraform/modules/*`) and **Application-Enforced Gemini Platform Control Planes** (`bridge/*`):
+
+| Control Plane / Zone | GCP / Gemini Platform Capability | Launch Tier | Realization in DocuBridge (`terraform/` & `bridge/`) |
+| :--- | :--- | :--- | :--- |
+| **Zone 1 · Edge & Network Isolation** | Cloud Run v2 + External HTTPS LB + Cloud Armor WAF (`edge_waf`) + 2-Subnet VPC (`internal`/`external`) | **GA** | Provisioned in [`terraform/modules/gateway/`](terraform/modules/gateway/main.tf) and [`terraform/modules/network/`](terraform/modules/network/main.tf). |
+| **Zone 2 · Extraction & OCR** | Gemini (`gemini-3.8-flash` workhorse, `gemini-4-argon` judge) + Document AI OCR / Custom Extractor | **GA** | Implemented in [`bridge/extraction/gemini.py`](bridge/extraction/gemini.py) and [`bridge/extraction/docai.py`](bridge/extraction/docai.py). |
+| **Zone 3 · WORM Evidence Vault** | Cloud Storage Retention Policy Lock (`7-year WORM`) + `if_generation_match=0` | **GA** | Provisioned in [`terraform/modules/gcs/`](terraform/modules/gcs/main.tf) (`enable_audit_vault`, `lock_audit_vault_retention`) + [`bridge/vault.py`](bridge/vault.py). |
+| **Zone 3/4 · Bi-Temporal Store & Lakehouse** | Cloud SQL for PostgreSQL 16 (Private IP + `cloudsql.iam_authentication = "on"`) + BigQuery Open Iceberg | **GA** | Provisioned in [`terraform/modules/database/`](terraform/modules/database/main.tf) and [`terraform/modules/telemetry/`](terraform/modules/telemetry/main.tf) + [`bridge/operational_store/`](bridge/operational_store/__init__.py). |
+| **Zone 5 · HITL Feedback Persistence** | Cloud SQL Postgres (`SqlActionInboxStore`, `SqlAgentGymEngine`) vs. 1P `FeedbackService` API | **GA (Cloud SQL)** / *Preview (1P API)* | Strict-GA banks persist SME overrides & RFC 6902 patches in GA Cloud SQL + BigQuery (`gym_feedback_signals`, `action_inbox_audits`). |
+| **Zone 6 · Agent Runtime & Sessions** | Agent Engine (`ReasoningEngine`, `VertexAiSessionService`, `VertexAiMemoryBankService`) with PSC | **GA** | Implemented in [`bridge/edge/agent_engine_a2a.py`](bridge/edge/agent_engine_a2a.py) and [`bridge/ports/gcp/`](bridge/ports/gcp/__init__.py). |
+| **Zone 6 · Agent Identity & OBO** | SPIFFE JWT-SVID (`RS256`/`ES256`) + Google OIDC + Secret Manager (`bridge-spiffe-svid-secret`) | **GA** | Provisioned in [`terraform/modules/secrets/`](terraform/modules/secrets/main.tf) and enforced in [`bridge/identity.py`](bridge/identity.py). |
+| **Zone 6 · Agent & Skill Registry + Gateway CEL** | Agent Registry (`agentregistry.googleapis.com`), Skill Registry (`SkillRevision`), Agent Gateway (`CLIENT_TO_AGENT` Model Armor + `AGENT_TO_ANYWHERE` IAM v3 UAP CEL) | **GA (Agents/MCP/Gateway/CEL)** / *Preview (Skill Registry)* | Enforced in [`bridge/agent_gym/registry_gateway.py`](bridge/agent_gym/registry_gateway.py) with optional live GCP Model Armor REST inspection (`BRIDGE_MODEL_ARMOR_TEMPLATE`) and SQL persistence (`gym_skill_revisions`, `gym_registry_services`, `gym_registry_bindings`). |
+| **Observability & 3-Tier SQL Eval** | Cloud Trace v2 (`traces:batchWrite`), Cloud Logging, BigQuery `otel_spans` + `v_trace_sql_evaluation` | **GA** | Provisioned in [`terraform/modules/telemetry/`](terraform/modules/telemetry/main.tf) and [`bridge/telemetry/`](bridge/telemetry/__init__.py). |

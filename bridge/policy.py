@@ -59,8 +59,8 @@ def load_disposition_policy(
 def disposition_policy_from_doc(skill_name: str, policy_doc: dict) -> DispositionPolicy:
     """Parse + validate the ``disposition:`` block of an already-loaded policy doc.
 
-    The pure half of ``load_disposition_policy``, shared with the live seam reader (the
-    policy doc read through the ``skill_registry`` seam). Same checks, same messages.
+    The pure half of ``load_disposition_policy``, shared with the live port reader (the
+    policy doc read through the ``skill_registry`` port). Same checks, same messages.
     """
     disposition = policy_doc.get("disposition")
     if not disposition:

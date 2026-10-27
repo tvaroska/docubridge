@@ -71,7 +71,7 @@ from bridge.edge.wire import (
 )
 from bridge.extraction.fixture import FixtureExtractor
 from bridge.offscript import REASON_HUMAN_REVIEW
-from bridge.seams import Seam, get_adapter
+from bridge.ports import Port, get_adapter
 from contract.enums import Disposition, Gate
 from contract.wire import CollectRequest, ExchangeTurn, HumanReviewResolution
 from tests._scripted_llm import Reply, ScriptedLlm, ToolCall
@@ -355,7 +355,7 @@ async def test_resume_after_rebuild_reaches_timeline_resolution(tmp_path):
     ctx = "ctx-rebuild"
     reviewer_message = "Reviewed by a person: the AquaUtil bill is acceptable."
 
-    task_store = get_adapter(Seam.task_store, "local").build_task_store(db_url=task_dsn)
+    task_store = get_adapter(Port.task_store, "local").build_task_store(db_url=task_dsn)
     llm = _review_llm(AQUA[0])
     sessions = DatabaseSessionService(db_url=session_dsn)
     app, _leg = _app(llm, session_service=sessions, task_store=task_store)
@@ -369,7 +369,7 @@ async def test_resume_after_rebuild_reaches_timeline_resolution(tmp_path):
     await sessions.db_engine.dispose()
     del app, _leg, llm, task_store, sessions  # the restart boundary: nothing survives
 
-    task_store2 = get_adapter(Seam.task_store, "local").build_task_store(
+    task_store2 = get_adapter(Port.task_store, "local").build_task_store(
         db_url=task_dsn
     )
     sessions2 = DatabaseSessionService(db_url=session_dsn)

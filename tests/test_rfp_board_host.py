@@ -69,10 +69,10 @@ HOST_ENV = (
     "BRIDGE_EMAIL_DRAIN_INTERVAL",
     "BRIDGE_EMAIL_DRAIN_URL",
     "BRIDGE_EMAIL_MAX_BYTES",
-    "BRIDGE_SEAM_EMAIL_INGRESS",
-    "BRIDGE_SEAM_EXTRACTION",
-    "BRIDGE_SEAM_EXCHANGE_STORE",
-    "BRIDGE_SEAM_MODE",
+    "BRIDGE_PORT_EMAIL_INGRESS",
+    "BRIDGE_PORT_EXTRACTION",
+    "BRIDGE_PORT_EXCHANGE_STORE",
+    "BRIDGE_PORT_MODE",
     "BRIDGE_ARTIFACT_BUCKET",
     "BRIDGE_PUBLIC_URL",
     "BRIDGE_EXCHANGE_DB_URL",
@@ -290,7 +290,7 @@ def test_poll_loop_files_a_landed_reply_with_no_explicit_drain(host_env, dsn):
             attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
         )
         key = landing_key(raw)
-        assert proc.seam.land(key, raw)
+        assert proc.port.land(key, raw)
         assert _wait_for(
             lambda: _cells(client)[("carrier-b", "CRITICAL_ILLNESS")] == "received"
         )
@@ -300,7 +300,7 @@ def test_poll_loop_files_a_landed_reply_with_no_explicit_drain(host_env, dsn):
         time.sleep(0.5)
         rate = (drains - start) / (time.monotonic() - t0)
         assert rate < 1 / 0.05 * 1.5
-    assert proc.seam.processed(key)["status"] == "filed"
+    assert proc.port.processed(key)["status"] == "filed"
 
 
 def test_lifespan_closes_the_store(clean_env):
@@ -347,13 +347,13 @@ class _Wrapping(ExchangeStore):
 
 
 def _replica(store: ExchangeStore, mail_dir) -> EmailProcessor:
-    """One replica: its own board + seam handle over the SHARED store and landing dir."""
-    from bridge.seams.local import LocalEmailIngress
+    """One replica: its own board + port handle over the SHARED store and landing dir."""
+    from bridge.ports.local import LocalEmailIngress
 
     board = RfpBoard(policy=load_rfp_policy(PROCESS), clock=lambda: NOW, store=store)
     return EmailProcessor(
         board=board,
-        seam=LocalEmailIngress(mail_dir),
+        port=LocalEmailIngress(mail_dir),
         mailbox=MAILBOX,
         secret=SECRET,
         extraction=extractor(),
@@ -368,7 +368,7 @@ def _land_ci_reply(proc: EmailProcessor, party: str = "carrier-a") -> str:
         attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
     )
     key = landing_key(raw)
-    assert proc.seam.land(key, raw)
+    assert proc.port.land(key, raw)
     return key
 
 
@@ -381,7 +381,7 @@ def test_crash_between_put_and_marker_files_no_duplicate_version(tmp_path):
     def crash(*_args, **_kwargs):
         raise OSError("instance killed before the marker")
 
-    a.seam.mark_processed = crash
+    a.port.mark_processed = crash
     with pytest.raises(OSError):
         asyncio.run(a.drain())
     rfp = b.board.rfps[RFP_ID]
@@ -396,8 +396,8 @@ def test_crash_between_put_and_marker_files_no_duplicate_version(tmp_path):
     assert rfp.cell("carrier-a", "CRITICAL_ILLNESS").versions == [f"email-{key}-0"]
     doc_ids = [e.doc_id for e in rfp.entries]
     assert len(doc_ids) == len(set(doc_ids)) == 1
-    assert b.seam.processed(key)["status"] == "filed"
-    assert b.seam.pending() == []
+    assert b.port.processed(key)["status"] == "filed"
+    assert b.port.pending() == []
 
 
 def test_cas_conflict_is_retried_and_keeps_both_writes(tmp_path, caplog):
@@ -444,8 +444,8 @@ def test_exhausted_cas_retry_leaves_the_mail_pending(tmp_path):
     with pytest.raises(StaleExchangeWrite):
         asyncio.run(proc.drain())
     assert store.puts == 3
-    assert proc.seam.processed(key) is None
-    assert proc.seam.pending() == [key]
+    assert proc.port.processed(key) is None
+    assert proc.port.pending() == [key]
     cell = (
         RfpBoard(policy=load_rfp_policy(PROCESS), store=inner)
         .rfps[RFP_ID]
@@ -466,7 +466,7 @@ def test_exhausted_cas_retry_is_a_409_on_the_host(host_env, tmp_path):
         resp = client.post("/email/drain")
         assert resp.status_code == 409
         assert "changed concurrently" in resp.json()["detail"]
-    assert proc.seam.pending() == [key]
+    assert proc.port.pending() == [key]
 
 
 # --------------------------------------------------------------------------- #

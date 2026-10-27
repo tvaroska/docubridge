@@ -37,7 +37,7 @@ A benefits broker's agent must source a group health plan for client *Acme Corp*
 - **Programs** — a provider-facing program context that links N legs and carries the rollup; per-leg isolation enforced by addressing ([Programs](../../design/a2a-edge.md)). Program-scale Gateway addressing.
 - **Multilingual extraction + FX normalization** — the [extraction graph](../../design/fulfillment-graph.md)'s translate + convert layer: map every quote to one schema/currency/language.
 - **Scanned-document extraction** — an OCR pre-pass in front of the same schema-driven request, so a raster PDF with no text layer extracts against the doctype schema unchanged ([Document AI pre-pass](../../design/docai-prepass.md)).
-- **Large-document extraction** — a long document is extracted in page windows and merged in page order, so a rate sheet of a thousand rows returns every row and a truncated response fails loud ([seams](../../design/seams.md)).
+- **Large-document extraction** — a long document is extracted in page windows and merged in page order, so a rate sheet of a thousand rows returns every row and a truncated response fails loud ([ports](../../design/ports.md)).
 - **Declared-rule standard-gap disposition** — flag each normalized quote against the program standard (sense A); routes to negotiation.
 - **Negotiate + versioned revise loop** — artifact versioning on the same leg; the comparison recomputes as versions land.
 - **Program comparison A2UI view** — N legs side by side, one currency and schema, gaps flagged.
@@ -47,7 +47,7 @@ A benefits broker's agent must source a group health plan for client *Acme Corp*
 - **Framework-diverse counterparties.** The Path-A carriers are stood up as **real A2A agents in the external zone**, each its own A2A client + agent logic responding to the Bridge's [A2A edge](../../design/a2a-edge.md). Deliberately built in **two different frameworks** — Carrier A in **Google ADK**, Carrier B in **LangGraph** — to prove A2A is framework-agnostic: the ADK-built Bridge negotiates, multi-turn, with a **non-ADK** counterparty and never notices the difference. This is the platform-evaluator headline for depth: *interoperability, not just fan-out.*
 - **The LangGraph carrier drives the negotiate loop** (beat 5): it holds the coverage gap, receives the pushback over A2A, and returns a revised quote — so the interop proof covers the **multi-turn revise loop**, not a one-shot response. Both simulated agents are demo furniture (like the A2UI reference renderer), not part of the Bridge core.
 
-**Core machinery the demo relies on:** both edges, dual-path, extraction seam (fixture, Gemini, and Gemini with a Document AI OCR pre-pass), disposition gates, HITL, proactive follow-up, seams, network zones.
+**Core machinery the demo relies on:** both edges, dual-path, extraction port (fixture, Gemini, and Gemini with a Document AI OCR pre-pass), disposition gates, HITL, proactive follow-up, ports, network zones.
 
 **Demo data:** **synthetic** quote documents — four carriers, three currencies (USD/EUR/GBP), three languages (English/French/German); the **LangGraph** carrier (B) carries both the deliberate coverage gap and the revise round. Two Path-A structured quotes (A, B), two Path-B PDFs (C, D), plus a **scanned** rendition of Carrier C's PDF (raster, no text layer) and a synthetic multi-page **1000-row rate sheet**. Doubles as extraction fixtures + test corpus. An **FX rate source** (fixed rates for a deterministic run).
 

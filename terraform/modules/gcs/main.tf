@@ -1,13 +1,13 @@
 # gcs — the Skill Registry bucket + the Artifacts bucket (P7-3).
 #
-# Two GCS buckets behind the skill_registry seam (GcpSkillRegistry) and the native
+# Two GCS buckets behind the skill_registry port (GcpSkillRegistry) and the native
 # GcsArtifactService backend swap (bridge/edge/artifacts.py). Both are NEVER public:
 # uniform bucket-level access + public_access_prevention = ENFORCED. Signed V4 URLs
 # (time-limited, minted only after the leg-scoping check) are the only external byte
 # path — a load-bearing security invariant, not a style choice (design/gcp-substrate.md).
 #
 # CRITICAL — No bucket OBJECTS / secrets / plaintext values in HCL (CRITICAL.md).
-# Skill folders and artifact bytes are RUNTIME data written through the seam /
+# Skill folders and artifact bytes are RUNTIME data written through the port /
 # ArtifactService, never Terraform-managed. This module provisions the containers +
 # their IAM only.
 
@@ -93,7 +93,7 @@ resource "google_storage_bucket_iam_member" "artifacts_object_admin" {
 }
 
 # Email landing bucket (S0-arch-13, design/email-intake.md) — the GCP adapter of the
-# email_ingress seam (GcpEmailIngress): inbox/<key>.eml, attachments/<key>/<i>/<name>,
+# email_ingress port (GcpEmailIngress): inbox/<key>.eml, attachments/<key>/<i>/<name>,
 # processed/<key>.json. Never public (UBLA + PAP enforced, like the buckets above).
 # Raw mail holds counterparty content, so retention is a lifecycle Delete after
 # email_retention_days (ART-3: the lifecycle policy IS the retention; zero Bridge GC).

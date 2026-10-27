@@ -113,7 +113,7 @@ Behind the enterprise console, the reusable Bridge core mediates four canonical 
 
 ## Run All Local Surfaces
 
-Credential-free. Every seam uses its local adapter; extraction uses the deterministic
+Credential-free. Every port uses its local adapter; extraction uses the deterministic
 fixture engine over `wiki/evals/`. No GCP, no Gemini API key, and no billing required.
 
 **Prerequisites:** Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js + [pnpm](https://pnpm.io/).
@@ -164,7 +164,7 @@ terraform -chdir=terraform init -backend=false && terraform -chdir=terraform tes
 
 ```
 spec/       THE WHAT — requirements (CUJs, standards, demos). Forkable, status-free, protected.
-design/     THE HOW — architecture, seams, zones, patterns, agent-gym, harness-evolve. Status-free.
+design/     THE HOW — architecture, ports, zones, patterns, agent-gym, harness-evolve. Status-free.
 TODO.md     live status and sequencing (the only place status lives)
 DECISIONS.md architectural decision records (ADR-01 through ADR-12) & milestone history
 BANKING.md  5-scene Enterprise Showcase architecture & walkthrough (Banking, Mortgage, Insurance)
@@ -177,7 +177,7 @@ skills/     Agent Skills the Bridge loads at runtime
 demo/       5-scene Enterprise Showcase Console (enterprise-demo.{html,css,js})
 frontend/   four React/Vite apps (portal, console, dashboard, timewarp) + shared lib + e2e
 terraform/  IaC by substrate primitive (network, iam, database, secrets, gcs, tasks, telemetry, runtime, gateway, frontend)
-tests/      shared seam suite (local + gcp) + enterprise architecture + golden runs + conformance + perf
+tests/      shared port suite (local + gcp) + enterprise architecture + golden runs + conformance + perf
 scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 ```
 
@@ -193,8 +193,8 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 | [design/bridge.md](design/bridge.md) | The mediation product in one page |
 | [design/agent-gym.md](design/agent-gym.md) | Agent Gym continuous learning, Day-2 payoff, Two-Sided Oversight (`RSR`) & Programmable Trust |
 | [design/harness-evolve.md](design/harness-evolve.md) | Agent Gym × Harness Evolve (`SKILL.md` compilation) & multi-tier Document AI uptraining |
-| [design/seams.md](design/seams.md) | Hexagonal Ports & Adapters (`bridge/ports/` & `bridge/seams/`) across all 13 managed-service boundaries |
-| [spec/cujs.md](spec/cujs.md) | Critical User Journeys (`CUJ-1` through `CUJ-13`) |
+| [design/ports.md](design/ports.md) | Hexagonal Ports & Adapters (`bridge/ports/`) across all 13 managed-service boundaries |
+| [spec/cujs.md](spec/cujs.md) | Critical User Journeys (`CUJ-1` through `CUJ-15`) |
 | [design/architecture.md](design/architecture.md) | As-built repository and module map |
 | [docs/features.md](docs/features.md) | Feature catalog across all phases and sprints |
 | [CLAUDE.md](CLAUDE.md) | Engineering conventions and operational lessons learned |
@@ -203,6 +203,6 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 
 - **Exchange** — one A2A context: a durable multi-turn interaction about a *set* of documents.
 - **Sense A / Sense B** — the Bridge judges one document against declared rules (A). The calling agent decides whether the set is complete or which quote to bind (B).
-- **Port & Adapter (Seam)** — a managed-service boundary (`bridge/ports/`) with a local adapter and a GCP adapter; the same `@pytest.mark.port` / `@pytest.mark.seam` tests run against both (`BRIDGE_PORT_MODE=local|gcp`). Parity is terminal-outcome, not ledger-identical.
+- **Port & Adapter (`Port`)** — a managed-service boundary (`bridge/ports/`) with a local adapter and a GCP adapter; the same `@pytest.mark.port` tests run against both (`BRIDGE_PORT_MODE=local|gcp`). Parity is terminal-outcome, not ledger-identical.
 - **Skill vs eval** — a skill (`skills/`) is how the Bridge behaves; an eval (`wiki/evals/`) is how we verify it behaved.
 

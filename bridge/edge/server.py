@@ -60,8 +60,8 @@ from bridge.edge.executor import CollectExecutor
 from bridge.edge.pathroute import EdgeMode, resolve_edge_mode
 from bridge.edge.pushguard import guarded_push_config_store
 from bridge.edge.rfp_open import rfp_board_from_env
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.satisfaction import SatisfactionAssessor, resolve_assessor
-from bridge.seams import Seam, get_adapter, resolve_mode
 from bridge.telemetry import OtelAsgiMiddleware
 
 if TYPE_CHECKING:
@@ -76,7 +76,7 @@ if TYPE_CHECKING:
 RPC_PATH = "/"
 
 # SKILL-4 live doctype-add is a filesystem drop: a skill folder placed under
-# ``BRIDGE_SKILLS_DIR`` (via the skill_registry seam) is reflected on the next
+# ``BRIDGE_SKILLS_DIR`` (via the skill_registry port) is reflected on the next
 # discovery GET — no redeploy, no HTTP write surface. An authenticated remote
 # install endpoint (behind per-party Gateway scoping) is deferred to P7
 # (design/zones.md); the unauthenticated write endpoint was removed (S0-sec-1).
@@ -142,10 +142,13 @@ def build_a2a_app(
     satisfaction: SatisfactionAssessor | str | None = None,
     rfp_board: RfpBoard | None = None,
     a2a_engine: Any = None,
+    vault_store: Any = None,
+    operational_store: Any = None,
+    knowledge_catalog: Any = None,
 ) -> Starlette:
     """Build the Bridge A2A Starlette app (with the ART-2 fetch endpoint).
 
-    ``task_store`` is wired via the ``task_store`` seam (durable when
+    ``task_store`` is wired via the ``task_store`` port (durable when
     ``BRIDGE_TASK_DB_URL`` is set → ``DatabaseTaskStore``; else in-memory). An
     injected ``task_store`` still wins, so existing tests are unaffected.
 
@@ -157,10 +160,10 @@ def build_a2a_app(
     — two instances would leave every fetch 404ing. The
     ``InMemoryArtifactService``↔``GcsArtifactService`` (``build_artifact_store``)
     and direct-serve↔signed-URL (``build_fetch_signer``) swaps are env-driven
-    (``BRIDGE_ARTIFACT_BUCKET``, P7-3), encapsulated in ``artifacts.py`` (not a seam).
+    (``BRIDGE_ARTIFACT_BUCKET``, P7-3), encapsulated in ``artifacts.py`` (not a port).
 
     **P4-4 push notifications (DUR-6).** Wire ``push_config_store`` (via the
-    ``task_store`` seam, mirroring ``build_task_store``) and ``push_sender`` (a
+    ``task_store`` port, mirroring ``build_task_store``) and ``push_sender`` (a
     default ``BasePushNotificationSender`` over the supplied or default httpx
     client) into the handler to enable the four push-config ops and automatic
     webhook emission on task status/artifact events. Tests inject
@@ -176,7 +179,7 @@ def build_a2a_app(
     bound to the SAME shared artifact store (writer == reader == eraser), then bound to
     the executor via ``executor.bind_edge``; text-only intents route to it. In
     deterministic mode no leg is imported or constructed and an injected ``llm_leg``
-    is ignored. Its sessions come from the sessions seam (``LlmLeg``), never a
+    is ignored. Its sessions come from the sessions port (``LlmLeg``), never a
     hardcoded store.
 
     **S3-edge-6 HITL resume authorization (S3-edge-1 D10).** ``reviewers`` is the
@@ -198,7 +201,7 @@ def build_a2a_app(
     **S0-arch-19 RFP opener.** ``rfp_board`` (injected, used as-is — the test idiom) else
     :func:`bridge.edge.rfp_open.rfp_board_from_env`: with ``BRIDGE_RFP_PROCESS`` set, ONE
     opener-only ``RfpBoard`` whose home process is that emergent-Collect skill, over the
-    seam-resolved durable ``exchange_store`` (an in-memory store → ``RuntimeError``; a
+    port-resolved durable ``exchange_store`` (an in-memory store → ``RuntimeError``; a
     skill that is not emergent-Collect → ``ValueError``; the app does not start). The board
     is live: an emergent-Collect process installed in the skill registry after build is
     opened too, with no rebuild (S4-usecase-4). Unset/blank → no board and
@@ -282,17 +285,27 @@ def build_a2a_app(
     # S0-arch-19: the RFP opener — injected wins; env-gated; None = no opener.
     board = rfp_board or rfp_board_from_env()
     active_executor.bind_rfp(board)
+    if (
+        vault_store is not None
+        or operational_store is not None
+        or knowledge_catalog is not None
+    ):
+        active_executor.bind_enterprise_stores(
+            vault_store=vault_store,
+            operational_store=operational_store,
+            knowledge_catalog=knowledge_catalog,
+        )
 
-    store_seam = get_adapter(Seam.task_store, resolve_mode(Seam.task_store))
-    active_task_store = task_store or store_seam.build_task_store()
+    store_port = get_adapter(Port.task_store, resolve_mode(Port.task_store))
+    active_task_store = task_store or store_port.build_task_store()
 
-    # P4-4: Build push_config_store via the task_store seam (Decision 1) and
+    # P4-4: Build push_config_store via the task_store port (Decision 1) and
     # default sender (Decision 2).
     # S0-sec-2: wrap the config store so client-supplied webhook URLs that
     # resolve to non-global IPs (metadata / internal hosts) are rejected at
-    # registration. Applies whether the store is injected or seam-built.
+    # registration. Applies whether the store is injected or port-built.
     active_push_config_store = guarded_push_config_store(
-        push_config_store or store_seam.build_push_config_store()
+        push_config_store or store_port.build_push_config_store()
     )
     if push_sender is None:
         from a2a.server.tasks import BasePushNotificationSender
@@ -371,13 +384,13 @@ def serve_container() -> None:  # pragma: no cover
 
     The served Agent Card advertises ``BRIDGE_PUBLIC_URL`` (the Gateway-authorized
     origin, P7-5) via ``resolved_card_url(None)`` so a consumer's ``RemoteA2aAgent``
-    passes the adk >=2.7 same-origin card validation. Every seam routes through its
-    adapter (``BRIDGE_SEAM_MODE=gcp`` → the Cloud SQL / GCS / Cloud Tasks / Gemini
+    passes the adk >=2.7 same-origin card validation. Every port routes through its
+    adapter (``BRIDGE_PORT_MODE=gcp`` → the Cloud SQL / GCS / Cloud Tasks / Gemini
     adapters); no store is hardcoded here (the P7-8 service-wiring guard is the backstop).
     ``BRIDGE_EDGE_MODE`` selects the edge routing mode (``deterministic`` default |
     ``hybrid``; anything else fails start), resolved in ``build_a2a_app``.
     ``BRIDGE_RFP_PROCESS`` (set when the RFP board service is enabled) binds the RFP
-    opener over the seam-resolved durable exchange store (S0-arch-19).
+    opener over the port-resolved durable exchange store (S0-arch-19).
 
     Wired as the ``bridge-serve`` console script (``pyproject.toml``) so the image's
     ``CMD ["bridge-serve"]`` boots it.

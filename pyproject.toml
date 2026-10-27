@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docubridge"
-version = "0.1.0"
-description = "A2A Document Bridge — clean-slate build (Core + Address)"
+version = "1.14.0"
+description = "A2A Document Bridge — Flagship 4-Pillar Gemini platform & 6-Zone Financial Services Reference Architecture"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2.7",
@@ -42,7 +42,7 @@ dev = [
     "pyyaml",
     "ruff>=0.16,<0.17",
 ]
-# GCP seam runtime deps, installed by the P7-9 provisioned run (BRIDGE_TEST_GCP=1):
+# GCP port runtime deps, installed by the P7-9 provisioned run (BRIDGE_TEST_GCP=1):
 #   - asyncpg: the async Postgres driver for the Cloud SQL shared-store adapters
 #     (P7-2), imported transitively via create_async_engine("postgresql+asyncpg://…").
 #   - google-cloud-storage: the GCS client for the skill_registry adapter,
@@ -99,7 +99,6 @@ known-first-party = ["contract", "bridge", "agents", "skills", "tests"]
 [tool.pytest.ini_options]
 markers = [
     "port: shared port-parity tests parametrized over local/gcp adapters (Hexagonal Ports & Adapters)",
-    "seam: shared seam-parity tests parametrized over local/gcp adapters",
 ]
 filterwarnings = [
     "ignore:.*EXPERIMENTAL.*:UserWarning",

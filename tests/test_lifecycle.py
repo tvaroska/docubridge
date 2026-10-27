@@ -16,7 +16,7 @@ from a2a.utils.constants import TransportProtocol
 
 from bridge.edge import build_mock_bridge_app, encode_collect_request
 from bridge.edge.wire import KIND_EXCHANGE_TURN, META_KIND
-from bridge.seams import Seam, get_adapter
+from bridge.ports import Port, get_adapter
 from contract.enums import LifecycleStatus
 from contract.wire import CollectRequest, ExchangeTurn
 
@@ -34,8 +34,8 @@ async def test_escalated_status_survives_restart(tmp_path):
     url = "http://test/"
     base = "http://test"
 
-    # Build task store via seam adapter
-    task_store = get_adapter(Seam.task_store, "local").build_task_store(db_url=dsn)
+    # Build task store via port adapter
+    task_store = get_adapter(Port.task_store, "local").build_task_store(db_url=dsn)
 
     # Build mock app with durable task store
     app = build_mock_bridge_app(url=url, task_store=task_store)
@@ -88,7 +88,7 @@ async def test_escalated_status_survives_restart(tmp_path):
     await task_store.engine.dispose()
 
     # Rebuild task store on the same DSN
-    task_store2 = get_adapter(Seam.task_store, "local").build_task_store(db_url=dsn)
+    task_store2 = get_adapter(Port.task_store, "local").build_task_store(db_url=dsn)
     app2 = build_mock_bridge_app(url=url, task_store=task_store2)
 
     # Read the task back through a fresh client
@@ -130,8 +130,8 @@ async def test_durable_cancel_survives_restart(tmp_path):
     url = "http://test/"
     base = "http://test"
 
-    # Build task store via seam adapter
-    task_store = get_adapter(Seam.task_store, "local").build_task_store(db_url=dsn)
+    # Build task store via port adapter
+    task_store = get_adapter(Port.task_store, "local").build_task_store(db_url=dsn)
     app = build_mock_bridge_app(url=url, task_store=task_store)
 
     # Send non-terminal scenario (path-b-two-bills parks at INPUT_REQUIRED)
@@ -171,7 +171,7 @@ async def test_durable_cancel_survives_restart(tmp_path):
     await task_store.engine.dispose()
 
     # Rebuild task store on the same DSN
-    task_store2 = get_adapter(Seam.task_store, "local").build_task_store(db_url=dsn)
+    task_store2 = get_adapter(Port.task_store, "local").build_task_store(db_url=dsn)
     app2 = build_mock_bridge_app(url=url, task_store=task_store2)
 
     # Read the task back through a fresh client

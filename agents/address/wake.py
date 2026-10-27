@@ -151,8 +151,8 @@ async def wake_task(
     *,
     index: SessionIndex,
     card_url: str,
-    session_service: Any = None,  # test seam; else built from BRIDGE_AGENT_ENGINE_ID / BRIDGE_SESSION_DB_URL
-    httpx_client: Any = None,  # test seam: in-process mock to the Bridge
+    session_service: Any = None,  # test port; else built from BRIDGE_AGENT_ENGINE_ID / BRIDGE_SESSION_DB_URL
+    httpx_client: Any = None,  # test port: in-process mock to the Bridge
     process: str = "address-proof",
     max_rounds: int | None = None,
     max_resumes: int | None = None,

@@ -1,7 +1,7 @@
 """The email-intake journey (S0-arch-13): a carrier replies to an RFP by email.
 
 The REAL path, credential-free: a composed RFC 5322 reply carrying the benefits
-conformance PDFs lands on the local ``email_ingress`` seam; ``EmailProcessor.drain``
+conformance PDFs lands on the local ``email_ingress`` port; ``EmailProcessor.drain``
 correlates it by intake token to carrier-a's leg and files each attachment through
 the fixture extraction engine → signals → the disposition gate → ``bridge.rfp.receive``.
 The gated live leg swaps in the Gemini engine (terminal-outcome parity).
@@ -19,13 +19,13 @@ from bridge.edge.artifacts import APP_NAME, scoped_uri
 from bridge.edge.email_ingress import EmailProcessor, MailOutcome
 from bridge.email_ingress.correlation import intake_address, mint_token
 from bridge.email_ingress.mime import landing_key
+from bridge.ports.local import LocalEmailIngress
 from bridge.rfp import (
     KIND_ACKNOWLEDGED,
     KIND_ATTACHMENT_UNREADABLE,
     KIND_QUOTE_INCOMPLETE,
     KIND_QUOTE_RECEIVED,
 )
-from bridge.seams.local import LocalEmailIngress
 from contract.enums import RfpItemStatus
 from tests.email_fixtures import (
     BASE_URL,
@@ -44,11 +44,11 @@ from tests.email_fixtures import (
 class Rig:
     def __init__(self, tmp_path, *, extraction=None):
         self.board = make_board()
-        self.seam = LocalEmailIngress(tmp_path)
+        self.port = LocalEmailIngress(tmp_path)
         self.store = InMemoryArtifactService()
         self.proc = EmailProcessor(
             board=self.board,
-            seam=self.seam,
+            port=self.port,
             mailbox=MAILBOX,
             secret=SECRET,
             extraction=extraction or extractor(),
@@ -62,7 +62,7 @@ class Rig:
 
     def land(self, raw: bytes) -> str:
         key = landing_key(raw)
-        assert self.seam.land(key, raw)
+        assert self.port.land(key, raw)
         return key
 
     def cell(self, party, line):
@@ -133,9 +133,9 @@ async def test_reply_files_each_attachment_through_the_real_gate(rig):
     assert part.inline_data.data == CI_PDF.read_bytes()
 
     # The marker is the outcome, and the key left the queue.
-    assert rig.seam.processed(key) == outcome.model_dump(mode="json")
-    assert rig.seam.pending() == []
-    assert "Please find our quote" not in str(rig.seam.processed(key))
+    assert rig.port.processed(key) == outcome.model_dump(mode="json")
+    assert rig.port.pending() == []
+    assert "Please find our quote" not in str(rig.port.processed(key))
 
 
 async def test_replay_is_a_noop(rig):
@@ -143,10 +143,10 @@ async def test_replay_is_a_noop(rig):
     key = rig.land(raw)
     await rig.proc.drain()
     before = rig.rfp.model_dump()
-    assert rig.seam.land(landing_key(raw), raw) is False
+    assert rig.port.land(landing_key(raw), raw) is False
     assert await rig.proc.drain() == []
     assert rig.rfp.model_dump() == before
-    assert (await rig.proc.process(key)).model_dump() == rig.seam.processed(key)
+    assert (await rig.proc.process(key)).model_dump() == rig.port.processed(key)
     assert rig.rfp.model_dump() == before
 
 
@@ -200,8 +200,8 @@ async def test_quarantine_never_touches_the_board(rig, make, reason, caplog):
     assert (outcome.status, outcome.reason) == ("quarantined", reason)
     assert outcome.rfp_id is None and outcome.filed == []
     assert rig.rfp.model_dump() == before
-    assert rig.seam.pending() == []
-    assert rig.seam.processed(key)["reason"] == reason
+    assert rig.port.pending() == []
+    assert rig.port.processed(key)["reason"] == reason
     assert any(
         "quarantined" in r.message and r.levelname == "WARNING" for r in caplog.records
     )
@@ -236,7 +236,7 @@ async def test_deterministic_engine_refusal_is_unreadable_and_the_rest_still_fil
 
 
 async def test_hostile_filenames_never_wedge_the_drain(rig):
-    # Review fix: ". .pdf" used to sanitize to ".pdf" (refused by the seam) and a
+    # Review fix: ". .pdf" used to sanitize to ".pdf" (refused by the port) and a
     # 128-char CJK name overflowed NAME_MAX — both raised out of every drain.
     long_cjk = "\u62a5\u4ef7" * 64 + ".xlsx"
     atts = [
@@ -246,11 +246,11 @@ async def test_hostile_filenames_never_wedge_the_drain(rig):
     ]
     key = rig.land(rig.reply(attachments=atts))
     (outcome,) = await rig.proc.drain()
-    assert outcome.status == "filed" and rig.seam.pending() == []
+    assert outcome.status == "filed" and rig.port.pending() == []
     assert [f.filename for f in outcome.filed] == [CI_PDF.name]
     names = [u.filename for u in outcome.unreadable]
     assert names[0] == "pdf" and names[1].endswith(".xlsx")
-    assert rig.seam.processed(key)["status"] == "filed"
+    assert rig.port.processed(key)["status"] == "filed"
 
 
 class _Flaky:
@@ -265,7 +265,7 @@ async def test_transient_engine_error_leaves_everything_for_the_next_drain(tmp_p
     with pytest.raises(RuntimeError, match="429"):
         await rig.proc.drain()
     assert rig.rfp.model_dump() == before
-    assert rig.seam.pending() == [key] and rig.seam.processed(key) is None
+    assert rig.port.pending() == [key] and rig.port.processed(key) is None
 
     rig.proc.extraction = extractor()
     (outcome,) = await rig.proc.drain()
@@ -297,7 +297,7 @@ def test_processor_refuses_without_secret_or_mailbox(tmp_path, monkeypatch):
     monkeypatch.delenv("BRIDGE_EMAIL_MAILBOX", raising=False)
     kw = dict(
         board=make_board(),
-        seam=LocalEmailIngress(tmp_path),
+        port=LocalEmailIngress(tmp_path),
         extraction=extractor(),
         artifact_store=InMemoryArtifactService(),
     )
@@ -337,8 +337,8 @@ def test_cli_land_prints_landed_then_duplicate(tmp_path, monkeypatch, capsys):
     from bridge.email_ingress.__main__ import main
 
     monkeypatch.setenv("BRIDGE_EMAIL_DIR", str(tmp_path / "landing"))
-    monkeypatch.delenv("BRIDGE_SEAM_EMAIL_INGRESS", raising=False)
-    monkeypatch.delenv("BRIDGE_SEAM_MODE", raising=False)
+    monkeypatch.delenv("BRIDGE_PORT_EMAIL_INGRESS", raising=False)
+    monkeypatch.delenv("BRIDGE_PORT_MODE", raising=False)
     eml = tmp_path / "reply.eml"
     eml.write_bytes(compose(MAILBOX))
     key = landing_key(eml.read_bytes())
