@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bridge.agent_gym.compiler import SkillCompilerMixin
 from bridge.agent_gym.engine import AgentGymEngine, InMemoryAgentGymEngine
 from bridge.agent_gym.models import (
     _FORBIDDEN_MATH_TOKENS,
@@ -70,6 +71,7 @@ __all__ = [
     "RegistryGatewayMixin",
     "ShadowComparisonRecord",
     "SignalSourceZone",
+    "SkillCompilerMixin",
     "SkillRevisionRecord",
     "SqlAgentGymEngine",
     "SyntheticStressCase",
