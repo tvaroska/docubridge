@@ -114,7 +114,7 @@ it during `/implement`.
 ## Hard-Won Lessons & Gotchas (Enterprise Data Architecture, Agent Gym & GCP Deploy)
 
 1. **Skill-Name Literal Guard (`tests/test_isolation_guard.py::test_core_names_no_skill`):**
-   - `test_core_names_no_skill` scans every Python AST string literal in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring literal matches an installed folder name in `skills/` (`address-proof`, `gov-id`, `utility-bill`, `benefits-procurement`, `benefits-quote`, `benefits-rfp`). Never hardcode an installed skill name in `bridge/` core modules.
+   - `test_core_names_no_skill` scans every Python AST string literal in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring literal matches an installed folder name in `skills/` (`address-proof`, `gov-id`, `utility-bill`, `benefits-procurement`, `benefits-quote`, `benefits-rfp`, `commercial-loan-underwriting`, `trid-closing-disclosure`, `cre-credit-agreement`, `mai-appraisal`, `commercial-property-quote`). Never hardcode an installed skill name in `bridge/` core modules.
 2. **Explicit Demo Seeding (`POST /v1/demo/seed`) vs. Router Init:**
    - Never call `seed_demo_scenarios()` unconditionally inside `build_user_interaction_router()` or `build_user_interaction_app()`, because unit tests construct fresh `InMemoryOperationalStore` / `SqlOperationalStore` instances and assert exact fact counts or empty initial state. Keep seeding explicit via `POST /v1/demo/seed` and `POST /v1/gym/trust-policies/reset?reseed_demo=true`.
 3. **Role Resolution (`query_role` vs. `default_role` in `resolve_caller_role`):**

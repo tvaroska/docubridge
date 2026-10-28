@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "required": ["doctype", "issuer", "key_fields"],
+  "properties": {
+    "doctype": { "type": "string", "enum": ["mai-appraisal"] },
+    "issuer": { "type": "string", "description": "Independent MAI appraisal firm or certified appraiser" },
+    "key_fields": {
+      "type": "object",
+      "required": ["appraised_value", "property_address", "currency", "valuation_date"],
+      "properties": {
+        "appraised_value": { "type": "string", "description": "As-is market appraised value of the collateral" },
+        "property_address": { "type": "string", "description": "Subject property street address" },
+        "net_operating_income": { "type": "string", "description": "Stabilized annual Net Operating Income (NOI)" },
+        "currency": { "type": "string", "description": "ISO 4217 currency code (e.g. USD)" },
+        "valuation_date": { "type": "string", "description": "Effective date of appraisal valuation (YYYY-MM-DD)" }
+      }
+    }
+  }
+}

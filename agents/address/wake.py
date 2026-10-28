@@ -162,7 +162,7 @@ async def wake_task(
 
     Look up the ``SessionRef``, restore the durable session, find the pending
     ``LongRunningFunctionTool`` call, and feed an id-matched ``FunctionResponse``
-    to a fresh resumable ``Runner`` (or ``remote_engine`` when hosted on Vertex AI
+    to a fresh resumable ``Runner`` (or ``remote_engine`` when hosted on Gemini platform
     Agent Engine) via ``_resume_parked``.
 
     Idempotent (§2d): an unknown task id (not in the index), a missing session, or

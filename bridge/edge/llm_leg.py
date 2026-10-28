@@ -99,7 +99,7 @@ from bridge.signals import dispose_signals
 from contract.enums import Disposition, Gate, LifecycleStatus
 from contract.wire import ExchangeTurn, LedgerEntry
 
-# Opt-in env toggle to stream LlmLeg turns through a deployed Vertex AI Agent Engine
+# Opt-in env toggle to stream LlmLeg turns through a deployed Gemini platform Agent Engine
 # ReasoningEngine (async_stream_query) instead of an in-process Runner.
 BRIDGE_AGENT_ENGINE_REMOTE_ENV = "BRIDGE_AGENT_ENGINE_REMOTE"
 
@@ -659,7 +659,7 @@ def _default_memory_service() -> BaseMemoryService | None:
 
 
 def _default_remote_engine() -> Any | None:
-    """Resolve a remote Vertex AI Agent Engine ``ReasoningEngine`` handle when
+    """Resolve a remote Gemini platform Agent Engine ``ReasoningEngine`` handle when
     ``BRIDGE_AGENT_ENGINE_REMOTE`` is enabled (`1`/`true`/`yes`)."""
     flag = os.environ.get(BRIDGE_AGENT_ENGINE_REMOTE_ENV, "").strip().lower()
     if flag not in {"1", "true", "yes"}:
@@ -689,7 +689,7 @@ def _coerce_event(item: Event | Mapping[str, Any]) -> Event:
 
 class LlmLeg:
     """Runtime for the LLM leg: the resumable ``document_bridge`` App on a fresh
-    ``Runner`` per invocation (or a remote Vertex AI Agent Engine ``ReasoningEngine``),
+    ``Runner`` per invocation (or a remote Gemini platform Agent Engine ``ReasoningEngine``),
     over port-wired sessions, memory bank, and the shared artifact store.
 
     Every collaborator is injectable; the defaults are host-controlled (P7-8): the
@@ -751,7 +751,7 @@ class LlmLeg:
 
     @property
     def remote_engine(self) -> Any | None:
-        """Optional remote Vertex AI Agent Engine (`ReasoningEngine`) handle."""
+        """Optional remote Gemini platform Agent Engine (`ReasoningEngine`) handle."""
         return self._remote_engine
 
     def runner(self) -> Runner:
@@ -774,7 +774,7 @@ class LlmLeg:
         state_delta: dict[str, Any] | None = None,
     ) -> list[Event]:
         """Run one invocation either locally (`Runner.run_async`) or against a remote
-        Vertex AI Agent Engine (`ReasoningEngine.async_stream_query`)."""
+        Gemini platform Agent Engine (`ReasoningEngine.async_stream_query`)."""
         if self._remote_engine is None:
             return [
                 event

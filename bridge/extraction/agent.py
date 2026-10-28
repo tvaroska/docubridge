@@ -85,7 +85,7 @@ def build_extraction_agent(model: str | BaseLlm | None = None) -> LlmAgent:
 
     Args:
         model: Override model — a model name or a ``BaseLlm`` instance (defaults to
-            BRIDGE_MODEL env or gemini-2.5-flash).
+            BRIDGE_MODEL env or gemini-3.8-flash).
 
     Returns:
         An LlmAgent configured for extraction.

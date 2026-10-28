@@ -1,4 +1,4 @@
-"""Vertex AI Agent Engine native A2A runtime & Cloud Run proxy adapter (Option B).
+"""Gemini platform Agent Engine native A2A runtime & Cloud Run proxy adapter (Option B).
 
 Hosts the Bridge's full A2A server — :class:`~bridge.edge.executor.CollectExecutor`,
 :class:`~bridge.edge.server.EdgeRequestHandler`, dynamic :func:`~bridge.edge.card.build_agent_card`
@@ -6,7 +6,7 @@ Hosts the Bridge's full A2A server — :class:`~bridge.edge.executor.CollectExec
 ``PushNotificationConfigStore`` (via :func:`~bridge.edge.pushguard.guarded_push_config_store`),
 shared ``BaseArtifactService`` (:func:`~bridge.edge.artifacts.build_artifact_store`),
 ``LlmLeg`` (in ``EdgeMode.hybrid``), ``SatisfactionAssessor``, and ``RfpBoard`` opener —
-inside a Vertex AI Agent Engine ``ReasoningEngine`` (:class:`BridgeA2aAgentEngine`),
+inside a Gemini platform Agent Engine ``ReasoningEngine`` (:class:`BridgeA2aAgentEngine`),
 and provides the thin Cloud Run edge proxy (:func:`build_remote_a2a_routes`) gated by
 ``BRIDGE_AGENT_ENGINE_A2A=1`` (or an injected ``a2a_engine``).
 
@@ -84,7 +84,7 @@ if TYPE_CHECKING:
 
 # Opt-in environment variable that switches ``build_a2a_app`` into a thin proxy
 # forwarding ``/.well-known/agent-card.json`` and JSON-RPC ``POST /`` to a
-# Vertex AI Agent Engine instance hosting ``BridgeA2aAgentEngine``.
+# Gemini platform Agent Engine instance hosting ``BridgeA2aAgentEngine``.
 AGENT_ENGINE_A2A_ENV = "BRIDGE_AGENT_ENGINE_A2A"
 
 
@@ -163,10 +163,10 @@ def _parse_sse_events(raw_body: str) -> list[dict[str, Any]]:
 
 
 class BridgeA2aAgentEngine:
-    """Vertex AI Agent Engine runtime hosting the Bridge A2A server (Option B) and
+    """Gemini platform Agent Engine runtime hosting the Bridge A2A server (Option B) and
     ADK ``document_bridge`` App (Option A).
 
-    Conforms to Vertex AI Agent Engine's ``OperationRegistrable``, ``Cloneable``,
+    Conforms to Gemini platform Agent Engine's ``OperationRegistrable``, ``Cloneable``,
     ``Queryable``, ``AsyncQueryable``, ``StreamQueryable``, and ``AsyncStreamQueryable``
     protocols without keeping any unpicklable C-extension protobuf descriptors on
     ``self`` prior to :meth:`set_up`.
@@ -282,7 +282,7 @@ class BridgeA2aAgentEngine:
 
     def set_up(self) -> None:
         """Construct the A2A Starlette dispatcher, ``CollectExecutor``, ``EdgeRequestHandler``,
-        and port-backed stores inside the Vertex AI Agent Engine worker."""
+        and port-backed stores inside the Gemini platform Agent Engine worker."""
         if self._app is not None:
             return
 
@@ -807,7 +807,7 @@ class BridgeA2aAgentEngine:
         yield from _run_coro_sync(_collect())
 
     def register_operations(self) -> dict[str, list[str]]:
-        """Register sync, async, and streaming A2A + ADK operations with Vertex AI Agent Engine."""
+        """Register sync, async, and streaming A2A + ADK operations with Gemini platform Agent Engine."""
         return {
             "": ["query", "get_agent_card", "handle_a2a_jsonrpc"],
             "async": [
@@ -823,7 +823,7 @@ class BridgeA2aAgentEngine:
         }
 
 
-# Module-level deployable Agent Engine application instance for Vertex AI Agent Engine.
+# Module-level deployable Agent Engine application instance for Gemini platform Agent Engine.
 agent_engine_app = BridgeA2aAgentEngine()
 
 __all__ = [

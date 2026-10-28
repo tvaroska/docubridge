@@ -54,7 +54,7 @@ class AgentGymEngine(SkillCompilerMixin, RegistryGatewayMixin, abc.ABC):
     `_get_trust_policy`, `_list_all_trust_policies`, `_append_shadow_record`):
 
     - :class:`SqlAgentGymEngine`: AlloyDB / Cloud SQL Postgres / SQLite durable store
-      shared across all Cloud Run replicas and Vertex AI Agent Engine (`reasoningEngines`)
+      shared across all Cloud Run replicas and Gemini platform Agent Engine (`reasoningEngines`)
       workers (preventing the multi-replica / cross-runtime session-affinity trap).
     - :class:`InMemoryAgentGymEngine`: In-memory store for fast unit tests when no
       database DSN is configured.

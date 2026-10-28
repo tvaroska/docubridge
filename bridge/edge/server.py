@@ -219,7 +219,7 @@ def build_a2a_app(
     if url == DEFAULT_URL:
         url = resolved_card_url()
 
-    # Option B (A2A server on Vertex AI Agent Engine): when ``a2a_engine`` is injected
+    # Option B (A2A server on Gemini platform Agent Engine): when ``a2a_engine`` is injected
     # or ``BRIDGE_AGENT_ENGINE_A2A=1`` is set, delegate ``/.well-known/agent-card.json``
     # and JSON-RPC ``POST /`` to the Agent Engine runtime while keeping ``/artifacts``
     # mounted on the thin edge over the shared artifact store.

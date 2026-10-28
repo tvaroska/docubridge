@@ -25,6 +25,7 @@ Each domain exercises the full 6-zone architecture and the 4 Gemini platform pil
 
 ### Key Canonical Facts, Glossary Terms & Trust Slices
 - **Canonical Facts:** `loan_amount` (`45000000.00`), `appraised_value` (`62500000.00`), `net_operating_income` (`4185000.00`), `origination_fee` (`50000.00` → `100000.00`).
+- **Installed A2A Skills (`skills/`):** `commercial-loan-underwriting` (process), `cre-credit-agreement`, `mai-appraisal`, `trid-closing-disclosure`, `commercial-property-quote` (doctypes).
 - **Glossary Terms:** `term.loan_to_value_ratio` (Loan-to-Value Ratio), `term.addendum_priority_hierarchy` (Banking & Insurance Document Priority Hierarchy), `term.cross_document_conflict`.
 - **Programmable Trust Slices:** `slice:closing-disclosure:fee-schedule:LOW` (`trusted_auto_approve`), `slice:credit-agreement:addendum:MEDIUM` (`guided_review`), `slice:appraisal-report:commercial:HIGH` (`shadow_mode`).
 

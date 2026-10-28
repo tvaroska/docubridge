@@ -530,6 +530,24 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             entry = patha.validate_only_entry(
                 assertion, doc_id=doc_id, candidate_doctypes=doctypes
             )
+            if entry.disposition is Disposition.accepted and (
+                self._collector._vault_store is not None
+                or self._collector._operational_store is not None
+                or self._collector._knowledge_catalog is not None
+            ):
+                from bridge.user_interaction import ingest_accepted_submission
+
+                entity_id = request.party or context_id
+                ingested = ingest_accepted_submission(
+                    entry,
+                    entity_id=entity_id,
+                    context_id=context_id,
+                    filename=f"{doc_id}.json",
+                    vault_store=self._collector._vault_store,
+                    operational_store=self._collector._operational_store,
+                    knowledge_catalog=self._collector._knowledge_catalog,
+                )
+                entry = ingested.entry
         except ValidationError as e:
             entry = LedgerEntry(
                 doc_id=doc_id,

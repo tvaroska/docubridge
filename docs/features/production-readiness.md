@@ -637,10 +637,10 @@ a live capability gap as "a later-cycle capability, not a critical-path item".
 
 **The three falsified claims (re-verified against `~/benefits-consumer` at implement time):**
 - *"it has **no real PDF path**"* (line 40) — `~/benefits-consumer/engine/extraction/gcp.py:386::GcpExtractor`
-  is a Gemini platform engine: `gemini-2.5-flash`, `temperature=0`,
+  is a Gemini platform engine: `gemini-3.8-flash`, `temperature=0`,
   `response_schema=_ExtractedQuote`, `_MAX_ATTEMPTS = 3` with each rejection reason fed back,
   **no** fixture fallback, `fields_requiring_review`, an `application/pdf` binary part, and
-  `gs://` passed through for Vertex to read by reference. Logged at `~/benefits-consumer/DECISIONS.md:586`
+  `gs://` passed through for the Gemini platform to read by reference. Logged at `~/benefits-consumer/DECISIONS.md:586`
   (2026-09-13, with a live `ADP_TEST_GCP=1` port run).
 - *"the deferred Benefits/RFP cycle"* (line 44) — Sprint 1 (Benefits, CUJ-3/11/12) closed
   2026-09-07 T3-green; all seven `S1-benefits-*` tasks are archived in

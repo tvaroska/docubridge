@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "required": ["doctype", "issuer", "key_fields"],
+  "properties": {
+    "doctype": { "type": "string", "enum": ["cre-credit-agreement"] },
+    "issuer": { "type": "string", "description": "Administrative agent, lead arranger, or issuing bank" },
+    "key_fields": {
+      "type": "object",
+      "required": ["loan_amount", "origination_fee", "currency", "effective_date"],
+      "properties": {
+        "loan_amount": { "type": "string", "description": "Committed principal loan facility amount" },
+        "origination_fee": { "type": "string", "description": "Origination, arrangement, or Schedule B override fee" },
+        "net_operating_income": { "type": "string", "description": "Underwritten annual Net Operating Income (NOI)" },
+        "facility_limit": { "type": "string", "description": "Maximum credit facility commitment limit" },
+        "currency": { "type": "string", "description": "ISO 4217 currency code (e.g. USD)" },
+        "effective_date": { "type": "string", "description": "ISO date (YYYY-MM-DD)" }
+      }
+    }
+  }
+}

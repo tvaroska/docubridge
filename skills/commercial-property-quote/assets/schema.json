@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "required": ["doctype", "issuer", "key_fields"],
+  "properties": {
+    "doctype": { "type": "string", "enum": ["commercial-property-quote"] },
+    "issuer": { "type": "string", "description": "Syndicate, carrier, or managing general agent (MGA)" },
+    "key_fields": {
+      "type": "object",
+      "required": ["total_insured_value", "coverage_limit", "premium", "deductible", "currency"],
+      "properties": {
+        "total_insured_value": { "type": "string", "description": "Total Insured Value (TIV) across scheduled locations" },
+        "coverage_limit": { "type": "string", "description": "Policy or layer coverage limit" },
+        "premium": { "type": "string", "description": "Annual bound or quoted policy premium" },
+        "deductible": { "type": "string", "description": "Applicable base or wind/hail endorsement deductible" },
+        "currency": { "type": "string", "description": "ISO 4217 currency code (e.g. USD)" },
+        "effective_date": { "type": "string", "description": "Policy effective date (YYYY-MM-DD)" }
+      }
+    }
+  }
+}

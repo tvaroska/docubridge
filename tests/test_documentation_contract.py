@@ -8,8 +8,8 @@ Verifies the three showcase-readiness quality pillars:
    ``SqlAgentGymEngine``, ``SqlActionInboxStore``) multiplex over a single refcounted
    ``DsnSqlRuntime`` (one daemon event-loop thread and one ``AsyncEngine`` pool per DSN).
 3. ``Dockerfile`` enforces non-root execution (``USER appuser``) and ``cloudbuild.yaml``
-   maintains a parallel multi-track DAG with full frontend workspace coverage and an
-   85%+ Python coverage gate before pushing images.
+   maintains a parallel multi-track DAG with full frontend workspace coverage and a
+   90%+ Python coverage gate before pushing images.
 """
 
 from __future__ import annotations
@@ -431,18 +431,301 @@ def test_canonical_financial_figures_match_across_docs_and_seed() -> None:
 
 def test_fsi_skills_loaded_and_advertised_on_a2a_agent_card() -> None:
     """First-class FSI skills load in ``loaded_skills()`` and advertise on ``build_agent_card()``."""
+    import json
+
     from bridge.edge.card import build_agent_card
     from bridge.edge.skills import loaded_skills
 
     skills = {s.name: s for s in loaded_skills()}
     assert "commercial-loan-underwriting" in skills
-    assert skills["commercial-loan-underwriting"].kind == "process"
-    assert "trid-closing-disclosure" in skills
-    assert skills["trid-closing-disclosure"].kind == "doctype"
+    proc_skill = skills["commercial-loan-underwriting"]
+    assert proc_skill.kind == "process"
+
+    expected_fsi_doctypes = (
+        "trid-closing-disclosure",
+        "cre-credit-agreement",
+        "mai-appraisal",
+        "commercial-property-quote",
+    )
+    assert proc_skill.candidate_doctypes == expected_fsi_doctypes
+    for dtype in expected_fsi_doctypes:
+        assert dtype in skills, f"Missing FSI doctype skill {dtype!r}"
+        assert skills[dtype].kind == "doctype"
+        schema_path = REPO_ROOT / "skills" / dtype / "assets" / "schema.json"
+        val_path = REPO_ROOT / "skills" / dtype / "assets" / "validation.yaml"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        assert schema["properties"]["doctype"]["enum"] == [dtype]
+        assert schema["properties"]["key_fields"]["required"]
+        val_doc = yaml.safe_load(val_path.read_text(encoding="utf-8"))
+        assert val_doc["signals"]["completeness"] == "agent"
 
     card = build_agent_card("http://localhost:8080")
-    card_skill_ids = {s.id for s in card.skills}
-    assert "commercial-loan-underwriting" in card_skill_ids
+    card_skills = {s.id: s for s in card.skills}
+    assert "commercial-loan-underwriting" in card_skills
+    adv_tags = set(card_skills["commercial-loan-underwriting"].tags)
+    for dtype in expected_fsi_doctypes:
+        assert f"doctype:{dtype}" in adv_tags
+        assert dtype not in card_skills
+
+
+async def test_fsi_a2a_multi_document_consolidation_and_6_zone_promotion() -> None:
+    """FSI A2A Collect requests validate schemas, consolidate priority overrides, and promote across Zones 3–6."""
+    import uuid
+
+    import httpx
+    from a2a.client import ClientConfig, ClientFactory
+    from a2a.helpers import proto_helpers as ph
+    from a2a.types import GetTaskRequest, Message, Role, SendMessageRequest, TaskState
+    from a2a.utils.constants import TransportProtocol
+    from google.protobuf.json_format import MessageToDict
+
+    from bridge.collect import Collector
+    from bridge.edge import CollectExecutor, build_a2a_app, encode_collect_request
+    from bridge.edge.llm_leg import LlmLeg
+    from bridge.edge.wire import KIND_EXCHANGE_TURN, META_KIND
+    from bridge.vault import InMemoryAuditVaultStore
+    from contract.enums import Disposition, Gate
+    from contract.wire import CollectRequest, ExchangeTurn
+    from tests._scripted_llm import ScriptedLlm
+
+    class ZeroCallExtractor:
+        async def extract(self, artifact_name: str):
+            raise AssertionError(
+                f"Path-A FSI A2A request must not call extraction port ({artifact_name})"
+            )
+
+    vault_store = InMemoryAuditVaultStore()
+    op_store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
+    llm_double = ScriptedLlm(max_calls=0)
+
+    executor = CollectExecutor(
+        collector=Collector(
+            ZeroCallExtractor(),
+            vault_store=vault_store,
+            operational_store=op_store,
+            knowledge_catalog=catalog,
+        )
+    )
+    app = build_a2a_app(
+        url="http://test/",
+        executor=executor,
+        edge_mode="hybrid",
+        llm_leg=LlmLeg(model=llm_double),
+        vault_store=vault_store,
+        operational_store=op_store,
+        knowledge_catalog=catalog,
+    )
+
+    def _extract_turn(task) -> ExchangeTurn:
+        for artifact in task.artifacts:
+            for part in artifact.parts:
+                if not part.HasField("data"):
+                    continue
+                meta = MessageToDict(part.metadata) if part.HasField("metadata") else {}
+                if meta.get(META_KIND) == KIND_EXCHANGE_TURN:
+                    return ExchangeTurn.model_validate(MessageToDict(part.data))
+        raise AssertionError("No ExchangeTurn artifact on completed A2A task")
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as hc:
+        config = ClientConfig(
+            httpx_client=hc,
+            streaming=True,
+            supported_protocol_bindings=[TransportProtocol.JSONRPC.value],
+        )
+        client = await ClientFactory(config).create_from_url("http://test/")
+
+        async def _send_path_a(
+            party: str, context_id: str, assertion: dict
+        ) -> ExchangeTurn:
+            parts = encode_collect_request(
+                CollectRequest(
+                    process="commercial-loan-underwriting",
+                    party=party,
+                    context_id=context_id,
+                )
+            )
+            parts.append(ph.new_data_part(assertion))
+            msg = Message(role=Role.ROLE_USER, message_id=uuid.uuid4().hex, parts=parts)
+            task_id = None
+            async for ev in client.send_message(SendMessageRequest(message=msg)):
+                if ev.HasField("task"):
+                    task_id = ev.task.id
+                elif ev.HasField("status_update"):
+                    task_id = ev.status_update.task_id
+            assert task_id is not None
+            task = await client.get_task(GetTaskRequest(id=task_id))
+            assert task.status.state == TaskState.TASK_STATE_COMPLETED
+            return _extract_turn(task)
+
+        # 1. Submit MAI Appraisal (priority 20) for LOAN-MERIDIAN-001
+        turn_appraisal = await _send_path_a(
+            "LOAN-MERIDIAN-001",
+            "ctx-meridian-a2a",
+            {
+                "fields": {
+                    "doctype": "mai-appraisal",
+                    "issuer": "Cushman & Wakefield Valuation",
+                    "key_fields": {
+                        "appraised_value": "62500000.00",
+                        "property_address": "800 Meridian Industrial Pkwy",
+                        "net_operating_income": "4185000.00",
+                        "currency": "USD",
+                        "valuation_date": "2026-10-01",
+                    },
+                },
+                "overall_confidence": 0.97,
+                "legible": True,
+                "flagged_fields": [],
+            },
+        )
+        assert turn_appraisal.status.entries[0].disposition is Disposition.accepted
+        assert turn_appraisal.status.entries[0].gate is Gate.auto_approve
+        assert turn_appraisal.status.entries[0].vault_uri is not None
+
+        # 2. Submit CRE Credit Agreement (priority 30, base origination_fee = 50000.00)
+        turn_credit = await _send_path_a(
+            "LOAN-MERIDIAN-001",
+            "ctx-meridian-a2a",
+            {
+                "fields": {
+                    "doctype": "cre-credit-agreement",
+                    "issuer": "Meridian Commercial Bank",
+                    "key_fields": {
+                        "loan_amount": "45000000.00",
+                        "origination_fee": "50000.00",
+                        "net_operating_income": "4185000.00",
+                        "currency": "USD",
+                        "effective_date": "2026-10-15",
+                    },
+                },
+                "overall_confidence": 0.96,
+                "legible": True,
+                "flagged_fields": [],
+            },
+        )
+        assert turn_credit.status.entries[0].disposition is Disposition.accepted
+
+        # 3. Submit TRID Closing Disclosure / Schedule B Fee Addendum (priority 40, origination_fee = 100000.00)
+        turn_cd = await _send_path_a(
+            "LOAN-MERIDIAN-001",
+            "ctx-meridian-a2a",
+            {
+                "fields": {
+                    "doctype": "trid-closing-disclosure",
+                    "issuer": "Meridian Commercial Bank",
+                    "key_fields": {
+                        "loan_amount": "45000000.00",
+                        "appraised_value": "62500000.00",
+                        "origination_fee": "100000.00",
+                        "currency": "USD",
+                        "effective_date": "2026-10-15",
+                    },
+                },
+                "overall_confidence": 0.98,
+                "legible": True,
+                "flagged_fields": [],
+            },
+        )
+        assert turn_cd.status.entries[0].disposition is Disposition.accepted
+
+        # 4. Submit Commercial Property Quote for terrepower-coastal-2027
+        turn_ins = await _send_path_a(
+            "terrepower-coastal-2027",
+            "ctx-terrepower-a2a",
+            {
+                "fields": {
+                    "doctype": "commercial-property-quote",
+                    "issuer": "Chubb Global Property",
+                    "key_fields": {
+                        "total_insured_value": "142500000.00",
+                        "coverage_limit": "50000000.00",
+                        "premium": "418500.00",
+                        "deductible": "50000.00",
+                        "currency": "USD",
+                        "effective_date": "2026-10-15",
+                    },
+                },
+                "overall_confidence": 0.95,
+                "legible": True,
+                "flagged_fields": [],
+            },
+        )
+        assert turn_ins.status.entries[0].disposition is Disposition.accepted
+
+        # 5. Malformed cre-credit-agreement missing required loan_amount is rejected at schema validation
+        turn_bad = await _send_path_a(
+            "LOAN-MERIDIAN-001",
+            "ctx-meridian-a2a",
+            {
+                "fields": {
+                    "doctype": "cre-credit-agreement",
+                    "issuer": "Meridian Commercial Bank",
+                    "key_fields": {
+                        "origination_fee": "50000.00",
+                        "currency": "USD",
+                        "effective_date": "2026-10-15",
+                    },
+                },
+                "overall_confidence": 0.96,
+                "legible": True,
+                "flagged_fields": [],
+            },
+        )
+        assert turn_bad.status.entries[0].disposition is Disposition.rejected
+        assert turn_bad.status.entries[0].reason_code == "schema_invalid"
+
+    # Verify 0 LLM calls on structured A2A traffic and full Zone 3-6 promotion
+    assert llm_double.call_count == 0
+    assert len(vault_store.list_records(context_id="ctx-meridian-a2a")) == 3
+    winners, conflicts = op_store.query_as_of("LOAN-MERIDIAN-001")
+    by_leaf = {f.field_path.split(".")[-1]: f for f in winners}
+    assert by_leaf["loan_amount"].field_value == "45000000.00"
+    assert by_leaf["appraised_value"].field_value == "62500000.00"
+    assert by_leaf["origination_fee"].field_value == "100000.00"
+    assert by_leaf["origination_fee"].doctype == "trid-closing-disclosure"
+    assert by_leaf["origination_fee"].source_priority == 40
+    assert any(
+        c.field_path.endswith("origination_fee")
+        and c.winning_value == "100000.00"
+        and c.conflicting_value == "50000.00"
+        for c in conflicts
+    )
+    lineage = catalog.trace_lineage("LOAN-MERIDIAN-001", "origination_fee")
+    assert lineage is not None
+    assert len(lineage.nodes) == 6
+
+
+def test_zero_stale_seam_model_or_vertex_branding_drift() -> None:
+    """Zero residual ``BRIDGE_SEAM``, ``gemini-2.5-flash``, or ``Vertex AI Agent Engine`` strings in code/docs."""
+    for pkg in ("bridge", "contract", "agents"):
+        for py_path in (REPO_ROOT / pkg).rglob("*.py"):
+            if "__pycache__" in py_path.parts:
+                continue
+            text = py_path.read_text(encoding="utf-8")
+            rel = py_path.relative_to(REPO_ROOT)
+            assert "BRIDGE_SEAM" not in text, f"{rel} contains stale 'BRIDGE_SEAM'"
+            assert "gemini-2.5-flash" not in text, (
+                f"{rel} contains stale 'gemini-2.5-flash'"
+            )
+            assert "Vertex AI Agent Engine" not in text, (
+                f"{rel} contains legacy 'Vertex AI Agent Engine'"
+            )
+            assert "Vertex AI Reasoning Engine" not in text, (
+                f"{rel} contains legacy 'Vertex AI Reasoning Engine'"
+            )
+
+    for md_path in REPO_ROOT.rglob("*.md"):
+        if ".venv" in md_path.parts or "node_modules" in md_path.parts:
+            continue
+        text = md_path.read_text(encoding="utf-8")
+        rel = md_path.relative_to(REPO_ROOT)
+        assert "BRIDGE_SEAM" not in text, f"{rel} contains stale 'BRIDGE_SEAM'"
+        assert "gemini-2.5-flash" not in text, (
+            f"{rel} contains stale 'gemini-2.5-flash'"
+        )
+        assert "Vertex AI" not in text, f"{rel} contains legacy 'Vertex AI'"
 
 
 def test_dynamic_process_skill_resolution_and_two_sided_oversight_controls() -> None:

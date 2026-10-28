@@ -10,7 +10,7 @@ JSON propagates; :func:`bridge.satisfaction.propose_outstanding` turns it into t
 per-entry fallback.
 
 The model resolves like the ``document_bridge`` agent's (``BRIDGE_MODEL``, default
-``gemini-2.5-flash``); a ``BaseLlm`` instance (a test double) is used as-is. A model
+``gemini-3.8-flash``); a ``BaseLlm`` instance (a test double) is used as-is. A model
 name becomes a ``BaseLlm`` lazily (first assessment), so building the app needs no
 credentials. Never imports ``bridge.edge`` (core → edge is the wrong direction).
 """

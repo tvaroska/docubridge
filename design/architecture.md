@@ -44,7 +44,7 @@ docubridge/
 ├── skills/          Agent Skills folders the Bridge loads at runtime (doctype + process)
 │   ├── address-proof, gov-id, utility-bill (Address)
 │   ├── benefits-procurement, benefits-quote, benefits-rfp (Benefits & RFP)
-│   └── commercial-loan-underwriting, trid-closing-disclosure (Financial Services & Banking)
+│   └── commercial-loan-underwriting, trid-closing-disclosure, cre-credit-agreement, mai-appraisal, commercial-property-quote (Financial Services, Banking & Insurance)
 ├── frontend/        four apps (provider portal = A2UI Path-B; console + dashboard = SSE; timewarp)
 │   ├── provider-portal/, agent-console/, ops-dashboard/, timewarp/
 │   ├── shared/      @docubridge/shared: theme, Panel, Badges, contract mirror
@@ -97,6 +97,7 @@ Installed skills:
 - **Address:** `address-proof` (process), `gov-id`, `utility-bill` (doctypes)
 - **Benefits:** `benefits-procurement` (process), `benefits-quote` (doctype)
 - **RFP:** `benefits-rfp` (emergent-Collect process)
+- **Financial Services & Insurance:** `commercial-loan-underwriting` (process), `trid-closing-disclosure`, `cre-credit-agreement`, `mai-appraisal`, `commercial-property-quote` (doctypes)
 
 The eval corpus is the enforced source of truth for field names + expected dispositions.
 

@@ -841,7 +841,7 @@ config, not by switching between local and GCP modes.
     credential-free unit tests.
   - **Lazy imports**: `google.genai` imported INSIDE methods only, never at module top
     (keeps the module edge-free/cycle-free like `fixture.py`).
-  - **Model config**: Uses `BRIDGE_MODEL` env (default `gemini-2.5-flash`, the existing
+  - **Model config**: Uses `BRIDGE_MODEL` env (default `gemini-3.8-flash`, the existing
     `DEFAULT_MODEL` constant).
   - **SVG handling**: SVGs ride as **text parts** (corpus images are text SVGs; simpler
     than trying to force bytes as image parts).

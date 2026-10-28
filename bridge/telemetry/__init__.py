@@ -3,7 +3,7 @@
 Provides:
 1. Automatic W3C ``traceparent`` (``00-<trace_id>-<span_id>-<flags>``) and Google Cloud
    ``X-Cloud-Trace-Context`` (``<trace_id>/<span_id_dec>;o=1``) parent context extraction
-   and propagation across FastAPI / Starlette HTTP requests and Vertex AI Agent Engine
+   and propagation across FastAPI / Starlette HTTP requests and Gemini platform Agent Engine
    RPC hops.
 2. Application-level child spans (:func:`trace_step`) across all 6 Enterprise Data
    Architecture zones and all 4 pillars:

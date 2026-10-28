@@ -52,7 +52,7 @@ def build_document_bridge(model: str | BaseLlm | None = None) -> LlmAgent:
 
     Args:
         model: Override model — a model name or a ``BaseLlm`` instance (defaults to
-            BRIDGE_MODEL env or gemini-2.5-flash). A ``BaseLlm`` instance is shared
+            BRIDGE_MODEL env or gemini-3.8-flash). A ``BaseLlm`` instance is shared
             with the ``extraction_agent`` sub-agent (one model object for both
             agents; requests are told apart by the tools they offer).
 
@@ -100,7 +100,7 @@ def build_app(model: str | BaseLlm | None = None, *, is_resumable: bool = True) 
 
     Args:
         model: Override model — a model name or a ``BaseLlm`` instance (defaults to
-            BRIDGE_MODEL env or gemini-2.5-flash).
+            BRIDGE_MODEL env or gemini-3.8-flash).
         is_resumable: The App's resumability switch (default True).
 
     Returns:

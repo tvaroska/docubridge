@@ -37,7 +37,7 @@ class SqlAgentGymEngine(AgentGymEngine):
 
     Persists signals, Tribal Knowledge Rules, Quality Report Cards, Programmable
     Trust policies, and Shadow Mode comparisons in shared SQL tables so that
-    Cloud Run UI/API replicas and Vertex AI Agent Engine (`reasoningEngines`)
+    Cloud Run UI/API replicas and Gemini platform Agent Engine (`reasoningEngines`)
     workers share a single consistent source of truth across processes and restarts.
     """
 

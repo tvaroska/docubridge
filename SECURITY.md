@@ -10,7 +10,7 @@
    - Accepted documents are locked in Cloud Storage with `if_generation_match=0`, SHA-256 content digests, and retention locks (`BRIDGE_VAULT_BUCKET`). Overwrites and deletions raise `VaultImmutabilityError`.
 3. **Compound Identity (`bridge/identity.py` & `bridge/user_interaction/auth.py`):**
    - Every sensitive operation evaluates the intersection of the workload's **SPIFFE ID** (`spiffe://agents.docubridge.io/...` verified via `X-Bridge-Spiffe-Svid`) and the human caller's **Principal Role & Approval Limit** (`Effective Access = Agent(SPIFFE) ∩ Human(Principal) ∩ Tenant Scope`).
-   - When `BRIDGE_SEAM_MODE=gcp`, hardcoded development signing secrets are rejected (`SpiffeAuthenticationError`).
+   - When `BRIDGE_PORT_MODE=gcp`, hardcoded development signing secrets are rejected (`SpiffeAuthenticationError`).
 4. **Agent Gateway & Model Armor (`bridge/agent_gym/registry_gateway.py`):**
    - `CLIENT_TO_AGENT` ingress enforces inline prompt-injection detection and DLP scrubbing; `AGENT_TO_ANYWHERE` egress enforces Agent Registry membership and IAM v3 Unified Access Policy CEL rules (`DENY` overrides `ALLOW`).
 5. **Private-IP Data Plane & Secret Management (`terraform/`):**

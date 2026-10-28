@@ -167,7 +167,7 @@ async def _run_once(
     new_message: Any,
     remote_engine: Any = None,
 ) -> Any:
-    """Run one turn on ``runner`` (or ``remote_engine`` when deployed to Vertex AI
+    """Run one turn on ``runner`` (or ``remote_engine`` when deployed to Gemini platform
     Agent Engine) and return the last ``event.output`` (raw dict|None).
 
     Shared by the seed turn and every resume turn on the durable path: iterate

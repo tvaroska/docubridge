@@ -1,0 +1,8 @@
+rules:
+  - id: complete_fields
+    check: all_required_present
+signals:
+  legibility: bridge
+  type_match: bridge
+  confidence: bridge
+  completeness: agent

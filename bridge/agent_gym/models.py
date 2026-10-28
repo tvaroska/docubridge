@@ -82,7 +82,7 @@ def _gcp_project_number() -> str:
 
 
 def _reasoning_engine_id() -> str:
-    """Resolve the Vertex AI Reasoning Engine resource ID."""
+    """Resolve the Gemini platform Reasoning Engine resource ID."""
     return (
         os.environ.get("BRIDGE_AGENT_ENGINE_ID", "").strip()
         or DEFAULT_REASONING_ENGINE_ID

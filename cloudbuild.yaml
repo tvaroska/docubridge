@@ -4,7 +4,7 @@
 #   - Track A (t=0): resolve-git-metadata -> docker-build-image (BuildKit layer cache)
 #   - Track B (t=0): python-env-and-lint (uv + ruff check + ruff format --check)
 #                    -> parallel python-core-and-enterprise-tests + python-agent-and-golden-tests
-#                    -> python-coverage-gate (combines shards, enforces >=85% coverage)
+#                    -> python-coverage-gate (combines shards, enforces >=90% coverage)
 #   - Track C (t=0): frontend-tests-and-typecheck (all 5 pnpm workspaces: vitest + tsc/vite build)
 #   - Track D (t=0): terraform-plan-tests (13 credential-free .tftest.hcl suites)
 #   - Fan-in Gate  : docker-push-image pushes to Artifact Registry ONLY after all tracks pass.
@@ -61,7 +61,7 @@ steps:
         /workspace/.venv/bin/ruff format --check .
 
   # ------------------------------------------------------------------------- #
-  # 2b. Python Core, Seam, Isolation & Enterprise Data Suite (Shard 1)        #
+  # 2b. Python Core, Port, Isolation & Enterprise Data Suite (Shard 1)        #
   # ------------------------------------------------------------------------- #
   - id: python-core-and-enterprise-tests
     name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
