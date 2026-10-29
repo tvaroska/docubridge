@@ -3467,3 +3467,141 @@ def test_docai_uptraining_dataset_export_and_verified_filtering(tmp_path: Path) 
         assert resp_all.json()["document_count"] == 2
     finally:
         gym.close()
+
+
+def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> None:
+    """Verify the 4-Beat Collaborative Commercial Consolidation Loan workflow,
+    cross-document Bank Statement payoff wire waiver, Agent Gym v1.1.0 compilation,
+    Day-2 zero-touch auto-approval, and /demo split-screen DOM elements."""
+    from fastapi.testclient import TestClient
+
+    from bridge.a2ui_inbox import InMemoryActionInboxStore
+    from bridge.agent_gym import InMemoryAgentGymEngine
+    from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
+    from bridge.operational_store import InMemoryOperationalStore
+    from bridge.user_interaction import (
+        build_user_interaction_app,
+        reset_consolidation_collab_state,
+    )
+
+    reset_consolidation_collab_state()
+    op_store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
+    inbox = InMemoryActionInboxStore()
+    gym = InMemoryAgentGymEngine()
+
+    app = build_user_interaction_app(
+        operational_store=op_store,
+        knowledge_catalog=catalog,
+        inbox_store=inbox,
+        agent_gym=gym,
+    )
+    client = TestClient(app)
+
+    # 1. Beat 0: Initial 3-document borrower checklist
+    s0_resp = client.get("/v1/demo/consolidation-collab/state")
+    assert s0_resp.status_code == 200
+    s0 = s0_resp.json()
+    assert s0["entity_id"] == "LOAN-MERIDIAN-CONSOL-2026"
+    assert s0["beat"] == 0
+    assert s0["done"] is False
+    assert s0["counts"] == {"total": 3, "satisfied": 0, "waived": 0, "required": 3}
+    assert len(s0["borrower_checklist"]) == 3
+    assert s0["financial_summary"]["consolidated_loan_amount"] == "$1,800,000.00"
+    assert s0["financial_summary"]["appraised_collateral_value"] == "$2,600,000.00"
+    assert s0["financial_summary"]["ltv_formatted"] == "69.23%"
+    assert s0["financial_summary"]["dscr_formatted"] == "1.44x"
+
+    # 2. Beat 1: Upload 2025 Audited Financials -> Discover 3-Row Debt Schedule -> Mutate Checklist (3 -> 6)
+    b1_resp = client.post("/v1/demo/consolidation-collab/advance", json={"beat": 1})
+    assert b1_resp.status_code == 200
+    b1 = b1_resp.json()
+    assert b1["beat"] == 1
+    assert b1["done"] is False
+    assert b1["counts"] == {"total": 6, "satisfied": 2, "waived": 1, "required": 3}
+    items_by_id = {item["id"]: item for item in b1["borrower_checklist"]}
+    assert items_by_id["item-1-financials"]["status"] == "satisfied"
+    assert items_by_id["item-1-financials"]["page_number"] == 4
+    assert items_by_id["item-3-appraisal"]["status"] == "satisfied"
+    assert items_by_id["item-4-fnb-payoff"]["status"] == "required"
+    assert items_by_id["item-4-fnb-payoff"]["emergent"] is True
+    assert items_by_id["item-5-equip-payoff"]["status"] == "required"
+    assert items_by_id["item-5-equip-payoff"]["emergent"] is True
+    assert items_by_id["item-6-internal-loc"]["status"] == "waived"
+    assert items_by_id["item-6-internal-loc"]["emergent"] is True
+
+    # 3. Beat 2: Upload Oct 2026 Bank Statement + FNB Payoff -> Spot $48,210 PAID IN FULL wire on Page 2
+    b2_resp = client.post("/v1/demo/consolidation-collab/advance", json={"beat": 2})
+    assert b2_resp.status_code == 200
+    b2 = b2_resp.json()
+    assert b2["beat"] == 2
+    assert b2["done"] is False
+    assert b2["counts"] == {"total": 6, "satisfied": 4, "waived": 1, "required": 1}
+    assert b2["cross_doc_discovery"] is not None
+    assert b2["cross_doc_discovery"]["page_number"] == 2
+    assert b2["cross_doc_discovery"]["bounding_box"] == [0.16, 0.54, 0.88, 0.63]
+    assert b2["cross_doc_discovery"]["wire_amount"] == "$48,210.00"
+    assert "PAID IN FULL" in b2["cross_doc_discovery"]["wire_reference"]
+    assert b2["underwriter_overwatch"]["status"] == "awaiting_approval"
+
+    # 4. Beat 3: Underwriter 1-click waiver approval via A2UI ActionInboxStore -> Done = True
+    b3_resp = client.post("/v1/demo/consolidation-collab/advance", json={"beat": 3})
+    assert b3_resp.status_code == 200
+    b3 = b3_resp.json()
+    assert b3["beat"] == 3
+    assert b3["done"] is True
+    assert b3["counts"] == {"total": 6, "satisfied": 4, "waived": 2, "required": 0}
+    items_b3 = {item["id"]: item for item in b3["borrower_checklist"]}
+    assert items_b3["item-5-equip-payoff"]["status"] == "waived"
+    assert b3["underwriter_overwatch"]["status"] == "approved"
+    assert b3["underwriter_overwatch"]["oversight_rsr_score"] == 0.98
+    assert b3["underwriter_overwatch"]["review_dwell_ms"] == 4800
+    assert b3["underwriter_overwatch"]["citation_opened"] is True
+    assert len(inbox.list_audit_records()) >= 1
+
+    # 5. Beat 4: Distill to Agent Gym -> 4/4 Stress Cases -> Compile v1.1.0 -> Day-2 Zero-Touch Auto-Approve
+    b4_resp = client.post("/v1/demo/consolidation-collab/advance", json={"beat": 4})
+    assert b4_resp.status_code == 200
+    b4 = b4_resp.json()
+    assert b4["beat"] == 4
+    assert b4["done"] is True
+    payoff = b4["agent_gym_payoff"]
+    assert payoff is not None
+    assert payoff["skill_name"] == "consolidation-payoff"
+    assert payoff["skill_version"] == "1.1.0"
+    assert payoff["stress_cases_passed"] == 4
+    assert payoff["stress_cases_total"] == 4
+    assert len(payoff["stress_cases"]) == 4
+    assert payoff["day2_entity_id"] == "LOAN-APEX-CONSOL-DAY2"
+    assert payoff["day2_status"] == "accepted"
+    assert payoff["day2_gate"] == "auto_approve"
+    assert payoff["day2_latency_ms"] == 142
+    assert payoff["human_touchpoints"] == 0
+    assert payoff["escalation_tokens"] == 0
+
+    # 6. Reset returns state to Beat 0
+    rst_resp = client.post("/v1/demo/consolidation-collab/reset")
+    assert rst_resp.status_code == 200
+    rst = rst_resp.json()
+    assert rst["beat"] == 0
+    assert rst["done"] is False
+    assert rst["counts"] == {"total": 3, "satisfied": 0, "waived": 0, "required": 3}
+
+    # 7. Verify /demo HTML serves the split-screen collaborative stage DOM elements
+    demo_resp = client.get("/demo")
+    assert demo_resp.status_code == 200
+    demo_html = demo_resp.text
+    for expected_id in (
+        "banking-collab-stage",
+        "btn-collab-beat-1",
+        "btn-collab-beat-2",
+        "btn-collab-beat-3",
+        "btn-collab-beat-4",
+        "btn-collab-reset",
+        "collab-borrower-checklist",
+        "collab-agent1-box",
+        "collab-agent2-box",
+        "collab-overwatch-box",
+    ):
+        assert f'id="{expected_id}"' in demo_html
+

@@ -19,6 +19,9 @@ from bridge.user_interaction.auth import (
     AuthenticationRequiredError,
     resolve_compound_identity,
 )
+from bridge.user_interaction.consolidation_collab import (
+    reset_consolidation_collab_state,
+)
 from bridge.user_interaction.demo_seed import seed_demo_scenarios
 from bridge.user_interaction.schemas import (
     CompileSkillRequest,
@@ -372,6 +375,7 @@ def register_gym_routes(
         reseed_demo: bool = False,
     ) -> list[dict[str, Any]]:
         """Reset Programmable Trust policies (and optionally clear rules or reseed demo scenarios)."""
+        reset_consolidation_collab_state()
         if reseed_demo:
             seed_demo_scenarios(
                 operational_store=store,

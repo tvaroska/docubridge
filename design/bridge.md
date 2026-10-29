@@ -12,6 +12,7 @@ down:
   - "outbound.md"
   - "agent-gym.md"
   - "harness-evolve.md"
+  - "schema-refinery.md"
   - "../spec/demos/demo-suite.md"
   - "../spec/cujs.md"
   - "architecture.md"
@@ -52,6 +53,7 @@ tags: [bridge]
 - [GCP substrate](gcp-substrate.md) — ports, network zones, deploy, proactive engine
 - [Agent Gym & Programmable Trust](agent-gym.md) — continuous learning, graduated autonomy, and two-sided human-oversight calibration literature
 - [Agent Gym × Harness Evolve & Multi-Tier Extraction](harness-evolve.md) — combining daytime SME capture with nightly `SKILL.md` compilation and Document AI Standard/Custom Extractor evolution
+- [Schema Refinery & Ontology-Driven Document Types](schema-refinery.md) — replacing flat `doctype` skills with OKF-backed Knowledge Catalog entries, an AlloyDB + BigQuery Knowledge Graph, automated taxonomy/description evaluation, snapshot isolation, and cross-revision lineage
 
 **Context**
 - [demo implementations](../spec/demos/demo-suite.md) — the three demos on one deployed core

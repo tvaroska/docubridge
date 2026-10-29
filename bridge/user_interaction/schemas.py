@@ -187,3 +187,12 @@ class DialTrustPolicyRequest(BaseModel):
     target_level: TrustAutonomyLevel
     reason: str = "Domain lead updated Programmable Trust dial."
     force: bool = False
+
+
+class AdvanceConsolidationCollabRequest(BaseModel):
+    """Request body to advance the 4-beat Collaborative Commercial Consolidation Loan demo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    beat: Literal[1, 2, 3, 4]
+

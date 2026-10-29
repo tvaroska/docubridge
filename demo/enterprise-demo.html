@@ -171,6 +171,109 @@
       </div>
     </div>
 
+    <!-- =================================================================== -->
+    <!-- COLLABORATIVE CONSOLIDATION LOAN SPLIT-SCREEN STAGE (BANKING MODE)  -->
+    <!-- =================================================================== -->
+    <div id="banking-collab-stage" class="card collab-stage-card" style="margin-bottom:18px;border:1.5px solid #cbd5e1;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);">
+      <div class="card-header" style="border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="badge badge-navy">COLLABORATIVE CONSOLIDATION LOAN · 4-BEAT WORKFLOW</span>
+            <span class="badge badge-blue mono" id="collab-entity-badge">LOAN-MERIDIAN-CONSOL-2026</span>
+            <span class="badge badge-purple" id="collab-beat-pill">Beat 0 of 4 · Initial 3-Doc Checklist</span>
+          </div>
+          <h2 class="card-title" style="margin-top:6px;font-size:17px;">Meridian Logistics Center LLC — $1,800,000.00 Commercial Debt Consolidation Facility</h2>
+          <div class="card-sub">
+            Dual-Zone Live Collaboration: External Borrower Portal Checklist (Left) ↔ Internal Bank Underwriter &amp; Dual-Agent Board (Right · <span class="mono">gemini-3.8-flash</span> Sense A + <span class="mono">gemini-4-argon</span> Sense B)
+          </div>
+        </div>
+        <div class="collab-beat-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button id="btn-collab-beat-1" class="btn btn-primary" style="padding:7px 12px;font-size:12px;" onclick="window.advanceConsolidationCollab(1)">
+            1. Upload 2025 Financials (3 → 6 Items)
+          </button>
+          <button id="btn-collab-beat-2" class="btn btn-navy" style="padding:7px 12px;font-size:12px;" onclick="window.advanceConsolidationCollab(2)">
+            2. Upload Bank Stmt (Spot $48.2K Wire)
+          </button>
+          <button id="btn-collab-beat-3" class="btn btn-success" style="padding:7px 12px;font-size:12px;" onclick="window.advanceConsolidationCollab(3)">
+            3. Underwriter 1-Click Waiver (Done!)
+          </button>
+          <button id="btn-collab-beat-4" class="btn btn-outline" style="padding:7px 12px;font-size:12px;border-color:#7c3aed;color:#6d28d9;" onclick="window.advanceConsolidationCollab(4)">
+            4. Distill to Agent Gym (Day-2 Auto-Waive)
+          </button>
+          <button id="btn-collab-reset" class="btn btn-outline" style="padding:7px 10px;font-size:12px;" onclick="window.resetConsolidationCollab()">
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Deterministic Decimal Financial Summary Bar -->
+      <div id="collab-fin-summary-bar" class="collab-fin-bar">
+        <div class="collab-fin-metric">
+          <span class="collab-fin-label">Consolidated Loan</span>
+          <span class="collab-fin-val mono" id="collab-fin-loan">$1,800,000.00</span>
+          <span class="collab-fin-sub">3 Existing Facilities</span>
+        </div>
+        <div class="collab-fin-metric">
+          <span class="collab-fin-label">MAI Appraised Collateral</span>
+          <span class="collab-fin-val mono" id="collab-fin-appraisal">$2,600,000.00</span>
+          <span class="collab-fin-sub">185,000 SF Industrial</span>
+        </div>
+        <div class="collab-fin-metric">
+          <span class="collab-fin-label">Deterministic LTV (Rule 0)</span>
+          <span class="collab-fin-val mono" style="color:#059669;" id="collab-fin-ltv">69.23%</span>
+          <span class="collab-fin-sub">Policy Cap &le; 75.00% ✓</span>
+        </div>
+        <div class="collab-fin-metric">
+          <span class="collab-fin-label">Deterministic DSCR (Rule 0)</span>
+          <span class="collab-fin-val mono" style="color:#059669;" id="collab-fin-dscr">1.44x</span>
+          <span class="collab-fin-sub">$312.0K NOI / $216.7K DS · Min &ge; 1.25x ✓</span>
+        </div>
+      </div>
+
+      <!-- Split-Screen 2-Column Grid: External Borrower Portal vs Internal Bank Overwatch -->
+      <div class="grid-2 collab-split-grid" style="margin-top:14px;align-items:start;">
+        <!-- LEFT COLUMN: EXTERNAL ZONE · BORROWER PORTAL -->
+        <div class="collab-zone-panel collab-zone-external">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
+            <div>
+              <span class="badge badge-navy" style="background:#0f172a;color:#fff;">EXTERNAL ZONE · BORROWER PORTAL</span>
+              <div style="font-weight:800;font-size:14.5px;color:#0f172a;margin-top:4px;">Borrower Dynamic Closing Checklist</div>
+            </div>
+            <span class="badge badge-amber" id="collab-borrower-progress-badge">0 / 3 Complete · 3 Required</span>
+          </div>
+
+          <div id="collab-borrower-banner" class="collab-banner collab-banner-info">
+            <div style="font-weight:800;font-size:13px;" id="collab-banner-headline">Application Opened · 3 Baseline Documents Requested</div>
+            <div style="font-size:12.5px;margin-top:3px;" id="collab-banner-msg">
+              Upload your 2025 Audited Financials, Oct 2026 Operating Bank Statement, and MAI Appraisal to begin automated underwriting.
+            </div>
+          </div>
+
+          <div id="collab-borrower-checklist" class="collab-checklist-stack"></div>
+        </div>
+
+        <!-- RIGHT COLUMN: INTERNAL ZONE · BANK UNDERWRITER & DUAL-AGENT BOARD -->
+        <div class="collab-zone-panel collab-zone-internal">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
+            <div>
+              <span class="badge badge-blue">INTERNAL ZONE · BANK UNDERWRITER &amp; DUAL-AGENT BOARD</span>
+              <div style="font-weight:800;font-size:14.5px;color:#0f172a;margin-top:4px;">Sense A Intake + Sense B Policy &amp; Overwatch</div>
+            </div>
+            <span class="badge badge-purple mono" id="collab-skill-rev-badge">consolidation-payoff@1.0.0</span>
+          </div>
+
+          <!-- Agent 1: Document Bridge (Sense A) -->
+          <div id="collab-agent1-box" class="collab-agent-box" style="margin-bottom:10px;"></div>
+
+          <!-- Agent 2: Bank Underwriting & Policy Agent (Sense B) -->
+          <div id="collab-agent2-box" class="collab-agent-box" style="margin-bottom:10px;"></div>
+
+          <!-- Cross-Doc Discovery + Underwriter Overwatch + Agent Gym Day-2 Payoff -->
+          <div id="collab-overwatch-box" class="collab-overwatch-box"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="grid-3" style="margin-bottom:16px;">
       <!-- Card 1: Path A Structured -->
       <div class="card">

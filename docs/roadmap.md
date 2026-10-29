@@ -1,10 +1,10 @@
 # Roadmap
 
-The high-level milestone view of the build. Each milestone is defined by **what it proves on stage** (the demo beat / [CUJ](../spec/cujs.md) it unlocks), not by task detail — that lives in [`TODO.md`](../TODO.md), and the per-feature breakdown in [`features.md`](features.md).
+The high-level milestone view of the build. Each milestone is defined by **what it proves on stage** (the demo beat / [CUJ](../spec/cujs.md) it unlocks), with the per-feature breakdown in [`features.md`](features.md) and historical decisions in [`DECISIONS.md`](../DECISIONS.md) (an ephemeral root `TODO.md` can be created when an active sprint requires granular task tracking).
 
-The core commitment: **one deployed core on the Gemini platform running Address, Employee Benefits, Emergent RFP, and the 6-Zone Financial Services & Regulated Industry Enterprise Showcase (`LOAN-MERIDIAN-001`, `MORTGAGE-WESTBROOK-2026`, `terrepower-coastal-2027`) end-to-end.**
+The core commitment: **one deployed core on the Gemini platform running Address, Employee Benefits, Emergent RFP, and the 6-Zone Financial Services & Regulated Industry Enterprise Showcase (`LOAN-MERIDIAN-001`, `MORTGAGE-WESTBROOK-2026`, `terrepower-coastal-2027`) end-to-end across all 13 Hexagonal `Port` boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`).**
 
-> _Current focus (see [`TODO.md`](../TODO.md) for live status):_ Cycle 1 milestones **M0–M7 are complete** — M7 ("It's deployed") closed 2026-10-01 — and the Benefits cycle (CUJ‑3/11/12), Emergent RFP cycle (CUJ‑9/13), Hybrid `document_bridge` LlmAgent edge (off-script routing, real-erase deletion, HITL park/resume), and the 6-Zone Enterprise Data Architecture + Agent Gym + Agent Gateway showcase (`v1.14.0-agent-gateway`) are all built and verified.
+> _Current status:_ Cycle 1 milestones **M0–M7 are complete** — M7 ("It's deployed") closed 2026-10-01 — and the Benefits cycle (CUJ‑3/11/12), Emergent RFP cycle (CUJ‑9/13), Hybrid `document_bridge` LlmAgent edge (off-script routing, real-erase deletion, HITL park/resume), and the 6-Zone Enterprise Data Architecture + Agent Gym + Agent Gateway showcase (`v1.14.0-agent-gateway`) are all built and verified (`0` open items).
 
 ## Cycle 1 milestones — Core + Address
 
@@ -40,4 +40,4 @@ Jordan Lee is asked for proof of address, submits two bills from the **same** co
 The architecture is whole from day one — outbound port, trust boundary, contracts — so these cycles add demand-driven capability, not new machinery. See [layout & scope](../design/architecture.md) and [open questions](../spec/open-questions.md).
 
 ## See also
-- [`TODO.md`](../TODO.md) — the detailed phase plan · [`features.md`](features.md) — the feature catalog · [the Bridge](../design/bridge.md) — design source of truth
+- [`DECISIONS.md`](../DECISIONS.md) — architectural decision log · [`features.md`](features.md) — the feature catalog · [the Bridge](../design/bridge.md) — design source of truth

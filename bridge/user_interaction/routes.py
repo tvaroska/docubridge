@@ -14,6 +14,9 @@ from bridge.knowledge_catalog import (
 from bridge.operational_store import OperationalStore, operational_store_from_env
 from bridge.telemetry import OtelAsgiMiddleware
 from bridge.user_interaction.a2ui_routes import register_a2ui_routes
+from bridge.user_interaction.consolidation_collab import (
+    register_consolidation_collab_routes,
+)
 from bridge.user_interaction.gym_routes import register_gym_routes
 from bridge.user_interaction.intake_routes import register_intake_and_demo_routes
 from bridge.user_interaction.registry_routes import (
@@ -76,6 +79,15 @@ def build_user_interaction_router(
         require_auth=require_auth,
     )
     register_telemetry_routes(router)
+    register_consolidation_collab_routes(
+        router,
+        store=store,
+        catalog=catalog,
+        inbox=inbox,
+        gym=gym,
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+    )
 
     return router
 

@@ -2,8 +2,8 @@
 
 Clean-slate build (`~/projects/docubridge`). Requirements (THE WHAT) live in
 [`spec/`](spec/cujs.md) (forkable, status-free, protected); design (THE HOW) is
-[`design/`](design/bridge.md) (status-free); live status + sequencing is
-[`TODO.md`](TODO.md); the feature catalog is [`docs/features.md`](docs/features.md).
+[`design/`](design/bridge.md) (status-free); live roadmap + milestone status is
+[`docs/roadmap.md`](docs/roadmap.md) (an ephemeral root `TODO.md` can be created when an active sprint requires granular task tracking); the feature catalog is [`docs/features.md`](docs/features.md).
 
 ## 1. Toolchain
 
@@ -43,14 +43,14 @@ scripts/    local run-*.sh hosts + _dev-env.sh; deploy.sh / parity.sh (live GCP 
 
 ## 3. Planning Workflow (gen-3) & Verification Ladder
 
-This project uses a sprint/phase-based planning workflow managed through slash commands.
-Live status lives in ONE place (`TODO.md`); `spec/` and `design/` stay status-free.
+This project uses a roadmap-first planning workflow managed through slash commands.
+Live milestone status lives in [`docs/roadmap.md`](docs/roadmap.md) (with an ephemeral root `TODO.md` created only when an active sprint requires granular task tracking); `spec/` and `design/` stay status-free.
 
 ### Layout
 
 | Path | Purpose |
 |------|---------|
-| `TODO.md` | Tasks + live status/counts (the ONLY place status lives) |
+| [`docs/roadmap.md`](docs/roadmap.md) | Milestones + live status (an ephemeral root `TODO.md` can be created when an active sprint requires granular task tracking) |
 | `DECISIONS.md` | Append-only decision/learning log (committed) |
 | `CRITICAL.md` | Registry of protected/sensitive paths (auto-escalate) |
 | `spec/` | THE WHAT — requirements. Forkable, status-free, **protected**. `cujs.md`, `standards.md`, `demos/*.md`, `open-questions.md` |
@@ -58,7 +58,7 @@ Live status lives in ONE place (`TODO.md`); `spec/` and `design/` stay status-fr
 | `docs/` | Planning/ops — `roadmap.md`, `features.md`, `upstream-adk-issues.md` |
 | `wiki/evals/` | The eval corpus (Address + Benefits oracles) — a runtime fixture, referenced by code + tests |
 
-Committed: `TODO.md`, `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL.md`.
+Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL.md` (plus optional `TODO.md` during active sprints).
 
 ### Commands & Checkbox States
 
@@ -70,7 +70,7 @@ Committed: `TODO.md`, `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`
 - `/verify [cuj-id]` — run CUJ simulation(s) on demand
 - `/status` — planning summary + live progress
 - Checkbox states: `- [ ]` open · `- [x]` done · `- [!]` attempted-but-failed (awaiting follow-up).
-- Task ID format: native `P<phase>-<seq>` scheme (e.g. `P1-3`), grouped under phase headings in `TODO.md` with `<!-- Counters: p0=N p1=N ... -->` (see `DECISIONS.md`).
+- Task ID format: native `P<phase>-<seq>` scheme (e.g. `P1-3`), grouped under phase headings in [`docs/roadmap.md`](docs/roadmap.md) (or an ephemeral root `TODO.md` during active sprints) with `<!-- Counters: p0=N p1=N ... -->` (see `DECISIONS.md`).
 
 ### Verification Ladder
 
@@ -84,7 +84,7 @@ Committed: `TODO.md`, `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`
 ### CRITICAL Escalation, Task Workflow & Data Discipline
 
 - Any task touching a path in `CRITICAL.md` auto-escalates: stronger model + mandatory review before commit. `spec/` is protected — agents PROPOSE changes to spec (`DECISIONS.md`), never edit it during `/implement`.
-- Each task: implement → `uv run pytest && uv run ruff check .` green → flip its `- [ ]` to `- [x]` in `TODO.md` → commit path-scoped on the current branch (do not push). Match the style, naming, and port/adapter idioms of the surrounding code.
+- Each task: implement → `uv run pytest && uv run ruff check .` green → flip its `- [ ]` to `- [x]` in [`docs/roadmap.md`](docs/roadmap.md) (or active `TODO.md`) → commit path-scoped on the current branch (do not push). Match the style, naming, and port/adapter idioms of the surrounding code.
 - **Synthetic data only, no real PII.** The eval party "Jordan Lee" is synthetic.
 
 ## 4. Hard-Won Lessons Learned & Gotchas (Enterprise Data Architecture, Agent Gym & GCP Deploy)

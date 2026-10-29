@@ -644,3 +644,111 @@
 
   .scene { display: none; }
   .scene.active { display: block; }
+
+  /* Collaborative Consolidation Loan Split-Screen Stage */
+  .collab-fin-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    background: #0f172a;
+    color: #ffffff;
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+  .collab-fin-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-right: 1px solid #334155;
+    padding-right: 10px;
+  }
+  .collab-fin-metric:last-child {
+    border-right: none;
+    padding-right: 0;
+  }
+  .collab-fin-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .collab-fin-val {
+    font-size: 15px;
+    font-weight: 800;
+    color: #f8fafc;
+  }
+  .collab-fin-sub {
+    font-size: 11px;
+    color: #cbd5e1;
+  }
+  .collab-zone-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 13px 15px;
+    background: #ffffff;
+  }
+  .collab-zone-external {
+    border-top: 3px solid #0f172a;
+  }
+  .collab-zone-internal {
+    border-top: 3px solid #2563eb;
+    background: #f8fafc;
+  }
+  .collab-banner {
+    padding: 10px 12px;
+    border-radius: 9px;
+    margin-bottom: 10px;
+    border: 1px solid #cbd5e1;
+  }
+  .collab-banner-info {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1e3a8a;
+  }
+  .collab-banner-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
+  }
+  .collab-banner-success {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+  }
+  .collab-checklist-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .collab-check-item {
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    padding: 9px 12px;
+    background: #ffffff;
+    transition: all 0.15s ease;
+  }
+  .collab-check-item.status-satisfied {
+    border-left: 4px solid #059669;
+    background: #f0fdf4;
+  }
+  .collab-check-item.status-waived {
+    border-left: 4px solid #7c3aed;
+    background: #f5f3ff;
+  }
+  .collab-check-item.status-required {
+    border-left: 4px solid #d97706;
+    background: #fffbeb;
+  }
+  .collab-agent-box {
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #ffffff;
+  }
+  .collab-overwatch-box {
+    border: 1.5px solid #c4b5fd;
+    border-radius: 10px;
+    padding: 11px 13px;
+    background: #faf5ff;
+  }

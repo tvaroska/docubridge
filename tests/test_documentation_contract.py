@@ -259,16 +259,18 @@ def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
 
 
 def test_secondary_docs_list_all_13_hexagonal_ports() -> None:
-    """``design/ports.md`` and ``TODO.md`` enumerate all 13 Hexagonal ``Port`` names."""
+    """``design/ports.md`` and ``docs/roadmap.md`` enumerate all 13 Hexagonal ``Port`` names."""
     from bridge.ports import Port
 
     ports_doc = (REPO_ROOT / "design/ports.md").read_text(encoding="utf-8")
-    todo_doc = (REPO_ROOT / "TODO.md").read_text(encoding="utf-8")
+    roadmap_doc = (REPO_ROOT / "docs/roadmap.md").read_text(encoding="utf-8")
     for port in Port:
         assert port.value in ports_doc, (
             f"design/ports.md missing Hexagonal Port {port.value!r}"
         )
-        assert port.value in todo_doc, f"TODO.md missing Hexagonal Port {port.value!r}"
+        assert port.value in roadmap_doc, (
+            f"docs/roadmap.md missing Hexagonal Port {port.value!r}"
+        )
 
     pyproject = tomllib.loads(
         (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
