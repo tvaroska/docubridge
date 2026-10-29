@@ -1,8 +1,25 @@
-# AGENTS.md — A2A Document Bridge Agent Guide & Lessons Learned
+# AGENTS.md — A2A Document Bridge Build Conventions & Operational Lessons
 
-This file mirrors [`CLAUDE.md`](CLAUDE.md) and captures the repository invariants, architecture boundaries, verification gates, and operational lessons learned across the 6-Zone Enterprise Data Architecture, Agent Gym, Gemini platform Agent Engine, and GCP (`docubridge-showcase`) deployments.
+Clean-slate build (`~/projects/docubridge`). Requirements (THE WHAT) live in
+[`spec/`](spec/cujs.md) (forkable, status-free, protected); design (THE HOW) is
+[`design/`](design/bridge.md) (status-free); live status + sequencing is
+[`TODO.md`](TODO.md); the feature catalog is [`docs/features.md`](docs/features.md).
 
-## 1. Repository Map & Core Invariants
+## 1. Toolchain
+
+- **Python 3.12+**, managed with **uv**. Run the test suite with `uv run pytest`.
+  All tests must pass before a task is considered done. Never declare success with a
+  failing or convenience-skipped test.
+- **Lint (T1 gate):** `uv run ruff check .` must be clean. Config in `pyproject.toml`
+  (`[tool.ruff]`): select `E4/E7/E9,F,I,UP,B,SIM,ANN001,ANN201,ANN202,RUF`, line-length 88.
+  `ruff format` owns line width — **E501 is intentionally not lint-enforced** (long prompt
+  strings / docstrings). Fix findings or `--fix`; don't blanket-`noqa`. `UP042`/`RUF002` are
+  ignored (wire-enum `__str__` semantics; intentional docstring unicode).
+- **Frontend**: pnpm workspaces (`frontend/*`), React + TS + Vite + MUI; `frontend/shared`
+  is the shared lib, `frontend/e2e` the Playwright suite.
+- ADK is pinned `google-adk >= 2.11.0, < 3`; A2A on `a2a-sdk`.
+
+## 2. Repository Map & Core Invariants (The Load-Bearing Invariant)
 
 ```
 spec/       THE WHAT — requirements (cujs, standards, demos/, open-questions); forkable, protected
@@ -15,21 +32,62 @@ demo/       5-scene Enterprise Showcase Console (enterprise-demo.html) + GCP vid
 frontend/   the four React/Vite apps + shared lib + e2e
 terraform/  IaC by substrate primitive (network, iam, database, secrets, gcs, tasks, telemetry, runtime, gateway, frontend)
 tests/      the shared port suite (local + gcp adapters) + enterprise architecture + conformance + perf
+wiki/evals/ the eval corpus (Address + Benefits oracles) — a runtime fixture, referenced by code + tests
+docs/       planning/ops — roadmap, feature catalog, local-dev, upstream ADK issues
+scripts/    local run-*.sh hosts + _dev-env.sh; deploy.sh / parity.sh (live GCP apply)
 ```
 
 - **Isolation Invariant (`tests/test_isolation_guard.py`):** `bridge/` **never imports** `agents/`, and `agents/` **never imports** `bridge/`. Both import `contract/`.
-- **Ports & Adapters (`bridge/ports/`):** All 13 managed-service boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`) resolve through `resolve_port_mode(port)` (`BRIDGE_PORT_<NAME>` → `BRIDGE_PORT_MODE` → `local`) and `get_port_adapter(port, mode)`, decomposed into `bridge/ports/local/{stores,services,enterprise,__init__}.py` and `bridge/ports/gcp/{common,stores,services,enterprise,__init__}.py`. Legacy `seams` terminology is permanently removed.
+- **Ports & Adapters (`bridge/ports/`):** Every managed-service boundary across all 13 boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`) resolves through `resolve_port_mode(port)` (`BRIDGE_PORT_<NAME>` → `BRIDGE_PORT_MODE` → `local`) and `get_port_adapter(port, mode)`, decomposed into `bridge/ports/local/{stores,services,enterprise,__init__}.py` and `bridge/ports/gcp/{common,stores,services,enterprise,__init__}.py`, and is exercised by shared parametrized tests (`@pytest.mark.port`, `adapter` fixture over `("local","gcp")`, GCP gated on `BRIDGE_TEST_GCP`). Parity is **terminal-outcome**, never ledger-identical. Legacy `seams` terminology is permanently removed.
 - **Skill-Name Literal Guard (`test_core_names_no_skill`):** `tests/test_isolation_guard.py` scans every Python AST string literal in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring literal equals an installed folder name in `skills/` (`address-proof`, `gov-id`, `utility-bill`, `benefits-procurement`, `benefits-quote`, `benefits-rfp`, `commercial-loan-underwriting`, `trid-closing-disclosure`, `cre-credit-agreement`, `mai-appraisal`, `commercial-property-quote`). Never hardcode an installed skill folder name inside `bridge/` core modules.
 
-- **Protected Spec (`CRITICAL.md`):** Never edit `spec/` during implementation tasks; propose spec changes in `DECISIONS.md` instead.
+## 3. Planning Workflow (gen-3) & Verification Ladder
 
-## 2. Verification Ladder
+This project uses a sprint/phase-based planning workflow managed through slash commands.
+Live status lives in ONE place (`TODO.md`); `spec/` and `design/` stay status-free.
 
-- **Lint:** `uv run ruff check .` (must pass with 0 errors).
-- **Unit & Enterprise Suite:** `uv run pytest` (including `tests/test_enterprise_data_architecture.py`, `tests/test_isolation_guard.py`, `tests/test_service_wiring_guard.py`, `tests/test_gemini_extraction.py`).
-- **Terraform Plan-Time Tests:** `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (42 assertions across 13 `.tftest.hcl` files, credential-free).
+### Layout
 
-## 3. Hard-Won Lessons Learned & Gotchas
+| Path | Purpose |
+|------|---------|
+| `TODO.md` | Tasks + live status/counts (the ONLY place status lives) |
+| `DECISIONS.md` | Append-only decision/learning log (committed) |
+| `CRITICAL.md` | Registry of protected/sensitive paths (auto-escalate) |
+| `spec/` | THE WHAT — requirements. Forkable, status-free, **protected**. `cujs.md`, `standards.md`, `demos/*.md`, `open-questions.md` |
+| `design/` | THE HOW (as built) — `architecture.md`, `ports.md`, `zones.md`, `patterns.md` + per-atom design notes; the design source of truth |
+| `docs/` | Planning/ops — `roadmap.md`, `features.md`, `upstream-adk-issues.md` |
+| `wiki/evals/` | The eval corpus (Address + Benefits oracles) — a runtime fixture, referenced by code + tests |
+
+Committed: `TODO.md`, `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL.md`.
+
+### Commands & Checkbox States
+
+- `/open` — top 3 open tasks (surfaces `- [!]` failed items)
+- `/implement {task-id}` — implement, run the verification ladder, archive
+- `/new-task` — add a critical issue to Sprint 0
+- `/new-feature` — define a feature; writes requirements to `spec/`
+- `/replan` — sprint/phase transition; runs the T3 CUJ gate
+- `/verify [cuj-id]` — run CUJ simulation(s) on demand
+- `/status` — planning summary + live progress
+- Checkbox states: `- [ ]` open · `- [x]` done · `- [!]` attempted-but-failed (awaiting follow-up).
+- Task ID format: native `P<phase>-<seq>` scheme (e.g. `P1-3`), grouped under phase headings in `TODO.md` with `<!-- Counters: p0=N p1=N ... -->` (see `DECISIONS.md`).
+
+### Verification Ladder
+
+- **T1 (every `/implement` — gates the commit):**
+  - Lint: `uv run ruff check .` (must pass with 0 errors).
+  - Unit & Enterprise Suite: `uv run pytest` (including `tests/test_enterprise_data_architecture.py`, `tests/test_isolation_guard.py`, `tests/test_service_wiring_guard.py`, `tests/test_gemini_extraction.py`).
+  - Terraform Plan-Time Tests: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (42 assertions across 13 `.tftest.hcl` files, credential-free).
+- **T2 (every `/implement` — gates flipping `- [x]`):** exercise the artifact against the task's own acceptance criteria. Files existing / build green is NOT done.
+- **T3 (phase-close via `/replan` + on-demand via `/verify`):** CUJ simulation against the eval corpus. The Address eval corpus (`wiki/evals/address/`) is the oracle (`expected.json` + `timeline.json`).
+
+### CRITICAL Escalation, Task Workflow & Data Discipline
+
+- Any task touching a path in `CRITICAL.md` auto-escalates: stronger model + mandatory review before commit. `spec/` is protected — agents PROPOSE changes to spec (`DECISIONS.md`), never edit it during `/implement`.
+- Each task: implement → `uv run pytest && uv run ruff check .` green → flip its `- [ ]` to `- [x]` in `TODO.md` → commit path-scoped on the current branch (do not push). Match the style, naming, and port/adapter idioms of the surrounding code.
+- **Synthetic data only, no real PII.** The eval party "Jordan Lee" is synthetic.
+
+## 4. Hard-Won Lessons Learned & Gotchas (Enterprise Data Architecture, Agent Gym & GCP Deploy)
 
 1. **Explicit Demo Seeding (`POST /v1/demo/seed`) vs. Router Init:**
    - Never call `seed_demo_scenarios()` unconditionally inside `build_user_interaction_router()` or `build_user_interaction_app()`. Unit tests pass fresh `InMemoryOperationalStore` / `SqlOperationalStore` instances and assert exact record counts or empty initial state. Keep seeding explicit via `POST /v1/demo/seed` and `POST /v1/gym/trust-policies/reset?reseed_demo=true`.
