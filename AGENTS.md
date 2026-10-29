@@ -110,3 +110,27 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
    - Whenever `project.version` in `pyproject.toml` is bumped, also update `version = "..."` on the `[[package]] name = "docubridge"` entry in `uv.lock`; otherwise `uv run` detects a lockfile mismatch and attempts to re-resolve dependencies over the network (failing in offline sandboxes).
    - Running `git rm -rf <pkg>` removes tracked `.py` files but leaves untracked `__pycache__/` directories on disk, causing `Path("<pkg>").exists()` checks to remain `True` until `rm -rf <pkg>` is also executed.
    - `bridge.knowledge_catalog.KnowledgeCatalog` is a `typing.Protocol` (cannot be instantiated directly); always instantiate `InMemoryKnowledgeCatalog(operational_store=...)` when binding `CollectExecutor.bind_enterprise_stores(...)` or `build_a2a_app(...)` in local/test runs.
+
+## 5. Branch & GCP Environment Isolation (`main` vs. `feat/schema-refinery`)
+
+We run two strictly isolated branch + GCP project tracks so active **Schema Refinery** development never disturbs the frozen Banking EBC showcase:
+
+| Track | Git Branch | GCP Project | Terraform Workspace | Scope & Rules |
+| :--- | :--- | :--- | :--- | :--- |
+| **Banking / Mortgage EBC Showcase (Frozen)** | `main` | `documents001` (`#321488252989`) | `default` | Frozen at the verified 6-Zone + Consolidation Collaboration Engine baseline (`v1.14.0-agent-gateway`). **Never** commit Schema Refinery runtime changes to `main` or deploy `feat/schema-refinery` to `documents001`. |
+| **Schema Refinery & Insurance Showcase (Active Dev)** | `feat/schema-refinery` | `documents002` (`#816370755208`) | `documents002` | Active implementation of [`design/schema-refinery.md`](design/schema-refinery.md) (`P8-1`–`P8-4` in [`docs/roadmap.md`](docs/roadmap.md)). Always switch to the `documents002` Terraform workspace before running `deploy.sh`. |
+
+### Standard Commands for the `feat/schema-refinery` Track
+
+```bash
+# 1. Work on the isolated Schema Refinery development branch
+git checkout feat/schema-refinery
+
+# 2. Isolate local Terraform state before deploying to documents002
+terraform -chdir=terraform init -backend=false
+terraform -chdir=terraform workspace select -or-create documents002
+
+# 3. Deploy exclusively to documents002 (never documents001)
+./scripts/deploy.sh --project documents002 --region us-central1
+```
+
