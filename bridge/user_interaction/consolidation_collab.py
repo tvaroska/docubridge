@@ -804,7 +804,9 @@ def _execute_beat_3(
         "vault_uri",
         "gs://docubridge-audit-vault/vault/ctx-meridian-consol-2026/doc-meridian-oct2026-bank-stmt/v1.pdf",
     )
-    bank_sha256 = discovery.get("sha256", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")
+    bank_sha256 = discovery.get(
+        "sha256", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    )
 
     with trace_step(
         "docubridge.collab.underwriter_approve_waiver",

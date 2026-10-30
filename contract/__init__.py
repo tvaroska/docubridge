@@ -18,6 +18,19 @@ from contract.extraction import (
     fields_requiring_review,
     review_path,
 )
+from contract.refinery import (
+    ContrastiveDescription,
+    EdgeRelation,
+    OntologyEdge,
+    OntologyEntitySpec,
+    OntologyFieldSpec,
+    OntologyRevision,
+    OntologyRevisionState,
+    RefineryAssayReport,
+    RefineryProposal,
+    RefineryProposalKind,
+    RefineryProposalStatus,
+)
 from contract.wire import (
     CONTRACT_VERSION,
     ArtifactRef,
@@ -36,8 +49,11 @@ __all__ = [
     "ArtifactRef",
     "CollectRequest",
     "CollectionStatus",
+    # Refinery & Ontology
+    "ContrastiveDescription",
     # Enums
     "Disposition",
+    "EdgeRelation",
     "ExchangeTurn",
     # Extraction
     "ExtractionFields",
@@ -48,6 +64,15 @@ __all__ = [
     "HumanReviewResolution",
     "LedgerEntry",
     "LifecycleStatus",
+    "OntologyEdge",
+    "OntologyEntitySpec",
+    "OntologyFieldSpec",
+    "OntologyRevision",
+    "OntologyRevisionState",
+    "RefineryAssayReport",
+    "RefineryProposal",
+    "RefineryProposalKind",
+    "RefineryProposalStatus",
     "Requirement",
     "RequirementStatus",
     "RequirementsList",

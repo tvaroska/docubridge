@@ -9,6 +9,7 @@ from typing import Any
 
 from bridge.doctypes import (
     declares_issuer,
+    doctype_description,
     doctype_fields,
     doctype_tables,
     issuer_description,
@@ -165,6 +166,7 @@ def build_extraction_prompt(
         if declares_issuer(schema):
             note = issuer_description(schema) or "the issuing organization"
             label = f"{doctype} [top-level issuer: {note}]"
+        entity_desc = doctype_description(schema)
         fields = doctype_fields(schema)
         tables = doctype_tables(schema)
         if not fields and not tables:
@@ -173,7 +175,10 @@ def build_extraction_prompt(
         rendered = "; ".join(
             f"{name} ({desc})" if desc else name for name, desc in fields.items()
         )
-        lines.append(f"- {label}: {rendered}")
+        if entity_desc:
+            lines.append(f"- {label} [{entity_desc}]: {rendered}")
+        else:
+            lines.append(f"- {label}: {rendered}")
         for table, columns in tables.items():
             cols = "; ".join(
                 f"{col} ({desc})" if desc else col for col, desc in columns.items()
@@ -218,27 +223,49 @@ def build_response_schema(schemas: dict[str, dict]) -> dict | None:
     }
     tables = _tables_union(schemas)
     installed = ", ".join(sorted(schemas))
+    entity_notes = [
+        f"{dt} ({doctype_description(schemas[dt])})"
+        if doctype_description(schemas[dt])
+        else dt
+        for dt in sorted(schemas)
+    ]
+    doctype_desc = (
+        f"the document type you observe; installed types: {installed}. "
+        f"Contrastive doctype guide: {' | '.join(entity_notes)}"
+    )
     fields_properties: dict = {
         "doctype": {
             "type": "string",
-            "description": (
-                f"the document type you observe; installed types: {installed}"
-            ),
+            "description": doctype_desc,
         },
         "issuer": {
             "type": "string",
             "nullable": True,
             "description": "the issuing organization, or null",
         },
-        "key_fields": {"type": "object", "properties": key_fields},
+        "key_fields": {
+            "type": "object",
+            "description": (
+                "Extracted key-value fields for the observed document type using "
+                "contrastive positive, layout-anchor, and negative-boundary guidance."
+            ),
+            "properties": key_fields,
+        },
     }
     if tables:
         fields_properties["tables"] = {"type": "object", "properties": tables}
     return {
         "type": "object",
+        "description": (
+            "Structured document extraction envelope with contrastive doctype and "
+            "field descriptions, per-field confidence, and review signals."
+        ),
         "properties": {
             "fields": {
                 "type": "object",
+                "description": (
+                    "Observed document type, canonical issuer, and extracted key_fields."
+                ),
                 "properties": fields_properties,
                 "required": ["doctype", "key_fields"],
             },

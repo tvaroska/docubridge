@@ -196,3 +196,23 @@ class AdvanceConsolidationCollabRequest(BaseModel):
 
     beat: Literal[1, 2, 3, 4]
 
+
+class RunRefineryAssayRequest(BaseModel):
+    """Request body to run the Schema Refinery bimodal sparsity & 3-Tier Assay Gate."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    domain: str = "insurance"
+    target_entity_id: str | None = None
+    cluster_a_fields: list[str] | None = None
+    cluster_b_fields: list[str] | None = None
+
+
+class PromoteRefineryProposalRequest(BaseModel):
+    """Request body to promote an assay-passed Schema Refinery proposal to an active OntologyRevision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str
+    revision_id: str | None = None
+    version: str = "1.2.0"

@@ -6,6 +6,7 @@ import os
 import uuid
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Any
 
 from bridge.operational_store.models import (
     _MONEY_KEYS,
@@ -17,6 +18,93 @@ from bridge.operational_store.models import (
 from bridge.telemetry import trace_step
 from contract.enums import Disposition
 from contract.wire import LedgerEntry
+
+
+def _resolve_ontology_graph_context(
+    doctype: str,
+) -> tuple[int, str, str | None, Any]:
+    """Query the Zone 6 Ontology Graph for doctype priority, revision ID, and edge ID."""
+    try:
+        from bridge.knowledge_catalog.catalog import _ensure_shared_ontology
+
+        _, active_rev = _ensure_shared_ontology()
+        rev_id = active_rev.revision_id
+    except Exception:
+        active_rev = None
+        rev_id = "ont-rev-v1-1-baseline"
+
+    dt = (doctype or "").strip().lower()
+    if active_rev is not None and dt:
+        # Exact match on entity_id or alias in the active OntologyRevision
+        matched_spec = active_rev.entities.get(dt)
+        if matched_spec is None:
+            for spec in active_rev.entities.values():
+                if dt in (a.lower() for a in spec.aliases):
+                    matched_spec = spec
+                    break
+        if matched_spec is None:
+            candidates = []
+            for spec in active_rev.entities.values():
+                for tok in (spec.entity_id.lower(), *(a.lower() for a in spec.aliases)):
+                    if tok and tok in dt:
+                        candidates.append((len(tok), spec.source_priority, spec))
+            if candidates:
+                candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+                matched_spec = candidates[0][2]
+        if matched_spec is not None:
+            for edge in active_rev.edges:
+                if edge.source_id == matched_spec.entity_id and edge.relation in (
+                    "SUPERSEDES",
+                    "SPLIT_FROM",
+                ):
+                    prio = (
+                        edge.priority_rank
+                        if edge.priority_rank is not None
+                        else matched_spec.source_priority
+                    )
+                    return prio, rev_id, edge.edge_id, active_rev
+            return (
+                matched_spec.source_priority,
+                rev_id,
+                f"ontology:{matched_spec.entity_id}:priority-{matched_spec.source_priority}",
+                active_rev,
+            )
+
+    if any(
+        tok in dt
+        for tok in (
+            "endorsement",
+            "amendment",
+            "addendum",
+            "closing-disclosure",
+            "fee-override",
+        )
+    ):
+        return 40, rev_id, "ontology:tier-40-override", active_rev
+    if any(
+        tok in dt
+        for tok in (
+            "policy",
+            "binder",
+            "credit-agreement",
+            "commitment-letter",
+            "loan-agreement",
+            "promissory-note",
+        )
+    ):
+        return 30, rev_id, "ontology:tier-30-agreement", active_rev
+    if any(
+        tok in dt
+        for tok in (
+            "quote",
+            "cert",
+            "term-sheet",
+            "appraisal",
+            "rent-roll",
+        )
+    ):
+        return 20, rev_id, "ontology:tier-20-quote", active_rev
+    return 10, rev_id, None, active_rev
 
 
 def parse_decimal_money(raw: str | None) -> Decimal | None:
@@ -42,7 +130,7 @@ def parse_decimal_money(raw: str | None) -> Decimal | None:
 
 
 def source_priority_for_doctype(doctype: str) -> int:
-    """Deterministic source authority hierarchy for consolidation rules.
+    """Deterministic source authority hierarchy resolved via the Zone 6 Ontology Graph.
 
     Higher number wins when effective dates are equal:
     - endorsement / amendment / addendum / closing-disclosure / fee-override: 40
@@ -50,42 +138,60 @@ def source_priority_for_doctype(doctype: str) -> int:
     - quote / certificate / term-sheet / appraisal / rent-roll: 20
     - application / bill / statement / id / default: 10
     """
-    dt = (doctype or "").strip().lower()
-    if any(
-        tok in dt
-        for tok in (
-            "endorsement",
-            "amendment",
-            "addendum",
-            "closing-disclosure",
-            "fee-override",
-        )
+    prio, _, _, _ = _resolve_ontology_graph_context(doctype)
+    return prio
+
+
+def _is_ontology_monetary_field(field_name: str, active_rev: Any) -> bool:
+    """Return True if a field is monetary in the active Ontology Graph or _MONEY_KEYS."""
+    leaf = (field_name or "").strip().lower()
+    if leaf in _MONEY_KEYS:
+        return True
+    if active_rev is not None:
+        for spec in active_rev.entities.values():
+            fspec = spec.fields.get(leaf)
+            if fspec is not None and fspec.monetary:
+                return True
+    return False
+
+
+def _resolve_field_metric_bucket(
+    leaf: str,
+    doctype: str,
+    active_rev: Any,
+) -> tuple[str | None, str | None]:
+    """Resolve the target financial summary bucket and edge ID from [:FEEDS_METRIC] edges."""
+    if active_rev is not None:
+        for edge in active_rev.edges:
+            if edge.relation == "FEEDS_METRIC" and leaf in (
+                f.lower() for f in edge.on_fields
+            ):
+                return edge.target_id.split(".")[-1], edge.edge_id
+        for spec in active_rev.entities.values():
+            fspec = spec.fields.get(leaf)
+            if fspec and fspec.feeds_metric:
+                return fspec.feeds_metric, f"ontology:{spec.entity_id}:{leaf}"
+    if leaf in ("premium", "annual_debt_service"):
+        return "total_premium", "ontology:fallback:total_premium"
+    if leaf in ("deductible", "origination_fee", "closing_fee", "rate_lock_fee"):
+        return "total_deductible", "ontology:fallback:total_deductible"
+    if leaf in (
+        "coverage_limit",
+        "coverage_limits",
+        "sublimit",
+        "loan_amount",
+        "principal_amount",
+        "facility_limit",
     ):
-        return 40
-    if any(
-        tok in dt
-        for tok in (
-            "policy",
-            "binder",
-            "credit-agreement",
-            "commitment-letter",
-            "loan-agreement",
-            "promissory-note",
-        )
+        return "total_coverage_limit", "ontology:fallback:total_coverage_limit"
+    if leaf in (
+        "insured_value",
+        "total_insured_value",
+        "appraised_value",
+        "collateral_value",
     ):
-        return 30
-    if any(
-        tok in dt
-        for tok in (
-            "quote",
-            "cert",
-            "term-sheet",
-            "appraisal",
-            "rent-roll",
-        )
-    ):
-        return 20
-    return 10
+        return "total_insured_value", "ontology:fallback:total_insured_value"
+    return None, None
 
 
 def consolidate_entry(
@@ -119,7 +225,9 @@ def consolidate_entry(
     eff_ts = eff_ts or rec_ts
 
     currency = entry.key_fields.get("currency", "USD").upper()
-    priority = source_priority_for_doctype(entry.doctype)
+    priority, ont_rev_id, dt_edge_id, active_rev = _resolve_ontology_graph_context(
+        entry.doctype
+    )
     flagged_paths = {r.path for r in entry.field_reviews}
     vault_uri = entry.vault_uri or (
         entry.artifact.uri if entry.artifact is not None else None
@@ -137,7 +245,11 @@ def consolidate_entry(
     for k, v in entry.key_fields.items():
         path = f"fields.key_fields.{k}"
         anchor = entry.source_anchors.get(path) or entry.source_anchors.get(k)
-        dec = parse_decimal_money(v) if k.lower() in _MONEY_KEYS else None
+        is_money = _is_ontology_monetary_field(k, active_rev)
+        dec = parse_decimal_money(v) if is_money else None
+        _, metric_edge_id = _resolve_field_metric_bucket(
+            k.lower(), entry.doctype, active_rev
+        )
         facts.append(
             ConsolidatedFact(
                 fact_id=uuid.uuid4().hex,
@@ -162,6 +274,8 @@ def consolidate_entry(
                 skill_urn=skill_urn,
                 process_skill_revision_id=proc_skill_rev,
                 compiled_rule_ids=rule_ids,
+                ontology_revision_id=ont_rev_id,
+                consolidation_edge_id=metric_edge_id or dt_edge_id,
             )
         )
 
@@ -174,7 +288,8 @@ def consolidate_entry(
                     or entry.source_anchors.get(f"fields.tables.{table_name}")
                     or entry.source_anchors.get(table_name)
                 )
-                dec = parse_decimal_money(val) if col.lower() in _MONEY_KEYS else None
+                is_money = _is_ontology_monetary_field(col, active_rev)
+                dec = parse_decimal_money(val) if is_money else None
                 facts.append(
                     ConsolidatedFact(
                         fact_id=uuid.uuid4().hex,
@@ -199,6 +314,8 @@ def consolidate_entry(
                         skill_urn=skill_urn,
                         process_skill_revision_id=proc_skill_rev,
                         compiled_rule_ids=rule_ids,
+                        ontology_revision_id=ont_rev_id,
+                        consolidation_edge_id=dt_edge_id,
                     )
                 )
     return facts
@@ -284,6 +401,7 @@ def compute_financial_summary(facts: list[ConsolidatedFact]) -> FinancialSummary
         total_limit = Decimal("0.00")
         total_tiv = Decimal("0.00")
         currency = "USD"
+        _, _, _, active_rev = _resolve_ontology_graph_context("")
 
         for f in facts:
             currency = f.currency or currency
@@ -291,30 +409,14 @@ def compute_financial_summary(facts: list[ConsolidatedFact]) -> FinancialSummary
                 continue
             val = Decimal(f.numeric_value)
             leaf = f.field_path.split(".")[-1].lower()
-            if leaf in ("premium", "annual_debt_service"):
+            bucket, _ = _resolve_field_metric_bucket(leaf, f.doctype, active_rev)
+            if bucket == "total_premium":
                 total_premium += val
-            elif leaf in (
-                "deductible",
-                "origination_fee",
-                "closing_fee",
-                "rate_lock_fee",
-            ):
+            elif bucket == "total_deductible":
                 total_deductible += val
-            elif leaf in (
-                "coverage_limit",
-                "coverage_limits",
-                "sublimit",
-                "loan_amount",
-                "principal_amount",
-                "facility_limit",
-            ):
+            elif bucket == "total_coverage_limit":
                 total_limit += val
-            elif leaf in (
-                "insured_value",
-                "total_insured_value",
-                "appraised_value",
-                "collateral_value",
-            ):
+            elif bucket == "total_insured_value":
                 total_tiv += val
 
         ratio_str: str | None = None

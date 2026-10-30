@@ -220,6 +220,7 @@ flowchart LR
 ```python
 class ContrastiveDescription(BaseModel):
     """Three-part contrastive description for zero-thinking workhorse disambiguation."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     what_it_is: str
@@ -229,6 +230,7 @@ class ContrastiveDescription(BaseModel):
 
 class OntologyEdge(BaseModel):
     """Directed edge in the Knowledge Catalog / Ontology Graph."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     edge_id: str
@@ -259,6 +261,7 @@ class RefineryProposalKind(StrEnum):
 
 class RefineryAssayReport(BaseModel):
     """3-Tier Schema Refinery evaluation scorecard."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     assay_id: str
@@ -276,7 +279,7 @@ class RefineryAssayReport(BaseModel):
     bimodality_jaccard_after: float | None = None
     # Tier 3: Statistical & Judge Calibration
     perturbation_krippendorff_alpha: float  # Must be >= 0.80
-    workhorse_teacher_ac2: float            # Must be >= 0.80
+    workhorse_teacher_ac2: float  # Must be >= 0.80
     rogan_gladen_pass_rate: float
     passed_assay: bool
 ```

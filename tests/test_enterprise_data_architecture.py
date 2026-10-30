@@ -3604,4 +3604,3 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> 
         "collab-overwatch-box",
     ):
         assert f'id="{expected_id}"' in demo_html
-

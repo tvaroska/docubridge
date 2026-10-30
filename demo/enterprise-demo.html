@@ -723,6 +723,37 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Schema Refinery & Bi-Temporal Ontology Graph Card -->
+    <div class="card" id="schema-refinery-card" style="margin-top:16px;border:1.5px solid #6366f1;">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">🧬 Schema Refinery: Contrastive Description Compiler &amp; Bi-Temporal Ontology Graph (<span class="mono">/v1/refinery/*</span>)</h2>
+          <div class="card-sub">Closed-loop ontology evolution across Zone 2 (3-part contrastive descriptions: <span class="mono">what_it_is</span> / <span class="mono">where_to_read</span> / <span class="mono">distinguish_from</span>), Zone 3 (<span class="mono">[:SUPERSEDES]</span> &amp; <span class="mono">[:FEEDS_METRIC]</span> graph consolidation), and Zone 6 (<span class="mono">OntologyRevision</span> lineage).</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span class="badge badge-purple" id="refinery-active-revision">ont-rev-v1-1-baseline (v1.1.0)</span>
+          <span class="badge badge-blue" id="refinery-edge-count">13 Graph Edges</span>
+          <button id="btn-refinery-assay" class="btn btn-primary" onclick="window.runSchemaRefineryAssay()">🔬 1. Run Bimodal Sparsity &amp; 3-Tier Assay</button>
+          <button id="btn-refinery-promote" class="btn btn-success" onclick="window.promoteSchemaRefineryProposal()">🚀 2. Promote Ontology v1.2 &amp; [:SPLIT_FROM] Edge</button>
+        </div>
+      </div>
+
+      <div class="grid-2" style="gap:14px;">
+        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;">
+          <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:6px;">3-Part Contrastive Description Diff &amp; Bimodal Null Matrix</div>
+          <div id="refinery-proposal-box" style="font-size:12px;color:#334155;line-height:1.55;">
+            Click <strong>1. Run Bimodal Sparsity &amp; 3-Tier Assay</strong> to inspect the field-presence Jaccard matrix (<span class="mono">J(A,B) &le; 0.10</span>) and synthesize contrastive positive / layout-anchor / negative-boundary descriptions.
+          </div>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;">
+          <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:6px;">3-Tier Counterfactual &amp; Calibration Assay Gate + Active Graph Edges</div>
+          <div id="refinery-assay-box" style="font-size:12px;color:#334155;line-height:1.55;">
+            Loading active Zone 6 Ontology Graph edges (<span class="mono">[:SUPERSEDES]</span>, <span class="mono">[:FEEDS_METRIC]</span>, <span class="mono">[:SPLIT_FROM]</span>)...
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ===================================================================== -->

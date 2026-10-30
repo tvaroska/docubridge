@@ -376,6 +376,10 @@ def register_gym_routes(
     ) -> list[dict[str, Any]]:
         """Reset Programmable Trust policies (and optionally clear rules or reseed demo scenarios)."""
         reset_consolidation_collab_state()
+        if clear_rules:
+            from bridge.refinery import schema_refinery_from_env
+
+            schema_refinery_from_env(knowledge_catalog=catalog).reset()
         if reseed_demo:
             seed_demo_scenarios(
                 operational_store=store,
