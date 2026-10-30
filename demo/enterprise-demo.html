@@ -282,27 +282,36 @@
         <div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span class="badge badge-purple">LIVE SCHEMA EVOLUTION &amp; ONTOLOGY LEARNING · 4-BEAT WORKFLOW</span>
-            <span class="badge badge-blue mono" id="schema-evol-entity-badge">terrepower-coastal-2027</span>
+            <span class="badge badge-blue mono" id="schema-evol-entity-badge">BENEFITS-APEX-HDHP-2027</span>
             <span class="badge badge-navy mono" id="schema-evol-rev-pill">ont-rev-v1-1-baseline · v1.1.0 (7 Entities)</span>
             <span class="badge badge-amber" id="schema-evol-beat-pill">Beat 0 of 4 · Baseline Ontology v1.1.0</span>
           </div>
-          <h2 class="card-title" style="margin-top:6px;font-size:17px;">Terrepower Coastal LLC — $142,500,000.00 Commercial Coastal Property Placement</h2>
-          <div class="card-sub">
-            Bi-Temporal Ontology Evolution: Placement Document Checklist &amp; OKF Graph (Left) ↔ Schema Refinery &amp; Dual-Agent Board (Right · <span class="mono">gemini-3.8-flash</span> Contrastive Extractor + <span class="mono">gemini-4-argon</span> Schema Refinery)
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
+            <span style="font-size:11.5px;font-weight:800;color:#475569;">SCENARIO:</span>
+            <button id="btn-schema-evol-scenario-benefits" class="btn btn-primary" style="padding:4px 10px;font-size:11.5px;" onclick="window.switchSchemaEvolutionScenario('benefits')">
+              🏥 Employee Benefits · HDHP (HSA vs. FSA) &amp; $125K Rate Addendum
+            </button>
+            <button id="btn-schema-evol-scenario-insurance" class="btn btn-outline" style="padding:4px 10px;font-size:11.5px;" onclick="window.switchSchemaEvolutionScenario('insurance')">
+              🏭 Commercial Property · $100K Coastal Wind Endorsement
+            </button>
+          </div>
+          <h2 class="card-title" id="schema-evol-card-title" style="margin-top:8px;font-size:17px;">Apex Global Manufacturing — 2027 Employee Health &amp; Benefits Renewal (HDHP + Group Life)</h2>
+          <div class="card-sub" id="schema-evol-card-sub">
+            Bi-Temporal Knowledge Graph &amp; Continuous Learning: 7-Node Graph (`HDHP` includes `HSA` · excludes `FSA` + `$125K` Rate Addendum overrides `$140K` Base Quote overrides `$145K` Manual Entry) ↔ Socratic Challenge (<span class="mono">gemini-3.8-flash</span> + <span class="mono">gemini-4-argon</span>)
           </div>
         </div>
         <div class="collab-beat-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <button id="btn-schema-evol-beat-1" class="btn btn-primary" style="padding:7px 12px;font-size:12px;" onclick="window.advanceSchemaEvolutionCollab(1)">
-            1. Upload Schedule B Wind Endorsement (Sparsity Gap)
+            1. Upload Page 4 HDHP Rider &amp; $125K Rate Addendum (Guesses "FSA: $1,000" ✕)
           </button>
           <button id="btn-schema-evol-beat-2" class="btn btn-navy" style="padding:7px 12px;font-size:12px;" onclick="window.advanceSchemaEvolutionCollab(2)">
-            2. Run 3-Tier Refinery Assay (SplitEntity J=0.0667)
+            2. Challenge Fix ("FSA" → "HSA") &amp; Run 3-Tier Assay (0% Backsliding)
           </button>
           <button id="btn-schema-evol-beat-3" class="btn btn-success" style="padding:7px 12px;font-size:12px;" onclick="window.advanceSchemaEvolutionCollab(3)">
-            3. Promote Ontology v1.2.0 ([:SUPERSEDES] + [:SPLIT_FROM])
+            3. Promote Ontology v1.2.0 ("HSA: $1,000" ✓ + $125K Addendum Wins)
           </button>
           <button id="btn-schema-evol-beat-4" class="btn btn-outline" style="padding:7px 12px;font-size:12px;border-color:#7c3aed;color:#6d28d9;" onclick="window.advanceSchemaEvolutionCollab(4)">
-            4. Verify Day-2 Payoff (Zero-Quarantine 138ms)
+            4. Verify Day-2 Payoff (Next HDHP Renewal · 134ms)
           </button>
           <button id="btn-schema-evol-reset" class="btn btn-outline" style="padding:7px 10px;font-size:12px;" onclick="window.resetSchemaEvolutionCollab()">
             ↺ Reset
@@ -313,19 +322,19 @@
       <!-- Deterministic Decimal Financial & Ontology Summary Bar -->
       <div id="schema-evol-fin-bar" class="collab-fin-bar">
         <div class="collab-fin-metric">
-          <span class="collab-fin-label">Total Insured Value (SOV)</span>
-          <span class="collab-fin-val mono" id="schema-evol-fin-tiv">$142,500,000.00</span>
-          <span class="collab-fin-sub">14 Coastal Locations · Path A (0 Tokens)</span>
+          <span class="collab-fin-label" id="schema-evol-label-col1">Manual Entry vs. Base Quote PDF</span>
+          <span class="collab-fin-val mono" id="schema-evol-fin-tiv">$145K Manual → $140K Base PDF</span>
+          <span class="collab-fin-sub" id="schema-evol-sub-col1">Base PDF ($140K) Overrides Manual ($145K)</span>
         </div>
         <div class="collab-fin-metric">
-          <span class="collab-fin-label">Primary + Excess Limit</span>
-          <span class="collab-fin-val mono" id="schema-evol-fin-limit">$75,000,000.00</span>
-          <span class="collab-fin-sub">$50M Chubb + $25M AIG Excess</span>
+          <span class="collab-fin-label" id="schema-evol-label-col2">Winning Renewal Premium (All 8 Teams)</span>
+          <span class="collab-fin-val mono" id="schema-evol-fin-limit">$140,000.00 (Base Quote PDF)</span>
+          <span class="collab-fin-sub" id="schema-evol-sub-col2">2-Page Signed Rate Addendum ($125K · Prio 40)</span>
         </div>
         <div class="collab-fin-metric">
-          <span class="collab-fin-label">Coastal Wind Deductible</span>
-          <span class="collab-fin-val mono" style="color:#b45309;" id="schema-evol-fin-deductible">$50,000.00 (Base Quote)</span>
-          <span class="collab-fin-sub" id="schema-evol-fin-authority">commercial-property-quote (Prio 20 · v1.1.0)</span>
+          <span class="collab-fin-label" id="schema-evol-label-col3">Page 4: 'Plan: HDHP · Account Seed: $1,000'</span>
+          <span class="collab-fin-val mono" style="color:#b45309;" id="schema-evol-fin-deductible">$1,000.00 Seed (Page 4)</span>
+          <span class="collab-fin-sub" id="schema-evol-fin-authority">Prompt Alone (~60% · Guesses FSA ✕)</span>
         </div>
         <div class="collab-fin-metric">
           <span class="collab-fin-label">Active Zone 6 Ontology Graph</span>

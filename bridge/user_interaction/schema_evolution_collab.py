@@ -41,13 +41,17 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from bridge.a2ui_inbox import ActionInboxStore
 from bridge.extraction.gemini import REASONING_MODEL, WORKHORSE_MODEL
 from bridge.knowledge_catalog import KnowledgeCatalog
 from bridge.refinery import ENTITY_COMMERCIAL_PROPERTY_QUOTE, SchemaRefineryEngine
 from bridge.telemetry import trace_step
+from bridge.user_interaction.schema_evolution_benefits import (
+    BENEFITS_EVOL_ENTITY_ID,
+    build_benefits_schema_evolution_payload,
+)
 from bridge.user_interaction.schemas import AdvanceSchemaEvolutionCollabRequest
 
 SCHEMA_EVOL_ENTITY_ID = "terrepower-coastal-2027"
@@ -60,7 +64,11 @@ BROKER_AGENT_SPIFFE_ID = "spiffe://agents.docubridge.io/internal/broker-placemen
 REFINERY_AGENT_SPIFFE_ID = "spiffe://agents.docubridge.io/internal/credit-officer-agent"
 SENIOR_BROKER_PRINCIPAL = "usr:senior.broker@docubridge.io"
 
-_STATE: dict[str, Any] = {"beat": 0, "last_proposal_id": None}
+_STATE: dict[str, Any] = {
+    "beat": 0,
+    "last_proposal_id": None,
+    "domain": "insurance",
+}
 
 
 def _build_state_payload(
@@ -332,6 +340,7 @@ def _build_state_payload(
         }
 
     return {
+        "scenario_domain": "insurance",
         "entity_id": SCHEMA_EVOL_ENTITY_ID,
         "client_name": SCHEMA_EVOL_CLIENT,
         "program_title": SCHEMA_EVOL_PROGRAM,
@@ -396,22 +405,37 @@ def _build_state_payload(
 def get_schema_evolution_collab_state(
     *,
     refinery: SchemaRefineryEngine,
+    domain: str | None = None,
 ) -> dict[str, Any]:
     """Return a deep copy of the current 4-beat Schema Evolution demo state."""
+    dom = (domain or str(_STATE.get("domain") or "insurance")).strip().lower()
+    if dom not in ("insurance", "benefits"):
+        dom = "insurance"
     beat = int(_STATE.get("beat", 0))
     prop_id = _STATE.get("last_proposal_id")
     prop = refinery.get_proposal(prop_id) if prop_id else None
-    proposals = refinery.list_proposals(domain="insurance")
+    proposals = refinery.list_proposals(domain=dom)
     if prop is None and proposals:
         prop = proposals[-1]
     reports = refinery.list_assay_reports()
     rep = reports[-1] if reports else None
+    p_dict = prop.model_dump(mode="json") if prop else None
+    r_dict = rep.model_dump(mode="json") if rep else None
+    if dom == "benefits":
+        return copy.deepcopy(
+            build_benefits_schema_evolution_payload(
+                beat=beat,
+                refinery=refinery,
+                proposal_dict=p_dict,
+                assay_dict=r_dict,
+            )
+        )
     return copy.deepcopy(
         _build_state_payload(
             beat=beat,
             refinery=refinery,
-            proposal_dict=prop.model_dump(mode="json") if prop else None,
-            assay_dict=rep.model_dump(mode="json") if rep else None,
+            proposal_dict=p_dict,
+            assay_dict=r_dict,
         )
     )
 
@@ -419,12 +443,18 @@ def get_schema_evolution_collab_state(
 def reset_schema_evolution_collab_state(
     *,
     refinery: SchemaRefineryEngine,
+    domain: str | None = None,
 ) -> dict[str, Any]:
     """Reset the 4-beat Schema Evolution demo and Zone 6 Ontology back to Beat 0 (v1.1.0)."""
     refinery.reset()
     _STATE["beat"] = 0
     _STATE["last_proposal_id"] = None
-    return get_schema_evolution_collab_state(refinery=refinery)
+    if domain in ("insurance", "benefits"):
+        _STATE["domain"] = domain
+    return get_schema_evolution_collab_state(
+        refinery=refinery,
+        domain=_STATE["domain"],
+    )
 
 
 def advance_schema_evolution_collab_to_beat(
@@ -435,43 +465,55 @@ def advance_schema_evolution_collab_to_beat(
     domain: str = "insurance",
 ) -> dict[str, Any]:
     """Advance the 4-beat Schema Evolution workflow to ``target_beat`` (1..4)."""
+    dom = (domain or "insurance").strip().lower()
+    if dom not in ("insurance", "benefits"):
+        dom = "insurance"
+    prev_dom = str(_STATE.get("domain") or "insurance")
+    if prev_dom != dom:
+        refinery.reset()
+        _STATE["last_proposal_id"] = None
+    _STATE["domain"] = dom
+
+    entity_id = BENEFITS_EVOL_ENTITY_ID if dom == "benefits" else SCHEMA_EVOL_ENTITY_ID
     with trace_step(
         f"schema_evolution_collab_beat_{target_beat}",
         attributes={
             "docubridge.zone": "zone6_schema_refinery",
-            "docubridge.entity_id": SCHEMA_EVOL_ENTITY_ID,
+            "docubridge.entity_id": entity_id,
             "docubridge.agent_spiffe_id": REFINERY_AGENT_SPIFFE_ID,
             "docubridge.schema_evolution.beat": target_beat,
+            "docubridge.schema_evolution.domain": dom,
         },
     ):
         if target_beat <= 1:
             refinery.reset()
             _STATE["beat"] = 1
             _STATE["last_proposal_id"] = None
-            return get_schema_evolution_collab_state(refinery=refinery)
+            return get_schema_evolution_collab_state(refinery=refinery, domain=dom)
 
         # Ensure Beat 2 assay has run
         prop_id = _STATE.get("last_proposal_id")
         prop = refinery.get_proposal(prop_id) if prop_id else None
-        if prop is None:
-            prop, _rep, _cand = refinery.run_taxonomy_assay(domain=domain)
+        if prop is None or prop.domain != dom:
+            prop, _rep, _cand = refinery.run_taxonomy_assay(domain=dom)
             _STATE["last_proposal_id"] = prop.proposal_id
 
         if target_beat == 2:
             _STATE["beat"] = 2
-            return get_schema_evolution_collab_state(refinery=refinery)
+            return get_schema_evolution_collab_state(refinery=refinery, domain=dom)
 
         # Beat 3 or 4: Ensure Ontology v1.2.0 is promoted
         active_rev = refinery.get_active_revision()
         if active_rev.version == "1.1.0" and prop is not None:
             refinery.promote_proposal(
                 prop.proposal_id,
+                revision_id=f"ont-rev-v1-2-{dom}",
                 version="1.2.0",
                 action_inbox=inbox,
             )
 
         _STATE["beat"] = 3 if target_beat == 3 else 4
-        return get_schema_evolution_collab_state(refinery=refinery)
+        return get_schema_evolution_collab_state(refinery=refinery, domain=dom)
 
 
 def register_schema_evolution_collab_routes(
@@ -485,9 +527,14 @@ def register_schema_evolution_collab_routes(
     _ = catalog
 
     @router.get("/v1/demo/schema-evolution/state")
-    def get_state() -> dict[str, Any]:
+    def get_state(domain: str | None = Query(default=None)) -> dict[str, Any]:
         """Return the current 4-beat Schema Evolution demo state."""
-        return get_schema_evolution_collab_state(refinery=refinery)
+        if domain in ("insurance", "benefits") and _STATE.get("domain") != domain:
+            refinery.reset()
+            _STATE["beat"] = 0
+            _STATE["last_proposal_id"] = None
+            _STATE["domain"] = domain
+        return get_schema_evolution_collab_state(refinery=refinery, domain=domain)
 
     @router.post("/v1/demo/schema-evolution/advance")
     def post_advance(body: AdvanceSchemaEvolutionCollabRequest) -> dict[str, Any]:
@@ -500,6 +547,9 @@ def register_schema_evolution_collab_routes(
         )
 
     @router.post("/v1/demo/schema-evolution/reset")
-    def post_reset() -> dict[str, Any]:
+    def post_reset(domain: str | None = Query(default=None)) -> dict[str, Any]:
         """Reset the 4-beat Schema Evolution demo back to Beat 0 (v1.1.0)."""
-        return reset_schema_evolution_collab_state(refinery=refinery)
+        return reset_schema_evolution_collab_state(
+            refinery=refinery,
+            domain=domain,
+        )

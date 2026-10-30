@@ -26,6 +26,8 @@ EdgeRelation = Literal[
     "SPLIT_FROM",
     "MERGED_INTO",
     "ALIASED_FROM",
+    "INCLUDES",
+    "EXCLUDES",
 ]
 
 ENTITY_COMMERCIAL_PROPERTY_QUOTE = "commercial-property-quote"
@@ -37,6 +39,7 @@ ENTITY_UTILITY_BILL = "utility-bill"
 ENTITY_GOV_ID = "gov-id"
 ENTITY_WIND_ENDORSEMENT = "wind-deductible-endorsement"
 ENTITY_FEE_SCHEDULE_ADDENDUM = "fee-schedule-addendum"
+ENTITY_RATE_GUARANTEE_ADDENDUM = "rate-guarantee-addendum"
 
 
 class RefineryProposalKind(StrEnum):

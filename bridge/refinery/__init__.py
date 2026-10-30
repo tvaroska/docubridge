@@ -15,6 +15,7 @@ from bridge.refinery.assay import (
     verify_paired_removal_integrity,
     verify_supersedes_dag_acyclic,
 )
+from bridge.refinery.benefits_assay import build_benefits_hdhp_hsa_fsa_proposal
 from bridge.refinery.engine import (
     InMemorySchemaRefineryEngine,
     SchemaRefineryEngine,
@@ -46,6 +47,7 @@ from contract.refinery import (
     ENTITY_FEE_SCHEDULE_ADDENDUM,
     ENTITY_GOV_ID,
     ENTITY_MAI_APPRAISAL,
+    ENTITY_RATE_GUARANTEE_ADDENDUM,
     ENTITY_TRID_CLOSING_DISCLOSURE,
     ENTITY_UTILITY_BILL,
     ENTITY_WIND_ENDORSEMENT,
@@ -72,6 +74,7 @@ __all__ = [
     "ENTITY_FEE_SCHEDULE_ADDENDUM",
     "ENTITY_GOV_ID",
     "ENTITY_MAI_APPRAISAL",
+    "ENTITY_RATE_GUARANTEE_ADDENDUM",
     "ENTITY_TRID_CLOSING_DISCLOSURE",
     "ENTITY_UTILITY_BILL",
     "ENTITY_WIND_ENDORSEMENT",
@@ -96,6 +99,7 @@ __all__ = [
     "SchemaRefineryEngine",
     "SqlSchemaRefineryEngine",
     "build_baseline_ontology_revision",
+    "build_benefits_hdhp_hsa_fsa_proposal",
     "build_candidate_revision",
     "compute_jaccard_similarity",
     "compute_ontology_hash",

@@ -152,6 +152,34 @@ fields:
       what_it_is: "Any additional commission terms or grading notes, verbatim."
       where_to_read: "Footnotes beneath the Producer Compensation schedule."
       distinguish_from: "Do NOT include general underwriting disclaimers unrelated to commissions."
+  plan_type:
+    type: string
+    required: false
+    monetary: false
+    synonyms: ["Health Plan Design", "Medical Tier Type"]
+    description:
+      what_it_is: "Plan design structure (e.g. HDHP, PPO, HMO, Group Life)."
+      where_to_read: "Schedule of Benefits header ('Plan: HDHP')."
+      distinguish_from: "When Plan == HDHP, linked tax-advantaged Employer Account Seed must be classified as HSA (Health Savings Account), never standard FSA."
+  employer_account_seed:
+    type: string
+    required: false
+    monetary: true
+    feeds_metric: total_deductible
+    synonyms: ["Employer HSA Seed", "Employer Account Contribution", "Employer Account Seed"]
+    description:
+      what_it_is: "Annual employer contribution to the employee tax-advantaged benefit account (e.g. $1,000.00)."
+      where_to_read: "Page 4 Schedule of Benefits ('Plan: HDHP · Employer Account Seed: $1,000.00')."
+      distinguish_from: "When the quoted plan is an HDHP (High Deductible Health Plan), Employer Account Seed is strictly an HSA (Part Of HDHP) and CANNOT be a standard Healthcare FSA (NOT Part Of HDHP)."
+  waiting_period_days:
+    type: string
+    required: false
+    monetary: false
+    synonyms: ["Elimination Period", "Qualifying Period", "Benefit Waiting Period"]
+    description:
+      what_it_is: "Number of days a covered employee waits after a disability or benefit claim before benefits begin (e.g. 90 days)."
+      where_to_read: "Page 14 Schedule of Benefits or Policy Riders ('Elimination Period / Waiting Period: 90 Days')."
+      distinguish_from: "Do NOT confuse the 90-day Benefit Waiting Period on Page 14 with the 30-day New-Hire Enrollment Waiting Period on Page 2."
 
 edges:
   - edge_id: edge-benefits-quote-feeds-premium

@@ -16,8 +16,10 @@ from bridge.operational_store import (
 )
 from bridge.refinery import (
     BASELINE_REVISION_ID,
+    ENTITY_BENEFITS_QUOTE,
     ENTITY_COMMERCIAL_PROPERTY_QUOTE,
     ENTITY_FEE_SCHEDULE_ADDENDUM,
+    ENTITY_RATE_GUARANTEE_ADDENDUM,
     ENTITY_TRID_CLOSING_DISCLOSURE,
     ENTITY_WIND_ENDORSEMENT,
     InMemorySchemaRefineryEngine,
@@ -323,6 +325,79 @@ def test_p8_4_live_schema_evolution_4_beat_collab_stage() -> None:
         "schema-evol-refinery-box",
     ):
         assert dom_id in r_html.text
+
+    # Clean up back to baseline
+    client.post("/v1/demo/schema-evolution/reset")
+
+
+def test_p8_4_benefits_hdhp_hsa_vs_fsa_4_beat_schema_evolution() -> None:
+    """Verify Employee Benefits (HDHP · HSA vs. FSA & $125K Rate Addendum) 4-beat evolution."""
+    app = build_user_interaction_app()
+    client = TestClient(app)
+
+    # Beat 0: Reset to Benefits scenario
+    r_reset = client.post("/v1/demo/schema-evolution/reset?domain=benefits")
+    assert r_reset.status_code == 200
+    beat0 = r_reset.json()
+    assert beat0["scenario_domain"] == "benefits"
+    assert beat0["entity_id"] == "BENEFITS-APEX-HDHP-2027"
+    assert beat0["beat"] == 0
+    assert beat0["active_ontology_revision"] == BASELINE_REVISION_ID
+
+    # Beat 1: Upload Page 4 HDHP Schedule ('Employer Account Seed: $1,000') & 2-Page $125K Rate Addendum
+    r_b1 = client.post(
+        "/v1/demo/schema-evolution/advance",
+        json={"beat": 1, "domain": "benefits"},
+    )
+    assert r_b1.status_code == 200
+    beat1 = r_b1.json()
+    assert beat1["beat"] == 1
+    assert "FSA: $1,000.00" in beat1["financial_summary"]["coastal_wind_deductible"]
+    assert "can ANY HDHP" in beat1["socratic_challenge"]["step2_system_question"]
+    assert beat1["agent2_status"]["jaccard_similarity"] == 0.0714
+
+    # Beat 2: Challenge One-Off Fix ('FSA' -> 'HSA') & Run 3-Tier Assay
+    r_b2 = client.post(
+        "/v1/demo/schema-evolution/advance",
+        json={"beat": 2, "domain": "benefits"},
+    )
+    assert r_b2.status_code == 200
+    beat2 = r_b2.json()
+    assert beat2["beat"] == 2
+    assert beat2["proposal"]["target_entity_id"] == ENTITY_BENEFITS_QUOTE
+    assert beat2["proposal"]["new_entity_id"] == ENTITY_RATE_GUARANTEE_ADDENDUM
+    assert beat2["assay_report"]["passed"] is True
+    assert beat2["assay_report"]["negative_flip_rate"] == 0.0
+    relations = {e["relation"] for e in beat2["proposal"]["added_edges"]}
+    assert {"SUPERSEDES", "SPLIT_FROM", "FEEDS_METRIC", "INCLUDES", "EXCLUDES"} <= (
+        relations
+    )
+
+    # Beat 3: Promote Ontology v1.2.0 ('HSA: $1,000.00' ✓ + $125,000.00 Rate Addendum Wins)
+    r_b3 = client.post(
+        "/v1/demo/schema-evolution/advance",
+        json={"beat": 3, "domain": "benefits"},
+    )
+    assert r_b3.status_code == 200
+    beat3 = r_b3.json()
+    assert beat3["beat"] == 3
+    assert beat3["done"] is True
+    assert beat3["active_ontology_revision"] == "ont-rev-v1-2-benefits"
+    assert "HSA: $1,000.00 ✓" in beat3["financial_summary"]["coastal_wind_deductible"]
+    assert "$125,000.00" in beat3["financial_summary"]["primary_plus_excess_limit"]
+
+    # Beat 4: Day-2 Payoff on Next HDHP Renewal (NorthStar Precision Systems)
+    r_b4 = client.post(
+        "/v1/demo/schema-evolution/advance",
+        json={"beat": 4, "domain": "benefits"},
+    )
+    assert r_b4.status_code == 200
+    beat4 = r_b4.json()
+    assert beat4["beat"] == 4
+    assert beat4["day2_payoff"]["day2_entity_id"] == "BENEFITS-NORTHSTAR-DAY2"
+    assert beat4["day2_payoff"]["classified_doctype"] == ENTITY_RATE_GUARANTEE_ADDENDUM
+    assert "HSA: $1,500.00 ✓" in beat4["day2_payoff"]["resolved_deductible"]
+    assert beat4["day2_payoff"]["false_positive_quarantine_parks"] == 0
 
     # Clean up back to baseline
     client.post("/v1/demo/schema-evolution/reset")

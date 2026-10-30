@@ -31,9 +31,11 @@ from bridge.operational_store.consolidation_rules import (
     consolidate_entry,
     resolve_active_facts,
 )
+from bridge.refinery.benefits_assay import build_benefits_hdhp_hsa_fsa_proposal
 from bridge.refinery.okf_loader import compute_ontology_hash
 from contract.enums import Disposition, Gate
 from contract.refinery import (
+    ENTITY_BENEFITS_QUOTE,
     ENTITY_COMMERCIAL_PROPERTY_QUOTE,
     ENTITY_CRE_CREDIT_AGREEMENT,
     ENTITY_FEE_SCHEDULE_ADDENDUM,
@@ -179,6 +181,13 @@ def detect_bimodal_entity_split(
 ) -> RefineryProposal:
     """Detect bimodal field sparsity (J(A,B) <= 0.10) and propose an entity split + contrastive diff."""
     dom = (domain or "insurance").strip().lower()
+    if dom == "benefits" or target_entity_id == ENTITY_BENEFITS_QUOTE:
+        return build_benefits_hdhp_hsa_fsa_proposal(
+            baseline_revision=baseline_revision,
+            target_entity_id=target_entity_id,
+            cluster_a_fields=cluster_a_fields,
+            cluster_b_fields=cluster_b_fields,
+        )
     if dom == "insurance" or target_entity_id == ENTITY_COMMERCIAL_PROPERTY_QUOTE:
         parent_id = target_entity_id or ENTITY_COMMERCIAL_PROPERTY_QUOTE
         child_id = ENTITY_WIND_ENDORSEMENT
