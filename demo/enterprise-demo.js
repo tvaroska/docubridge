@@ -194,6 +194,10 @@
     if (collabStage) {
       collabStage.style.display = window.currentDomain === "banking" ? "block" : "none";
     }
+    const schemaEvolStage = document.getElementById("schema-evolution-stage");
+    if (schemaEvolStage) {
+      schemaEvolStage.style.display = window.currentDomain === "insurance" ? "block" : "none";
+    }
 
     if (window.currentDomain === "banking") {
       // Header & Portal
@@ -2367,6 +2371,343 @@
         `Promoted ${promoted.revision_id} (SHA-256 ${(promoted.content_sha256 || "").slice(0, 12)}...) with [:SPLIT_FROM] & [:SUPERSEDES] lineage while preserving historical v1.1 facts.`,
         "POST /v1/refinery/promote -> GET /v1/refinery/revisions"
       );
+      if (typeof window.refreshSchemaEvolutionCollab === "function") {
+        window.refreshSchemaEvolutionCollab();
+      }
+    } catch (_) {}
+  };
+
+  window.FALLBACK_SCHEMA_EVOL_STATE = {
+    entity_id: "terrepower-coastal-2027",
+    client_name: "Terrepower Coastal LLC",
+    program_title: "$142,500,000.00 Commercial Coastal Property Placement",
+    beat: 0,
+    done: false,
+    active_ontology_revision: "ont-rev-v1-1-baseline",
+    active_ontology_version: "1.1.0",
+    entity_count: 7,
+    edge_count: 12,
+    financial_summary: {
+      total_insured_value: "$142,500,000.00",
+      primary_plus_excess_limit: "$75,000,000.00",
+      coastal_wind_deductible: "$50,000.00 (Base Quote)",
+      deductible_authority: "commercial-property-quote (Prio 20 · v1.1.0)"
+    },
+    placement_checklist: [
+      {
+        id: "doc-1-sov",
+        label: "14-Location Coastal Property Schedule (SOV — $142.5M TIV)",
+        doctype: "structured-sov-xlsx",
+        status: "satisfied",
+        emergent: false,
+        badge_text: "VERIFIED · PATH A (0 TOKENS)",
+        reason: "Deterministic schema check verified 14 coastal locations ($142,500,000.00 TIV).",
+        source_citation: "Schedule Tab 1 · Row 14",
+        ontology_rev: "ont-rev-v1-1-baseline"
+      },
+      {
+        id: "doc-2-chubb-quote",
+        label: "Chubb Primary Commercial Property Quote ($50M Limit · $50K Base Deductible)",
+        doctype: "commercial-property-quote",
+        status: "satisfied",
+        emergent: false,
+        badge_text: "VERIFIED · PRIO 20 (v1.1.0)",
+        reason: "24-page base quote populates all 7 required fields under ont-rev-v1-1-baseline.",
+        source_citation: "Page 1 · Region [0.14, 0.31]",
+        ontology_rev: "ont-rev-v1-1-baseline"
+      },
+      {
+        id: "doc-3-aig-binder",
+        label: "AIG Signed Excess Property Binder ($25M xs $50M · $412K Premium)",
+        doctype: "commercial-property-quote",
+        status: "satisfied",
+        emergent: false,
+        badge_text: "VERIFIED · PRIO 20 (v1.1.0)",
+        reason: "Multi-window table merge verified excess attachment point and annual premium.",
+        source_citation: "Page 11 · Region [0.18, 0.52]",
+        ontology_rev: "ont-rev-v1-1-baseline"
+      }
+    ],
+    graph_edges_preview: [
+      {
+        source: "commercial-property-quote (Prio 20)",
+        relation: "[:FEEDS_METRIC]",
+        target: "FinancialSummary.{total_premium, total_deductible, total_coverage_limit}",
+        revision: "ont-rev-v1-1-baseline",
+        is_new: false
+      }
+    ],
+    banner: {
+      tone: "info",
+      headline: "Baseline Ontology Active · ont-rev-v1-1-baseline (v1.1.0 · 7 OKF Entities)",
+      message: "All 3 base placement documents reconcile under v1.1.0 ($142.5M TIV, $50K Base Deductible). Click Beat 1 to upload Chubb's 1-page Schedule B Coastal Wind Deductible Endorsement ($100,000.00).",
+      agent_note: "Under v1.1.0, 'commercial-property-quote' is a single monolithic doctype (Prio 20) with no separate endorsement entity or [:SUPERSEDES] edge."
+    },
+    agent1_status: {
+      agent_name: "Agent 1 · Document Bridge (Sense A Contrastive Extractor)",
+      model: "gemini-3.8-flash",
+      headline: "3 Baseline Documents Extracted under ont-rev-v1-1-baseline",
+      detail: "Pinned ontology_revision_id='ont-rev-v1-1-baseline' across all multi-window chunks. 3-part contrastive descriptions active on all 7 OKF doctypes.",
+      pinned_ontology_revision: "ont-rev-v1-1-baseline"
+    },
+    agent2_status: {
+      agent_name: "Agent 2 · Schema Refinery & Graph Consolidation (Sense B)",
+      model: "gemini-4-argon",
+      headline: "Zone 6 Knowledge Graph Monitoring Field-Presence Sparsity",
+      detail: "Watching AlloyDB operational facts and BigQuery otel_spans for bimodal null clusters (Jaccard J(A,B) <= 0.10) and doctype priority collisions.",
+      jaccard_similarity: 0.0667,
+      nfr: 0.0,
+      krippendorff_alpha: 0.94,
+      gwets_ac2: 0.93,
+      rogan_gladen_pass_rate: 0.988
+    },
+    proposal: null,
+    assay_report: null,
+    day2_payoff: null
+  };
+
+  window.renderSchemaEvolutionCollab = function(state) {
+    const st = state || window.FALLBACK_SCHEMA_EVOL_STATE;
+    const beat = Number(st.beat || 0);
+    const beatLabels = {
+      0: "Beat 0 of 4 · Baseline Ontology v1.1.0 (7 Entities)",
+      1: "Beat 1 of 4 · Bimodal Sparsity & Priority Tie Exposed (J=0.0667)",
+      2: "Beat 2 of 4 · 3-Tier Assay PASSED · SplitEntity Proposed",
+      3: "Beat 3 of 4 · Ontology v1.2.0 Promoted · $100K Deductible Reconciled",
+      4: "Beat 4 of 4 · Day-2 Zero-Quarantine Endorsement Auto-Cleared (138ms)"
+    };
+    const beatPill = document.getElementById("schema-evol-beat-pill");
+    if (beatPill) {
+      beatPill.textContent = beatLabels[beat] || beatLabels[0];
+      beatPill.className = st.done ? "badge badge-green" : (beat === 1 ? "badge badge-amber" : "badge badge-purple");
+    }
+    const revPill = document.getElementById("schema-evol-rev-pill");
+    if (revPill) {
+      revPill.textContent = `${st.active_ontology_revision || "ont-rev-v1-1-baseline"} · v${st.active_ontology_version || "1.1.0"} (${st.entity_count || 7} Entities)`;
+      revPill.className = beat >= 3 ? "badge badge-green mono" : "badge badge-navy mono";
+    }
+    const pinnedBadge = document.getElementById("schema-evol-pinned-badge");
+    if (pinnedBadge) {
+      pinnedBadge.textContent = `Pinned: ${st.active_ontology_revision || "ont-rev-v1-1-baseline"}`;
+    }
+
+    const fin = st.financial_summary || {};
+    const dedEl = document.getElementById("schema-evol-fin-deductible");
+    if (dedEl) {
+      dedEl.textContent = fin.coastal_wind_deductible || "$50,000.00";
+      dedEl.style.color = beat >= 3 ? "#059669" : "#b45309";
+    }
+    const authEl = document.getElementById("schema-evol-fin-authority");
+    if (authEl) authEl.textContent = fin.deductible_authority || "commercial-property-quote (Prio 20)";
+    const ontEl = document.getElementById("schema-evol-fin-ontology");
+    if (ontEl) {
+      ontEl.textContent = `v${st.active_ontology_version || "1.1.0"} · ${st.entity_count || 7} Entities`;
+      ontEl.style.color = beat >= 3 ? "#059669" : "#6d28d9";
+    }
+    const edgesMetricEl = document.getElementById("schema-evol-fin-edges");
+    if (edgesMetricEl) edgesMetricEl.textContent = `${st.edge_count || 12} Declarative Graph Edges`;
+
+    const progBadge = document.getElementById("schema-evol-progress-badge");
+    if (progBadge) {
+      if (beat === 0) {
+        progBadge.className = "badge badge-green";
+        progBadge.textContent = "3 / 3 Base Verified (v1.1.0)";
+      } else if (beat < 3) {
+        progBadge.className = "badge badge-amber";
+        progBadge.textContent = "3 / 4 Verified · 1 Quarantined (Overloaded Doctype)";
+      } else {
+        progBadge.className = "badge badge-green";
+        progBadge.textContent = "✓ 4 / 4 Verified under Ontology v1.2.0 · DONE";
+      }
+    }
+
+    const bannerEl = document.getElementById("schema-evol-banner");
+    const bannerHead = document.getElementById("schema-evol-banner-headline");
+    const bannerMsg = document.getElementById("schema-evol-banner-msg");
+    if (bannerEl && st.banner) {
+      bannerEl.className = `collab-banner collab-banner-${st.banner.tone || "info"}`;
+      if (bannerHead) bannerHead.textContent = st.banner.headline || "";
+      if (bannerMsg) {
+        bannerMsg.innerHTML = `${st.banner.message || ""}${
+          st.banner.agent_note
+            ? `<div style="margin-top:4px;font-weight:700;font-size:11.5px;opacity:0.9;">🧬 ${st.banner.agent_note}</div>`
+            : ""
+        }`;
+      }
+    }
+
+    const checklistEl = document.getElementById("schema-evol-checklist");
+    if (checklistEl && Array.isArray(st.placement_checklist)) {
+      checklistEl.innerHTML = st.placement_checklist.map(function(item, idx) {
+        const status = item.status || "satisfied";
+        const badgeCls = status === "satisfied" ? "badge-green" : "badge-amber";
+        const icon = status === "satisfied" ? "✓" : "⚠";
+        const citationChip = item.source_citation
+          ? `<span class="anchor-chip" title="Click to open WORM PDF Source Proof">${item.source_citation}</span>`
+          : "";
+        return `
+          <div class="collab-check-item status-${status === "satisfied" ? "satisfied" : "required"}">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <div style="font-weight:800;font-size:12.5px;color:#0f172a;">
+                ${icon} ${idx + 1}. ${item.label}
+                <span class="badge badge-navy mono" style="font-size:9.5px;padding:1px 6px;">${item.doctype}</span>
+              </div>
+              <span class="badge ${badgeCls}">${item.badge_text}</span>
+            </div>
+            <div style="font-size:11.5px;color:#334155;margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span>${item.reason || ""}</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="badge badge-blue mono" style="font-size:9.5px;">${item.ontology_rev || "ont-rev-v1-1-baseline"}</span>
+                ${citationChip}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    const edgesListEl = document.getElementById("schema-evol-edges-list");
+    if (edgesListEl && Array.isArray(st.graph_edges_preview)) {
+      edgesListEl.innerHTML = st.graph_edges_preview.map(function(e) {
+        const color = e.is_new ? "#047857" : "#334155";
+        const tag = e.is_new ? '<span class="badge badge-green" style="font-size:9px;margin-right:4px;">NEW v1.2.0</span>' : '';
+        return `<div class="mono" style="color:${color};padding:3px 6px;background:#ffffff;border:1px solid #e2e8f0;border-radius:5px;">${tag}(:${e.source})-${e.relation}->(:${e.target})</div>`;
+      }).join("");
+    }
+
+    const a1 = st.agent1_status || {};
+    const a1Box = document.getElementById("schema-evol-agent1-box");
+    if (a1Box) {
+      a1Box.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <strong style="font-size:12.5px;color:#0f172a;">⚡ ${a1.agent_name || "Agent 1 · Contrastive Extractor"}</strong>
+          <span class="badge badge-blue mono">${a1.model || "gemini-3.8-flash"} · thinking_budget=0</span>
+        </div>
+        <div style="font-weight:700;font-size:12px;color:#1d4ed8;margin-top:4px;">${a1.headline || ""}</div>
+        <div style="font-size:11.5px;color:#475569;margin-top:2px;">${a1.detail || ""}</div>
+      `;
+    }
+
+    const a2 = st.agent2_status || {};
+    const a2Box = document.getElementById("schema-evol-agent2-box");
+    if (a2Box) {
+      a2Box.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <strong style="font-size:12.5px;color:#0f172a;">🧬 ${a2.agent_name || "Agent 2 · Schema Refinery"}</strong>
+          <span class="badge badge-purple mono">${a2.model || "gemini-4-argon"} · 3-Tier Assay</span>
+        </div>
+        <div style="font-weight:700;font-size:12px;color:#6d28d9;margin-top:4px;">${a2.headline || ""}</div>
+        <div style="font-size:11.5px;color:#475569;margin-top:2px;">${a2.detail || ""}</div>
+      `;
+    }
+
+    const refBox = document.getElementById("schema-evol-refinery-box");
+    if (refBox) {
+      if (beat === 0) {
+        refBox.innerHTML = `
+          <div style="font-size:12px;color:#475569;">
+            <strong>Ready for Schema Evolution Walkthrough:</strong> Click <strong>1. Upload Schedule B Wind Endorsement</strong> above to see how a 1-page carrier endorsement stresses a monolithic doctype ontology and triggers closed-loop Schema Refinery evolution.
+          </div>
+        `;
+      } else if (beat === 1) {
+        refBox.innerHTML = `
+          <div style="padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12px;">
+            <div style="font-weight:800;color:#b45309;">⚠ Bimodal Null-Matrix &amp; Priority Tie Detected in AlloyDB</div>
+            <div class="mono" style="font-size:11px;margin-top:4px;color:#78350f;">
+              • Cluster A (Base Quotes): {premium, deductible, coverage_limits, exclusions, effective_date, expiry_date}<br/>
+              • Cluster B (Schedule B Endorsements): {deductible, effective_date} (3 required fields absent_from_document)<br/>
+              • Jaccard Similarity J(A, B) = 0.0667 &le; 0.10 Split Threshold
+            </div>
+          </div>
+        `;
+      } else if (beat === 2) {
+        const prop = st.proposal || {};
+        const rep = st.assay_report || {};
+        const after = prop.after_description || {};
+        refBox.innerHTML = `
+          <div style="padding:10px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;font-size:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong style="color:#4f46e5;">✦ Candidate OKF Entity: <span class="mono">${prop.new_entity_id || "wind-deductible-endorsement"}.okf.md</span> (Prio 40)</strong>
+              <span class="badge badge-green">3-Tier Assay: PASS</span>
+            </div>
+            <div style="font-size:11.5px;margin-top:5px;color:#334155;">
+              <div><strong>Contrastive distinguish_from:</strong> ${after.distinguish_from || "Separates 1-page wind endorsements from 24-page base quotes."}</div>
+              <div class="mono" style="margin-top:4px;font-size:11px;color:#047857;">
+                NFR = ${((rep.negative_flip_rate || 0) * 100).toFixed(1)}% · Krippendorff α = ${rep.perturbation_krippendorff_alpha || 0.94} · Gwet AC2 = ${rep.workhorse_teacher_ac2 || 0.93} · Rogan-Gladen θ̂ = 98.8%
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (beat === 3) {
+        refBox.innerHTML = `
+          <div style="padding:10px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;font-size:12px;">
+            <div style="font-weight:800;color:#047857;">✓ Promoted ont-rev-v1-2-insurance (v1.2.0) · Two-Dimensional Lineage Intact</div>
+            <div class="mono" style="font-size:11px;margin-top:4px;color:#065f46;">
+              • Turn-1 Base Quote Facts: pinned to ont-rev-v1-1-baseline (Immutable)<br/>
+              • Turn-2 Wind Endorsement: ont-rev-v1-2-insurance · [:SUPERSEDES {priority: 40}] -> $100,000.00<br/>
+              • Evolution Lineage Edge: (:wind-deductible-endorsement)-[:SPLIT_FROM]->(:commercial-property-quote)
+            </div>
+          </div>
+        `;
+      } else {
+        const d2 = st.day2_payoff || {};
+        refBox.innerHTML = `
+          <div style="padding:10px;background:#ecfdf5;border:1.5px solid #10b981;border-radius:8px;font-size:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong style="color:#047857;">⚡ Day-2 Payoff: ${d2.day2_client || "Harborview Marine Terminal LLC"} (${d2.day2_entity_id || "PLACEMENT-HARBORVIEW-DAY2"})</strong>
+              <span class="badge badge-green">${d2.latency_ms || 138} ms · 0 Touchpoints</span>
+            </div>
+            <div class="mono" style="font-size:11px;margin-top:4px;color:#065f46;">
+              • Classified Doctype: ${d2.classified_doctype || "wind-deductible-endorsement"} (Prio 40 · ${d2.ontology_revision_id || "ont-rev-v1-2-insurance"})<br/>
+              • Consolidated Deductible: ${d2.resolved_deductible || "$75,000.00 (Supersedes $25,000.00 Base Quote)"}<br/>
+              • False-Positive Missing-Field Parks: 0 · Escalation Tokens: 0
+            </div>
+          </div>
+        `;
+      }
+    }
+  };
+
+  window.refreshSchemaEvolutionCollab = async function() {
+    try {
+      const resp = await window.apiFetch("/v1/demo/schema-evolution/state");
+      if (resp.ok) {
+        window.renderSchemaEvolutionCollab(await resp.json());
+      }
+    } catch (_) {}
+  };
+
+  window.advanceSchemaEvolutionCollab = async function(beat) {
+    try {
+      const resp = await window.apiFetch("/v1/demo/schema-evolution/advance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ beat: Number(beat), domain: "insurance" })
+      });
+      if (resp.ok) {
+        const st = await resp.json();
+        window.renderSchemaEvolutionCollab(st);
+        window.refreshSchemaRefinery();
+        window.setCaption(
+          `SCHEMA EVOLUTION BEAT ${beat} OF 4 · ${st.active_ontology_revision}`,
+          (st.banner && st.banner.headline) || "Updated Schema Refinery & Zone 6 Ontology Graph.",
+          "POST /v1/demo/schema-evolution/advance -> bridge/refinery/ + Zone 6 KnowledgeCatalog"
+        );
+      }
+    } catch (_) {}
+  };
+
+  window.resetSchemaEvolutionCollab = async function() {
+    try {
+      const resp = await window.apiFetch("/v1/demo/schema-evolution/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (resp.ok) {
+        const st = await resp.json();
+        window.renderSchemaEvolutionCollab(st);
+        window.refreshSchemaRefinery();
+      }
     } catch (_) {}
   };
 
@@ -2396,8 +2737,10 @@
     } catch (_) {}
     window.switchDomain(initialDomain);
     window.renderConsolidationCollab(window.FALLBACK_COLLAB_STATE);
+    window.renderSchemaEvolutionCollab(window.FALLBACK_SCHEMA_EVOL_STATE);
     window.apiFetch("/v1/demo/seed", { method: "POST" }).catch(() => {});
     window.refreshConsolidationCollab();
+    window.refreshSchemaEvolutionCollab();
     window.refreshLiveTelemetry();
     window.refreshSchemaRefinery();
   });

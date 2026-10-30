@@ -9,6 +9,9 @@ from fastapi import APIRouter, HTTPException, Query
 from bridge.a2ui_inbox import ActionInboxStore
 from bridge.knowledge_catalog import KnowledgeCatalog
 from bridge.refinery import SchemaRefineryEngine, schema_refinery_from_env
+from bridge.user_interaction.schema_evolution_collab import (
+    register_schema_evolution_collab_routes,
+)
 from bridge.user_interaction.schemas import (
     PromoteRefineryProposalRequest,
     RunRefineryAssayRequest,
@@ -22,10 +25,16 @@ def register_refinery_routes(
     inbox: ActionInboxStore | None = None,
     schema_refinery: SchemaRefineryEngine | None = None,
 ) -> None:
-    """Mount ``/v1/refinery/*`` routes onto the Zone 5 API router."""
+    """Mount ``/v1/refinery/*`` and ``/v1/demo/schema-evolution/*`` routes onto the Zone 5 API router."""
     refinery = schema_refinery_from_env(
         schema_refinery,
         knowledge_catalog=catalog,
+    )
+    register_schema_evolution_collab_routes(
+        router,
+        catalog=catalog,
+        refinery=refinery,
+        inbox=inbox,
     )
 
     @router.get("/v1/refinery/revisions")

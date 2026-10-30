@@ -216,3 +216,12 @@ class PromoteRefineryProposalRequest(BaseModel):
     proposal_id: str
     revision_id: str | None = None
     version: str = "1.2.0"
+
+
+class AdvanceSchemaEvolutionCollabRequest(BaseModel):
+    """Request body to advance the 4-beat Live Schema Evolution & Ontology Learning demo."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    beat: Literal[1, 2, 3, 4]
+    domain: str = "insurance"

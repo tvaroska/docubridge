@@ -253,3 +253,76 @@ def test_p8_4_refinery_fastapi_routes_and_insurance_first_demo_mode(
 
     # Clean up back to baseline
     client.post("/v1/refinery/reset")
+
+
+def test_p8_4_live_schema_evolution_4_beat_collab_stage() -> None:
+    """Verify the 4-beat Live Schema Evolution & Bi-Temporal Ontology Graph demo stage."""
+    app = build_user_interaction_app()
+    client = TestClient(app)
+
+    # Reset both refinery and schema evolution stage
+    r_reset = client.post("/v1/demo/schema-evolution/reset")
+    assert r_reset.status_code == 200
+    beat0 = r_reset.json()
+    assert beat0["beat"] == 0
+    assert beat0["active_ontology_revision"] == BASELINE_REVISION_ID
+    assert beat0["entity_count"] == 7
+
+    # Beat 1: Carrier uploads 1-page Schedule B Coastal Wind Deductible Endorsement
+    r_b1 = client.post("/v1/demo/schema-evolution/advance", json={"beat": 1})
+    assert r_b1.status_code == 200
+    beat1 = r_b1.json()
+    assert beat1["beat"] == 1
+    assert beat1["agent2_status"]["jaccard_similarity"] == 0.0667
+    assert beat1["placement_checklist"][-1]["status"] == "quarantined"
+
+    # Beat 2: Run Taxonomy Assay & 3-Tier Evaluation Gate
+    r_b2 = client.post("/v1/demo/schema-evolution/advance", json={"beat": 2})
+    assert r_b2.status_code == 200
+    beat2 = r_b2.json()
+    assert beat2["beat"] == 2
+    assert beat2["proposal"]["new_entity_id"] == ENTITY_WIND_ENDORSEMENT
+    assert beat2["assay_report"]["passed"] is True
+    assert beat2["assay_report"]["negative_flip_rate"] == 0.0
+    assert len(beat2["proposal"]["added_edges"]) == 3
+
+    # Beat 3: Promote Ontology v1.2.0 & Reconcile $100k Endorsement
+    r_b3 = client.post("/v1/demo/schema-evolution/advance", json={"beat": 3})
+    assert r_b3.status_code == 200
+    beat3 = r_b3.json()
+    assert beat3["beat"] == 3
+    assert beat3["active_ontology_revision"] == "ont-rev-v1-2-insurance"
+    assert beat3["entity_count"] == 8
+    assert beat3["done"] is True
+    assert beat3["financial_summary"]["coastal_wind_deductible"] == "$100,000.00"
+    assert (
+        "wind-deductible-endorsement"
+        in beat3["financial_summary"]["deductible_authority"]
+    )
+
+    # Beat 4: Verify Day-2 Payoff on Next Placement (Harborview Marine Terminal LLC)
+    r_b4 = client.post("/v1/demo/schema-evolution/advance", json={"beat": 4})
+    assert r_b4.status_code == 200
+    beat4 = r_b4.json()
+    assert beat4["beat"] == 4
+    assert beat4["day2_payoff"]["day2_entity_id"] == "PLACEMENT-HARBORVIEW-DAY2"
+    assert beat4["day2_payoff"]["classified_doctype"] == ENTITY_WIND_ENDORSEMENT
+    assert beat4["day2_payoff"]["false_positive_quarantine_parks"] == 0
+
+    # Verify /demo HTML exposes the Schema Evolution stage DOM hooks
+    r_html = client.get("/demo?domain=insurance")
+    assert r_html.status_code == 200
+    for dom_id in (
+        "schema-evolution-stage",
+        "btn-schema-evol-beat-1",
+        "btn-schema-evol-beat-2",
+        "btn-schema-evol-beat-3",
+        "btn-schema-evol-beat-4",
+        "schema-evol-checklist",
+        "schema-evol-edges-list",
+        "schema-evol-refinery-box",
+    ):
+        assert dom_id in r_html.text
+
+    # Clean up back to baseline
+    client.post("/v1/demo/schema-evolution/reset")

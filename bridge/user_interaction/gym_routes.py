@@ -376,10 +376,14 @@ def register_gym_routes(
     ) -> list[dict[str, Any]]:
         """Reset Programmable Trust policies (and optionally clear rules or reseed demo scenarios)."""
         reset_consolidation_collab_state()
-        if clear_rules:
-            from bridge.refinery import schema_refinery_from_env
+        from bridge.refinery import schema_refinery_from_env
+        from bridge.user_interaction.schema_evolution_collab import (
+            reset_schema_evolution_collab_state,
+        )
 
-            schema_refinery_from_env(knowledge_catalog=catalog).reset()
+        reset_schema_evolution_collab_state(
+            refinery=schema_refinery_from_env(knowledge_catalog=catalog)
+        )
         if reseed_demo:
             seed_demo_scenarios(
                 operational_store=store,
