@@ -69,6 +69,7 @@ locals {
     BRIDGE_AGENT_ENGINE_ID                     = var.agent_engine_id
     BRIDGE_AGENT_ENGINE_REMOTE                 = var.agent_engine_remote
     BRIDGE_TELEMETRY_BQ_TABLE                  = var.telemetry_bq_table
+    BRIDGE_DEFAULT_DEMO_DOMAIN                 = var.default_demo_domain
     GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY = var.agent_engine_id != "" ? "true" : ""
     BRIDGE_MODEL                               = var.agent_engine_id != "" ? "gemini-3.8-flash" : ""
     BRIDGE_REASONING_MODEL                     = var.agent_engine_id != "" ? "gemini-4-argon" : ""
@@ -312,6 +313,14 @@ resource "google_cloud_run_v2_service" "bridge" {
         content {
           name  = "BRIDGE_TELEMETRY_BQ_TABLE"
           value = var.telemetry_bq_table
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.default_demo_domain != "" ? [1] : []
+        content {
+          name  = "BRIDGE_DEFAULT_DEMO_DOMAIN"
+          value = var.default_demo_domain
         }
       }
 

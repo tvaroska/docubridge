@@ -329,6 +329,12 @@ variable "telemetry_bq_table" {
   default     = ""
 }
 
+variable "default_demo_domain" {
+  type        = string
+  description = "Optional default showcase domain (banking | mortgage | insurance) injected as BRIDGE_DEFAULT_DEMO_DOMAIN. Empty = no env (banking default)."
+  default     = ""
+}
+
 variable "deletion_protection" {
   type        = bool
   description = "Guard the service against deletion (true in prod; dev/tests may disable)."

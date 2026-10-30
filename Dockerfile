@@ -11,10 +11,8 @@
 # so it MUST ship in the image and the app MUST run from the source tree (docubridge
 # is a uv "virtual" project — deps are synced, the source is not installed as a
 # wheel, so __file__ stays in the tree and the corpus resolves).
-FROM python:3.12-slim-bookworm
-
-# uv provides the reproducible dependency sync (same lockfile as local/CI).
-COPY --from=ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim /uv /uvx /bin/
+# uv provides the reproducible dependency sync on top of python:3.12-slim-bookworm.
+FROM ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
 
 # Run as a non-root system user (UID 10001) per Google Cloud container security standards.
 RUN groupadd --system --gid 10001 appuser && \
@@ -39,6 +37,7 @@ RUN uv sync --frozen --no-dev --extra gcp --no-install-project && \
 # read at runtime). NO agents/ (isolation invariant).
 COPY --chown=appuser:appuser contract/ ./contract/
 COPY --chown=appuser:appuser bridge/ ./bridge/
+COPY --chown=appuser:appuser catalog/ ./catalog/
 COPY --chown=appuser:appuser skills/ ./skills/
 COPY --chown=appuser:appuser wiki/ ./wiki/
 COPY --chown=appuser:appuser demo/ ./demo/

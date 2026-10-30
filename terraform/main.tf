@@ -244,6 +244,7 @@ module "runtime" {
   agent_engine_remote = var.agent_engine_remote
   agent_engine_a2a    = var.agent_engine_a2a
   telemetry_bq_table  = module.telemetry.spans_table_fqn
+  default_demo_domain = var.default_demo_domain
   deletion_protection = var.deletion_protection
   labels              = var.labels
 }
