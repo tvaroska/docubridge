@@ -96,6 +96,17 @@ PROMOTION (Zero Redeploy — skill_registry.install_skill)
    and hot-reload the evolved prompt, schema, and processor binding — zero container redeploy.
 ```
 
+### 2.4 Mapping `google-research/harness2` Mechanics to DocuBridge Agent Gym & Skill Compiler
+
+While **Agent Gym** captures online SME corrections ("Example of One") and **Harness Evolve** runs nightly skill compilation, **`google-research/harness2`** (`arXiv:2610.14224`) provides four structural harness-evolution invariants that directly govern how `bridge/agent_gym/` and `skills/` evolve:
+
+| `harness2` Mechanism | Core `harness2` Invariant | DocuBridge Mapping (`bridge/agent_gym/` & `skills/`) |
+| :--- | :--- | :--- |
+| **1. Orthogonal `INV` vs. `DOM` Split (`Propose–Probe–Compose`)** | Separates **Invariant Machinery (`INV`)**—tool-error recovery, deterministic parsing scripts (`c7`), and completion hooks (`c8`)—from **Practitioner Domain Knowledge (`DOM`)**—document anatomy, reconciliation rules, and on-demand skills (`c2`/`c3`). | `TribalRuleCategory` (`EXTRACTION_HINT`, `ENTITY_ALIAS`, `CONSOLIDATION_PRIORITY`, `PRESENTATION_PREFERENCE`) and `Schema Refinery` (`catalog/doctypes/*.okf.md`) own the **`DOM`** dimension, while `bridge/extraction/chunking.py` (page-window bisection), `bridge/disposition.py` (`Rule 0` gates), and `_FORBIDDEN_MATH_TOKENS` enforce the **`INV`** dimension. |
+| **2. Surface Validation & Auto-Trigger Gate (`tree.validate` / `autotrigger`)** | Treats always-on prompt text as the most expensive budget; pushes situation-specific procedures into on-demand `skills/<name>/SKILL.md`, requires every skill to have valid YAML frontmatter + a narrow trigger line in always-on instructions, compiles helper scripts (`py_compile`), and treats `KEEP_BASE` as a valid outcome when candidates do not beat base. | `compile_rules_to_skill()` (`bridge/agent_gym/compiler.py`) folds accumulated SQL rules into versioned `SKILL.md` packages (`SkillRevisionRecord` `rev-v1-N-hash`) validated via `google.adk.skills.models.Frontmatter`, while `evaluate_candidate_rule()` rejects any candidate that fails to improve the target slice (`delta <= 0`, preserving the base revision) or violates the deterministic math firewall. |
+| **3. Structured `EXPERIENCE.md` Distillation (`{cue, lesson, evidence}`)** | Refuses to store a lesson in the domain library unless `cue` (exact situation trigger), `lesson` (reusable procedure), and `evidence` (specific trajectory/artifact contrast) are all present. | `distill_from_inbox_audit()` and `distill_from_quarantine_correction()` (`bridge/agent_gym/engine.py`) require a verified `ExpertFeedbackSignal` (`issuer_pattern` + `doctype` cue, `instruction` lesson, and `SourceAnchor` + `oversight_rsr_score >= 0.50` evidence) before minting a promotable rule. |
+| **4. Blind Anonymized Selection & Anti-Leak Tripwires (`assign_ids` + `assert_no_grader_verdicts`)** | Anonymizes and seeded-shuffles candidate outputs (`A..Z` with unmodified base runs mixed in) and blocks grader/rubric leakage from entering the selector context. | Implemented in Zone 5 A2UI Inbox via **Blind Pre-Commitment (`Evaluative AI` mode)** (`blind_pre_commitment=True` in `ActionInboxStore.create_action`), which strips pre-selected defaults (`selectedValue: ""`) and hides confidence badges until the reviewer inspects `SourceCitationPill` evidence. |
+
 ---
 
 ## 3. Multi-Tier Extraction Evolution: Adding Document AI Standard & Custom Extractors
