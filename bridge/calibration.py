@@ -13,7 +13,7 @@ Provides:
    - Gwet's AC1 / AC2 (prevalence-robust chance-corrected agreement; arXiv:2606.19544)
    - Rogan-Gladen / Prediction-Powered Inference (PPI) debiased prevalence estimator (arXiv:2511.21140)
    - Effective Panel Size under correlated judge errors (arXiv:2605.29800)
-   - Human/Agent Swap alignment test (O1: More Reliable Autoraters v1.1.0)
+   - Human/Agent Swap alignment test (symmetrical rater-swap test)
    - Agreement^k, pass@k, and pass^k (tau-bench / StochBench)
    - Item-level Negative Flip Rate (NFR; arXiv:2608.13607)
    - Two-Sided Appropriate Reliance (RAIR & RSR; Schemmer et al. 2023)
