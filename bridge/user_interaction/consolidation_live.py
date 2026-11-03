@@ -15,6 +15,7 @@ import json
 import os
 import re
 import time
+import uuid
 from typing import Any, Literal
 
 from bridge.a2ui_inbox import ActionInboxStore
@@ -563,7 +564,7 @@ def process_uploaded_pdfs(
             ingest_res = ingest_accepted_submission(
                 entry,
                 entity_id=entity_id,
-                context_id="ctx-meridian-consol-live",
+                context_id=f"ctx-meridian-consol-live-{uuid.uuid4().hex[:8]}",
                 raw_document_bytes=raw_bytes,
                 filename=fname,
                 operational_store=store,

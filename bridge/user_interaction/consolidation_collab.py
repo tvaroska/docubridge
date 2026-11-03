@@ -9,6 +9,7 @@ and live multimodal Gemini PDF uploads (`consolidation_live.py`).
 from __future__ import annotations
 
 import copy
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -158,7 +159,7 @@ def _execute_beat_1(
         ingest_res = ingest_accepted_submission(
             entry,
             entity_id=CONSOL_COLLAB_ENTITY_ID,
-            context_id="ctx-meridian-consol-2026",
+            context_id=f"ctx-meridian-consol-{uuid.uuid4().hex[:8]}",
             raw_document_bytes=fin_bytes,
             filename="01_Meridian_2025_Audited_Financials.pdf",
             operational_store=store,
@@ -303,10 +304,11 @@ def _execute_beat_2(
             key_fields={"currency": "USD", "closing_fee": "$48,210.00"},
             source_anchors={"closing_fee": wire_anchor},
         )
+        run_ctx = f"ctx-meridian-b2-{uuid.uuid4().hex[:8]}"
         bank_res = ingest_accepted_submission(
             bank_entry,
             entity_id=CONSOL_COLLAB_ENTITY_ID,
-            context_id="ctx-meridian-consol-2026",
+            context_id=run_ctx,
             raw_document_bytes=bank_bytes,
             filename="04_Meridian_Oct2026_Operating_Bank_Statement.pdf",
             operational_store=store,
@@ -328,7 +330,7 @@ def _execute_beat_2(
         fnb_res = ingest_accepted_submission(
             fnb_entry,
             entity_id=CONSOL_COLLAB_ENTITY_ID,
-            context_id="ctx-meridian-consol-2026",
+            context_id=run_ctx,
             raw_document_bytes=fnb_bytes,
             filename="03_First_National_Payoff_FNB4402.pdf",
             operational_store=store,
@@ -748,7 +750,7 @@ def _execute_beat_4(
     day2_ingest = ingest_accepted_submission(
         day2_entry,
         entity_id=CONSOL_DAY2_ENTITY_ID,
-        context_id="ctx-apex-consol-day2",
+        context_id=f"ctx-apex-consol-day2-{uuid.uuid4().hex[:8]}",
         raw_document_bytes=day2_bytes,
         filename="05_Apex_Precision_Day2_Bank_Statement.pdf",
         operational_store=store,
