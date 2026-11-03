@@ -32,6 +32,7 @@ stdlib only; NEVER ``agents/``.
 from __future__ import annotations
 
 import math
+import os
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
@@ -169,11 +170,18 @@ def build_dashboard_app(
     )
     app.add_exception_handler(StaleExchangeWrite, _stale_exchange_write_409)
     app.add_middleware(OtelAsgiMiddleware, service_component="dashboard")
+    extra_cors = [
+        origin.strip()
+        for origin in os.environ.get("BRIDGE_CORS_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+    cors_origins = ["*"] if "*" in extra_cors else [*VITE_DEV_ORIGINS, *extra_cors]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=VITE_DEV_ORIGINS,
+        allow_origins=cors_origins,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["x-docubridge-trace-id", "traceparent"],
     )
 
     def _load(sid: str) -> PortalSessionRecord:

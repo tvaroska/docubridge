@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Google Cloud · Gemini Enterprise Commercial Underwriting Live Demo</title>
+  <link rel="icon" type="image/svg+xml" href="/ebc/favicon.svg" />
+  <link rel="alternate icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a73e8'/%3E%3Cpath d='M16 14h20l12 12v24a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V18a4 4 0 0 1 4-4z' fill='%23fff'/%3E%3Ccircle cx='46' cy='46' r='13' fill='%2334a853' stroke='%23fff' stroke-width='3'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Google+Sans+Text:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/ebc/ebc-live.css" />
+</head>
+<body>
+  <!-- Tier 1: Google Cloud Universal Console Bar -->
+  <header class="gcc-topbar">
+    <div class="gcc-topbar-left">
+      <div class="gcc-brand">
+        <svg width="24" height="20" viewBox="0 0 24 20" fill="none" aria-hidden="true">
+          <path d="M15.1 4.3L17.9 1.5C16.2 0.5 14.2 0 12 0C7.4 0 3.5 2.6 1.6 6.5L5.2 9.3C6.1 6.4 8.8 4.3 12 4.3C13.1 4.3 14.2 4.6 15.1 4.3Z" fill="#EA4335"/>
+          <path d="M21.8 9.2C20.9 6.6 19.1 4.4 16.7 3.1L13.9 5.9C15.6 6.7 16.9 8.2 17.3 10.1H18.2C20.2 10.1 21.8 11.7 21.8 13.7C21.8 15.7 20.2 17.3 18.2 17.3H12V20H18.2C21.7 20 24.5 17.2 24.5 13.7C24.5 11.7 23.4 10 21.8 9.2Z" fill="#4285F4"/>
+          <path d="M5.8 17.3C3.8 17.3 2.2 15.7 2.2 13.7C2.2 12.1 3.3 10.7 4.8 10.2L1.6 6.5C0.6 8.3 0 10.4 0 12.7C0 16.7 3.3 20 7.3 20H12V17.3H5.8Z" fill="#34A853"/>
+          <path d="M12 17.3H15.5V13.7H12V17.3Z" fill="#FBBC05"/>
+        </svg>
+        <span class="gcc-brand-text">Google Cloud</span>
+      </div>
+      <div class="gcc-project-badge">
+        <span class="badge-dot"></span>
+        <span>Gemini Enterprise · Commercial Banking</span>
+      </div>
+    </div>
+
+    <div class="gcc-topbar-right">
+      <div class="mode-toggle" role="group" aria-label="Execution Mode">
+        <button id="mode-btn-live" class="mode-btn active" onclick="window.setExecutionMode('live')">
+          <span class="live-pulse"></span> Live Gemini + Cloud
+        </button>
+        <button id="mode-btn-cached" class="mode-btn" onclick="window.setExecutionMode('cached')">
+          Instant Fallback
+        </button>
+      </div>
+
+      <a id="btn-download-zip" class="top-action-btn" href="/v1/demo/consolidation-collab/pdfs.zip" download>
+        ⬇ Download 5 Demo PDFs (.zip)
+      </a>
+
+      <button id="trace-pill-btn" class="trace-pill" onclick="window.switchRightTab('telemetry')" title="Inspect live OpenTelemetry &amp; BigQuery trace">
+        Trace: <span id="live-trace-id">ready</span>
+      </button>
+
+      <button id="btn-reset-stage" class="top-action-btn subtle" onclick="window.resetStage()">
+        ↺ Reset
+      </button>
+    </div>
+  </header>
+
+  <!-- Tier 2: Deal Subheader & 4 Hero KPI Strip -->
+  <section class="hero-strip">
+    <div class="deal-banner-title">
+      <div>
+        <div class="eyebrow">GEMINI PLATFORM · DUAL-ZONE BORROWER &amp; UNDERWRITER WORKSPACE</div>
+        <h1 id="deal-title">Meridian Logistics Center LLC — $1.80M Debt Consolidation</h1>
+      </div>
+      <div class="stage-progress-pills" id="stage-progress-pills">
+        <button class="stage-step active" id="step-pill-0" onclick="window.jumpToBeat(0)">0. Baseline (0/3)</button>
+        <button class="stage-step" id="step-pill-1" onclick="window.dropSampleBatch('batch_1')">1. Debt Schedule (3→6)</button>
+        <button class="stage-step" id="step-pill-2" onclick="window.dropSampleBatch('batch_2')">2. Cross-Doc Wire</button>
+        <button class="stage-step" id="step-pill-3" onclick="window.approveWaiver()">3. Overwatch Waiver</button>
+        <button class="stage-step" id="step-pill-4" onclick="window.distillSkill()">4. Agent Gym &amp; Day-2</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">CONSOLIDATED FACILITY &amp; RULE 0 MATH</div>
+        <div class="kpi-val" id="kpi-facility">$1.80M</div>
+        <div class="kpi-sub" id="kpi-math">69.23% LTV (&le;75%) · 1.44x DSCR (&ge;1.25x)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">CLOSING CHECKLIST PROGRESS</div>
+        <div class="kpi-val" id="kpi-checklist">0 / 3</div>
+        <div class="kpi-sub" id="kpi-checklist-sub">3 baseline documents requested</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">LIVE MODEL ROUTING &amp; LATENCY</div>
+        <div class="kpi-val" id="kpi-models">Gemini 3.8 Flash</div>
+        <div class="kpi-sub" id="kpi-telemetry">Awaiting real PDF upload · 0 PII leaked</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">SKILL REGISTRY &amp; CONTINUAL LEARNING</div>
+        <div class="kpi-val" id="kpi-skill">v1.0.0</div>
+        <div class="kpi-sub" id="kpi-skill-sub">consolidation-payoff · Guided Review</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tier 3: Unified Split-Screen Workspace -->
+  <main class="split-workspace">
+    <!-- LEFT PANE: External Borrower Portal -->
+    <section class="pane borrower-pane" aria-label="External Borrower Portal">
+      <div class="pane-header">
+        <div>
+          <span class="zone-badge external">EXTERNAL PORTAL</span>
+          <h2>Borrower Document Upload &amp; Dynamic Checklist</h2>
+        </div>
+        <span class="count-pill" id="borrower-count-pill">3 Required</span>
+      </div>
+
+      <!-- Real Drag-and-Drop PDF Dropzone -->
+      <div id="pdf-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload PDF documents">
+        <input type="file" id="pdf-file-input" accept=".pdf,application/pdf" multiple hidden />
+        <div class="dropzone-main" onclick="document.getElementById('pdf-file-input').click()">
+          <div class="dropzone-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div>
+            <div class="dropzone-title" id="dropzone-title">Drag &amp; drop real PDF files here, or click to browse</div>
+            <div class="dropzone-sub" id="dropzone-sub">
+              Streams PDF bytes to Gemini 3.8 Flash (multimodal), scrubs PII at edge, and locks SHA-256 copy in 7-Year WORM Cloud Storage
+            </div>
+          </div>
+        </div>
+        <div class="quick-drop-bar">
+          <span class="quick-drop-label">Quick Stage Drop:</span>
+          <button class="chip-btn" id="btn-drop-batch1" onclick="window.dropSampleBatch('batch_1')">
+            + Batch 1: 2025 Financials &amp; Appraisal (2 PDFs)
+          </button>
+          <button class="chip-btn" id="btn-drop-batch2" onclick="window.dropSampleBatch('batch_2')">
+            + Batch 2: Oct Bank Stmt &amp; FNB Payoff (2 PDFs)
+          </button>
+          <button class="chip-btn purple" id="btn-drop-day2" onclick="window.dropSampleBatch('day_2')">
+            + Day-2: Apex Precision PDF
+          </button>
+        </div>
+      </div>
+
+      <!-- Borrower Live Status Banner -->
+      <div id="borrower-banner" class="status-banner info">
+        <div class="banner-headline" id="borrower-banner-headline">Application Opened · 3 Baseline Documents Requested</div>
+        <div class="banner-msg" id="borrower-banner-msg">Upload your 2025 Audited Financials, Oct 2026 Operating Bank Statement, and MAI Appraisal.</div>
+      </div>
+
+      <!-- Dynamic Checklist List -->
+      <div id="checklist-container" class="checklist-list"></div>
+    </section>
+
+    <!-- RIGHT PANE: Bank Underwriter Overwatch, PDF Proof & Live Trace -->
+    <section class="pane bank-pane" aria-label="Bank Underwriter Overwatch">
+      <div class="pane-header bank-tabs-header">
+        <div class="bank-title-group">
+          <span class="zone-badge internal">INTERNAL BANK OVERWATCH</span>
+          <h2>Dual-Agent Reasoning, Source PDF &amp; Telemetry</h2>
+        </div>
+        <div class="subtabs" role="tablist">
+          <button class="subtab active" id="rtab-overwatch" onclick="window.switchRightTab('overwatch')">Underwriter Board</button>
+          <button class="subtab" id="rtab-pdf" onclick="window.switchRightTab('pdf')">Source PDF Proof</button>
+          <button class="subtab" id="rtab-telemetry" onclick="window.switchRightTab('telemetry')">Live Trace &amp; SKILL.md</button>
+        </div>
+      </div>
+
+      <!-- TAB 1: Underwriter Board & Dual Agents -->
+      <div id="rpanel-overwatch" class="rpanel active">
+        <div id="primary-action-slot"></div>
+
+        <div class="agents-grid">
+          <div class="agent-card">
+            <div class="agent-card-hdr">
+              <span class="agent-pill blue">Agent 1 · Intake &amp; Extraction</span>
+              <span class="model-tag" id="agent1-model">Gemini 3.8 Flash</span>
+            </div>
+            <div class="agent-headline" id="agent1-headline">Awaiting Borrower Document Upload</div>
+            <div class="agent-detail" id="agent1-detail">Edge PII redaction, 7-Year WORM Cloud Storage lock, and page-level anchor extraction ready.</div>
+            <div id="recent-extractions-list" class="extractions-mini-list"></div>
+          </div>
+
+          <div class="agent-card">
+            <div class="agent-card-hdr">
+              <span class="agent-pill purple">Agent 2 · Policy &amp; Reconciliation</span>
+              <span class="model-tag" id="agent2-model">Gemini 4 Argon</span>
+            </div>
+            <div class="agent-headline" id="agent2-headline">Baseline 3-Document Checklist Active</div>
+            <div class="agent-detail" id="agent2-detail">Monitoring Operational Store for Note 6 Existing Liabilities to compute Python Decimal LTV/DSCR.</div>
+            <ul id="agent2-mutations" class="mutation-list"></ul>
+          </div>
+        </div>
+
+        <div id="gym-payoff-slot"></div>
+      </div>
+
+      <!-- TAB 2: Embedded Real PDF Proof Viewer -->
+      <div id="rpanel-pdf" class="rpanel">
+        <div class="pdf-toolbar">
+          <div class="pdf-doc-selector" id="pdf-selector-pills"></div>
+          <a id="pdf-open-external" class="chip-btn" href="/v1/demo/consolidation-collab/pdfs/01_Meridian_2025_Audited_Financials.pdf#page=4" target="_blank" rel="noopener">
+            Open Full PDF ↗
+          </a>
+        </div>
+        <div class="pdf-meta-bar" id="pdf-meta-bar">
+          <span id="pdf-meta-citation">Page 4 · Note 6 Debt Schedule</span>
+          <span class="mono-hash" id="pdf-meta-vault">7-Year WORM Cloud Storage Audit Vault</span>
+        </div>
+        <iframe id="pdf-viewer-frame" class="pdf-frame" title="Source PDF Proof Viewer" src="about:blank"></iframe>
+      </div>
+
+      <!-- TAB 3: Live OpenTelemetry Waterfall, Compiled SKILL.md & BigQuery Gate -->
+      <div id="rpanel-telemetry" class="rpanel">
+        <div class="telemetry-header-row">
+          <div>
+            <div class="section-mini-title">LIVE OPENTELEMETRY WATERFALL &amp; BIGQUERY RULE 0 GATES</div>
+            <div class="telemetry-sub" id="bq-summary-line">Streaming spans to Cloud Trace &amp; BigQuery `otel_spans`</div>
+          </div>
+          <button class="chip-btn" onclick="window.refreshLiveTelemetry()">↻ Refresh Spans &amp; SQL Gate</button>
+        </div>
+
+        <div id="bq-gates-strip" class="gates-strip"></div>
+        <div id="otel-waterfall-box" class="waterfall-box"></div>
+
+        <div class="skill-md-section">
+          <div class="section-mini-title">COMPILED AGENT SKILL (`consolidation-payoff` SKILL.md)</div>
+          <pre id="compiled-skill-pre" class="skill-code-pre">Distill the cross-document payoff waiver in Step 4 to compile `consolidation-payoff@1.1.0` via Gemini 4 Argon.</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/ebc/ebc-live.js"></script>
+</body>
+</html>

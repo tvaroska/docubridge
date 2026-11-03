@@ -1,36 +1,14 @@
-"""Collaborative Commercial Consolidation Loan (4-Beat Split-Screen & Day-2 Agent Gym Waiver).
+"""Collaborative Commercial Consolidation Loan (4-Beat Split-Screen & Live PDF Intake).
 
 Implements the interactive Dual-Zone Borrower Portal + Bank Underwriter & Dual-Agent
 Board scenario (`LOAN-MERIDIAN-CONSOL-2026` — Meridian Logistics Center LLC `$1.80M`
-Commercial Debt Consolidation Facility):
-  - Beat 0: Initial 3-document borrower checklist (`0/3` complete).
-  - Beat 1: Borrower uploads 2025 Audited Financials & Note 6 Debt Schedule (`Page 4`).
-            Agent 1 (`gemini-3.8-flash`) extracts the 3-row liability schedule;
-            Agent 2 (`gemini-4-argon` + deterministic `Decimal` math) mutates the
-            checklist from 3 to 6 items (`2` emergent external payoff letters required,
-            `1` internal `$250K` LOC auto-waived via core banking feed).
-  - Beat 2: Borrower uploads Oct 2026 Operating Bank Statement & First National `$1.20M`
-            Payoff Letter. Agent 1 spots a `$48,210.00` outgoing wire on `Page 2
-            [0.16, 0.54]` (`FINAL PAYOFF - LOAN #8841 - PAID IN FULL`) to EquipLease
-            Financial Corp; Agent 2 links the cross-document proof to Item #5 and raises
-            an Underwriter Overwatch waiver recommendation.
-  - Beat 3: Senior Credit Officer (`usr:senior.credit.officer@docubridge.io`, SPIFFE OBO
-            `spiffe://agents.docubridge.io/internal/credit-officer-agent`) approves the
-            1-click waiver (`RSR = 0.98`, `4,800 ms` dwell, `citation_opened=True`),
-            transitioning the loan package to `done = True` (`4 satisfied`, `2 waived`,
-            `0 required`).
-  - Beat 4: Agent Gym distills the cross-document `PAID IN FULL` wire waiver into a
-            promoted `EXTRACTION_HINT` rule, passes `4/4` synthetic stress cases
-            (including the negative monthly installment guardrail), compiles `v1.1.0` of
-            the `consolidation-payoff` skill, and verifies Day-2 zero-touch auto-waiver
-            for `Apex Precision Manufacturing LLC` (`LOAN-APEX-CONSOL-DAY2`) in `142 ms`
-            with `0` human touchpoints and `0` `gemini-4-argon` escalation tokens.
+Commercial Debt Consolidation Facility) across both deterministic beat progression
+and live multimodal Gemini PDF uploads (`consolidation_live.py`).
 """
 
 from __future__ import annotations
 
 import copy
-from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -46,197 +24,33 @@ from bridge.extraction.gemini import REASONING_MODEL, WORKHORSE_MODEL
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.operational_store import OperationalStore
 from bridge.telemetry import trace_step
+from bridge.user_interaction.consolidation_live import clear_custom_pdf_cache
+from bridge.user_interaction.consolidation_live_routes import (
+    register_live_ebc_and_pdf_routes,
+)
+from bridge.user_interaction.consolidation_pdfs import get_demo_pdf_catalog
+from bridge.user_interaction.consolidation_state import (
+    BRIDGE_AGENT_SPIFFE_ID,
+    CONSOL_COLLAB_BORROWER,
+    CONSOL_COLLAB_ENTITY_ID,
+    CONSOL_COLLAB_FACILITY,
+    CONSOL_DAY2_BORROWER,
+    CONSOL_DAY2_ENTITY_ID,
+    PDF_URLS,
+    SENIOR_UNDERWRITER_PRINCIPAL,
+    STRESS_CASES_DETAIL,
+    UNDERWRITER_AGENT_SPIFFE_ID,
+    build_beat_1_checklist,
+    build_initial_collab_state,
+    compute_deterministic_financial_summary,
+)
 from bridge.user_interaction.schemas import AdvanceConsolidationCollabRequest
 from bridge.user_interaction.surfaces import ingest_accepted_submission
 from contract.extraction import SourceAnchor
 from contract.wire import Disposition, Gate, LedgerEntry
 
-CONSOL_COLLAB_ENTITY_ID = "LOAN-MERIDIAN-CONSOL-2026"
-CONSOL_COLLAB_BORROWER = "Meridian Logistics Center LLC"
-CONSOL_COLLAB_FACILITY = "$1,800,000.00 Commercial Debt Consolidation Facility"
-CONSOL_DAY2_ENTITY_ID = "LOAN-APEX-CONSOL-DAY2"
-CONSOL_DAY2_BORROWER = "Apex Precision Manufacturing LLC"
-
-BRIDGE_AGENT_SPIFFE_ID = "spiffe://agents.docubridge.io/internal/broker-placement-agent"
-UNDERWRITER_AGENT_SPIFFE_ID = (
-    "spiffe://agents.docubridge.io/internal/credit-officer-agent"
-)
-SENIOR_UNDERWRITER_PRINCIPAL = "usr:senior.credit.officer@docubridge.io"
-
-_DOCTYPES = {
-    "financials": "-".join(("cre", "credit", "agreement")),
-    "appraisal": "-".join(("mai", "appraisal")),
-    "bank_statement": "closing-disclosure",
-    "payoff_letter": "consolidation-payoff",
-}
-
-
-def _compute_deterministic_financial_summary() -> dict[str, Any]:
-    """Compute exact Decimal LTV, DSCR, and liability schedule totals (Rule 0 firewall)."""
-    fnb_balance = Decimal("1200000.00")
-    equip_balance = Decimal("350000.00")
-    internal_loc_balance = Decimal("250000.00")
-    total_loan = fnb_balance + equip_balance + internal_loc_balance
-    appraised_value = Decimal("2600000.00")
-    annual_noi = Decimal("312000.00")
-    annual_debt_service = Decimal("216666.67")
-
-    ltv_pct = ((total_loan / appraised_value) * Decimal("100")).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    dscr_ratio = (annual_noi / annual_debt_service).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-
-    return {
-        "consolidated_loan_amount": f"${total_loan:,.2f}",
-        "appraised_collateral_value": f"${appraised_value:,.2f}",
-        "ltv_pct": float(ltv_pct),
-        "ltv_formatted": f"{ltv_pct}%",
-        "ltv_policy_cap": "75.00%",
-        "ltv_compliant": ltv_pct <= Decimal("75.00"),
-        "annual_cfads_noi": f"${annual_noi:,.2f}",
-        "annual_debt_service": f"${annual_debt_service:,.2f}",
-        "dscr_ratio": float(dscr_ratio),
-        "dscr_formatted": f"{dscr_ratio}x",
-        "dscr_policy_min": "1.25x",
-        "dscr_compliant": dscr_ratio >= Decimal("1.25"),
-        "existing_liabilities_schedule": [
-            {
-                "creditor": "First National Bank",
-                "account_ref": "#FNB-4402",
-                "facility_type": "Senior Commercial Mortgage",
-                "payoff_amount": f"${fnb_balance:,.2f}",
-                "handling": "External Payoff Letter Required",
-            },
-            {
-                "creditor": "EquipLease Financial Corp",
-                "account_ref": "#8841",
-                "facility_type": "Fleet & Material Handling Term Loan",
-                "payoff_amount": f"${equip_balance:,.2f}",
-                "handling": "External Payoff or Verified Wire Proof",
-            },
-            {
-                "creditor": "DocuBridge Commercial Bank (Internal)",
-                "account_ref": "#LOC-9012",
-                "facility_type": "Revolving Working Capital Line",
-                "payoff_amount": f"${internal_loc_balance:,.2f}",
-                "handling": "Auto-Waived via Internal Core Feed",
-            },
-        ],
-    }
-
-
-def _build_initial_collab_state() -> dict[str, Any]:
-    """Return the Beat 0 initial state for the Collaborative Consolidation Loan stage."""
-    checklist: list[dict[str, Any]] = [
-        {
-            "id": "item-1-financials",
-            "label": "2025 Audited Financials & Note 6 Debt Schedule",
-            "doctype": _DOCTYPES["financials"],
-            "status": "required",
-            "emergent": False,
-            "badge_text": "REQUIRED",
-            "reason": "Base underwriting requirement to verify borrower NOI and existing debt obligations.",
-            "source_citation": None,
-            "page_number": None,
-            "bounding_box": None,
-            "doc_id": None,
-            "vault_uri": None,
-            "sha256": None,
-            "auto_waived_reason": None,
-        },
-        {
-            "id": "item-2-bank-stmt",
-            "label": "Oct 2026 Operating Bank Statement (90-Day Liquidity & Cash Flow)",
-            "doctype": _DOCTYPES["bank_statement"],
-            "status": "required",
-            "emergent": False,
-            "badge_text": "REQUIRED",
-            "reason": "Base underwriting requirement to verify operating cash reserves and debt-service debits.",
-            "source_citation": None,
-            "page_number": None,
-            "bounding_box": None,
-            "doc_id": None,
-            "vault_uri": None,
-            "sha256": None,
-            "auto_waived_reason": None,
-        },
-        {
-            "id": "item-3-appraisal",
-            "label": "MAI Commercial Property Appraisal ($2.60M Industrial Warehouse)",
-            "doctype": _DOCTYPES["appraisal"],
-            "status": "required",
-            "emergent": False,
-            "badge_text": "REQUIRED",
-            "reason": "Collateral valuation required to confirm consolidated LTV <= 75.00%.",
-            "source_citation": None,
-            "page_number": None,
-            "bounding_box": None,
-            "doc_id": None,
-            "vault_uri": None,
-            "sha256": None,
-            "auto_waived_reason": None,
-        },
-    ]
-    return {
-        "entity_id": CONSOL_COLLAB_ENTITY_ID,
-        "borrower_name": CONSOL_COLLAB_BORROWER,
-        "facility_title": CONSOL_COLLAB_FACILITY,
-        "beat": 0,
-        "done": False,
-        "counts": {
-            "total": 3,
-            "satisfied": 0,
-            "waived": 0,
-            "required": 3,
-        },
-        "borrower_checklist": checklist,
-        "borrower_banner": {
-            "tone": "info",
-            "headline": "Application Opened · 3 Baseline Documents Requested",
-            "message": (
-                "Upload your 2025 Audited Financials, Oct 2026 Operating Bank Statement, "
-                "and MAI Appraisal to begin automated underwriting."
-            ),
-            "agent_note": (
-                "Document Bridge (Sense A) will inspect your Debt Schedule and dynamically "
-                "tailor payoff requirements."
-            ),
-        },
-        "agent1_bridge_status": {
-            "agent_name": "Agent 1 · Document Bridge (Sense A Intake & OCR)",
-            "spiffe_id": BRIDGE_AGENT_SPIFFE_ID,
-            "model": WORKHORSE_MODEL,
-            "headline": "Awaiting Borrower Document Upload",
-            "detail": (
-                "Ready to run Edge PII Redaction, 7-Year WORM Audit Vault lock, "
-                "and Document AI page/bbox anchor extraction."
-            ),
-            "documents_processed": 0,
-            "active_anchors": [],
-            "skill_revision": "consolidation-payoff@1.0.0",
-        },
-        "agent2_policy_status": {
-            "agent_name": "Agent 2 · Bank Underwriting & Policy Agent (Sense B)",
-            "spiffe_id": UNDERWRITER_AGENT_SPIFFE_ID,
-            "model": REASONING_MODEL,
-            "headline": "Baseline 3-Document Checklist Active",
-            "detail": (
-                "Monitoring Operational Store for Note 6 Schedule of Existing Liabilities "
-                "to compute Decimal LTV/DSCR and spawn creditor-specific payoff tasks."
-            ),
-            "checklist_mutations": [],
-            "policy_rules_evaluated": [
-                "Rule 0 Decimal LTV Cap <= 75.00%",
-                "Rule 0 Decimal DSCR Floor >= 1.25x",
-            ],
-        },
-        "cross_doc_discovery": None,
-        "underwriter_overwatch": None,
-        "agent_gym_payoff": None,
-        "financial_summary": _compute_deterministic_financial_summary(),
-    }
+_compute_deterministic_financial_summary = compute_deterministic_financial_summary
+_build_initial_collab_state = build_initial_collab_state
 
 
 def _recompute_counts(state: dict[str, Any]) -> None:
@@ -253,13 +67,19 @@ def _recompute_counts(state: dict[str, Any]) -> None:
     }
 
 
-_COLLAB_STATE: dict[str, Any] = _build_initial_collab_state()
+_COLLAB_STATE: dict[str, Any] = build_initial_collab_state()
+
+
+def _get_mutable_collab_state() -> dict[str, Any]:
+    """Return the active collaboration state reference for live route updates."""
+    return _COLLAB_STATE
 
 
 def reset_consolidation_collab_state() -> dict[str, Any]:
     """Reset the collaborative consolidation loan state machine back to Beat 0."""
     global _COLLAB_STATE
-    _COLLAB_STATE = _build_initial_collab_state()
+    clear_custom_pdf_cache()
+    _COLLAB_STATE = build_initial_collab_state()
     return copy.deepcopy(_COLLAB_STATE)
 
 
@@ -275,7 +95,9 @@ def _execute_beat_1(
     catalog: KnowledgeCatalog,
     gym: AgentGymEngine,
 ) -> None:
-    """Execute Beat 1: Upload 2025 Financials + Appraisal -> Discover 3-Row Debt Schedule -> Mutate Checklist (3 -> 6)."""
+    """Execute Beat 1: Upload 2025 Financials + Appraisal -> Mutate Checklist (3 -> 6)."""
+    pdf_cat = get_demo_pdf_catalog()
+    fin_bytes = pdf_cat["meridian-financials"].pdf_bytes
     debt_schedule_anchor = SourceAnchor(
         page_number=4,
         bounding_box=(0.12, 0.38, 0.84, 0.56),
@@ -283,15 +105,14 @@ def _execute_beat_1(
             "Note 6 — Schedule of Existing Liabilities to be Consolidated: "
             "(1) First National Bank Commercial Mortgage #FNB-4402: $1,200,000.00; "
             "(2) EquipLease Financial Corp Term Loan #8841: $350,000.00; "
-            "(3) DocuBridge Commercial Bank Internal LOC #LOC-9012: $250,000.00. "
-            "Total Consolidated Payoff: $1,800,000.00."
+            "(3) DocuBridge Commercial Bank Internal LOC #LOC-9012: $250,000.00."
         ),
     )
     appraisal_anchor = SourceAnchor(
         page_number=1,
         bounding_box=(0.14, 0.22, 0.82, 0.36),
         snippet=(
-            "MAI As-Is Market Valuation — Meridian Logistics Center (185,000 SF Class-A "
+            "MAI As-Is Market Valuation — Meridian Logistics Center (18,500 m2 Class-A "
             "Industrial Facility): $2,600,000.00. Stabilized Annual NOI: $312,000.00."
         ),
     )
@@ -334,19 +155,12 @@ def _execute_beat_1(
                 "annual_debt_service": debt_schedule_anchor,
             },
         )
-        raw_bytes = (
-            b"Meridian Logistics Center LLC - 2025 Audited Financials & Note 6 Debt Schedule. "
-            b"Contact controller Jane Doe at 312-555-0194 or SSN 999-11-2222. "
-            b"First National Bank #FNB-4402: $1,200,000.00. "
-            b"EquipLease Financial Corp #8841: $350,000.00. "
-            b"Internal Revolving LOC #LOC-9012: $250,000.00."
-        )
         ingest_res = ingest_accepted_submission(
             entry,
             entity_id=CONSOL_COLLAB_ENTITY_ID,
             context_id="ctx-meridian-consol-2026",
-            raw_document_bytes=raw_bytes,
-            filename="meridian-2025-financials-debt-schedule.pdf",
+            raw_document_bytes=fin_bytes,
+            filename="01_Meridian_2025_Audited_Financials.pdf",
             operational_store=store,
             knowledge_catalog=catalog,
             agent_gym=gym,
@@ -371,120 +185,7 @@ def _execute_beat_1(
     ):
         vault_uri = ingest_res.vault_record.vault_uri
         sha256_hex = ingest_res.vault_record.sha256
-        state["borrower_checklist"] = [
-            {
-                "id": "item-1-financials",
-                "label": "2025 Audited Financials & Note 6 Debt Schedule",
-                "doctype": _DOCTYPES["financials"],
-                "status": "satisfied",
-                "emergent": False,
-                "badge_text": "VERIFIED · PAGE 4",
-                "reason": (
-                    "Extracted 3 existing liabilities totaling $1,800,000.00 from Note 6 "
-                    "(Page 4 [0.12, 0.38]) and locked in 7-year WORM Audit Vault."
-                ),
-                "source_citation": "Page 4 · Region [0.12, 0.38]",
-                "page_number": 4,
-                "bounding_box": [0.12, 0.38, 0.84, 0.56],
-                "doc_id": "doc-meridian-2025-financials",
-                "vault_uri": vault_uri,
-                "sha256": sha256_hex,
-                "auto_waived_reason": None,
-            },
-            {
-                "id": "item-2-bank-stmt",
-                "label": "Oct 2026 Operating Bank Statement (90-Day Liquidity & Cash Flow)",
-                "doctype": _DOCTYPES["bank_statement"],
-                "status": "required",
-                "emergent": False,
-                "badge_text": "REQUIRED",
-                "reason": "Upload October 2026 operating account statement to verify cash flow and recent debt payments.",
-                "source_citation": None,
-                "page_number": None,
-                "bounding_box": None,
-                "doc_id": None,
-                "vault_uri": None,
-                "sha256": None,
-                "auto_waived_reason": None,
-            },
-            {
-                "id": "item-3-appraisal",
-                "label": "MAI Commercial Property Appraisal ($2.60M Industrial Warehouse)",
-                "doctype": _DOCTYPES["appraisal"],
-                "status": "satisfied",
-                "emergent": False,
-                "badge_text": "VERIFIED · 69.23% LTV",
-                "reason": (
-                    "Confirmed $2,600,000.00 collateral valuation (Page 1 [0.14, 0.22]). "
-                    "Deterministic LTV = 69.23% (<= 75.00% policy cap)."
-                ),
-                "source_citation": "Page 1 · Region [0.14, 0.22]",
-                "page_number": 1,
-                "bounding_box": [0.14, 0.22, 0.82, 0.36],
-                "doc_id": "doc-meridian-2025-financials",
-                "vault_uri": vault_uri,
-                "sha256": sha256_hex,
-                "auto_waived_reason": None,
-            },
-            {
-                "id": "item-4-fnb-payoff",
-                "label": "Payoff Letter — First National Bank Mortgage (#FNB-4402 · $1,200,000.00)",
-                "doctype": _DOCTYPES["payoff_letter"],
-                "status": "required",
-                "emergent": True,
-                "badge_text": "NEW · REQUIRED",
-                "reason": (
-                    "Spawned dynamically by Agent 2 from Note 6 Debt Schedule (Page 4): "
-                    "external senior mortgage payoff statement required for closing wire."
-                ),
-                "source_citation": "Page 4 · Region [0.12, 0.38]",
-                "page_number": 4,
-                "bounding_box": [0.12, 0.38, 0.84, 0.56],
-                "doc_id": "doc-meridian-2025-financials",
-                "vault_uri": vault_uri,
-                "sha256": sha256_hex,
-                "auto_waived_reason": None,
-            },
-            {
-                "id": "item-5-equip-payoff",
-                "label": "Payoff Letter — EquipLease Financial Corp (#8841 · $350,000.00)",
-                "doctype": _DOCTYPES["payoff_letter"],
-                "status": "required",
-                "emergent": True,
-                "badge_text": "NEW · REQUIRED",
-                "reason": (
-                    "Spawned dynamically by Agent 2 from Note 6 Debt Schedule (Page 4): "
-                    "external equipment loan payoff quote or verified settlement proof required."
-                ),
-                "source_citation": "Page 4 · Region [0.12, 0.38]",
-                "page_number": 4,
-                "bounding_box": [0.12, 0.38, 0.84, 0.56],
-                "doc_id": "doc-meridian-2025-financials",
-                "vault_uri": vault_uri,
-                "sha256": sha256_hex,
-                "auto_waived_reason": None,
-            },
-            {
-                "id": "item-6-internal-loc",
-                "label": "Internal Revolving LOC Payoff — DocuBridge Bank (#LOC-9012 · $250,000.00)",
-                "doctype": _DOCTYPES["payoff_letter"],
-                "status": "waived",
-                "emergent": True,
-                "badge_text": "AUTO-WAIVED BY AGENT 2",
-                "reason": (
-                    "Discovered on Note 6 Debt Schedule (Page 4), but automatically waived by "
-                    "Agent 2: account #LOC-9012 is held on-us and verified directly via internal "
-                    "core banking ledger ($250,000.00 balance, zero borrower upload needed)."
-                ),
-                "source_citation": "Page 4 · Region [0.12, 0.38]",
-                "page_number": 4,
-                "bounding_box": [0.12, 0.38, 0.84, 0.56],
-                "doc_id": "doc-meridian-2025-financials",
-                "vault_uri": vault_uri,
-                "sha256": sha256_hex,
-                "auto_waived_reason": "On-us facility #LOC-9012 verified directly against internal core banking feed.",
-            },
-        ]
+        state["borrower_checklist"] = build_beat_1_checklist(vault_uri, sha256_hex)
         state["borrower_banner"] = {
             "tone": "warning",
             "headline": "Checklist Dynamically Updated (3 -> 6 Items) from Your Note 6 Debt Schedule",
@@ -508,12 +209,14 @@ def _execute_beat_1(
                 "Redacted 2 PII tokens at edge, archived SHA-256 WORM copy, and extracted "
                 "3 creditor rows ($1.20M First National, $350K EquipLease #8841, $250K Internal LOC)."
             ),
-            "documents_processed": 1,
+            "documents_processed": 2,
             "active_anchors": [
                 {
                     "field": "Note 6 Debt Schedule ($1.80M)",
                     "citation": "Page 4 · Region [0.12, 0.38]",
-                    "doc_title": "meridian-2025-financials-debt-schedule.pdf",
+                    "doc_title": "01_Meridian_2025_Audited_Financials.pdf",
+                    "pdf_url": PDF_URLS["financials"],
+                    "page_number": 4,
                     "vault_uri": vault_uri,
                     "sha256": sha256_hex,
                 }
@@ -552,7 +255,10 @@ def _execute_beat_2(
     catalog: KnowledgeCatalog,
     gym: AgentGymEngine,
 ) -> None:
-    """Execute Beat 2: Upload Oct 2026 Bank Statement + FNB Payoff -> Spot $48,210 PAID IN FULL Wire on Page 2 -> Propose Waiver."""
+    """Execute Beat 2: Upload Oct 2026 Bank Statement + FNB Payoff -> Propose Waiver."""
+    pdf_cat = get_demo_pdf_catalog()
+    bank_bytes = pdf_cat["meridian-bank-stmt"].pdf_bytes
+    fnb_bytes = pdf_cat["fnb-payoff"].pdf_bytes
     wire_anchor = SourceAnchor(
         page_number=2,
         bounding_box=(0.16, 0.54, 0.88, 0.63),
@@ -594,24 +300,15 @@ def _execute_beat_2(
             overall_confidence=0.99,
             message="Accepted Oct 2026 Operating Bank Statement with Page 2 Payoff Wire",
             issuer="Meridian Operating Account",
-            key_fields={
-                "currency": "USD",
-                "closing_fee": "$48,210.00",
-            },
-            source_anchors={
-                "closing_fee": wire_anchor,
-            },
+            key_fields={"currency": "USD", "closing_fee": "$48,210.00"},
+            source_anchors={"closing_fee": wire_anchor},
         )
         bank_res = ingest_accepted_submission(
             bank_entry,
             entity_id=CONSOL_COLLAB_ENTITY_ID,
             context_id="ctx-meridian-consol-2026",
-            raw_document_bytes=(
-                b"Meridian Logistics Center LLC - Oct 2026 Operating Bank Statement. "
-                b"Page 2 [0.16, 0.54] 2026-10-12 Outgoing Wire $48,210.00 to EquipLease Financial Corp "
-                b"Memo: FINAL PAYOFF - LOAN #8841 - PAID IN FULL."
-            ),
-            filename="meridian-oct2026-operating-bank-statement.pdf",
+            raw_document_bytes=bank_bytes,
+            filename="04_Meridian_Oct2026_Operating_Bank_Statement.pdf",
             operational_store=store,
             knowledge_catalog=catalog,
             agent_gym=gym,
@@ -625,23 +322,15 @@ def _execute_beat_2(
             overall_confidence=0.99,
             message="Accepted First National Bank Payoff Statement (#FNB-4402)",
             issuer="First National Bank",
-            key_fields={
-                "currency": "USD",
-                "principal_amount": "$1,200,000.00",
-            },
-            source_anchors={
-                "principal_amount": fnb_anchor,
-            },
+            key_fields={"currency": "USD", "principal_amount": "$1,200,000.00"},
+            source_anchors={"principal_amount": fnb_anchor},
         )
         fnb_res = ingest_accepted_submission(
             fnb_entry,
             entity_id=CONSOL_COLLAB_ENTITY_ID,
             context_id="ctx-meridian-consol-2026",
-            raw_document_bytes=(
-                b"First National Bank Official Payoff Statement - Account #FNB-4402 "
-                b"Payoff Amount: $1,200,000.00."
-            ),
-            filename="first-national-payoff-fnb4402.pdf",
+            raw_document_bytes=fnb_bytes,
+            filename="03_First_National_Payoff_FNB4402.pdf",
             operational_store=store,
             knowledge_catalog=catalog,
             agent_gym=gym,
@@ -683,6 +372,7 @@ def _execute_beat_2(
                 item["doc_id"] = "doc-meridian-oct2026-bank-stmt"
                 item["vault_uri"] = bank_vault_uri
                 item["sha256"] = bank_sha256
+                item["pdf_url"] = PDF_URLS["bank_stmt"]
             elif item["id"] == "item-4-fnb-payoff":
                 item["status"] = "satisfied"
                 item["badge_text"] = "VERIFIED · $1.20M PAYOFF"
@@ -696,6 +386,7 @@ def _execute_beat_2(
                 item["doc_id"] = "doc-meridian-fnb-payoff"
                 item["vault_uri"] = fnb_vault_uri
                 item["sha256"] = fnb_sha256
+                item["pdf_url"] = PDF_URLS["fnb_payoff"]
             elif item["id"] == "item-5-equip-payoff":
                 item["badge_text"] = "WAIVER RECOMMENDED · SEE PAGE 2 WIRE"
                 item["reason"] = (
@@ -709,11 +400,13 @@ def _execute_beat_2(
                 item["doc_id"] = "doc-meridian-oct2026-bank-stmt"
                 item["vault_uri"] = bank_vault_uri
                 item["sha256"] = bank_sha256
+                item["pdf_url"] = PDF_URLS["bank_stmt"]
 
         state["cross_doc_discovery"] = {
             "status": "waiver_recommended",
             "discovered_in_doc_id": "doc-meridian-oct2026-bank-stmt",
-            "discovered_in_filename": "meridian-oct2026-operating-bank-statement.pdf",
+            "discovered_in_filename": "04_Meridian_Oct2026_Operating_Bank_Statement.pdf",
+            "pdf_url": PDF_URLS["bank_stmt"],
             "page_number": 2,
             "bounding_box": [0.16, 0.54, 0.88, 0.63],
             "region_label": "Page 2 · Region [0.16, 0.54]",
@@ -743,7 +436,9 @@ def _execute_beat_2(
             "actor_role": "underwriter",
             "agent_spiffe_id": UNDERWRITER_AGENT_SPIFFE_ID,
             "citation_label": "Page 2 · Region [0.16, 0.54]",
-            "doc_title": "meridian-oct2026-operating-bank-statement.pdf",
+            "doc_title": "04_Meridian_Oct2026_Operating_Bank_Statement.pdf",
+            "pdf_url": PDF_URLS["bank_stmt"],
+            "page_number": 2,
             "vault_uri": bank_vault_uri,
             "sha256": bank_sha256,
         }
@@ -768,12 +463,14 @@ def _execute_beat_2(
             "Extracted First National $1.20M payoff quote AND detected outgoing Fedwire #99481204 "
             "to EquipLease Financial Corp referencing Loan #8841 on Page 2 [0.16, 0.54]."
         )
-        state["agent1_bridge_status"]["documents_processed"] = 3
+        state["agent1_bridge_status"]["documents_processed"] = 4
         state["agent1_bridge_status"]["active_anchors"].append(
             {
                 "field": "EquipLease #8841 Final Payoff Wire ($48,210.00)",
                 "citation": "Page 2 · Region [0.16, 0.54]",
-                "doc_title": "meridian-oct2026-operating-bank-statement.pdf",
+                "doc_title": "04_Meridian_Oct2026_Operating_Bank_Statement.pdf",
+                "pdf_url": PDF_URLS["bank_stmt"],
+                "page_number": 2,
                 "vault_uri": bank_vault_uri,
                 "sha256": bank_sha256,
             }
@@ -804,7 +501,10 @@ def _execute_beat_3(
         "vault_uri",
         "gs://docubridge-audit-vault/vault/ctx-meridian-consol-2026/doc-meridian-oct2026-bank-stmt/v1.pdf",
     )
-    bank_sha256 = discovery.get("sha256", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")
+    bank_sha256 = discovery.get(
+        "sha256", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    )
+    bank_pdf_url = discovery.get("pdf_url", PDF_URLS["bank_stmt"])
 
     with trace_step(
         "docubridge.collab.underwriter_approve_waiver",
@@ -822,7 +522,7 @@ def _execute_beat_3(
     ):
         citation = ActionCitation(
             doc_id="doc-meridian-oct2026-bank-stmt",
-            document_title="meridian-oct2026-operating-bank-statement.pdf",
+            document_title="04_Meridian_Oct2026_Operating_Bank_Statement.pdf",
             field_name="equiplease_8841_final_payoff_wire",
             page_number=2,
             bounding_box=(0.16, 0.54, 0.88, 0.63),
@@ -864,14 +564,11 @@ def _execute_beat_3(
             confidence_score=0.98,
             steps=steps,
             data_model={
-                "resolution": {
-                    "selectedValue": "WAIVE_VIA_BANK_STATEMENT_WIRE_PROOF",
-                },
+                "resolution": {"selectedValue": "WAIVE_VIA_BANK_STATEMENT_WIRE_PROOF"},
                 "review": {
                     "memo": (
                         "Verified Page 2 [0.16, 0.54] outgoing wire ($48,210.00 'FINAL PAYOFF - "
-                        "LOAN #8841 - PAID IN FULL') to EquipLease Financial Corp. Waiving "
-                        "separate payoff letter requirement."
+                        "LOAN #8841 - PAID IN FULL') to EquipLease Financial Corp."
                     ),
                 },
             },
@@ -937,7 +634,9 @@ def _execute_beat_3(
             "oversight_rsr_score": 0.98,
             "decision": resolve_res["decision"],
             "citation_label": "Page 2 · Region [0.16, 0.54]",
-            "doc_title": "meridian-oct2026-operating-bank-statement.pdf",
+            "doc_title": "04_Meridian_Oct2026_Operating_Bank_Statement.pdf",
+            "pdf_url": bank_pdf_url,
+            "page_number": 2,
             "vault_uri": bank_vault_uri,
             "sha256": bank_sha256,
             "resolution_summary": (
@@ -954,7 +653,7 @@ def _execute_beat_3(
                 "All 6 consolidation requirements are satisfied or waived!"
             ),
             "agent_note": (
-                "Click Beat 4 to distill this cross-document waiver into Agent Gym (v1.1.0) "
+                "Distill this cross-document waiver into Agent Gym (v1.1.0) "
                 "for zero-touch Day-2 underwriting."
             ),
         }
@@ -980,7 +679,9 @@ def _execute_beat_4(
     catalog: KnowledgeCatalog,
     gym: AgentGymEngine,
 ) -> None:
-    """Execute Beat 4: Distill cross-doc wire waiver in Agent Gym -> 4/4 Stress Gate -> Compile v1.1.0 -> Day-2 Auto-Approve."""
+    """Execute Beat 4: Distill cross-doc wire waiver -> 4/4 Stress Gate -> Compile v1.1.0 -> Day-2 Auto-Approve."""
+    pdf_cat = get_demo_pdf_catalog()
+    day2_bytes = pdf_cat["apex-day2-bank-stmt"].pdf_bytes
     wire_anchor = SourceAnchor(
         page_number=2,
         bounding_box=(0.16, 0.54, 0.88, 0.63),
@@ -1048,43 +749,12 @@ def _execute_beat_4(
         day2_entry,
         entity_id=CONSOL_DAY2_ENTITY_ID,
         context_id="ctx-apex-consol-day2",
-        raw_document_bytes=(
-            b"Apex Precision Manufacturing LLC - Day-2 Consolidation Package. "
-            b"Page 2 [0.18, 0.51] Outgoing Wire $62,400.00 to EquipLease Financial Corp "
-            b"FINAL PAYOFF - LOAN #9914 - PAID IN FULL."
-        ),
-        filename="apex-oct2026-operating-bank-statement.pdf",
+        raw_document_bytes=day2_bytes,
+        filename="05_Apex_Precision_Day2_Bank_Statement.pdf",
         operational_store=store,
         knowledge_catalog=catalog,
         agent_gym=gym,
     )
-
-    stress_cases_detail = [
-        {
-            "case_id": "stress-1-fedwire-paid-in-full",
-            "name": "Fedwire Final Payoff ('PAID IN FULL' + Loan # Match)",
-            "expected": "Auto-Waive Payoff Letter",
-            "passed": True,
-        },
-        {
-            "case_id": "stress-2-ach-payoff-settlement",
-            "name": "ACH Commercial Payoff Settlement ('FINAL PAYOFF' Memo)",
-            "expected": "Auto-Waive Payoff Letter",
-            "passed": True,
-        },
-        {
-            "case_id": "stress-3-cashiers-check-remittance",
-            "name": "Cashier's Check Remittance Advice ('LOAN # PAID IN FULL')",
-            "expected": "Auto-Waive Payoff Letter",
-            "passed": True,
-        },
-        {
-            "case_id": "stress-4-negative-monthly-installment-guard",
-            "name": "Negative Guardrail: Recurring Monthly P&I Installment ($4,850/mo)",
-            "expected": "Keep Payoff Letter REQUIRED (Never Waive Partial Payment)",
-            "passed": True,
-        },
-    ]
 
     state["agent_gym_payoff"] = {
         "rule_id": rule.rule_id,
@@ -1093,17 +763,21 @@ def _execute_beat_4(
         "skill_version": compiled["version"],
         "skill_revision_id": compiled["revision_id"],
         "skill_urn": compiled["skill_urn"],
+        "skill_markdown": compiled.get("skill_markdown", ""),
         "stress_cases_passed": report.stress_cases_passed,
         "stress_cases_total": report.stress_cases_total,
         "tier1_deterministic_passed": report.tier1_rule0_passed,
         "tier2_autorater_score": report.tier2_autorater_score,
         "tier3_corridor_feasible": report.tier3_corridor_fa_zero,
-        "stress_cases": stress_cases_detail,
+        "stress_cases": copy.deepcopy(STRESS_CASES_DETAIL),
         "day2_entity_id": CONSOL_DAY2_ENTITY_ID,
         "day2_borrower": CONSOL_DAY2_BORROWER,
         "day2_status": day2_ingest.entry.disposition.value,
         "day2_gate": day2_ingest.entry.gate.value,
         "day2_latency_ms": 142,
+        "day2_pdf_url": PDF_URLS["apex_day2"],
+        "day2_vault_uri": day2_ingest.vault_record.vault_uri,
+        "day2_sha256": day2_ingest.vault_record.sha256,
         "human_touchpoints": 0,
         "escalation_tokens": 0,
         "applied_extraction_hints": list(day2_ingest.applied_extraction_hints),
@@ -1153,7 +827,7 @@ def advance_consolidation_collab_to_beat(
     """Advance the collaborative consolidation loan scenario deterministically to `target_beat` (1..4)."""
     global _COLLAB_STATE
     if target_beat < _COLLAB_STATE.get("beat", 0):
-        _COLLAB_STATE = _build_initial_collab_state()
+        _COLLAB_STATE = build_initial_collab_state()
 
     current_beat = int(_COLLAB_STATE.get("beat", 0))
     if current_beat < 1 <= target_beat:
@@ -1178,7 +852,7 @@ def register_consolidation_collab_routes(
     principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
 ) -> None:
-    """Register `/v1/demo/consolidation-collab/{state,advance,reset}` endpoints on the router."""
+    """Register `/v1/demo/consolidation-collab/*` and `/ebc` endpoints on the router."""
     del principal_roles, require_auth
 
     @router.get("/v1/demo/consolidation-collab/state")
@@ -1205,3 +879,30 @@ def register_consolidation_collab_routes(
     def reset_consolidation_collab_endpoint() -> dict[str, Any]:
         """Reset the Collaborative Commercial Consolidation Loan stage back to Beat 0 (0/3 items)."""
         return reset_consolidation_collab_state()
+
+    register_live_ebc_and_pdf_routes(
+        router,
+        get_state_ref=_get_mutable_collab_state,
+        store=store,
+        catalog=catalog,
+        inbox=inbox,
+        gym=gym,
+        execute_beat_1_fn=_execute_beat_1,
+        execute_beat_2_fn=_execute_beat_2,
+        execute_beat_3_fn=_execute_beat_3,
+        execute_beat_4_fn=_execute_beat_4,
+        recompute_counts_fn=_recompute_counts,
+    )
+
+
+__all__ = [
+    "CONSOL_COLLAB_BORROWER",
+    "CONSOL_COLLAB_ENTITY_ID",
+    "CONSOL_COLLAB_FACILITY",
+    "CONSOL_DAY2_BORROWER",
+    "CONSOL_DAY2_ENTITY_ID",
+    "advance_consolidation_collab_to_beat",
+    "get_consolidation_collab_state",
+    "register_consolidation_collab_routes",
+    "reset_consolidation_collab_state",
+]

@@ -196,3 +196,29 @@ class AdvanceConsolidationCollabRequest(BaseModel):
 
     beat: Literal[1, 2, 3, 4]
 
+
+class UploadedPdfFilePayload(BaseModel):
+    """Base64-encoded PDF file dropped onto the Borrower Portal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str
+    content_base64: str
+
+
+class UploadConsolidationPdfRequest(BaseModel):
+    """Request body to upload real PDFs (drag-and-drop bytes or sample IDs) for live extraction."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sample_ids: list[str] = Field(default_factory=list)
+    files: list[UploadedPdfFilePayload] = Field(default_factory=list)
+    mode: Literal["live", "cached"] = "live"
+
+
+class LiveCollabModeRequest(BaseModel):
+    """Request body for live or cached Underwriter waiver and Agent Gym distillation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["live", "cached"] = "live"

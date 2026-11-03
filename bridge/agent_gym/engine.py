@@ -185,10 +185,17 @@ class AgentGymEngine(SkillCompilerMixin, RegistryGatewayMixin, abc.ABC):
             if client is None:
                 from google import genai
 
+                vertex_location = os.environ.get("BRIDGE_VERTEX_LOCATION", "").strip()
+                if not vertex_location:
+                    vertex_location = (
+                        "global"
+                        if REASONING_MODEL.startswith(("gemini-3", "gemini-4"))
+                        else os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+                    )
                 client = genai.Client(
                     vertexai=True,
                     project=_gcp_project_id(),
-                    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                    location=vertex_location,
                 )
             resp = client.models.generate_content(
                 model=REASONING_MODEL,
