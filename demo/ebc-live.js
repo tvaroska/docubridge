@@ -612,11 +612,19 @@
 
       var sumEl = document.getElementById("bq-summary-line");
       if (sumEl) {
+        var totalSpans = Number(
+          analytics.total_spans_analyzed || analytics.total_spans || 0
+        );
+        var savingsPct = Number(
+          sqlEval.estimated_eval_token_savings_pct ||
+            sqlEval.selective_judge_token_savings_pct ||
+            95
+        );
         sumEl.textContent =
           "Captured " +
-          Number(analytics.total_spans || 0) +
+          totalSpans +
           " OpenTelemetry spans · Selective Judge Savings: " +
-          Number((sqlEval.selective_judge_token_savings_pct || 95)).toFixed(0) +
+          savingsPct.toFixed(0) +
           "%";
       }
 
@@ -638,15 +646,20 @@
 
       var wfEl = document.getElementById("otel-waterfall-box");
       if (wfEl) {
-        var spans = (analytics.recent_spans || []).slice(-10).reverse();
+        var rawSpans = analytics.trace_waterfall || analytics.recent_spans || [];
+        var spans = rawSpans.slice(-10).reverse();
         wfEl.innerHTML = spans.length
           ? spans
               .map(function (s) {
-                var modelBadge = s.gen_ai_model ? formatModelDisplay(s.gen_ai_model) : "Deterministic Code";
+                var rawMod =
+                  s.gen_ai_model ||
+                  (s.attributes && s.attributes["gen_ai.request.model"]) ||
+                  "";
+                var modelBadge = rawMod ? formatModelDisplay(rawMod) : "Deterministic Code";
                 return (
                   '<div class="span-row">' +
                   "<span>" +
-                  esc(s.name || s.step_name || "span") +
+                  esc(s.span_name || s.name || s.step_name || "span") +
                   "</span>" +
                   "<span>" +
                   esc(modelBadge) +
