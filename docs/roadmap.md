@@ -4,7 +4,7 @@ The high-level milestone view of the build. Each milestone is defined by **what 
 
 The core commitment: **one deployed core on the Gemini platform running Address, Employee Benefits, Emergent RFP, and the 6-Zone Financial Services & Regulated Industry Enterprise Showcase (`LOAN-MERIDIAN-001`, `MORTGAGE-WESTBROOK-2026`, `terrepower-coastal-2027`) end-to-end across all 13 Hexagonal `Port` boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`).**
 
-> _Current status:_ Cycle 1 milestones **M0–M7 are complete** — M7 ("It's deployed") closed 2026-10-01 — and the Benefits cycle (CUJ‑3/11/12), Emergent RFP cycle (CUJ‑9/13), Hybrid `document_bridge` LlmAgent edge (off-script routing, real-erase deletion, HITL park/resume), the 6-Zone Enterprise Data Architecture + Agent Gym + Agent Gateway + Consolidation Collaboration Engine + Live Multimodal PDF `/ebc` showcase, and **Phase 8 — Schema Refinery & Insurance Showcase (`P8-1`–`P8-4`)** are all built, merged, and verified on `main`. Next up in Phase 8 are **`P8-5`–`P8-8`** (`4` open items) and **`FX-1`**.
+> _Current status:_ Cycle 1 milestones **M0–M7 are complete** — M7 ("It's deployed") closed 2026-10-01 — and the Benefits cycle (CUJ‑3/11/12), Emergent RFP cycle (CUJ‑9/13/15, including variable-packaging `.zip`/`.msg`/`.eml` container unpacking in `bridge/extraction/containers.py` and resilient `.docx`/`.rtf`/`.xlsx` prepass + `1 -> N` bundled sub-entity fan-out in `bridge/extraction/office_prepass.py`), Hybrid `document_bridge` LlmAgent edge (off-script routing, real-erase deletion, HITL park/resume), the 6-Zone Enterprise Data Architecture + Agent Gym + Agent Gateway + Consolidation Collaboration Engine + Live Multimodal PDF `/ebc` showcase, and **Phase 8 — Schema Refinery & Insurance Showcase (`P8-1`–`P8-6`)** are all built, merged, and verified on `main`. Next up are **Phase 9 — Showcase Generalization (`P9-1`–`P9-3`)**, then **`P8-7`–`P8-8`** (`2` open items) and **`FX-1`**.
 
 ## Cycle 1 milestones — Core + Address
 
@@ -34,16 +34,16 @@ Jordan Lee is asked for proof of address, submits two bills from the **same** co
 | Cycle | Adds | CUJ |
 |---|---|---|
 | **Benefits** | Negotiate over a program, FX normalization, ADK↔LangGraph A2A interop, Bridge-as-client dial-out + Deliver | 3, 11, 12 |
-| **RFP** | Emergent Collect (agent-mutated requirements, N suppliers), email reply intake, live use-case-add | 9, 13, 15 |
+| **RFP** | Emergent Collect (agent-mutated requirements, N suppliers), recursive `.zip`/`.msg`/`.eml` container unpacking + HTML reply-table advisories (`bridge/extraction/containers.py`), resilient `.docx` redline / `.rtf` / `.xlsx` prepass + issuer-mismatch gate + `1 -> N` bundled fan-out (`bridge/extraction/office_prepass.py`), email reply intake, live use-case-add | 9, 13, 15 |
 | **Later swaps** | Cold unsolicited inbound push (the Extract edge). Both Gemini platform Agent Engine migration steps are built: Option A (Agent Engine Sessions, Memory Bank, and ADK `App` runtime) and Option B (`BridgeA2aAgentEngine` hosting the A2A JSON-RPC server, `CollectExecutor`, and dynamic Agent Card on Agent Engine behind `BRIDGE_AGENT_ENGINE_A2A=1`) | — |
 
 The architecture is whole from day one — outbound port, trust boundary, contracts — so these cycles add demand-driven capability, not new machinery. See [layout & scope](../design/architecture.md) and [open questions](../spec/open-questions.md).
 
 ## Phase 8 — Schema Refinery & Ontology-Driven Document Types (`P8-1`–`P8-8`)
 
-<!-- Counters: p0=18 p1=10 p2=8 p3=9 p4=6 p5=6 p6=9 p7=12 p8=8 -->
+<!-- Counters: p0=18 p1=10 p2=8 p3=9 p4=6 p5=6 p6=9 p7=12 p8=8 p9=3 -->
 
-> Full technical specification: [`design/schema-refinery.md`](../design/schema-refinery.md). `P8-1` through `P8-4` are complete and merged on `main`; `P8-5` through `P8-8` track the next ontology evolution milestones.
+> Full technical specification: [`design/schema-refinery.md`](../design/schema-refinery.md). `P8-1` through `P8-6` are complete and merged on `main`; `P8-7` through `P8-8` track the remaining ontology governance milestones.
 
 - [x] **P8-1: Contrastive Descriptions & OKF Schema Package Loader (`bridge/doctypes.py`, `bridge/extraction/gemini_schema.py`, `catalog/doctypes/*.okf.md`)**
   - Extend `DoctypeConfig` and `ContractSchema` to load top-level entity descriptions, contrastive field metadata (`what_it_is` / `where_to_read` / `distinguish_from`), and `OntologyEdge` declarations from `catalog/doctypes/*.okf.md` (alongside existing `skills/*/SKILL.md` + `assets/schema.json` across `commercial-property-quote`, `benefits-quote`, `trid-closing-disclosure`, `cre-credit-agreement`, and `mai-appraisal`).
@@ -63,13 +63,13 @@ The architecture is whole from day one — outbound port, trust boundary, contra
   - Mount `/v1/refinery/*` FastAPI endpoints (`GET /v1/refinery/revisions`, `POST /v1/refinery/assay`, `POST /v1/refinery/promote`) and add the interactive **Schema Refinery** workflow to `/demo` (`demo/enterprise-demo.html` + `demo/enterprise-demo.js`), demonstrating bimodal field sparsity detection, contrastive description diffs, the 3-Tier BigQuery counterfactual assay, and live ontology promotion with `[:SPLIT_FROM]` lineage.
   - Support `?domain=insurance` URL parameter and `BRIDGE_DEFAULT_DEMO_DOMAIN=insurance` environment configuration so `/demo` on `documents002` opens directly into the **Insurance (Commercial Property — `terrepower-coastal-2027`)** domain while keeping default `banking` startup when unset (preserving all `test_documentation_contract.py` and Playwright invariants).
 
-- [ ] **P8-5: Example-Driven Doctype Onboarding (`bridge/refinery/`, `bridge/user_interaction/refinery_routes.py`)**
-  - Because DocuBridge operates as a document-mediation executor for calling agents rather than a standalone warehouse crawler, implement an example-driven onboarding workflow (`onboard_doctype_from_examples`): given 1–5 sample documents or structured examples plus an optional `context_set`, `gemini-4-argon` synthesizes a candidate `.okf.md` semantic-entity bundle (`ContrastiveDescription`, `synonyms`, `[:FEEDS_METRIC]`, `[:SUPERSEDES]`) in `DRAFT` state and runs the 3-Tier Assay Gate before promotion.
-  - **Verification Gate (T1/T2):** Unit and assay tests verify draft `.okf.md` synthesis from sample fixtures and full 3-Tier Assay Gate evaluation.
+- [x] **P8-5: Example-Driven Doctype Onboarding (`bridge/refinery/onboarding.py`, `bridge/user_interaction/refinery_routes.py`)**
+  - Because DocuBridge operates as a document-mediation executor for calling agents rather than a standalone warehouse crawler, implement an example-driven onboarding workflow (`onboard_doctype_from_examples` and `POST /v1/refinery/onboard`): given 1–5 sample documents or structured examples plus optional `paired_target_examples` and `spine_entity_id` / `context_set`, `gemini-4-argon` (or deterministic structural induction offline) synthesizes a candidate `.okf.md` semantic-entity bundle (`ContrastiveDescription`, `synonyms`, `[:FEEDS_METRIC]`, `[:SUPERSEDES]`, `target_projection_hints`) in `DRAFT` state and runs the 3-Tier Assay Gate (`NFR == 0.0%`) before promotion.
+  - **Verification Gate (T1/T2):** Unit and assay tests in `tests/test_refinery_onboarding_and_slicing.py` verify draft `.okf.md` synthesis from sample fixtures and full 3-Tier Assay Gate evaluation.
 
-- [ ] **P8-6: Target-Scoped Ontology Slicing per Extraction Call (`bridge/doctypes.py`, `bridge/extraction/gemini_schema.py`, `bridge/extraction/gemini.py`)**
-  - Scope `build_extraction_prompt()`, `build_response_schema()`, and `GeminiExtractor.extract()` to the known target `doctype` or active process `candidate_doctypes` (`context_set`) plus their 1-hop ontology neighborhood (`[:SUPERSEDES]`, `[:SPLIT_FROM]`, `[:DISTINCT_FROM]`), instead of injecting the union of every installed doctype on every call. Keep `fields.doctype` as a free string so out-of-label-space documents still report their observed type cleanly.
-  - **Verification Gate (T1/T2):** Unit tests verify target-scoped prompt/schema generation, reduced token footprint per call, and preserved `unsupported` disposition on out-of-label-space uploads.
+- [x] **P8-6: Target-Scoped Ontology Slicing per Extraction Call (`bridge/doctypes.py`, `bridge/extraction/gemini_schema.py`, `bridge/extraction/gemini.py`)**
+  - Scope `slice_ontology_for_extraction()`, `build_extraction_prompt()`, `build_response_schema()`, and `GeminiExtractor.extract()` to the known target `doctype` or active process `candidate_doctypes` (`context_set`) plus their shared spine and 1-hop ontology neighborhood (`[:SUPERSEDES]`, `[:SPLIT_FROM]`, `[:DISTINCT_FROM]`), instead of injecting the union of every installed doctype on every call. Keep `fields.doctype` as a free string so out-of-label-space documents still report their observed type cleanly.
+  - **Verification Gate (T1/T2):** Unit tests in `tests/test_refinery_onboarding_and_slicing.py` verify target-scoped prompt/schema generation, reduced token footprint per call, and preserved `unsupported` disposition on out-of-label-space uploads.
 
 - [ ] **P8-7: Read-Only Allow-Listed Ontology MCP Surface over Zone 6 (`bridge/knowledge_catalog/`)**
   - Expose an allow-listed, strictly read-only MCP tool surface over Zone 6 `KnowledgeCatalog` (`get_entity_ontology`, `explain_metric_formula`, `check_doctype_precedence`, `trace_field_lineage`) for calling A2A/MCP agents, keeping all state-changing ontology mutations (`onboard_doctype_from_examples`, `register_proposal`, `promote_proposal`) isolated to the Assay-Gated admin control plane.
@@ -78,6 +78,22 @@ The architecture is whole from day one — outbound port, trust boundary, contra
 - [ ] **P8-8: Pre-Execution Query & Metric Formula Validator (`bridge/knowledge_catalog/`, `bridge/operational_store/`)**
   - Add deterministic pre-execution validation (`validate_metric_query` / `validate_consolidation_view`) in Zone 6 so Zone 5 Domain Agent queries and analytical rollups over `OperationalStore` and BigQuery (`bq_operational_facts_iceberg`) are checked against certified `[:FEEDS_METRIC]` edges, bi-temporal watermarks (`learned_as_of`, `effective_on`), and `[:SUPERSEDES]` active-fact precedence before execution.
   - **Verification Gate (T1/T2):** Unit tests verify that queries bypassing certified `[:FEEDS_METRIC]` formulas or omitting bi-temporal/precedence predicates are deterministically rejected.
+
+## Phase 9 — Showcase Generalization (`P9-1`–`P9-3`)
+
+> DocuBridge is the base for broader industry showcases that call it **over A2A as an agent** (not as a Python dependency). Phase 9 removes the per-domain hand-written scenario code and doctype duplication so a new showcase is a `scenarios/<name>/` folder plus `catalog/` and `skills/` bundles, with zero changes to `bridge/`. Ordered ahead of `P8-7`/`P8-8`.
+
+- [ ] **P9-1: Generic Scenario Contract & Loader (`contract/scenario.py`, `bridge/showcase/`, `scenarios/<name>/`)**
+  - Replace the four hand-written scenario modules (`bridge/user_interaction/consolidation_collab.py`, `consolidation_live.py`, `schema_evolution_collab.py`, `schema_evolution_benefits.py`) and `demo_seed.py` with one `Scenario` wire model (seed facts + lineage, ordered beats with expected deltas, display copy, referenced doctypes/process skills, optional sample PDFs) loaded from `scenarios/<name>/scenario.yaml` the same way `skills/` are loaded. One generic beat engine serves `/v1/demo/{scenario}/{state,advance,reset}`; `demo/enterprise-demo.js` renders from `GET /v1/demo/scenarios` instead of hardcoded domain strings. Module-global scenario state moves into the engine instance.
+  - **Verification Gate (T1/T2):** the three existing domains (`LOAN-MERIDIAN-001`, `MORTGAGE-WESTBROOK-2026`, `terrepower-coastal-2027`) plus the consolidation and schema-evolution stages reproduce identical seeds, figures, and beat outcomes under `tests/test_documentation_contract.py` and `tests/test_enterprise_data_architecture.py`; `tests/test_isolation_guard.py` gains a guard that no scenario entity/issuer literal appears in `bridge/` outside `bridge/showcase/`; adding a fourth scenario folder requires no Python change.
+
+- [ ] **P9-2: Single Doctype Source of Truth (`catalog/doctypes/*.okf.md` → `skills/<doctype>/assets/schema.json`)**
+  - Make the OKF bundle canonical. Either generate `assets/schema.json` from the OKF field specs at skill install/load (`bridge/edge/skills.py`, `bridge/refinery/okf_loader.py`) or have extraction read the OKF entity spec directly via `entity_spec_to_json_schema()`. Reconcile the current drift (`trid-closing-disclosure` field sets, `benefits-quote` missing `employer_account_seed` / `plan_type` / `waiting_period_days`, `commercial-property-quote` required-ness).
+  - **Verification Gate (T1/T2):** new `tests/test_doctype_consistency.py` fails on any field/required/type mismatch between the two representations; all existing extraction and conformance tests pass unchanged.
+
+- [ ] **P9-3: Downstream Showcase Integration over A2A (`docs/consume-over-a2a.md`, `/.well-known/agent-card.json`)**
+  - Document and test the contract a downstream showcase relies on: the Agent Card shape (process skills advertised per installed `skills/` bundle), the `contract/` wire types a caller needs, one minimal external-consumer example (a 50-line ADK `RemoteA2aAgent` driver, independent of `agents/address`), and the per-deployment knobs (`BRIDGE_SKILLS_DIR` / skills bucket, `BRIDGE_DEFAULT_DEMO_DOMAIN`, scenario folder) a showcase project sets. Remove repo-relative `../demo/` serving from `bridge/user_interaction/intake_routes.py` in favour of a configured static root.
+  - **Verification Gate (T1/T2):** a conformance test boots the core with only a scenario folder + skill bundles and verifies the Agent Card, one Collect round-trip, and `/demo` from a clean checkout; `docs/consume-over-a2a.md` is covered by `tests/test_documentation_contract.py`.
 
 ## Future Experiments
 

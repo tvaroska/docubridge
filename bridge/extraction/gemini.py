@@ -95,13 +95,13 @@ to the same ``expected_disposition``/``expected_gate``, not float-equality.
 import asyncio
 import json
 import logging
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Sequence
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from bridge.doctypes import doctype_schemas
+from bridge.doctypes import doctype_schemas, slice_ontology_for_extraction
 from bridge.extraction.chunking import (
     ExtractionTruncated,
     bisect_window,
@@ -211,6 +211,9 @@ class GeminiExtractor:
         chunk_concurrency: int | None = None,
         max_windows: int = DEFAULT_MAX_WINDOWS,
         agent_gym: Any = None,
+        target_doctype: str | None = None,
+        candidate_doctypes: Sequence[str] | None = None,
+        context_set: str | None = None,
         log: Any = _LOG,
     ) -> None:
         import os
@@ -250,6 +253,11 @@ class GeminiExtractor:
         self._max_attempts = max_attempts
         self._prepass = prepass
         self._agent_gym = agent_gym
+        self._target_doctype = target_doctype
+        self._candidate_doctypes = (
+            tuple(candidate_doctypes) if candidate_doctypes is not None else None
+        )
+        self._context_set = context_set
         self._log = log
         # Injected catalog wins; else the registry is read per extract (see _catalog).
         self._schemas_fixed = schemas
@@ -259,33 +267,73 @@ class GeminiExtractor:
         self._response_schema: dict | None = None
         self.last_pinned_ontology_revision_id: str = "ont-rev-v1-1-baseline"
 
-    def _catalog(self) -> tuple[str, dict | None]:
+    def _catalog(
+        self,
+        *,
+        target_doctype: str | None = None,
+        candidate_doctypes: Sequence[str] | None = None,
+        context_set: str | None = None,
+        revision: Any | None = None,
+    ) -> tuple[str, dict | None]:
         """Prompt + pinned response schema — rebuilt only when the catalog changed.
 
         The only place the extraction path reads the ``skill_registry`` port. It is
         read on each ``extract`` (not at construction), because one extractor outlives
         the app's start and a doctype skill dropped into ``BRIDGE_SKILLS_DIR`` after
-        the first extract must reach the next prompt and response schema (CUJ-9). The
-        read is one directory listing against a model call; the prompt and schema are
-        rebuilt only when the catalog content differs from the last one seen. An
-        injected ``schemas`` catalog is fixed and never re-read.
+        the first extract must reach the next prompt and response schema (CUJ-9). When
+        ``target_doctype``, ``candidate_doctypes``, or ``context_set`` is active, slices
+        the ontology to the target doctype(s) + shared spine + 1-hop neighborhood.
         """
         schemas = (
             self._schemas_fixed
             if self._schemas_fixed is not None
             else doctype_schemas()
         )
+        eff_target = (
+            target_doctype if target_doctype is not None else self._target_doctype
+        )
+        eff_candidates = (
+            candidate_doctypes
+            if candidate_doctypes is not None
+            else self._candidate_doctypes
+        )
+        eff_context = context_set if context_set is not None else self._context_set
+
         pinned_rev = "ont-rev-v1-1-baseline"
-        for spec in schemas.values():
-            if isinstance(spec, dict) and spec.get("x_okf_revision_id"):
-                pinned_rev = str(spec["x_okf_revision_id"])
-                break
+        if revision is not None and getattr(revision, "revision_id", None):
+            pinned_rev = str(revision.revision_id)
+        else:
+            for spec in schemas.values():
+                if isinstance(spec, dict) and spec.get("x_okf_revision_id"):
+                    pinned_rev = str(spec["x_okf_revision_id"])
+                    break
         self.last_pinned_ontology_revision_id = pinned_rev
         hints: list[Any] = (
             list(self._agent_gym.get_extraction_hints())
             if self._agent_gym is not None
             else []
         )
+
+        if eff_target or eff_candidates or eff_context or revision is not None:
+            scoped = slice_ontology_for_extraction(
+                target_doctype=eff_target,
+                candidate_doctypes=eff_candidates,
+                revision=revision,
+                context_set=eff_context,
+                schemas=schemas,
+            )
+            return (
+                build_extraction_prompt(
+                    scoped,
+                    extraction_hints=hints,
+                    target_doctype=eff_target,
+                    candidate_doctypes=eff_candidates,
+                    context_set=eff_context,
+                    revision=revision,
+                ),
+                build_response_schema(scoped),
+            )
+
         hint_ids = tuple(getattr(h, "rule_id", str(h)) for h in hints)
         if (
             self._prompt is None
@@ -354,7 +402,15 @@ class GeminiExtractor:
             data=resolved.data, mime_type=resolved.mime_type
         )
 
-    async def extract(self, artifact_name: str) -> ExtractionResult:
+    async def extract(
+        self,
+        artifact_name: str,
+        *,
+        target_doctype: str | None = None,
+        candidate_doctypes: Sequence[str] | None = None,
+        context_set: str | None = None,
+        revision: Any | None = None,
+    ) -> ExtractionResult:
         """Extract normalized fields + disposition signals via a Gemini call.
 
         Resolves ``artifact_name`` — which is the URI the counterparty put on the
@@ -393,7 +449,12 @@ class GeminiExtractor:
         type re-raised). A truncation that cannot be chunked smaller raises
         :class:`ExtractionTruncated`.
         """
-        prompt, response_schema = self._catalog()
+        prompt, response_schema = self._catalog(
+            target_doctype=target_doctype,
+            candidate_doctypes=candidate_doctypes,
+            context_set=context_set,
+            revision=revision,
+        )
         # The catalog is built first on purpose: a registry/authoring error must
         # surface before any artifact fetch is issued.
         resolved = _coerce_resolved(await maybe_await(self._resolver(artifact_name)))

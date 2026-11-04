@@ -14,6 +14,7 @@ from bridge.doctypes import (
     doctype_tables,
     issuer_description,
     key_field_properties,
+    slice_ontology_for_extraction,
     table_properties,
     table_spec,
 )
@@ -139,14 +140,38 @@ def build_extraction_prompt(
     schemas: dict[str, dict],
     *,
     extraction_hints: Sequence[Any] = (),
+    target_doctype: str | None = None,
+    candidate_doctypes: Sequence[str] | None = None,
+    context_set: str | None = None,
+    revision: Any | None = None,
 ) -> str:
-    """``PROMPT_HEADER`` + the installed-doctype field catalog + ``PROMPT_FOOTER``."""
+    """``PROMPT_HEADER`` + the installed-doctype (or target-scoped) field catalog + ``PROMPT_FOOTER``."""
+    active_schemas = (
+        slice_ontology_for_extraction(
+            target_doctype=target_doctype,
+            candidate_doctypes=candidate_doctypes,
+            revision=revision,
+            context_set=context_set,
+            schemas=schemas,
+        )
+        if (target_doctype or candidate_doctypes or context_set)
+        else schemas
+    )
+    scoped_hints = list(extraction_hints)
+    if (target_doctype or candidate_doctypes or context_set) and scoped_hints:
+        allowed_dtypes = {"*", "", *active_schemas.keys()}
+        scoped_hints = [
+            h
+            for h in scoped_hints
+            if str(getattr(h, "doctype", "*")).strip() in allowed_dtypes
+        ]
+
     hints_section = ""
-    if extraction_hints:
+    if scoped_hints:
         hint_lines = [
             "Active Agent Gym extraction hints (apply when matching issuer/doctype):"
         ]
-        for hint in extraction_hints:
+        for hint in scoped_hints:
             rid = getattr(hint, "rule_id", "")
             issuer_pat = getattr(hint, "issuer_pattern", "*")
             dtype = getattr(hint, "doctype", "*")
@@ -156,12 +181,12 @@ def build_extraction_prompt(
             hint_lines.append(f"- [{prefix}{issuer_pat}:{dtype}:{fpath}] {instr}")
         hints_section = "\n\n" + "\n".join(hint_lines)
 
-    if not schemas:
+    if not active_schemas:
         return f"{PROMPT_HEADER}{hints_section}\n\n{PROMPT_FOOTER}"
 
     lines = ["Installed document types and the fields each declares:"]
-    for doctype in sorted(schemas):
-        schema = schemas[doctype]
+    for doctype in sorted(active_schemas):
+        schema = active_schemas[doctype]
         label = doctype
         if declares_issuer(schema):
             note = issuer_description(schema) or "the issuing organization"
@@ -188,11 +213,29 @@ def build_extraction_prompt(
     return f"{PROMPT_HEADER}\n\n{catalog}{hints_section}\n\n{PROMPT_FOOTER}"
 
 
-def build_response_schema(schemas: dict[str, dict]) -> dict | None:
+def build_response_schema(
+    schemas: dict[str, dict],
+    *,
+    target_doctype: str | None = None,
+    candidate_doctypes: Sequence[str] | None = None,
+    context_set: str | None = None,
+    revision: Any | None = None,
+) -> dict | None:
     """The pinned structured-output schema, or ``None`` when no doctype declares fields."""
+    active_schemas = (
+        slice_ontology_for_extraction(
+            target_doctype=target_doctype,
+            candidate_doctypes=candidate_doctypes,
+            revision=revision,
+            context_set=context_set,
+            schemas=schemas,
+        )
+        if (target_doctype or candidate_doctypes or context_set)
+        else schemas
+    )
     union: dict[str, str] = {}
-    for doctype in sorted(schemas):
-        for name, desc in doctype_fields(schemas[doctype]).items():
+    for doctype in sorted(active_schemas):
+        for name, desc in doctype_fields(active_schemas[doctype]).items():
             labelled = f"{doctype}: {desc}" if desc else doctype
             if name in union:
                 union[name] = f"{union[name]} | {labelled}"
@@ -206,8 +249,8 @@ def build_response_schema(schemas: dict[str, dict]) -> dict | None:
         for name, desc in union.items()
     }
     enums: dict[str, list | None] = {}
-    for doctype in sorted(schemas):
-        for name, spec in key_field_properties(schemas[doctype]).items():
+    for doctype in sorted(active_schemas):
+        for name, spec in key_field_properties(active_schemas[doctype]).items():
             enum = spec.get("enum") if isinstance(spec, dict) else None
             enum = (
                 enum
@@ -221,13 +264,13 @@ def build_response_schema(schemas: dict[str, dict]) -> dict | None:
     confidences = {
         name: {"type": "number", "nullable": True} for name in [*union, "issuer"]
     }
-    tables = _tables_union(schemas)
-    installed = ", ".join(sorted(schemas))
+    tables = _tables_union(active_schemas)
+    installed = ", ".join(sorted(active_schemas))
     entity_notes = [
-        f"{dt} ({doctype_description(schemas[dt])})"
-        if doctype_description(schemas[dt])
+        f"{dt} ({doctype_description(active_schemas[dt])})"
+        if doctype_description(active_schemas[dt])
         else dt
-        for dt in sorted(schemas)
+        for dt in sorted(active_schemas)
     ]
     doctype_desc = (
         f"the document type you observe; installed types: {installed}. "

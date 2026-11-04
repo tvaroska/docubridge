@@ -13,6 +13,7 @@ from bridge.user_interaction.schema_evolution_collab import (
     register_schema_evolution_collab_routes,
 )
 from bridge.user_interaction.schemas import (
+    OnboardDoctypeRequest,
     PromoteRefineryProposalRequest,
     RunRefineryAssayRequest,
 )
@@ -73,6 +74,25 @@ def register_refinery_routes(
             "assay_report": report.model_dump(mode="json"),
             "candidate_revision": candidate_rev.model_dump(mode="json"),
         }
+
+    @router.post("/v1/refinery/onboard")
+    def post_refinery_onboard(body: OnboardDoctypeRequest) -> dict[str, Any]:
+        """Induce a candidate DRAFT doctype + `.okf.md` bundle from 1-5 examples and run the 3-Tier Assay Gate."""
+        try:
+            result = refinery.onboard_doctype_from_examples(
+                entity_id=body.entity_id,
+                samples=body.samples,
+                paired_target_examples=body.paired_target_examples,
+                spine_entity_id=body.spine_entity_id,
+                context_set=body.context_set,
+                domain=body.domain,
+                source_priority=body.source_priority,
+                supersedes_spine=body.supersedes_spine,
+                aliases=body.aliases,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return result.model_dump(mode="json")
 
     @router.post("/v1/refinery/promote")
     def post_refinery_promote(body: PromoteRefineryProposalRequest) -> dict[str, Any]:

@@ -14,6 +14,7 @@ from bridge.operational_store.models import (
     ConsolidatedFact,
     FactConflict,
     FinancialSummary,
+    _utc_dt,
 )
 from bridge.telemetry import trace_step
 from contract.enums import Disposition
@@ -212,14 +213,18 @@ def consolidate_entry(
             f"consolidate_entry requires Disposition.accepted; "
             f"got {entry.disposition.value!r} for doc_id={entry.doc_id!r}"
         )
-    rec_ts = recorded_at or entry.recorded_at or datetime.now(UTC)
-    eff_ts = effective_from or entry.effective_from
+    raw_rec = (
+        recorded_at
+        if recorded_at is not None
+        else (entry.recorded_at if entry.recorded_at is not None else datetime.now(UTC))
+    )
+    rec_ts = _utc_dt(raw_rec)
+    raw_eff = effective_from if effective_from is not None else entry.effective_from
+    eff_ts = _utc_dt(raw_eff) if raw_eff is not None else None
     if eff_ts is None and "effective_date" in entry.key_fields:
         try:
             parsed_d = datetime.fromisoformat(entry.key_fields["effective_date"])
-            eff_ts = (
-                parsed_d.replace(tzinfo=UTC) if parsed_d.tzinfo is None else parsed_d
-            )
+            eff_ts = _utc_dt(parsed_d)
         except ValueError:
             eff_ts = rec_ts
     eff_ts = eff_ts or rec_ts
@@ -339,11 +344,13 @@ def resolve_active_facts(
     effective_on: datetime | None = None,
 ) -> tuple[list[ConsolidatedFact], list[FactConflict]]:
     """Filter facts by bi-temporal window and resolve winners + conflicts per field."""
+    learned_bound = _utc_dt(learned_as_of) if learned_as_of is not None else None
+    effective_bound = _utc_dt(effective_on) if effective_on is not None else None
     eligible: list[ConsolidatedFact] = []
     for f in facts:
-        if learned_as_of is not None and f.recorded_at > learned_as_of:
+        if learned_bound is not None and _utc_dt(f.recorded_at) > learned_bound:
             continue
-        if effective_on is not None and f.effective_from > effective_on:
+        if effective_bound is not None and _utc_dt(f.effective_from) > effective_bound:
             continue
         eligible.append(f)
 

@@ -7,17 +7,53 @@ schema-driven engine) and the Document AI OCR pre-pass that turns the Gemini eng
 into the ``docai`` engine for scanned/raster documents (design/docai-prepass.md).
 """
 
+from .containers import (
+    ContainerUnpackResult,
+    ExtractedEnvelopeBody,
+    ReplyItemAdvisory,
+    UnpackedArtifact,
+    apply_advisories_to_requirements,
+    parse_html_reply_advisories,
+    unpack_submission_container,
+)
 from .docai import DocAIPrepass
 from .fixture import DEFAULT_CORPUS, FixtureExtractor
 from .gemini import GeminiExtractor, artifact_resolver
+from .office_prepass import (
+    DocxRedlineExtract,
+    IssuerMismatchResult,
+    ResilientSheetExtract,
+    ResilientWorkbookExtract,
+    detect_issuer_mismatch,
+    expand_bundled_extractions,
+    extract_docx_with_redlines,
+    extract_rtf_text,
+    extract_xlsx_resilient,
+)
 from .resolve import ResolvedDocument, resolve_document
 
 __all__ = [
     "DEFAULT_CORPUS",
+    "ContainerUnpackResult",
     "DocAIPrepass",
+    "DocxRedlineExtract",
+    "ExtractedEnvelopeBody",
     "FixtureExtractor",
     "GeminiExtractor",
+    "IssuerMismatchResult",
+    "ReplyItemAdvisory",
+    "ResilientSheetExtract",
+    "ResilientWorkbookExtract",
     "ResolvedDocument",
+    "UnpackedArtifact",
+    "apply_advisories_to_requirements",
     "artifact_resolver",
+    "detect_issuer_mismatch",
+    "expand_bundled_extractions",
+    "extract_docx_with_redlines",
+    "extract_rtf_text",
+    "extract_xlsx_resilient",
+    "parse_html_reply_advisories",
     "resolve_document",
+    "unpack_submission_container",
 ]

@@ -7,6 +7,7 @@ contrastive descriptions across in-memory and durable SQL backends.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -17,6 +18,12 @@ from bridge.refinery.assay import (
     evaluate_ontology_proposal,
 )
 from bridge.refinery.okf_loader import build_baseline_ontology_revision
+from bridge.refinery.onboarding import (
+    DoctypeOnboardingResult,
+    PairedTargetExample,
+    SampleDocumentExample,
+    build_onboarding_proposal,
+)
 from contract.refinery import (
     OntologyEdge,
     OntologyRevision,
@@ -80,6 +87,24 @@ class SchemaRefineryEngine(ABC):
         cluster_b_fields: set[str] | None = None,
     ) -> tuple[RefineryProposal, RefineryAssayReport, OntologyRevision]:
         """Run bimodal field sparsity & contrastive description assay for a domain/entity."""
+
+    @abstractmethod
+    def onboard_doctype_from_examples(
+        self,
+        *,
+        entity_id: str,
+        samples: Sequence[SampleDocumentExample | Mapping[str, Any]],
+        paired_target_examples: Sequence[PairedTargetExample | Mapping[str, Any]] = (),
+        spine_entity_id: str | None = None,
+        context_set: str = "enterprise-document-intake",
+        domain: str = "insurance",
+        source_priority: int = 20,
+        supersedes_spine: bool = True,
+        aliases: Sequence[str] = (),
+        client: Any = None,
+        use_live_llm: bool | None = None,
+    ) -> DoctypeOnboardingResult:
+        """Induce a DRAFT doctype spec + `.okf.md` bundle from 1-5 examples and run the 3-Tier Assay Gate."""
 
     @abstractmethod
     def promote_proposal(
@@ -205,6 +230,49 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
             baseline_revision=baseline,
         )
         return self.register_proposal(raw_proposal)
+
+    def onboard_doctype_from_examples(
+        self,
+        *,
+        entity_id: str,
+        samples: Sequence[SampleDocumentExample | Mapping[str, Any]],
+        paired_target_examples: Sequence[PairedTargetExample | Mapping[str, Any]] = (),
+        spine_entity_id: str | None = None,
+        context_set: str = "enterprise-document-intake",
+        domain: str = "insurance",
+        source_priority: int = 20,
+        supersedes_spine: bool = True,
+        aliases: Sequence[str] = (),
+        client: Any = None,
+        use_live_llm: bool | None = None,
+    ) -> DoctypeOnboardingResult:
+        """Induce a DRAFT doctype spec + `.okf.md` bundle from 1-5 examples and run the 3-Tier Assay Gate."""
+        baseline = self.get_active_revision()
+        raw_proposal, spec, okf_md, proj_hints, induced_by = build_onboarding_proposal(
+            entity_id=entity_id,
+            samples=samples,
+            baseline_revision=baseline,
+            paired_target_examples=paired_target_examples,
+            spine_entity_id=spine_entity_id,
+            context_set=context_set,
+            domain=domain,
+            source_priority=source_priority,
+            supersedes_spine=supersedes_spine,
+            aliases=aliases,
+            client=client,
+            use_live_llm=use_live_llm,
+        )
+        updated_prop, report, cand_rev = self.register_proposal(raw_proposal)
+        draft_rev = cand_rev.model_copy(update={"state": OntologyRevisionState.DRAFT})
+        return DoctypeOnboardingResult(
+            proposal=updated_prop,
+            assay_report=report,
+            draft_revision=draft_rev,
+            entity_spec=spec,
+            okf_markdown=okf_md,
+            target_projection_hints=proj_hints,
+            induced_by_model=induced_by,
+        )
 
     def promote_proposal(
         self,

@@ -245,6 +245,22 @@ class PromoteRefineryProposalRequest(BaseModel):
     version: str = "1.2.0"
 
 
+class OnboardDoctypeRequest(BaseModel):
+    """Request body for example-driven doctype onboarding (`POST /v1/refinery/onboard`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_id: str
+    samples: list[dict[str, Any]]
+    paired_target_examples: list[dict[str, Any]] = Field(default_factory=list)
+    spine_entity_id: str | None = None
+    context_set: str = "enterprise-document-intake"
+    domain: str = "insurance"
+    source_priority: int = 20
+    supersedes_spine: bool = True
+    aliases: list[str] = Field(default_factory=list)
+
+
 class AdvanceSchemaEvolutionCollabRequest(BaseModel):
     """Request body to advance the 4-beat Live Schema Evolution & Ontology Learning demo."""
 

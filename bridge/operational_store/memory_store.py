@@ -23,6 +23,7 @@ from bridge.operational_store.models import (
     SourceTrace,
     UnderwriterExposureItem,
     UnderwriterView,
+    _utc_dt,
 )
 from bridge.telemetry import trace_step
 from contract.wire import LedgerEntry
@@ -86,6 +87,26 @@ class OperationalStore(abc.ABC):
             )
             return facts
 
+    def promote_submission(
+        self,
+        entry: LedgerEntry,
+        *,
+        entity_id: str,
+        context_id: str,
+        recorded_at: datetime | None = None,
+        effective_from: datetime | None = None,
+        version: int = 1,
+    ) -> list[ConsolidatedFact]:
+        """Promote an accepted ``LedgerEntry`` with an optional wave ``recorded_at`` timestamp."""
+        return self.ingest_entry(
+            entry,
+            entity_id=entity_id,
+            context_id=context_id,
+            recorded_at=recorded_at,
+            effective_from=effective_from,
+            version=version,
+        )
+
     def query_as_of(
         self,
         entity_id: str,
@@ -119,6 +140,20 @@ class OperationalStore(abc.ABC):
             span.set_attribute("docubridge.active_fact_count", len(winners))
             span.set_attribute("docubridge.conflict_count", len(conflicts))
             return winners, conflicts
+
+    def bitemporal_query_as_of(
+        self,
+        entity_id: str,
+        *,
+        learned_as_of: datetime | None = None,
+        effective_on: datetime | None = None,
+    ) -> tuple[list[ConsolidatedFact], list[FactConflict]]:
+        """Alias for :meth:`query_as_of` returning active facts and conflicts at ``learned_as_of``."""
+        return self.query_as_of(
+            entity_id,
+            learned_as_of=learned_as_of,
+            effective_on=effective_on,
+        )
 
     def broker_view(
         self,
@@ -336,15 +371,23 @@ class InMemoryOperationalStore(OperationalStore):
         since_recorded_at: datetime | None = None,
     ) -> list[ConsolidatedFact]:
         """List canonical fact rows filtered by entity ID, domain, document ID, or fact key."""
+        learned_bound = _utc_dt(learned_as_of) if learned_as_of is not None else None
+        effective_bound = _utc_dt(effective_on) if effective_on is not None else None
+        since_bound = (
+            _utc_dt(since_recorded_at) if since_recorded_at is not None else None
+        )
         out: list[ConsolidatedFact] = []
         for f in self._facts:
             if entity_id is not None and f.entity_id != entity_id:
                 continue
-            if learned_as_of is not None and f.recorded_at > learned_as_of:
+            if learned_bound is not None and _utc_dt(f.recorded_at) > learned_bound:
                 continue
-            if effective_on is not None and f.effective_from > effective_on:
+            if (
+                effective_bound is not None
+                and _utc_dt(f.effective_from) > effective_bound
+            ):
                 continue
-            if since_recorded_at is not None and f.recorded_at <= since_recorded_at:
+            if since_bound is not None and _utc_dt(f.recorded_at) <= since_bound:
                 continue
             out.append(f)
         return out

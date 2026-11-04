@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -66,6 +67,7 @@ __all__ = [
     "key_field_model",
     "key_field_properties",
     "required_key_fields",
+    "slice_ontology_for_extraction",
     "table_properties",
     "table_spec",
     "tables_model",
@@ -423,3 +425,117 @@ def doctype_schemas() -> dict[str, dict]:
             if entity_id not in schemas:
                 schemas[entity_id] = entity_spec_to_json_schema(spec)
     return schemas
+
+
+_SLICE_NEIGHBORHOOD_RELATIONS: frozenset[str] = frozenset(
+    {
+        "SUPERSEDES",
+        "SPLIT_FROM",
+        "DISTINCT_FROM",
+        "ALIASED_FROM",
+        "MERGED_INTO",
+        "REQUIRES_CORROBORATION",
+    }
+)
+
+
+def _resolve_seed_doctype(
+    raw_name: str,
+    base_schemas: dict[str, dict],
+    entities: dict[str, Any],
+) -> str:
+    """Resolve a target or candidate doctype name or OKF alias to its canonical entity ID."""
+    cleaned = raw_name.strip()
+    if cleaned in base_schemas or cleaned in entities:
+        return cleaned
+    lowered = cleaned.lower()
+    for eid, spec in entities.items():
+        if eid.lower() == lowered or lowered in (a.lower() for a in spec.aliases):
+            return eid
+    return cleaned
+
+
+def slice_ontology_for_extraction(
+    target_doctype: str | None = None,
+    candidate_doctypes: Sequence[str] | None = None,
+    revision: Any | None = None,
+    *,
+    context_set: str | None = None,
+    schemas: dict[str, dict] | None = None,
+) -> dict[str, dict]:
+    """Return the target-scoped doctype schema slice (spine + 1-hop ontology neighborhood).
+
+    When ``target_doctype``, ``candidate_doctypes``, and ``context_set`` are all empty
+    or ``None``, returns the full ``schemas`` catalog unchanged. Otherwise selects the
+    seed doctypes plus all 1-hop ontology neighbors connected by ``[:SUPERSEDES]``,
+    ``[:SPLIT_FROM]``, ``[:DISTINCT_FROM]``, ``[:ALIASED_FROM]``, ``[:MERGED_INTO]``, or
+    ``[:REQUIRES_CORROBORATION]`` edges on ``revision``.
+    """
+    base_schemas = dict(schemas) if schemas is not None else doctype_schemas()
+    has_target = bool(target_doctype and target_doctype.strip())
+    has_candidates = bool(
+        candidate_doctypes and any(str(c).strip() for c in candidate_doctypes)
+    )
+    has_context = bool(context_set and context_set.strip())
+    if not has_target and not has_candidates and not has_context:
+        return base_schemas
+
+    active_rev = revision
+    if active_rev is None:
+        try:
+            from bridge.knowledge_catalog import knowledge_catalog_from_env
+
+            active_rev = knowledge_catalog_from_env().get_active_ontology_revision()
+        except Exception:
+            active_rev = None
+    if active_rev is None:
+        try:
+            from bridge.refinery.okf_loader import build_baseline_ontology_revision
+
+            active_rev = build_baseline_ontology_revision()
+        except Exception:
+            active_rev = None
+
+    rev_entities: dict[str, Any] = (
+        dict(active_rev.entities) if active_rev is not None else {}
+    )
+    rev_edges: Sequence[Any] = tuple(active_rev.edges) if active_rev is not None else ()
+
+    seeds: set[str] = set()
+    if has_target and target_doctype is not None:
+        seeds.add(_resolve_seed_doctype(target_doctype, base_schemas, rev_entities))
+    if has_candidates and candidate_doctypes is not None:
+        for cand in candidate_doctypes:
+            if str(cand).strip():
+                seeds.add(_resolve_seed_doctype(str(cand), base_schemas, rev_entities))
+    if has_context and context_set is not None:
+        ctx_clean = context_set.strip()
+        for eid, spec in rev_entities.items():
+            if getattr(spec, "context_set", "") == ctx_clean:
+                seeds.add(eid)
+
+    selected = set(seeds)
+    # Expand 1-hop shared spine & spoke neighborhood across ontology graph edges
+    for edge in rev_edges:
+        if getattr(edge, "relation", "") not in _SLICE_NEIGHBORHOOD_RELATIONS:
+            continue
+        src = getattr(edge, "source_id", "")
+        tgt = getattr(edge, "target_id", "")
+        if src in seeds and tgt:
+            selected.add(_resolve_seed_doctype(tgt, base_schemas, rev_entities))
+        elif tgt in seeds and src:
+            selected.add(_resolve_seed_doctype(src, base_schemas, rev_entities))
+
+    sliced: dict[str, dict] = {}
+    for eid in sorted(selected):
+        if eid in base_schemas:
+            if revision is not None and eid in rev_entities:
+                sliced[eid] = _enrich_schema_with_okf_spec(
+                    base_schemas[eid],
+                    rev_entities[eid],
+                )
+            else:
+                sliced[eid] = base_schemas[eid]
+        elif eid in rev_entities:
+            sliced[eid] = entity_spec_to_json_schema(rev_entities[eid])
+    return sliced
