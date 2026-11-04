@@ -136,6 +136,8 @@ class LineageTrace(BaseModel):
     skill_urn: str | None = None
     process_skill_revision_id: str = "rev-v1-0-baseline"
     compiled_rule_ids: tuple[str, ...] = ()
+    ontology_revision_id: str = "ont-rev-v1-1-baseline"
+    consolidation_edge_id: str | None = None
     nodes: tuple[LineageNode, ...]
     edges: tuple[LineageEdge, ...]
 

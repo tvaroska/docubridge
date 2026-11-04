@@ -37,6 +37,7 @@ RUN uv sync --frozen --no-dev --extra gcp --no-install-project && \
 # read at runtime). NO agents/ (isolation invariant).
 COPY --chown=appuser:appuser contract/ ./contract/
 COPY --chown=appuser:appuser bridge/ ./bridge/
+COPY --chown=appuser:appuser catalog/ ./catalog/
 COPY --chown=appuser:appuser skills/ ./skills/
 COPY --chown=appuser:appuser wiki/ ./wiki/
 COPY --chown=appuser:appuser demo/ ./demo/

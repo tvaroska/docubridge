@@ -19,6 +19,7 @@ from bridge.user_interaction.consolidation_collab import (
 )
 from bridge.user_interaction.gym_routes import register_gym_routes
 from bridge.user_interaction.intake_routes import register_intake_and_demo_routes
+from bridge.user_interaction.refinery_routes import register_refinery_routes
 from bridge.user_interaction.registry_routes import (
     register_registry_and_catalog_routes,
 )
@@ -87,6 +88,11 @@ def build_user_interaction_router(
         gym=gym,
         principal_roles=principal_roles,
         require_auth=require_auth,
+    )
+    register_refinery_routes(
+        router,
+        catalog=catalog,
+        inbox=inbox,
     )
 
     return router

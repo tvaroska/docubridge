@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -128,7 +129,9 @@ def register_intake_and_demo_routes(
 
     @router.get("/demo", response_class=HTMLResponse)
     @router.get("/console", response_class=HTMLResponse)
-    def get_interactive_enterprise_console() -> HTMLResponse:
+    def get_interactive_enterprise_console(
+        domain: str | None = None,
+    ) -> HTMLResponse:
         """Serve the 5-scene interactive Enterprise Showcase HTML console (/demo and /console)."""
         demo_path = (
             Path(__file__).resolve().parents[2] / "demo" / "enterprise-demo.html"
@@ -138,7 +141,21 @@ def register_intake_and_demo_routes(
                 status_code=404,
                 detail="Interactive console (demo/enterprise-demo.html) not found.",
             )
-        return HTMLResponse(content=demo_path.read_text(encoding="utf-8"))
+        html_text = demo_path.read_text(encoding="utf-8")
+        chosen_domain = (
+            (domain or os.environ.get("BRIDGE_DEFAULT_DEMO_DOMAIN") or "")
+            .strip()
+            .lower()
+        )
+        if chosen_domain in ("banking", "mortgage", "insurance"):
+            inject_script = (
+                f'<script>window.DEFAULT_DEMO_DOMAIN = "{chosen_domain}";</script>\n'
+            )
+            if "</head>" in html_text:
+                html_text = html_text.replace("</head>", f"{inject_script}</head>", 1)
+            else:
+                html_text = inject_script + html_text
+        return HTMLResponse(content=html_text)
 
     @router.get("/demo/enterprise-demo.css")
     def get_interactive_enterprise_console_css() -> Response:

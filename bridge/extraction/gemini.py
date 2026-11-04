@@ -257,6 +257,7 @@ class GeminiExtractor:
         self._hint_ids: tuple[str, ...] = ()
         self._prompt: str | None = None
         self._response_schema: dict | None = None
+        self.last_pinned_ontology_revision_id: str = "ont-rev-v1-1-baseline"
 
     def _catalog(self) -> tuple[str, dict | None]:
         """Prompt + pinned response schema — rebuilt only when the catalog changed.
@@ -274,6 +275,12 @@ class GeminiExtractor:
             if self._schemas_fixed is not None
             else doctype_schemas()
         )
+        pinned_rev = "ont-rev-v1-1-baseline"
+        for spec in schemas.values():
+            if isinstance(spec, dict) and spec.get("x_okf_revision_id"):
+                pinned_rev = str(spec["x_okf_revision_id"])
+                break
+        self.last_pinned_ontology_revision_id = pinned_rev
         hints: list[Any] = (
             list(self._agent_gym.get_extraction_hints())
             if self._agent_gym is not None

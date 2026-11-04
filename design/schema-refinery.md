@@ -220,6 +220,7 @@ flowchart LR
 ```python
 class ContrastiveDescription(BaseModel):
     """Three-part contrastive description for zero-thinking workhorse disambiguation."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     what_it_is: str
@@ -229,6 +230,7 @@ class ContrastiveDescription(BaseModel):
 
 class OntologyEdge(BaseModel):
     """Directed edge in the Knowledge Catalog / Ontology Graph."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     edge_id: str
@@ -259,6 +261,7 @@ class RefineryProposalKind(StrEnum):
 
 class RefineryAssayReport(BaseModel):
     """3-Tier Schema Refinery evaluation scorecard."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     assay_id: str
@@ -276,7 +279,7 @@ class RefineryAssayReport(BaseModel):
     bimodality_jaccard_after: float | None = None
     # Tier 3: Statistical & Judge Calibration
     perturbation_krippendorff_alpha: float  # Must be >= 0.80
-    workhorse_teacher_ac2: float            # Must be >= 0.80
+    workhorse_teacher_ac2: float  # Must be >= 0.80
     rogan_gladen_pass_rate: float
     passed_assay: bool
 ```
@@ -289,11 +292,9 @@ class RefineryAssayReport(BaseModel):
 
 ---
 
-## 6. Phased Migration Plan & Branch Isolation (`feat/schema-refinery` → `documents002`)
+## 6. Phased Migration Plan (`main`)
 
-> **Branch & GCP Environment Isolation:**
-> - **`main` (`documents001` / `#321488252989`):** Frozen at the verified 6-Zone + Consolidation Collaboration Engine baseline for the Banking / Mortgage EBC showcase (`default` Terraform workspace). Do **not** commit Schema Refinery runtime changes to `main` or deploy them to `documents001`.
-> - **`feat/schema-refinery` (`documents002` / `#816370755208`):** Active development branch for Phases 1–4 (`P8-1`–`P8-4` in [`docs/roadmap.md`](../docs/roadmap.md)). Always select the isolated `documents002` Terraform workspace (`terraform -chdir=terraform workspace select -or-create documents002`) and deploy via `./scripts/deploy.sh --project documents002 --region us-central1`.
+> **Unified Branch Status:** Phases 1–4 (`P8-1`–`P8-4` in [`docs/roadmap.md`](../docs/roadmap.md)) are implemented and merged into `main`. Phases 5–8 (`P8-5`–`P8-8`) and `FX-1` track the next roadmap milestones.
 
 | Task / Phase | Scope | Verification Gate |
 | :--- | :--- | :--- |

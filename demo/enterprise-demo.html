@@ -274,6 +274,119 @@
       </div>
     </div>
 
+    <!-- =================================================================== -->
+    <!-- COLLABORATIVE SCHEMA EVOLUTION & ONTOLOGY LEARNING STAGE (INSURANCE)-->
+    <!-- =================================================================== -->
+    <div id="schema-evolution-stage" class="card collab-stage-card" style="display:none;margin-bottom:18px;border:1.5px solid #c4b5fd;background:linear-gradient(180deg,#f5f3ff 0%,#ffffff 100%);">
+      <div class="card-header" style="border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="badge badge-purple">LIVE SCHEMA EVOLUTION &amp; ONTOLOGY LEARNING · 4-BEAT WORKFLOW</span>
+            <span class="badge badge-blue mono" id="schema-evol-entity-badge">BENEFITS-APEX-HDHP-2027</span>
+            <span class="badge badge-navy mono" id="schema-evol-rev-pill">ont-rev-v1-1-baseline · v1.1.0 (7 Entities)</span>
+            <span class="badge badge-amber" id="schema-evol-beat-pill">Beat 0 of 4 · Baseline Ontology v1.1.0</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
+            <span style="font-size:11.5px;font-weight:800;color:#475569;">SCENARIO:</span>
+            <button id="btn-schema-evol-scenario-benefits" class="btn btn-primary" style="padding:4px 10px;font-size:11.5px;" onclick="window.switchSchemaEvolutionScenario('benefits')">
+              🏥 Employee Benefits · HDHP (HSA vs. FSA) &amp; $125K Rate Addendum
+            </button>
+            <button id="btn-schema-evol-scenario-insurance" class="btn btn-outline" style="padding:4px 10px;font-size:11.5px;" onclick="window.switchSchemaEvolutionScenario('insurance')">
+              🏭 Commercial Property · $100K Coastal Wind Endorsement
+            </button>
+          </div>
+          <h2 class="card-title" id="schema-evol-card-title" style="margin-top:8px;font-size:17px;">Apex Global Manufacturing — 2027 Employee Health &amp; Benefits Renewal (HDHP + Group Life)</h2>
+          <div class="card-sub" id="schema-evol-card-sub">
+            Bi-Temporal Knowledge Graph &amp; Continuous Learning: 7-Node Graph (`HDHP` includes `HSA` · excludes `FSA` + `$125K` Rate Addendum overrides `$140K` Base Quote overrides `$145K` Manual Entry) ↔ Socratic Challenge (<span class="mono">gemini-3.8-flash</span> + <span class="mono">gemini-4-argon</span>)
+          </div>
+        </div>
+        <div class="collab-beat-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button id="btn-schema-evol-beat-1" class="btn btn-primary" style="padding:7px 12px;font-size:12px;" onclick="window.advanceSchemaEvolutionCollab(1)">
+            1. Upload Page 4 HDHP Rider &amp; $125K Rate Addendum (Guesses "FSA: $1,000" ✕)
+          </button>
+          <button id="btn-schema-evol-beat-2" class="btn btn-navy" style="padding:7px 12px;font-size:12px;" onclick="window.advanceSchemaEvolutionCollab(2)">
+            2. Challenge Fix ("FSA" → "HSA") &amp; Run 3-Tier Assay (0% Backsliding)
+          </button>
+          <button id="btn-schema-evol-beat-3" class="btn btn-success" style="padding:7px 12px;font-size:12px;" onclick="window.advanceSchemaEvolutionCollab(3)">
+            3. Promote Ontology v1.2.0 ("HSA: $1,000" ✓ + $125K Addendum Wins)
+          </button>
+          <button id="btn-schema-evol-beat-4" class="btn btn-outline" style="padding:7px 12px;font-size:12px;border-color:#7c3aed;color:#6d28d9;" onclick="window.advanceSchemaEvolutionCollab(4)">
+            4. Verify Day-2 Payoff (Next HDHP Renewal · 134ms)
+          </button>
+          <button id="btn-schema-evol-reset" class="btn btn-outline" style="padding:7px 10px;font-size:12px;" onclick="window.resetSchemaEvolutionCollab()">
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Deterministic Decimal Financial & Ontology Summary Bar -->
+      <div id="schema-evol-fin-bar" class="collab-fin-bar">
+        <div class="collab-fin-metric">
+          <span class="collab-fin-label" id="schema-evol-label-col1">Manual Entry vs. Base Quote PDF</span>
+          <span class="collab-fin-val mono" id="schema-evol-fin-tiv">$145K Manual → $140K Base PDF</span>
+          <span class="collab-fin-sub" id="schema-evol-sub-col1">Base PDF ($140K) Overrides Manual ($145K)</span>
+        </div>
+        <div class="collab-fin-metric">
+          <span class="collab-fin-label" id="schema-evol-label-col2">Winning Renewal Premium (All 8 Teams)</span>
+          <span class="collab-fin-val mono" id="schema-evol-fin-limit">$140,000.00 (Base Quote PDF)</span>
+          <span class="collab-fin-sub" id="schema-evol-sub-col2">2-Page Signed Rate Addendum ($125K · Prio 40)</span>
+        </div>
+        <div class="collab-fin-metric">
+          <span class="collab-fin-label" id="schema-evol-label-col3">Page 4: 'Plan: HDHP · Account Seed: $1,000'</span>
+          <span class="collab-fin-val mono" style="color:#b45309;" id="schema-evol-fin-deductible">$1,000.00 Seed (Page 4)</span>
+          <span class="collab-fin-sub" id="schema-evol-fin-authority">Prompt Alone (~60% · Guesses FSA ✕)</span>
+        </div>
+        <div class="collab-fin-metric">
+          <span class="collab-fin-label">Active Zone 6 Ontology Graph</span>
+          <span class="collab-fin-val mono" style="color:#6d28d9;" id="schema-evol-fin-ontology">v1.1.0 · 7 Entities</span>
+          <span class="collab-fin-sub" id="schema-evol-fin-edges">12 Declarative Graph Edges</span>
+        </div>
+      </div>
+
+      <!-- Split-Screen 2-Column Grid: Placement & OKF Graph vs Schema Refinery Board -->
+      <div class="grid-2 collab-split-grid" style="margin-top:14px;align-items:start;">
+        <!-- LEFT COLUMN: PLACEMENT INTAKE & LIVE OKF ONTOLOGY GRAPH -->
+        <div class="collab-zone-panel collab-zone-external">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
+            <div>
+              <span class="badge badge-navy" style="background:#0f172a;color:#fff;">ZONE 1 &amp; ZONE 6 · PLACEMENT CHECKLIST &amp; OKF GRAPH</span>
+              <div style="font-weight:800;font-size:14.5px;color:#0f172a;margin-top:4px;">Submission Documents &amp; Declarative Ontology Edges</div>
+            </div>
+            <span class="badge badge-green" id="schema-evol-progress-badge">3 / 3 Base Verified (v1.1.0)</span>
+          </div>
+
+          <div id="schema-evol-banner" class="collab-banner collab-banner-info">
+            <div style="font-weight:800;font-size:13px;" id="schema-evol-banner-headline">Baseline Ontology Active · ont-rev-v1-1-baseline (v1.1.0 · 7 OKF Entities)</div>
+            <div style="font-size:12.5px;margin-top:3px;" id="schema-evol-banner-msg">
+              All 3 base placement documents reconcile under v1.1.0 ($142.5M TIV, $50K Base Deductible). Click Beat 1 to upload Chubb's 1-page Schedule B Coastal Wind Deductible Endorsement ($100,000.00).
+            </div>
+          </div>
+
+          <div id="schema-evol-checklist" class="collab-checklist-stack"></div>
+
+          <div style="margin-top:12px;padding:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;">
+            <div style="font-weight:800;font-size:11.5px;color:#475569;margin-bottom:6px;">DECLARATIVE ZONE 6 KNOWLEDGE GRAPH EDGES (catalog/doctypes/*.okf.md)</div>
+            <div id="schema-evol-edges-list" style="font-size:11.5px;display:flex;flex-direction:column;gap:5px;"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: INTERNAL ZONE · SCHEMA REFINERY & DUAL-AGENT BOARD -->
+        <div class="collab-zone-panel collab-zone-internal">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
+            <div>
+              <span class="badge badge-purple">INTERNAL ZONE · SCHEMA REFINERY &amp; DUAL-AGENT BOARD</span>
+              <div style="font-weight:800;font-size:14.5px;color:#0f172a;margin-top:4px;">Bimodal Sparsity Assay + 3-Tier Counterfactual Gate + Bi-Temporal Lineage</div>
+            </div>
+            <span class="badge badge-blue mono" id="schema-evol-pinned-badge">Pinned: ont-rev-v1-1-baseline</span>
+          </div>
+
+          <div id="schema-evol-agent1-box" class="collab-agent-box" style="margin-bottom:10px;"></div>
+          <div id="schema-evol-agent2-box" class="collab-agent-box" style="margin-bottom:10px;"></div>
+          <div id="schema-evol-refinery-box" class="collab-overwatch-box"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="grid-3" style="margin-bottom:16px;">
       <!-- Card 1: Path A Structured -->
       <div class="card">
@@ -722,6 +835,37 @@
           <tr><td colspan="6">Loading live Programmable Trust Policies...</td></tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Schema Refinery & Bi-Temporal Ontology Graph Card -->
+    <div class="card" id="schema-refinery-card" style="margin-top:16px;border:1.5px solid #6366f1;">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">🧬 Schema Refinery: Contrastive Description Compiler &amp; Bi-Temporal Ontology Graph (<span class="mono">/v1/refinery/*</span>)</h2>
+          <div class="card-sub">Closed-loop ontology evolution across Zone 2 (3-part contrastive descriptions: <span class="mono">what_it_is</span> / <span class="mono">where_to_read</span> / <span class="mono">distinguish_from</span>), Zone 3 (<span class="mono">[:SUPERSEDES]</span> &amp; <span class="mono">[:FEEDS_METRIC]</span> graph consolidation), and Zone 6 (<span class="mono">OntologyRevision</span> lineage).</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span class="badge badge-purple" id="refinery-active-revision">ont-rev-v1-1-baseline (v1.1.0)</span>
+          <span class="badge badge-blue" id="refinery-edge-count">13 Graph Edges</span>
+          <button id="btn-refinery-assay" class="btn btn-primary" onclick="window.runSchemaRefineryAssay()">🔬 1. Run Bimodal Sparsity &amp; 3-Tier Assay</button>
+          <button id="btn-refinery-promote" class="btn btn-success" onclick="window.promoteSchemaRefineryProposal()">🚀 2. Promote Ontology v1.2 &amp; [:SPLIT_FROM] Edge</button>
+        </div>
+      </div>
+
+      <div class="grid-2" style="gap:14px;">
+        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;">
+          <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:6px;">3-Part Contrastive Description Diff &amp; Bimodal Null Matrix</div>
+          <div id="refinery-proposal-box" style="font-size:12px;color:#334155;line-height:1.55;">
+            Click <strong>1. Run Bimodal Sparsity &amp; 3-Tier Assay</strong> to inspect the field-presence Jaccard matrix (<span class="mono">J(A,B) &le; 0.10</span>) and synthesize contrastive positive / layout-anchor / negative-boundary descriptions.
+          </div>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;">
+          <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:6px;">3-Tier Counterfactual &amp; Calibration Assay Gate + Active Graph Edges</div>
+          <div id="refinery-assay-box" style="font-size:12px;color:#334155;line-height:1.55;">
+            Loading active Zone 6 Ontology Graph edges (<span class="mono">[:SUPERSEDES]</span>, <span class="mono">[:FEEDS_METRIC]</span>, <span class="mono">[:SPLIT_FROM]</span>)...
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 

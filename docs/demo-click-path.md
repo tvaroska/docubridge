@@ -61,3 +61,36 @@
    - **5-Gate Deterministic SQL Trajectory Scorecard (`Rule 0`)**: Evaluates 100% of traces in SQL at **`$0` LLM token cost** (`Gate 1: PII & WORM Lock Before Extract`, `Gate 2: SPIFFE JWT-SVID Verified`, `Gate 3: Decimal Math & Bi-Temporal Ledger`, `Gate 4: Two-Sided Oversight RSR >= 0.80`, `Gate 5: FinOps Model Right-Sizing`).
    - **3-Tab Interactive BigQuery Standard SQL Query Inspector**: Click through **`1. Rule 0 Trajectory SQL`** (`v_trace_sql_evaluation` pre-filtering `needs_llm_judge_sampling`), **`2. AI.GENERATE_TABLE Judge`** (invoking `gemini-4-argon` only on anomalous/escalated/canary traces for `95%` judge token savings), and **`3. Rogan-Gladen & SME SQL`** (joining SME annotations to compute bias-corrected pass rate $\hat{\theta} = 99.1\%$).
 4. Click **`↺ Reset Demo`** in the top-right header to restore a clean baseline.
+
+---
+
+## 3. Insurance & Schema Evolution Showcase (`documents002` — `feat/schema-refinery`)
+
+- **Insurance & Schema Evolution Live Demo Console (`documents002`):** `https://documents002-bridge-rfp-board-816370755208.us-central1.run.app/demo` (defaults directly to **`🛡️ Insurance — Commercial Property · terrepower-coastal-2027`** via `BRIDGE_DEFAULT_DEMO_DOMAIN=insurance`)
+- **A2A Edge Agent Card (`documents002`):** `https://documents002-bridge-816370755208.us-central1.run.app/.well-known/agent-card.json`
+
+### 4-Beat Live Schema Evolution & Bi-Temporal Ontology Graph Walkthrough (Scene 1 `#schema-evolution-stage` + Scene 4 `#refinery-card`)
+At the top of `#schema-evolution-stage`, use the 2-button **SCENARIO** switcher to toggle between:
+- **`🏥 Employee Benefits · HDHP (HSA vs. FSA) & $125K Rate Addendum`** (`BENEFITS-APEX-HDHP-2027` → `BENEFITS-NORTHSTAR-DAY2`, **default**):
+  1. **Beat 0 — Baseline Ontology (`ont-rev-v1-1-baseline`, 7 Entities):** `150-Page Carrier Base Quote PDF ($140,000.00, Prio 20)` overrides `Manual Workbook Entry ($145,000.00, Prio 10)`, and the 4-part field guide maps `'Elimination Period'` / `'Qualifying Period'` to `90-Day Benefit Waiting Period` (Page 14) while ignoring the `30-Day New-Hire Enrollment Wait` (Page 2).
+  2. **Beat 1 — Click `1. Upload Page 4 HDHP Rider & $125K Rate Addendum (Guesses "FSA: $1,000" ✕)`:** Page 4 prints `"Plan: HDHP · Employer Account Seed: $1,000.00"` without writing `HSA` or `FSA`; prompt-only extraction (`~60%`) guesses **`"FSA: $1,000.00" ✕`**, and the 2-page `$125,000.00` Signed Rate Addendum is quarantined under `benefits-quote` ($J(A,B) = 0.0714 \le 0.10$).
+  3. **Beat 2 — Click `2. Challenge Fix ("FSA" → "HSA") & Run 3-Tier Assay (0% Backsliding)`:** Broker changes `"FSA"` $\to$ `"HSA"` on Page 4. Agent Gym & Schema Refinery ask the Socratic clarifying question: **`"Is this only for this quote — or can ANY HDHP plan never have a standard FSA?"`** and compile `HDHP [:INCLUDES] HSA`, `HDHP [:EXCLUDES] FSA`, and `rate-guarantee-addendum` (`Prio 40`, $\text{NFR} = 0.0\%$).
+  4. **Beat 3 — Click `3. Promote Ontology v1.2.0 ("HSA: $1,000" ✓ + $125K Addendum Wins)`:** Promotes `ont-rev-v1-2-benefits` (`v1.2.0`). The Knowledge Graph rules out `FSA ✕`, extracts **`"HSA: $1,000.00" ✓`** (`95%+`), and promotes the **`$125,000.00` Signed Rate Addendum** over the `$140,000.00` Base Quote PDF and `$145,000.00` Manual Entry across all 8 specialty teams.
+  5. **Beat 4 — Click `4. Verify Day-2 Payoff (Next HDHP Renewal · 134ms)`:** Next employer renewal (`BENEFITS-NORTHSTAR-DAY2` — `NorthStar Precision Systems`, `"Plan: HDHP · Employer Account Seed: $1,500.00"` + `$118,000.00` 2-page addendum) extracts **`"HSA: $1,500.00" ✓`** in `134 ms` with `0` quarantine parks and `0` escalation tokens.
+- **`🏭 Commercial Property · $100K Coastal Wind Endorsement`** (`terrepower-coastal-2027` → `PLACEMENT-HARBORVIEW-DAY2`):
+1. **Beat 0 — Baseline Ontology (`ont-rev-v1-1-baseline`, 7 Doctypes):**
+   - Open `https://documents002-bridge-rfp-board-816370755208.us-central1.run.app/demo`. Notice the **Live Schema Evolution & Bi-Temporal Ontology Graph (`terrepower-coastal-2027` → `PLACEMENT-HARBORVIEW-DAY2`)** stage directly below the Carrier Broker Collaboration Engine in Scene 1.
+   - Initially, 7 baseline OKF doctype bundles are active (`ont-rev-v1-1-baseline`, `v1.1.0`), and all 3 baseline TerrePower documents (`$142.5M` TIV, `$418,500.00` Lead Quote, `$50,000.00` base wind deductible) are reconciled.
+2. **Beat 1 — Click `1. Upload 1-Page Wind Endorsement (Expose Sparsity)`:**
+   - Chubb underwriter uploads `Chubb_Wind_Deductible_Endorsement_ScheduleB.pdf` (`$100,000.00` coastal windstorm deductible).
+   - Because `ont-rev-v1-1-baseline` lacks a dedicated endorsement entity, the 1-page schedule is forced into `commercial-property-quote` (`Prio 20`), leaving `4/5` core quote fields `NULL` (**Bimodal Jaccard $J(A,B) = 0.0667 \le 0.10$**) and causing a **`Prio 20 == Prio 20` tie** (`$50,000.00` vs. `$100,000.00`).
+3. **Beat 2 — Click `2. Run Taxonomy Assay & 3-Tier Gate`:**
+   - `SchemaRefineryEngine` runs the Bimodal Null Split Detector and compiles candidate `wind-deductible-endorsement.okf.md` (`Prio 40`), 3 Knowledge Graph edges (`[:SUPERSEDES]`, `[:SPLIT_FROM]`, `[:FEEDS_METRIC]`), and contrastive field descriptions (`what_it_is`, `where_to_read`, `distinguish_from`).
+   - The **3-Tier Counterfactual Assay Gate** verifies **$\text{NFR} = 0.0\%$ (`0` regressions)**, Krippendorff's $\alpha = 0.94 \ge 0.80$, Gwet's $\text{AC}_2 = 0.93 \ge 0.80$, and Rogan-Gladen $\hat{\theta} = 98.8\%$.
+4. **Beat 3 — Click `3. Promote Ontology v1.2.0 & Reconcile $100k`:**
+   - Atomically promotes `ont-rev-v1-2-insurance` (`v1.2.0`, 8 doctypes) to `ACTIVE`, closes `ont-rev-v1-1-baseline` `effective_to`, and re-evaluates Zone 3 `consolidation_rules.py` via `[:SUPERSEDES]` (`Prio 40 > Prio 20`).
+   - All `4/4` fields reconcile deterministically (`$100,000.00` wind deductible wins cleanly, `done=True`) while Turn-1 historical queries remain reproducible via `[:SPLIT_FROM]` lineage.
+5. **Beat 4 — Click `4. Verify Day-2 Payoff (Next Placement)`:**
+   - Re-ingests a new 1-page coastal wind endorsement on the next placement (`PLACEMENT-HARBORVIEW-DAY2` — `Harborview Marine Terminal LLC`, `$75,000.00` wind deductible).
+   - `gemini-3.8-flash` classifies it directly as `wind-deductible-endorsement` (`Prio 40`) in `138 ms` with **`0` false-positive missing-field quarantine parks**, **`0` human touchpoints**, and **`0` `gemini-4-argon` escalation tokens**.
+6. *(Optional Deep-Dive)* Switch to **`4. Agent Gym (Learning & Trust)`** (`#refinery-card`) to inspect or toggle between **Insurance (`commercial-property-quote` → `wind-deductible-endorsement`)** and **Banking/Mortgage (`trid-closing-disclosure` → `fee-schedule-addendum`)** taxonomy assays.

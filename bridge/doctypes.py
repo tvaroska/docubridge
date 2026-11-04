@@ -50,16 +50,18 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, create_model
 
 __all__ = [
     "DEFAULT_SCHEMA_ASSET",
     "declares_issuer",
+    "doctype_description",
     "doctype_fields",
     "doctype_schemas",
     "doctype_tables",
+    "entity_spec_to_json_schema",
     "issuer_description",
     "key_field_model",
     "key_field_properties",
@@ -173,6 +175,82 @@ def issuer_description(schema: dict) -> str:
         ((schema.get("properties") or {}).get("issuer") or {}).get("description", "")
         or ""
     )
+
+
+def doctype_description(schema: dict) -> str:
+    """Return the top-level contrastive entity description of a doctype schema."""
+    if not isinstance(schema, dict):
+        return ""
+    return str(schema.get("description", "") or "").strip()
+
+
+def entity_spec_to_json_schema(spec: Any) -> dict[str, Any]:
+    """Convert an ``OntologyEntitySpec`` into a doctype JSON Schema dictionary."""
+    props: dict[str, Any] = {
+        "doctype": {"type": "string", "enum": [spec.entity_id]},
+    }
+    required_root: list[str] = ["doctype", "key_fields"]
+    if spec.declares_issuer:
+        props["issuer"] = {
+            "type": "string",
+            "description": spec.issuer_description or "canonicalized issuer key",
+        }
+        required_root.insert(1, "issuer")
+    field_props: dict[str, Any] = {}
+    required_fields: list[str] = []
+    for fname, fspec in spec.fields.items():
+        field_props[fname] = {
+            "type": fspec.field_type,
+            "description": fspec.description.render(),
+        }
+        if fspec.required:
+            required_fields.append(fname)
+    props["key_fields"] = {
+        "type": "object",
+        "required": required_fields,
+        "properties": field_props,
+    }
+    return {
+        "type": "object",
+        "description": spec.entity_description.render(),
+        "x_okf_revision_id": spec.revision_id,
+        "required": required_root,
+        "properties": props,
+    }
+
+
+def _enrich_schema_with_okf_spec(
+    schema: dict[str, Any],
+    okf_spec: Any | None,
+    fallback_skill_description: str = "",
+) -> dict[str, Any]:
+    """Enrich a parsed ``assets/schema.json`` dict with OKF contrastive descriptions."""
+    if not schema:
+        return schema
+    enriched = dict(schema)
+    if okf_spec is not None:
+        enriched["description"] = okf_spec.entity_description.render()
+        enriched["x_okf_revision_id"] = okf_spec.revision_id
+        root_props = dict(enriched.get("properties") or {})
+        kf_block = dict(root_props.get("key_fields") or {})
+        kf_props = dict(kf_block.get("properties") or {})
+        for fname, fspec in okf_spec.fields.items():
+            if fname in kf_props and isinstance(kf_props[fname], dict):
+                field_entry = dict(kf_props[fname])
+                field_entry["description"] = fspec.description.render()
+                kf_props[fname] = field_entry
+            elif fname not in kf_props:
+                kf_props[fname] = {
+                    "type": fspec.field_type,
+                    "description": fspec.description.render(),
+                }
+        if kf_props:
+            kf_block["properties"] = kf_props
+            root_props["key_fields"] = kf_block
+            enriched["properties"] = root_props
+    elif not enriched.get("description") and fallback_skill_description.strip():
+        enriched["description"] = fallback_skill_description.strip()
+    return enriched
 
 
 def _model_name(doctype: str) -> str:
@@ -289,7 +367,25 @@ def doctype_schemas() -> dict[str, dict]:
     # Lazy port import (mirrors ``bridge/edge/skills.py::loaded_skills``):
     # ``bridge.ports.local`` imports ``bridge.extraction.fixture`` at module level, so
     # a module-level import here would close an import cycle.
+    import os
+
     from bridge.ports import Port, get_adapter, resolve_mode
+    from bridge.refinery.okf_loader import (
+        BASELINE_REVISION_ID,
+        load_okf_entity_specs,
+    )
+
+    okf_specs = load_okf_entity_specs()
+    active_revision_id = BASELINE_REVISION_ID
+    try:
+        from bridge.knowledge_catalog import knowledge_catalog_from_env
+
+        active_rev = knowledge_catalog_from_env().get_active_ontology_revision()
+        if active_rev is not None and active_rev.entities:
+            okf_specs = dict(active_rev.entities)
+            active_revision_id = active_rev.revision_id
+    except Exception:
+        pass
 
     registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
     schemas: dict[str, dict] = {}
@@ -303,9 +399,27 @@ def doctype_schemas() -> dict[str, dict]:
             schemas[meta.name] = {}  # declared-but-absent asset: name-only, no raise
             continue
         try:
-            schemas[meta.name] = json.loads(raw)
+            parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ValueError(
                 f"doctype skill {meta.name!r}: {rel} is not valid JSON"
             ) from exc
+        if isinstance(parsed, dict) and parsed:
+            schemas[meta.name] = _enrich_schema_with_okf_spec(
+                parsed,
+                okf_specs.get(meta.name),
+                fallback_skill_description=getattr(meta, "description", "") or "",
+            )
+        else:
+            schemas[meta.name] = parsed
+
+    # Include newly split/promoted child entities when an ontology revision beyond
+    # baseline is active and BRIDGE_SKILLS_DIR is not isolated to a test tempdir.
+    if (
+        active_revision_id != BASELINE_REVISION_ID
+        and not os.environ.get("BRIDGE_SKILLS_DIR", "").strip()
+    ):
+        for entity_id, spec in sorted(okf_specs.items()):
+            if entity_id not in schemas:
+                schemas[entity_id] = entity_spec_to_json_schema(spec)
     return schemas

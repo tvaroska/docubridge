@@ -371,5 +371,12 @@ variable "agent_registry_service_agent_member" {
   default     = ""
 }
 
+variable "default_demo_domain" {
+  type        = string
+  description = "Optional default showcase domain for /demo and /console (banking | mortgage | insurance), injected as BRIDGE_DEFAULT_DEMO_DOMAIN. Empty = banking default."
+  default     = ""
+}
+
+
 
 

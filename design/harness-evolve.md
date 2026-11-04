@@ -12,7 +12,7 @@ tags: [bridge, agent-gym, harness-evolve, extraction, docai, optimization]
 
 # Agent Gym × Harness Evolve — Continual Learning & Multi-Tier Extraction Evolution
 
-> **Canonical Methodology Source:** General OCTO Agent Gym, OCTO Harness Evolve (`arXiv:2609.00829`), and Harness² (`arXiv:2610.14224`, 8 editable harness surfaces `c1..c8` and Cheapest-Lever Gate) patterns are maintained in [`~/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md`](file:///usr/local/google/home/tvaroska/projects/agent-evals/docs/playbooks/two-sided-hitl-and-continual-learning.md). This document specifies the DocuBridge-specific implementation (`bridge/agent_gym/`, `bridge/extraction/gemini.py`, `skills/<doctype>/`).
+> **Canonical Methodology Source:** General Agent Gym, Harness Evolve (`arXiv:2609.00829`), and Harness² (`arXiv:2610.14224`, 8 editable harness surfaces `c1..c8` and Cheapest-Lever Gate) patterns are maintained in `agent-evals` (`docs/playbooks/two-sided-hitl-and-continual-learning.md`). This document specifies the DocuBridge-specific implementation (`bridge/agent_gym/`, `bridge/extraction/gemini.py`, `skills/<doctype>/`).
 >
 > **Architecture & As-Built Status (`v1.14.0-agent-gateway`):** Unifies **OCTO Agent Gym** (online, SME-in-the-loop "Example of One" tacit knowledge capture with Two-Sided Oversight `RSR`) with **OCTO Harness Evolve (`HaE`)** (`compile_rules_to_skill()` / `POST /v1/gym/compile-skill` folding promoted rules into immutable `SkillRevision` packages in the Gemini platform Skill Registry with 1-click rollback and Bi-Temporal Process-Instance Skill Lineage) across all three extraction tiers: **Gemini (`gemini-3.8-flash` workhorse + `gemini-4-argon` teacher/judge)**, **Document AI Standard Extractors**, and **Document AI Custom Extractors**.
 
@@ -29,7 +29,7 @@ Both initiatives share the same Day-2 autonomy thesis—*training models is not 
 | **Who Is in the Loop** | **Domain SMEs** (brokers, underwriters, credit officers); **AI devs out of the loop** | **Automated Meta-Optimizer** + platform/FDE builders |
 | **Input Signal** | **"Example of One"** (single Quarantine fix, RFC 6902 A2UI patch, or shadow diff) | **Golden Dataset (50/50 Train/Holdout split)** + BigQuery OTLP spans + cost function |
 | **Optimization Bias** | **Precision over recall** (high-confidence rules for specific carrier/issuer slices) | **Pareto frontier** across extraction F1, tool calls, p95 latency, and token cost |
-| **Core Sub-Engines** | `TribalKnowledgeRule` distiller, `SyntheticStressCase`, `GymReportCard`, `ProgrammableTrustPolicy` | **Stage 1:** `WikiSkill`, `SkillOpt` (`Fueki`), `Katachi`, `Koku`, `OctoMem`<br>**Stage 2:** DeepMind `APO` token & latency burn-down |
+| **Core Sub-Engines** | `TribalKnowledgeRule` distiller, `SyntheticStressCase`, `GymReportCard`, `ProgrammableTrustPolicy` | **Stage 1:** `WikiSkill`, `SkillOpt`, `Katachi`, `OctoMem`<br>**Stage 2:** Automated Prompt Optimization (`APO`) token & latency burn-down |
 | **Artifact Produced** | Tactical `TribalKnowledgeRule` rows in Cloud SQL + verified labeled examples | Evolved, compressed `skills/<doctype>/` packages (`SKILL.md`, `schema.json`, `policy.yaml`, `docai-entity-map.yaml`) |
 | **Safety / Promotion Gate** | `evaluate_candidate_rule` (`_FORBIDDEN_MATH_TOKENS` firewall + zero slice regression) + progressive trust dial | Strict **50% Holdout validation** + `bridge.calibration.threshold_corridor()` feasibility + Pareto economic gate |
 
@@ -52,10 +52,10 @@ DocuBridge runs the 5-pillar Agent Gym v1/v2 loop (`bridge/agent_gym/`):
 
 DocuBridge's declarative `skills/` architecture (`design/skills.md`), BigQuery OTLP span analytics (`bridge/telemetry.py` → `v_step_latency_analytics`), and corridor oracle (`bridge/calibration.py`) map directly to Harness Evolve's 3-layer stack:
 
-1. **Stage 1 — `WikiSkill` & `Koku` on Doctype `SKILL.md` and `assets/schema.json`:**
+1. **Stage 1 — `WikiSkill` & Schema Compiler on Doctype `SKILL.md` and `assets/schema.json`:**
    - **Current bottleneck:** `build_response_schema()` (`bridge/extraction/gemini.py:310-423`) pins the **union of every installed doctype's `key_fields` and `tables`** onto every extraction request. As Banking (`closing-disclosure`, `credit-agreement`, `appraisal`) and Insurance (`benefits-quote`, `chubb-quote`, `lloyds-quote`) doctypes grow, schema bloat increases token consumption, `MAX_TOKENS` page-window bisections (`chunking.py`), and schema-retry turns (`RETRY_CORRECTION`, echoing up to 4,000 chars).
    - **Harness Evolve benefit:** Evolves `SKILL.md` instructions and `assets/schema.json` field descriptions against a **50/50 Train/Holdout split** to maximize first-attempt extraction F1 and eliminate schema validation retries.
-2. **Stage 1 — `SkillOpt` (`Fueki`) Tool-Boundary Discipline on `document_bridge` Root `LlmAgent`:**
+2. **Stage 1 — `SkillOpt` Tool-Boundary Discipline on `document_bridge` Root `LlmAgent`:**
    - **Current state:** `build_document_bridge()` (`bridge/agent.py:31-66`) routes messy edge submissions across `extraction_agent` (`AgentTool`), `run_disposition_gate`, `handle_deletion_request`, `reject_submission`, `escalate_submission`, and `request_human_review` (`LongRunningFunctionTool`).
    - **Harness Evolve benefit:** Sharpens `INSTRUCTION` (`bridge/agent.py:22-28`) and tool docstrings against off-script intent traces so the root mediator never misroutes ambiguous counterparty messages or calls tools out of turn.
 3. **Stage 2 — DeepMind `APO` Token & Latency Burn-Down:**
@@ -79,7 +79,7 @@ DAYTIME (Online — bridge/agent_gym/ + bridge/a2ui_inbox/)
          │
          ▼
 NIGHTLY / BATCH (Offline — Harness Evolve Compiler over 50/50 Train/Holdout Split)
-3. WikiSkill + Koku folds accumulated TribalKnowledgeRules into the doctype skill folder:
+3. WikiSkill + Schema Compiler folds accumulated TribalKnowledgeRules into the doctype skill folder:
    • Rewrites skills/<doctype>/SKILL.md & references/issuer-canonicalization.md
    • Refines field descriptions in skills/<doctype>/assets/schema.json
    • Updates entity mappings in skills/<doctype>/assets/docai-entity-map.yaml
