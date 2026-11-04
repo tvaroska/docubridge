@@ -41,7 +41,7 @@ The architecture is whole from day one — outbound port, trust boundary, contra
 
 ## Phase 8 — Schema Refinery & Insurance Showcase (`feat/schema-refinery` → `documents002`)
 
-<!-- Counters: p0=18 p1=10 p2=8 p3=9 p4=6 p5=6 p6=9 p7=12 p8=4 -->
+<!-- Counters: p0=18 p1=10 p2=8 p3=9 p4=6 p5=6 p6=9 p7=12 p8=8 -->
 
 > **Branch & Environment Isolation Rule:** Keep `main` frozen on GCP project `documents001` (`#321488252989`, `default` Terraform workspace) for the Banking / Mortgage EBC showcase. Execute all `P8-*` tasks below on the **`feat/schema-refinery`** branch and deploy exclusively to GCP project **`documents002`** (`#816370755208`) using `terraform -chdir=terraform workspace select -or-create documents002` and `./scripts/deploy.sh --project documents002`. Full technical specification: [`design/schema-refinery.md`](../design/schema-refinery.md).
 
@@ -62,6 +62,27 @@ The architecture is whole from day one — outbound port, trust boundary, contra
 - [ ] **P8-4: Interactive Schema Refinery Tab & Insurance-First Showcase Mode (`demo/enterprise-demo.html`, `demo/enterprise-demo.js`, `bridge/user_interaction/`)**
   - Mount `/v1/refinery/*` FastAPI endpoints (`GET /v1/refinery/revisions`, `POST /v1/refinery/assay`, `POST /v1/refinery/promote`) and add the interactive **Schema Refinery** workflow to `/demo` (`demo/enterprise-demo.html` + `demo/enterprise-demo.js`), demonstrating bimodal field sparsity detection, contrastive description diffs, the 3-Tier BigQuery counterfactual assay, and live ontology promotion with `[:SPLIT_FROM]` lineage.
   - Support `?domain=insurance` URL parameter and `BRIDGE_DEFAULT_DEMO_DOMAIN=insurance` environment configuration so `/demo` on `documents002` opens directly into the **Insurance (Commercial Property — `terrepower-coastal-2027`)** domain while keeping default `banking` startup when unset (preserving all `test_documentation_contract.py` and Playwright invariants).
+
+- [ ] **P8-5: Example-Driven Doctype Onboarding (`bridge/refinery/`, `bridge/user_interaction/refinery_routes.py`)**
+  - Because DocuBridge operates as a document-mediation executor for calling agents rather than a standalone warehouse crawler, implement an example-driven onboarding workflow (`onboard_doctype_from_examples`): given 1–5 sample documents or structured examples plus an optional `context_set`, `gemini-4-argon` synthesizes a candidate `.okf.md` semantic-entity bundle (`ContrastiveDescription`, `synonyms`, `[:FEEDS_METRIC]`, `[:SUPERSEDES]`) in `DRAFT` state and runs the 3-Tier Assay Gate before promotion.
+  - **Verification Gate (T1/T2):** Unit and assay tests verify draft `.okf.md` synthesis from sample fixtures and full 3-Tier Assay Gate evaluation.
+
+- [ ] **P8-6: Target-Scoped Ontology Slicing per Extraction Call (`bridge/doctypes.py`, `bridge/extraction/gemini_schema.py`, `bridge/extraction/gemini.py`)**
+  - Scope `build_extraction_prompt()`, `build_response_schema()`, and `GeminiExtractor.extract()` to the known target `doctype` or active process `candidate_doctypes` (`context_set`) plus their 1-hop ontology neighborhood (`[:SUPERSEDES]`, `[:SPLIT_FROM]`, `[:DISTINCT_FROM]`), instead of injecting the union of every installed doctype on every call. Keep `fields.doctype` as a free string so out-of-label-space documents still report their observed type cleanly.
+  - **Verification Gate (T1/T2):** Unit tests verify target-scoped prompt/schema generation, reduced token footprint per call, and preserved `unsupported` disposition on out-of-label-space uploads.
+
+- [ ] **P8-7: Read-Only Allow-Listed Ontology MCP Surface over Zone 6 (`bridge/knowledge_catalog/`)**
+  - Expose an allow-listed, strictly read-only MCP tool surface over Zone 6 `KnowledgeCatalog` (`get_entity_ontology`, `explain_metric_formula`, `check_doctype_precedence`, `trace_field_lineage`) for calling A2A/MCP agents, keeping all state-changing ontology mutations (`onboard_doctype_from_examples`, `register_proposal`, `promote_proposal`) isolated to the Assay-Gated admin control plane.
+  - **Verification Gate (T1/T2):** Unit tests verify read-only MCP tool schemas, deterministic graph lookups, and zero mutation endpoints on the MCP surface.
+
+- [ ] **P8-8: Pre-Execution Query & Metric Formula Validator (`bridge/knowledge_catalog/`, `bridge/operational_store/`)**
+  - Add deterministic pre-execution validation (`validate_metric_query` / `validate_consolidation_view`) in Zone 6 so Zone 5 Domain Agent queries and analytical rollups over `OperationalStore` and BigQuery (`bq_operational_facts_iceberg`) are checked against certified `[:FEEDS_METRIC]` edges, bi-temporal watermarks (`learned_as_of`, `effective_on`), and `[:SUPERSEDES]` active-fact precedence before execution.
+  - **Verification Gate (T1/T2):** Unit tests verify that queries bypassing certified `[:FEEDS_METRIC]` formulas or omitting bi-temporal/precedence predicates are deterministically rejected.
+
+## Future Experiments
+
+- [ ] **FX-1: 3-Arm Ontology Ablation Benchmark in `RefineryAssayReport` (`bridge/refinery/assay.py`)**
+  - Evaluate candidate ontology revisions across three explicit ablation arms—**Arm 0 (Schema-Only Control:** flat JSON `field: type` with zero contrastive descriptions or graph edges), **Arm 1 (+ Contrastive Descriptions:** adding `what_it_is` / `where_to_read` / `distinguish_from` to isolate Stage-1 `gemini-3.8-flash` extraction disambiguation lift), and **Arm 2 (+ Full Ontology Graph:** adding `[:SUPERSEDES]`, `[:INCLUDES]` / `[:EXCLUDES]`, and `[:SPLIT_FROM]` edges to isolate Stage-2 consolidation conflict-resolution lift and quarantine reduction).
 
 ## See also
 - [`DECISIONS.md`](../DECISIONS.md) — architectural decision log · [`features.md`](features.md) — the feature catalog · [the Bridge](../design/bridge.md) — design source of truth · [Schema Refinery](../design/schema-refinery.md) — self-evolving ontology & taxonomy engine
