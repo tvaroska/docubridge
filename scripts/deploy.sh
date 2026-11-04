@@ -23,6 +23,13 @@ TF_DIR="${REPO_ROOT}/terraform"
 # 1. Preflight — required inputs (all non-secret except DB_PASSWORD, from env). #
 # --------------------------------------------------------------------------- #
 : "${PROJECT_ID:?set PROJECT_ID}"
+case "${PROJECT_ID}" in
+  btvaroska|sites-470716|data-305316|coding007|coding008|agents-469418|core-380514)
+    echo "ERROR: Refusing to deploy demo stack into protected Core project '${PROJECT_ID}'. Specify a dedicated Demos or Experiments project." >&2
+    exit 1
+    ;;
+esac
+export CLOUDSDK_CORE_PROJECT="${PROJECT_ID}"
 : "${REGION:=us-central1}"
 : "${DB_PASSWORD:?set DB_PASSWORD (never committed; only ever piped to Secret Manager)}"
 : "${SSL_DOMAIN:?set SSL_DOMAIN (managed-cert domain for the runtime/edge HTTPS LB)}"
@@ -34,8 +41,6 @@ TF_DIR="${REPO_ROOT}/terraform"
 : "${ENABLE_RFP_BOARD:=true}"               # Deploy Internal RFP Board + 6-Zone Showcase Console
 : "${ENABLE_AUDIT_VAULT:=true}"             # Provision 7-year WORM GCS Audit Vault bucket
 : "${ENABLE_TELEMETRY_BQ:=true}"            # Provision BigQuery OTel spans dataset + SQL eval views
-
-gcloud config set project "${PROJECT_ID}" >/dev/null
 
 echo "==> Enabling required APIs"
 gcloud services enable \

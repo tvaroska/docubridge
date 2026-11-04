@@ -70,6 +70,17 @@ variable "deletion_protection" {
   default     = true
 }
 
+variable "db_activation_policy" {
+  type        = string
+  description = "Cloud SQL activation policy (ALWAYS or NEVER for hibernated projects)."
+  default     = "ALWAYS"
+
+  validation {
+    condition     = contains(["ALWAYS", "NEVER"], var.db_activation_policy)
+    error_message = "db_activation_policy must be ALWAYS or NEVER."
+  }
+}
+
 variable "labels" {
   type        = map(string)
   description = "Resource labels."

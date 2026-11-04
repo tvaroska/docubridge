@@ -101,6 +101,10 @@ resource "google_cloud_run_v2_service" "bridge" {
     containers {
       image = var.container_image
 
+      resources {
+        cpu_idle = var.cpu_idle
+      }
+
       # The DB DSN reaches the app ONLY as a secret env, sourced from the latest
       # version of the Secret Manager secret (the secrets module, P7-2) — never a
       # plaintext env value or tfvars. Gated on db_url_secret_id so the P7-1
@@ -497,6 +501,10 @@ resource "google_cloud_run_v2_service" "rfp_board" {
       image   = var.container_image
       command = ["python"]
       args    = ["-c", "from bridge.dashboard.board_host import serve_rfp_board_container; serve_rfp_board_container()"]
+
+      resources {
+        cpu_idle = var.cpu_idle
+      }
 
       dynamic "env" {
         for_each = { for k, v in local.board_plain_env : k => v if v != "" }

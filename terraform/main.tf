@@ -91,15 +91,16 @@ module "iam" {
 module "database" {
   source = "./modules/database"
 
-  project_id          = var.project_id
-  region              = var.region
-  vpc_network         = module.network.network_id
-  db_tier             = var.db_tier
-  db_name             = var.db_name
-  db_user             = var.db_user
-  db_password         = var.db_password
-  deletion_protection = var.deletion_protection
-  labels              = var.labels
+  project_id           = var.project_id
+  region               = var.region
+  vpc_network          = module.network.network_id
+  db_tier              = var.db_tier
+  db_name              = var.db_name
+  db_user              = var.db_user
+  db_password          = var.db_password
+  db_activation_policy = var.db_activation_policy
+  deletion_protection  = var.deletion_protection
+  labels               = var.labels
 }
 
 # secrets — the Secret Manager container for the DB DSN + the runtime's read grant
@@ -226,6 +227,7 @@ module "runtime" {
   rfp_board_ingress       = var.rfp_board_ingress
   rfp_board_max_instances = var.rfp_board_max_instances
   min_instances           = var.min_instances
+  cpu_idle                = var.cpu_idle
   # S0-arch-19: with enable_rfp_board the A2A runtime also gets BRIDGE_RFP_PROCESS (it
   # OPENS RFPs onto the shared store); the board service gets the a2a_client gcp env
   # (BRIDGE_RUNTIME_SA_EMAIL + BRIDGE_GATEWAY_HOST) for its chase route.

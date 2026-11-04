@@ -268,6 +268,12 @@ variable "min_instances" {
   }
 }
 
+variable "cpu_idle" {
+  type        = bool
+  description = "Enable request-based CPU throttling (cpu_idle = true) on Cloud Run containers so min_instances = 0 truly scales to zero between requests."
+  default     = true
+}
+
 variable "email_drain_schedule" {
   type        = string
   description = "Cloud Scheduler cron for the POST /email/drain tick on the RFP board service (Etc/UTC)."

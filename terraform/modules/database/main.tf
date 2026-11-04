@@ -50,6 +50,7 @@ resource "google_sql_database_instance" "bridge" {
     # (requires db-perf-optimized-N-*). Keep ENTERPRISE so the cheap shared-core
     # demo tier is valid.
     edition           = var.db_edition
+    activation_policy = var.db_activation_policy
     user_labels       = var.labels
     availability_type = "ZONAL"
 

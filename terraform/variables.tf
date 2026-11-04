@@ -4,11 +4,24 @@
 
 variable "project_id" {
   type        = string
-  description = "GCP project id the substrate is provisioned into."
+  description = "GCP project id the substrate is provisioned into (must be an explicit Demos or Experiments project, never a Core project)."
 
   validation {
     condition     = length(trimspace(var.project_id)) > 0
     error_message = "project_id must not be empty."
+  }
+
+  validation {
+    condition = !contains([
+      "btvaroska",
+      "sites-470716",
+      "data-305316",
+      "coding007",
+      "coding008",
+      "agents-469418",
+      "core-380514",
+    ], trimspace(var.project_id))
+    error_message = "project_id must be a dedicated Demos or Experiments project — never deploy demos into Core projects (btvaroska, sites-470716, data-305316, coding007, coding008, agents-469418, core-380514)."
   }
 }
 
@@ -76,6 +89,23 @@ variable "db_password" {
 variable "deletion_protection" {
   type        = bool
   description = "Guard the Cloud SQL instance against deletion (true in prod; dev/tests may disable)."
+  default     = true
+}
+
+variable "db_activation_policy" {
+  type        = string
+  description = "Cloud SQL activation policy (ALWAYS when active/warm; NEVER when hibernated to stop hourly instance billing)."
+  default     = "ALWAYS"
+
+  validation {
+    condition     = contains(["ALWAYS", "NEVER"], var.db_activation_policy)
+    error_message = "db_activation_policy must be ALWAYS or NEVER."
+  }
+}
+
+variable "cpu_idle" {
+  type        = bool
+  description = "Enable request-based CPU throttling (cpu_idle = true) on Cloud Run containers so min_instances = 0 truly scales to zero between requests."
   default     = true
 }
 
