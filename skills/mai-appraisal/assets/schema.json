@@ -1,18 +1,52 @@
 {
   "type": "object",
-  "required": ["doctype", "issuer", "key_fields"],
+  "description": "Independent MAI Commercial Appraisal or Uniform Residential Appraisal Report (Form 1004) certifying the subject property's market collateral value and stabilized Net Operating Income (NOI). Where to read: Identified by \"Appraisal Report\", \"MAI Certification\", or \"Uniform Residential Appraisal Report (Form 1004)\" cover page and Executive Valuation Summary table. Distinguish from: Do NOT confuse with a Credit Agreement (`cre-credit-agreement`) or Closing Disclosure (`trid-closing-disclosure`); an appraisal establishes collateral valuation (`appraised_value`) but never sets binding loan terms or fees.",
+  "x_okf_revision_id": "ont-rev-v1-1-baseline",
+  "required": [
+    "doctype",
+    "issuer",
+    "key_fields"
+  ],
   "properties": {
-    "doctype": { "type": "string", "enum": ["mai-appraisal"] },
-    "issuer": { "type": "string", "description": "Independent MAI appraisal firm or certified appraiser" },
+    "doctype": {
+      "type": "string",
+      "enum": [
+        "mai-appraisal"
+      ]
+    },
+    "issuer": {
+      "type": "string",
+      "description": "Independent MAI appraisal firm or certified real estate appraiser."
+    },
     "key_fields": {
       "type": "object",
-      "required": ["appraised_value", "property_address", "currency", "valuation_date"],
+      "required": [
+        "appraised_value",
+        "property_address",
+        "currency",
+        "valuation_date"
+      ],
       "properties": {
-        "appraised_value": { "type": "string", "description": "As-is market appraised value of the collateral" },
-        "property_address": { "type": "string", "description": "Subject property street address" },
-        "net_operating_income": { "type": "string", "description": "Stabilized annual Net Operating Income (NOI)" },
-        "currency": { "type": "string", "description": "ISO 4217 currency code (e.g. USD)" },
-        "valuation_date": { "type": "string", "description": "Effective date of appraisal valuation (YYYY-MM-DD)" }
+        "appraised_value": {
+          "type": "string",
+          "description": "Certified market appraised value of the real estate collateral. Where to read: Executive Summary / Reconciliation & Final Value Conclusion table. Distinguish from: Do NOT extract insurable replacement cost, land-only value, or tax assessment value."
+        },
+        "property_address": {
+          "type": "string",
+          "description": "Full street address, city, state, and postal code of the appraised subject property. Where to read: Cover page and Property Identification block. Distinguish from: Do NOT extract the appraisal firm's office address or comparable sale addresses."
+        },
+        "net_operating_income": {
+          "type": "string",
+          "description": "Appraiser's projected stabilized annual Net Operating Income (NOI). Where to read: Income Capitalization Approach / Direct Capitalization Pro Forma table. Distinguish from: Do NOT extract Potential Gross Income (PGI) or post-debt-service cash flow."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 3-letter currency code for the valuation (e.g. USD). Where to read: Executive Summary table header or monetary notation. Distinguish from: Normalize '$' to 'USD'."
+        },
+        "valuation_date": {
+          "type": "string",
+          "description": "ISO date (YYYY-MM-DD) as of which the appraised market value applies. Where to read: Letter of Transmittal and Executive Summary ('Effective Date of Appraisal'). Distinguish from: Do NOT extract the report signature/transmittal date if distinct from the effective valuation date."
+        }
       }
     }
   }

@@ -16,26 +16,30 @@ from bridge.dashboard.server import build_dashboard_app
 from bridge.extraction.chunking import pdf_page_count
 from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
 from bridge.operational_store import InMemoryOperationalStore
+from bridge.showcase import ScenarioEngine
+from bridge.showcase.live_extraction import process_uploaded_pdfs
+from bridge.showcase.pdf_assets import build_pdf_zip, pdf_metadata
 from bridge.user_interaction import build_user_interaction_app
-from bridge.user_interaction.consolidation_collab import (
-    _execute_beat_1,
-    _execute_beat_2,
-    _execute_beat_4,
-    _recompute_counts,
-    reset_consolidation_collab_state,
-)
-from bridge.user_interaction.consolidation_live import process_uploaded_pdfs
-from bridge.user_interaction.consolidation_pdfs import (
-    build_demo_pdfs_zip,
-    get_demo_pdf_catalog,
-    list_demo_pdf_metadata,
-    resolve_demo_pdf_by_name_or_id,
-)
+from contract.scenario import ScenarioStageKind
+
+
+def _consolidation_engine() -> tuple[ScenarioEngine, str]:
+    op_store = InMemoryOperationalStore()
+    engine = ScenarioEngine(
+        store=op_store,
+        catalog=InMemoryKnowledgeCatalog(operational_store=op_store),
+        inbox=InMemoryActionInboxStore(),
+        gym=InMemoryAgentGymEngine(),
+    )
+    manifest = engine.find(kind=ScenarioStageKind.consolidation)
+    assert manifest is not None
+    return engine, manifest.id
 
 
 def test_five_demo_vector_pdfs_and_zip_bundle() -> None:
     """All 5 showcase PDFs have valid page counts, searchable text, and `.zip` packaging."""
-    catalog = get_demo_pdf_catalog()
+    engine, sid = _consolidation_engine()
+    catalog = engine.pdf_catalog(sid)
     assert len(catalog) == 5
     expected_pages = {
         "meridian-financials": 4,
@@ -44,18 +48,20 @@ def test_five_demo_vector_pdfs_and_zip_bundle() -> None:
         "meridian-bank-stmt": 2,
         "apex-day2-bank-stmt": 2,
     }
-    for sid, exp_pages in expected_pages.items():
-        asset = catalog[sid]
+    for asset_id, exp_pages in expected_pages.items():
+        asset = catalog[asset_id]
         assert asset.pdf_bytes.startswith(b"%PDF-1.4")
         assert pdf_page_count(asset.pdf_bytes) == exp_pages
-        assert resolve_demo_pdf_by_name_or_id(sid) == asset
-        assert resolve_demo_pdf_by_name_or_id(asset.filename) == asset
+        assert engine.resolve_pdf(sid, asset_id) == asset
+        assert engine.resolve_pdf(sid, asset.filename) == asset
 
-    assert resolve_demo_pdf_by_name_or_id("nonexistent.pdf") is None
-    meta = list_demo_pdf_metadata()
+    assert engine.resolve_pdf(sid, "nonexistent.pdf") is None
+    meta = [
+        pdf_metadata(a, url_base=engine.pdf_url_base(sid)) for a in catalog.values()
+    ]
     assert len(meta) == 5
 
-    zip_bytes = build_demo_pdfs_zip()
+    zip_bytes = build_pdf_zip(list(catalog.values()))
     with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
         names = set(zf.namelist())
         assert "01_Meridian_2025_Audited_Financials.pdf" in names
@@ -65,7 +71,6 @@ def test_five_demo_vector_pdfs_and_zip_bundle() -> None:
 
 def test_ebc_console_and_pdf_upload_cached_and_custom_flows() -> None:
     """Verify `/ebc` HTML/CSS/JS/favicon routes and full PDF upload + waiver + distill lifecycle."""
-    reset_consolidation_collab_state()
     op_store = InMemoryOperationalStore()
     catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
     inbox = InMemoryActionInboxStore()
@@ -139,7 +144,8 @@ def test_ebc_console_and_pdf_upload_cached_and_custom_flows() -> None:
     assert b1_json["live_telemetry"]["pii_tokens_redacted"] >= 2
 
     # 4. Drag-and-drop base64 PDF upload (with data: URI prefix) for Batch 2 + custom PDF
-    pdf_cat = get_demo_pdf_catalog()
+    pdf_engine, pdf_sid = _consolidation_engine()
+    pdf_cat = pdf_engine.pdf_catalog(pdf_sid)
     bank_b64 = "data:application/pdf;base64," + base64.b64encode(
         pdf_cat["meridian-bank-stmt"].pdf_bytes
     ).decode("ascii")
@@ -208,12 +214,11 @@ def test_live_gemini_multimodal_pdf_extraction_with_injected_client(
     monkeypatch,
 ) -> None:
     """Verify `process_uploaded_pdfs` invokes `gemini-3.8-flash` & `gemini-4-argon` when live."""
-    state = reset_consolidation_collab_state()
-    op_store = InMemoryOperationalStore()
-    catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
-    inbox = InMemoryActionInboxStore()
-    gym = InMemoryAgentGymEngine()
-    pdf_cat = get_demo_pdf_catalog()
+    engine, sid = _consolidation_engine()
+    engine.reset(sid)
+    op_store = engine.store
+    catalog = engine.catalog
+    pdf_cat = engine.pdf_catalog(sid)
 
     calls: list[str] = []
 
@@ -257,7 +262,7 @@ def test_live_gemini_multimodal_pdf_extraction_with_injected_client(
 
     fake_client = SimpleNamespace(models=_FakeModels())
     updated = process_uploaded_pdfs(
-        state,
+        engine.context(sid),
         resolved_files=[
             (
                 "01_Meridian_2025_Audited_Financials.pdf",
@@ -265,14 +270,7 @@ def test_live_gemini_multimodal_pdf_extraction_with_injected_client(
             )
         ],
         mode="live",
-        store=op_store,
-        catalog=catalog,
-        inbox=inbox,
-        gym=gym,
-        execute_beat_1_fn=_execute_beat_1,
-        execute_beat_2_fn=_execute_beat_2,
-        execute_beat_4_fn=_execute_beat_4,
-        recompute_counts_fn=_recompute_counts,
+        run_beat=lambda beat: engine.run_beat(sid, beat),
         genai_client=fake_client,
     )
     assert updated["beat"] == 1

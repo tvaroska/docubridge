@@ -1,19 +1,56 @@
 {
   "type": "object",
-  "required": ["doctype", "issuer", "key_fields"],
+  "description": "Commercial Real Estate (CRE) Credit Agreement, Syndicated Term Sheet, or Initial Loan Estimate establishing committed facility limits, base origination fees, and underwritten Net Operating Income (NOI) covenants. Where to read: Identified by \"Credit Agreement\", \"Senior Term Loan Facility Term Sheet\", or \"Loan Estimate\" headers and the Summary of Principal Terms schedule on Pages 1-3. Distinguish from: Do NOT confuse with a final TRID Closing Disclosure or signed Schedule B Fee Addendum (`trid-closing-disclosure`), which carries higher settlement authority (`priority 40`), or with a standalone property valuation report (`mai-appraisal`).",
+  "x_okf_revision_id": "ont-rev-v1-1-baseline",
+  "required": [
+    "doctype",
+    "issuer",
+    "key_fields"
+  ],
   "properties": {
-    "doctype": { "type": "string", "enum": ["cre-credit-agreement"] },
-    "issuer": { "type": "string", "description": "Administrative agent, lead arranger, or issuing bank" },
+    "doctype": {
+      "type": "string",
+      "enum": [
+        "cre-credit-agreement"
+      ]
+    },
+    "issuer": {
+      "type": "string",
+      "description": "Administrative agent, lead arranger, syndicated lender group, or issuing bank."
+    },
     "key_fields": {
       "type": "object",
-      "required": ["loan_amount", "origination_fee", "currency", "effective_date"],
+      "required": [
+        "loan_amount",
+        "origination_fee",
+        "currency",
+        "effective_date"
+      ],
       "properties": {
-        "loan_amount": { "type": "string", "description": "Committed principal loan facility amount" },
-        "origination_fee": { "type": "string", "description": "Origination, arrangement, or Schedule B override fee" },
-        "net_operating_income": { "type": "string", "description": "Underwritten annual Net Operating Income (NOI)" },
-        "facility_limit": { "type": "string", "description": "Maximum credit facility commitment limit" },
-        "currency": { "type": "string", "description": "ISO 4217 currency code (e.g. USD)" },
-        "effective_date": { "type": "string", "description": "ISO date (YYYY-MM-DD)" }
+        "loan_amount": {
+          "type": "string",
+          "description": "Committed principal loan facility amount in the agreement's currency. Where to read: Summary of Terms / Article II Commitments ('Senior Term Loan Facility' or 'Loan Amount'). Distinguish from: Do NOT extract uncommitted accordion expansion options or appraised collateral value."
+        },
+        "origination_fee": {
+          "type": "string",
+          "description": "Base upfront origination or arrangement fee stated in the initial credit agreement or term sheet. Where to read: Fee Letter summary or Section A Origination Charges row. Distinguish from: Do NOT extract late payment penalties, exit fees, or annual administrative agent fees."
+        },
+        "net_operating_income": {
+          "type": "string",
+          "description": "Underwritten annual Net Operating Income (NOI) used for debt-service coverage covenants. Where to read: Financial Covenants schedule or Underwriting Summary table. Distinguish from: Do NOT extract Gross Potential Rent (GPR) or Effective Gross Income (EGI) before operating expenses."
+        },
+        "facility_limit": {
+          "type": "string",
+          "description": "Maximum aggregate credit facility commitment limit when distinct from initial draw. Where to read: Definitions / Schedule 2.01 Commitments table. Distinguish from: Do NOT extract swingline sublimits or letter-of-credit sublimits."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 3-letter currency code (e.g. USD). Where to read: Definitions section ('Dollars' or 'Alternative Currency') or header monetary notation. Distinguish from: Normalize currency symbols ('$') to ISO 4217 code ('USD')."
+        },
+        "effective_date": {
+          "type": "string",
+          "description": "ISO date (YYYY-MM-DD) when the credit agreement or term sheet becomes effective. Where to read: Preamble or Summary of Terms header block. Distinguish from: Do NOT extract the Maturity Date or Stated Termination Date."
+        }
       }
     }
   }

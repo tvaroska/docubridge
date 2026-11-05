@@ -1,0 +1,84 @@
+id: mortgage-westbrook-2026
+domain: mortgage
+order: 20
+title: Residential Jumbo Mortgage & TRID Closing
+entity_id: MORTGAGE-WESTBROOK-2026
+process_skill: commercial-loan-underwriting
+doctypes:
+- term-sheet
+- closing-disclosure
+- trid-closing-disclosure
+display:
+  client: Westbrook Family Trust
+  program: $1,850,000 30-Year Jumbo Mortgage · TRID Closing
+  labels:
+    switcher: 🏠 Mortgage · TRID Closing
+    domain_label: MORTGAGE
+    header_tag: BORROWER · RESIDENTIAL JUMBO MORTGAGE
+    portal_title: DocuBridge External Borrower & Settlement Agent Portal
+    portal_pill: 'Borrower: Westbrook Family Trust'
+    portal_heading: Westbrook Family Trust · Residential Mortgage Closing Portal
+    checklist_title: Westbrook Family Trust — $1.85M Jumbo Mortgage TRID Closing Checklist
+    tenant_id: tenant-westbrook
+    short_name: Westbrook
+    intake_caption: Westbrook Family Trust ($1.85M Jumbo Mortgage) — Form 1003 & IRS 4506-C validated
+      in code (0 AI tokens); TRID Closing Disclosure Page 3 Rate-Lock Addendum parked in Quarantine.
+    intake_caption_sub: 'Path A: westbrook-1003-urla-4506c-2026.json (DTI 31.4%, Reserves 18 mos) | Path
+      B: firstnational-trid-closing-disclosure-2026.pdf ($4,250 LE vs $8,500 CD Page 3)'
+    consolidation_caption: Consolidation Rules Engine reconciles Final TRID Closing Disclosure ($8,500,
+      Prio 40) over Initial Loan Estimate ($4,250, Prio 20) with 6-hop lineage.
+    watermark: 2026-10-19T21:00:00Z (MORTGAGE-WESTBROOK-2026 delta exported)
+    vault_uri: gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-cd-v2
+    inbox_heading: Resolve Origination & Rate-Lock Extension Fee Conflict (Westbrook · TRID Closing Disclosure
+      Page 3)
+agents:
+  underwriter: spiffe://agents.docubridge.io/internal/credit-officer-agent
+  portal: spiffe://agents.docubridge.io/portal/external-portal-agent
+seed:
+  context_id: ctx-westbrook-2026
+  facts:
+  - doc_id: doc-westbrook-le-v1
+    doctype: term-sheet
+    issuer: FirstNational Home Loans
+    message: Accepted Initial TRID Loan Estimate & Form 1004 Appraisal
+    key_fields:
+      currency: USD
+      loan_amount: $1,850,000.00
+      appraised_value: $2,400,000.00
+      origination_fee: $4,250.00
+      annual_debt_service: $138,400.00
+    source_anchors:
+      origination_fee:
+        page_number: 2
+        bounding_box: [0.11, 0.24, 0.49, 0.29]
+        snippet: 'Section A. Origination Charges (0.23% Points): $4,250.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-le-v1/v1/le.pdf
+      loan_amount:
+        page_number: 1
+        bounding_box: [0.14, 0.19, 0.51, 0.24]
+        snippet: '30-Year Fixed Jumbo Loan Amount: $1,850,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-le-v1/v1/le.pdf
+      appraised_value:
+        page_number: 6
+        bounding_box: [0.16, 0.61, 0.62, 0.67]
+        snippet: 'Form 1004 Uniform Residential Appraisal Market Value: $2,400,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-le-v1/v1/le.pdf
+    raw_document_marker: '%PDF-1.7 westbrook-trid-loan-estimate'
+    recorded_at: '2026-10-19T18:00:00Z'
+    effective_from: '2026-11-01T00:00:00Z'
+  - doc_id: doc-westbrook-cd-v2
+    doctype: closing-disclosure
+    issuer: FirstNational Home Loans
+    message: Accepted Final TRID Closing Disclosure & Rate-Lock Extension Addendum
+    key_fields:
+      currency: USD
+      origination_fee: $8,500.00
+    source_anchors:
+      origination_fee:
+        page_number: 3
+        bounding_box: [0.11, 0.48, 0.59, 0.54]
+        snippet: 'Closing Cost Details — Section A Origination + 45-Day Rate-Lock Extension: $8,500.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-cd-v2/v1/cd.pdf
+    raw_document_marker: '%PDF-1.7 westbrook-trid-closing-disclosure'
+    recorded_at: '2026-10-19T20:00:00Z'
+    effective_from: '2026-11-01T00:00:00Z'

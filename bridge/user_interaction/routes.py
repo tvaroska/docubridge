@@ -12,11 +12,9 @@ from bridge.knowledge_catalog import (
     knowledge_catalog_from_env,
 )
 from bridge.operational_store import OperationalStore, operational_store_from_env
+from bridge.refinery import schema_refinery_from_env
 from bridge.telemetry import OtelAsgiMiddleware
 from bridge.user_interaction.a2ui_routes import register_a2ui_routes
-from bridge.user_interaction.consolidation_collab import (
-    register_consolidation_collab_routes,
-)
 from bridge.user_interaction.gym_routes import register_gym_routes
 from bridge.user_interaction.intake_routes import register_intake_and_demo_routes
 from bridge.user_interaction.refinery_routes import register_refinery_routes
@@ -37,12 +35,19 @@ def build_user_interaction_router(
 ) -> APIRouter:
     """Create a FastAPI router exposing Zone 5 A2UI, A2UI v0.9 Action Progress/Inbox,
     Agent Gym continuous learning, and Zone 6 Knowledge Catalog endpoints."""
+    # Imported here: bridge.showcase depends on this package's `surfaces` module.
+    from bridge.showcase import ScenarioEngine, register_scenario_routes
+
     store = operational_store or operational_store_from_env()
     catalog = knowledge_catalog or knowledge_catalog_from_env(operational_store=store)
     if hasattr(catalog, "bind_operational_store"):
         catalog.bind_operational_store(store)
     inbox = action_inbox_store_from_env(inbox_store)
     gym = agent_gym_from_env(agent_gym)
+    refinery = schema_refinery_from_env(knowledge_catalog=catalog)
+    scenario_engine = ScenarioEngine(
+        store=store, catalog=catalog, inbox=inbox, gym=gym, refinery=refinery
+    )
     router = APIRouter()
 
     register_intake_and_demo_routes(
@@ -53,6 +58,7 @@ def build_user_interaction_router(
         principal_roles=principal_roles,
         require_auth=require_auth,
     )
+    register_scenario_routes(router, engine=scenario_engine)
     register_a2ui_routes(
         router,
         store=store,
@@ -70,6 +76,7 @@ def build_user_interaction_router(
         gym=gym,
         principal_roles=principal_roles,
         require_auth=require_auth,
+        scenario_engine=scenario_engine,
     )
     register_registry_and_catalog_routes(
         router,
@@ -80,19 +87,11 @@ def build_user_interaction_router(
         require_auth=require_auth,
     )
     register_telemetry_routes(router)
-    register_consolidation_collab_routes(
-        router,
-        store=store,
-        catalog=catalog,
-        inbox=inbox,
-        gym=gym,
-        principal_roles=principal_roles,
-        require_auth=require_auth,
-    )
     register_refinery_routes(
         router,
         catalog=catalog,
         inbox=inbox,
+        schema_refinery=refinery,
     )
 
     return router

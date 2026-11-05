@@ -1,9 +1,19 @@
 {
   "version": "2.0",
   "type": "object",
-  "required": ["doctype", "key_fields"],
+  "description": "Employee Benefits Carrier Quote proposing voluntary or group coverage rates (AD&D, Critical Illness, Hospital Indemnity, or Group Life), benefit design provisions, and broker commission schedules for a plan year. Where to read: Identified by carrier proposal cover pages, tiered employee rate tables (EE, EE+Spouse, EE+Children, Family), and Benefit Design Summary schedules. Distinguish from: Do NOT confuse with an employer's outbound Request for Proposal (`benefits-rfp`) or a commercial property & casualty placement quote (`commercial-property-quote`).",
+  "x_okf_revision_id": "ont-rev-v1-1-baseline",
+  "required": [
+    "doctype",
+    "key_fields"
+  ],
   "properties": {
-    "doctype":  { "type": "string", "enum": ["benefits-quote"] },
+    "doctype": {
+      "type": "string",
+      "enum": [
+        "benefits-quote"
+      ]
+    },
     "key_fields": {
       "type": "object",
       "required": [
@@ -17,20 +27,80 @@
         "expiry_date"
       ],
       "properties": {
-        "currency":        { "type": "string", "description": "ISO 4217 currency code (e.g. USD, EUR, GBP)" },
-        "language":        { "type": "string", "description": "BCP-47 language tag (e.g. en, fr, de)" },
-        "premium":         { "type": "string", "description": "premium amount in the quote's native currency" },
-        "deductible":      { "type": "string", "description": "deductible amount in the quote's native currency" },
-        "coverage_limits": { "type": "string", "description": "coverage limits / covered lines" },
-        "exclusions":      { "type": "string", "description": "excluded coverages / carve-outs" },
-        "effective_date":  { "type": "string", "description": "ISO date (YYYY-MM-DD) the quote takes effect" },
-        "expiry_date":     { "type": "string", "description": "ISO date (YYYY-MM-DD) the quote expires" },
-        "product_line":    { "type": "string", "enum": ["AD_AND_D", "CRITICAL_ILLNESS", "HOSPITAL_INDEMNITY", "LIFE"], "description": "voluntary-benefit product line the quote covers" },
-        "carrier_product_name": { "type": "string", "description": "the carrier's own product name, verbatim" },
-        "plan_year":       { "type": "string", "description": "plan year the quote is for (e.g. 2027)" },
-        "commission_basis":    { "type": "string", "description": "broker commission basis, verbatim (e.g. heaped, level)" },
-        "commission_rate_pct": { "type": "string", "description": "broker commission rate as a percentage, text as printed (e.g. 20)" },
-        "commission_notes":    { "type": "string", "description": "any other commission terms, verbatim" }
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code (e.g. USD, EUR, GBP). Where to read: Rate table column headers or proposal footer. Distinguish from: Return ISO 4217 code (USD, EUR, GBP), never raw currency symbols."
+        },
+        "language": {
+          "type": "string",
+          "description": "BCP-47 two-letter primary language tag of the document text (e.g. en, fr, de). Where to read: Inferred from the primary prose language of the quote. Distinguish from: Do NOT return country codes (US, GB) instead of language tags (en, fr, de)."
+        },
+        "premium": {
+          "type": "string",
+          "description": "Headline premium amount in the quote's native currency exactly as printed. Where to read: Proposal Financial Summary box or Total Estimated Annual Premium line. Distinguish from: Do NOT sum per-tier unit rates yourself and do NOT extract broker commission amounts."
+        },
+        "deductible": {
+          "type": "string",
+          "description": "Deductible amount in the quote's native currency as printed. Where to read: Benefit Schedule / Deductible & Cost-Sharing row. Distinguish from: Do NOT confuse with out-of-pocket maximums or benefit coverage limits."
+        },
+        "coverage_limits": {
+          "type": "string",
+          "description": "Coverage limits or covered benefit maximums printed in the quote. Where to read: Schedule of Benefits ('Coverage Limits' / 'Maximum Benefit'). Distinguish from: Do NOT extract per-paycheck employee rate deductions."
+        },
+        "exclusions": {
+          "type": "string",
+          "description": "Excluded coverages, pre-existing condition limitations, or policy carve-outs. Where to read: Exclusions & Limitations section of the quote. Distinguish from: Do NOT fabricate exclusions when the document marks them absent."
+        },
+        "effective_date": {
+          "type": "string",
+          "description": "ISO date (YYYY-MM-DD) the quoted plan takes effect. Where to read: Cover page or Proposal Summary ('Effective Date'). Distinguish from: Do NOT extract Quote Preparation Date or Rate Guarantee Expiry Date."
+        },
+        "expiry_date": {
+          "type": "string",
+          "description": "ISO date (YYYY-MM-DD) when the quote or rate guarantee expires. Where to read: Proposal validity footer or Rate Guarantee block. Distinguish from: Do NOT extract the effective inception date."
+        },
+        "product_line": {
+          "type": "string",
+          "enum": [
+            "AD_AND_D",
+            "CRITICAL_ILLNESS",
+            "HOSPITAL_INDEMNITY",
+            "LIFE"
+          ],
+          "description": "Voluntary-benefit product line enum (AD_AND_D, CRITICAL_ILLNESS, HOSPITAL_INDEMNITY, LIFE). Where to read: Product header banner and Schedule of Benefits title. Distinguish from: Map strictly to one of AD_AND_D, CRITICAL_ILLNESS, HOSPITAL_INDEMNITY, or LIFE."
+        },
+        "carrier_product_name": {
+          "type": "string",
+          "description": "The carrier's own proprietary product name, verbatim as printed. Where to read: Cover banner or title block. Distinguish from: Preserve exact carrier branding rather than generic product line labels."
+        },
+        "plan_year": {
+          "type": "string",
+          "description": "4-digit plan year the quote covers (e.g. 2027). Where to read: Cover page subtitle or Effective Date year. Distinguish from: Do NOT return full ISO dates when only the 4-digit year is requested."
+        },
+        "commission_basis": {
+          "type": "string",
+          "description": "Broker commission basis verbatim as printed (e.g. heaped, level). Where to read: Producer Compensation / Commission Schedule section. Distinguish from: Do NOT infer commission basis if omitted from the quote."
+        },
+        "commission_rate_pct": {
+          "type": "string",
+          "description": "Broker commission rate as a percentage text exactly as printed (e.g. 20). Where to read: Producer Compensation / Commission Schedule table. Distinguish from: Do NOT extract coinsurance percentages (e.g. 80/20 member cost share)."
+        },
+        "commission_notes": {
+          "type": "string",
+          "description": "Any additional commission terms or grading notes, verbatim. Where to read: Footnotes beneath the Producer Compensation schedule. Distinguish from: Do NOT include general underwriting disclaimers unrelated to commissions."
+        },
+        "plan_type": {
+          "type": "string",
+          "description": "Plan design structure (e.g. HDHP, PPO, HMO, Group Life). Where to read: Schedule of Benefits header ('Plan: HDHP'). Distinguish from: When Plan == HDHP, linked tax-advantaged Employer Account Seed must be classified as HSA (Health Savings Account), never standard FSA."
+        },
+        "employer_account_seed": {
+          "type": "string",
+          "description": "Annual employer contribution to the employee tax-advantaged benefit account (e.g. $1,000.00). Where to read: Page 4 Schedule of Benefits ('Plan: HDHP · Employer Account Seed: $1,000.00'). Distinguish from: When the quoted plan is an HDHP (High Deductible Health Plan), Employer Account Seed is strictly an HSA (Part Of HDHP) and CANNOT be a standard Healthcare FSA (NOT Part Of HDHP)."
+        },
+        "waiting_period_days": {
+          "type": "string",
+          "description": "Number of days a covered employee waits after a disability or benefit claim before benefits begin (e.g. 90 days). Where to read: Page 14 Schedule of Benefits or Policy Riders ('Elimination Period / Waiting Period: 90 Days'). Distinguish from: Do NOT confuse the 90-day Benefit Waiting Period on Page 14 with the 30-day New-Hire Enrollment Waiting Period on Page 2."
+        }
       }
     },
     "tables": {
@@ -41,15 +111,63 @@
           "description": "one row per premium rate printed in the quote",
           "items": {
             "type": "object",
-            "required": ["coverage_tier", "amount", "frequency"],
+            "required": [
+              "coverage_tier",
+              "amount",
+              "frequency"
+            ],
             "properties": {
-              "coverage_tier":  { "type": "string", "enum": ["EE", "EE_SPOUSE", "EE_CHILDREN", "FAMILY"], "description": "who the rate covers: employee, employee + spouse, employee + children, family" },
-              "tobacco":        { "type": "string", "enum": ["UNI", "NON_TOBACCO", "TOBACCO"], "description": "tobacco rating class (UNI = unismoker / not distinguished)" },
-              "age_band":       { "type": "string", "description": "age band as printed (e.g. 30-34)" },
-              "amount":         { "type": "string", "description": "the rate exactly as printed, in the quote's native currency; never computed" },
-              "frequency":      { "type": "string", "enum": ["MONTHLY", "BI_WEEKLY", "WEEKLY", "SEMI_MONTHLY", "ANNUAL"], "description": "billing frequency the rate amount is expressed in, per row (carriers mix them)" },
-              "rate_basis":     { "type": "string", "enum": ["FLAT", "PER_1000", "PER_UNIT"], "description": "FLAT premium, per $1,000 of benefit, or per unit of benefit" },
-              "benefit_amount": { "type": "string", "description": "benefit amount the rate is priced at, as printed" }
+              "coverage_tier": {
+                "type": "string",
+                "enum": [
+                  "EE",
+                  "EE_SPOUSE",
+                  "EE_CHILDREN",
+                  "FAMILY"
+                ],
+                "description": "who the rate covers: employee, employee + spouse, employee + children, family"
+              },
+              "tobacco": {
+                "type": "string",
+                "enum": [
+                  "UNI",
+                  "NON_TOBACCO",
+                  "TOBACCO"
+                ],
+                "description": "tobacco rating class (UNI = unismoker / not distinguished)"
+              },
+              "age_band": {
+                "type": "string",
+                "description": "age band as printed (e.g. 30-34)"
+              },
+              "amount": {
+                "type": "string",
+                "description": "the rate exactly as printed, in the quote's native currency; never computed"
+              },
+              "frequency": {
+                "type": "string",
+                "enum": [
+                  "MONTHLY",
+                  "BI_WEEKLY",
+                  "WEEKLY",
+                  "SEMI_MONTHLY",
+                  "ANNUAL"
+                ],
+                "description": "billing frequency the rate amount is expressed in, per row (carriers mix them)"
+              },
+              "rate_basis": {
+                "type": "string",
+                "enum": [
+                  "FLAT",
+                  "PER_1000",
+                  "PER_UNIT"
+                ],
+                "description": "FLAT premium, per $1,000 of benefit, or per unit of benefit"
+              },
+              "benefit_amount": {
+                "type": "string",
+                "description": "benefit amount the rate is priced at, as printed"
+              }
             }
           }
         },
@@ -58,11 +176,23 @@
           "description": "one row per benefit-design provision printed in the quote",
           "items": {
             "type": "object",
-            "required": ["category", "value"],
+            "required": [
+              "category",
+              "value"
+            ],
             "properties": {
-              "category":          { "type": "string", "description": "the benefit provision, in standard terms where obvious (e.g. Heart Attack)" },
-              "category_original": { "type": "string", "description": "the carrier's own term for the provision, verbatim" },
-              "value":             { "type": "string", "description": "the provision's value as printed (e.g. $10,000, 6 months, Yes)" }
+              "category": {
+                "type": "string",
+                "description": "the benefit provision, in standard terms where obvious (e.g. Heart Attack)"
+              },
+              "category_original": {
+                "type": "string",
+                "description": "the carrier's own term for the provision, verbatim"
+              },
+              "value": {
+                "type": "string",
+                "description": "the provision's value as printed (e.g. $10,000, 6 months, Yes)"
+              }
             }
           }
         }

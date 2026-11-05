@@ -1,0 +1,285 @@
+id: terrepower-coastal-2027
+domain: insurance
+order: 30
+title: Commercial Coastal Property Placement & Live Schema Evolution
+entity_id: terrepower-coastal-2027
+related_entity_ids:
+  day2: PLACEMENT-HARBORVIEW-DAY2
+process_skill: commercial-property-quote
+doctypes:
+- quote
+- endorsement
+- commercial-property-quote
+- wind-deductible-endorsement
+display:
+  client: Terrepower Coastal LLC
+  program: $142,500,000.00 Commercial Coastal Property Placement
+  labels:
+    switcher: 🛡️ Insurance · Commercial Placement
+    domain_label: INSURANCE
+    header_tag: CLIENT · COMMERCIAL INSURANCE
+    header_sub: 2027 Property & Benefits Placement
+    portal_title: DocuBridge External Client & Carrier Portal
+    portal_pill: 'Carrier: Chubb Commercial'
+    portal_heading: Chubb Commercial · Carrier Submission Portal
+    checklist_title: Terrepower Coastal LLC — 2027 Renewal Submission Checklist
+    tenant_id: tenant-terrepower
+    short_name: Terrepower
+    intake_caption: Terrepower Coastal LLC ($142.5M TIV) — Property SOV validated in code (0 AI tokens);
+      Chubb Schedule B Wind Deductible conflict parked in Quarantine.
+    intake_caption_sub: 'Path A: terrepower-coastal-sov-2027.xlsx ($142.5M TIV) | Path B: chubb-coastal-property-quote-2027.pdf
+      ($50k Cover vs $100k Schedule B Page 4)'
+    consolidation_caption: Consolidation Rules Engine reconciles Schedule B Wind Endorsement ($100,000,
+      Prio 40) over Cover Quote ($50,000, Prio 20) with 6-hop lineage.
+    watermark: 2026-10-19T21:00:00Z (terrepower-2027 delta exported)
+    vault_uri: gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-endorsement-v2
+    inbox_heading: Resolve Coastal Wind Deductible Conflict (Terrepower · Chubb Schedule B Endorsement)
+agents:
+  broker: spiffe://agents.docubridge.io/internal/broker-placement-agent
+  refinery: spiffe://agents.docubridge.io/internal/credit-officer-agent
+principals:
+  senior_broker: usr:senior.broker@docubridge.io
+seed:
+  context_id: ctx-terrepower-2027
+  facts:
+  - doc_id: doc-terrepower-quote-v1
+    doctype: quote
+    issuer: Chubb Syndicate 2987
+    message: Accepted Chubb Primary Property Quote & SOV
+    key_fields:
+      currency: USD
+      coverage_limit: $50,000,000.00
+      total_insured_value: $142,500,000.00
+      deductible: $50,000.00
+      premium: $418,500.00
+    source_anchors:
+      deductible:
+        page_number: 1
+        bounding_box: [0.14, 0.31, 0.48, 0.36]
+        snippet: 'All Other Perils Base Deductible: $50,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-quote-v1/v1/quote.pdf
+      coverage_limit:
+        page_number: 2
+        bounding_box: [0.15, 0.28, 0.52, 0.33]
+        snippet: 'Primary Layer Property Coverage Limit: $50,000,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-quote-v1/v1/quote.pdf
+      total_insured_value:
+        page_number: 11
+        bounding_box: [0.18, 0.52, 0.6, 0.58]
+        snippet: 'Schedule of Values (SOV) Total Insured Value: $142,500,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-quote-v1/v1/quote.pdf
+    raw_document_marker: '%PDF-1.7 terrepower-chubb-quote'
+    recorded_at: '2026-10-19T18:00:00Z'
+    effective_from: '2026-11-01T00:00:00Z'
+  - doc_id: doc-terrepower-endorsement-v2
+    doctype: endorsement
+    issuer: Chubb Syndicate 2987
+    message: Accepted Schedule B Coastal Wind Endorsement
+    key_fields:
+      currency: USD
+      deductible: $100,000.00
+    source_anchors:
+      deductible:
+        page_number: 4
+        bounding_box: [0.12, 0.44, 0.58, 0.51]
+        snippet: 'Schedule B Named Windstorm Deductible Override: $100,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-endorsement-v2/v1/endorsement.pdf
+    raw_document_marker: '%PDF-1.7 terrepower-wind-endorsement'
+    recorded_at: '2026-10-19T20:00:00Z'
+    effective_from: '2026-11-01T00:00:00Z'
+stage:
+  kind: schema_evolution
+  setup:
+    - name: refinery_reset
+  beats:
+    - index: 1
+      title: Carrier uploads 1-page Schedule B Coastal Wind Deductible Endorsement
+      operations:
+        - name: refinery_reset
+    - index: 2
+      title: Schema Refinery Taxonomy & Sparsity Assay (3-Tier Gate)
+      operations:
+        - name: refinery_run_assay
+          params: {domain: insurance}
+    - index: 3
+      title: Data Steward promotes Ontology v1.2.0
+      operations:
+        - name: refinery_promote
+          params: {from_version: "1.1.0", revision_id: ont-rev-v1-2-insurance, version: "1.2.0"}
+    - index: 4
+      title: Day-2 Zero-Quarantine Payoff Verified
+  view:
+    done_from_beat: 3
+    agent1:
+      agent_name: Agent 1 · Document Bridge (Sense A Contrastive Extractor)
+      spiffe_id: ${agent.broker}
+      model: ${model.workhorse}
+      pinned_ontology_revision: ${active_revision}
+    agent2:
+      agent_name: Agent 2 · Schema Refinery & Graph Consolidation (Sense B)
+      spiffe_id: ${agent.refinery}
+      model: ${model.reasoning}
+      jaccard_similarity: 0.0667
+      nfr: 0.0
+      krippendorff_alpha: 0.94
+      gwets_ac2: 0.93
+      rogan_gladen_pass_rate: 0.988
+    financial_summary:
+      total_insured_value: $142,500,000.00
+      primary_plus_excess_limit: $75,000,000.00
+      coastal_wind_deductible:
+        by_beat: {0: "$50,000.00 (⚠ Conflict)", 3: "$100,000.00"}
+      deductible_authority:
+        by_beat:
+          0: commercial-property-quote (Prio 20 · v1.1.0)
+          3: wind-deductible-endorsement (Prio 40 · v1.2.0)
+      annual_premium: $418,500.00
+    checklist:
+      - id: doc-1-sov
+        label: 14-Location Coastal Property Schedule (SOV — $142.5M TIV)
+        doctype: structured-sov-xlsx
+        status: satisfied
+        emergent: false
+        badge_text: VERIFIED · PATH A (0 TOKENS)
+        reason: Deterministic schema check verified 14 coastal locations ($142,500,000.00 TIV).
+        source_citation: Schedule Tab 1 · Row 14
+        ontology_rev: ont-rev-v1-1-baseline
+      - id: doc-2-chubb-quote
+        label: Chubb Primary Commercial Property Quote ($50M Limit · $50K Base Deductible)
+        doctype: commercial-property-quote
+        status: satisfied
+        emergent: false
+        badge_text: VERIFIED · PRIO 20 (v1.1.0)
+        reason: 24-page base quote populates all 7 required fields under ont-rev-v1-1-baseline.
+        source_citation: Page 1 · Region [0.14, 0.31]
+        ontology_rev: ont-rev-v1-1-baseline
+      - id: doc-3-aig-binder
+        label: AIG Signed Excess Property Binder ($25M xs $50M · $412K Premium)
+        doctype: commercial-property-quote
+        status: satisfied
+        emergent: false
+        badge_text: VERIFIED · PRIO 20 (v1.1.0)
+        reason: Multi-window table merge verified excess attachment point and annual premium.
+        source_citation: Page 11 · Region [0.18, 0.52]
+        ontology_rev: ont-rev-v1-1-baseline
+      - id: doc-4-wind-endorsement
+        from_beat: 1
+        until_beat: 2
+        label: Chubb Schedule B Coastal Wind Deductible Endorsement ($100,000.00)
+        doctype: commercial-property-quote (Overloaded in v1.1.0)
+        status: quarantined
+        emergent: true
+        badge_text:
+          by_beat: {1: QUARANTINED · BIMODAL SPARSITY J=0.0667, 2: ASSAY PASSED · READY FOR v1.2.0 PROMOTION}
+        reason: 1-page endorsement populates 'deductible' ($100,000.00) but leaves 'premium', 'coverage_limits', and 'exclusions' absent_from_document, and ties Base Quote at Prio 20.
+        source_citation: Page 9 · Region [0.11, 0.39]
+        ontology_rev: ont-rev-v1-1-baseline
+      - id: doc-4-wind-endorsement
+        from_beat: 3
+        label: Chubb Schedule B Coastal Wind Deductible Endorsement ($100,000.00)
+        doctype: wind-deductible-endorsement
+        status: satisfied
+        emergent: true
+        badge_text: SUPERSEDED BASE QUOTE · PRIO 40 (v1.2.0)
+        reason: Classified under new OKF entity 'wind-deductible-endorsement' (Prio 40); [:SUPERSEDES] edge deterministically overrides $50K base deductible -> $100K.
+        source_citation: Page 9 · Region [0.11, 0.39]
+        ontology_rev: ont-rev-v1-2-insurance
+    graph_edges:
+      - source: commercial-property-quote (Prio 20)
+        relation: "[:FEEDS_METRIC]"
+        target: FinancialSummary.{total_premium, total_deductible, total_coverage_limit}
+        revision: ont-rev-v1-1-baseline
+        is_new: false
+      - from_beat: 3
+        source: wind-deductible-endorsement (Prio 40)
+        relation: "[:SUPERSEDES {on: deductible}]"
+        target: commercial-property-quote (Prio 20)
+        revision: ont-rev-v1-2-insurance
+        is_new: true
+      - from_beat: 3
+        source: wind-deductible-endorsement (Prio 40)
+        relation: "[:SPLIT_FROM]"
+        target: commercial-property-quote (v1.1.0 Lineage Preserved)
+        revision: ont-rev-v1-2-insurance
+        is_new: true
+      - from_beat: 3
+        source: wind-deductible-endorsement (Prio 40)
+        relation: "[:FEEDS_METRIC]"
+        target: FinancialSummary.total_deductible ($100,000.00)
+        revision: ont-rev-v1-2-insurance
+        is_new: true
+    beats:
+      - index: 0
+        banner:
+          tone: info
+          headline: Baseline Ontology Active · ont-rev-v1-1-baseline (v1.1.0 · 7 OKF Entities)
+          message: All 3 base placement documents reconcile under v1.1.0 ($142.5M TIV, $50K Base Deductible). Click Beat 1 to upload Chubb's 1-page Schedule B Coastal Wind Deductible Endorsement ($100,000.00).
+          agent_note: Under v1.1.0, 'commercial-property-quote' is a single monolithic doctype (Prio 20) with no separate endorsement entity or [:SUPERSEDES] edge.
+        agent1:
+          headline: 3 Baseline Documents Extracted under ont-rev-v1-1-baseline
+          detail: Pinned ontology_revision_id='ont-rev-v1-1-baseline' across all multi-window chunks. 3-part contrastive descriptions active on all 7 OKF doctypes.
+        agent2:
+          headline: Zone 6 Knowledge Graph Monitoring Field-Presence Sparsity
+          detail: Watching AlloyDB operational facts and BigQuery otel_spans for bimodal null clusters (Jaccard J(A,B) <= 0.10) and doctype priority collisions.
+      - index: 1
+        banner:
+          tone: warning
+          headline: Ontology Friction Detected · Bimodal Field Sparsity (J = 0.0667) & Priority Tie
+          message: Chubb's 1-page Schedule B Wind Endorsement ($100,000.00 on Page 9) was forced into 'commercial-property-quote' (Prio 20), triggering 3 false-positive absent_from_document warnings and a Prio 20 == Prio 20 tie against the $50,000.00 Cover Quote.
+          agent_note: Click Beat 2 to run the Schema Refinery Taxonomy & Sparsity Assay (gemini-4-argon).
+        agent1:
+          headline: Quarantined 1-Page Schedule B Wind Endorsement (Overloaded Doctype)
+          detail: Extracted deductible=$100,000.00 (Page 9 [0.11, 0.39]), but commercial-property-quote requires premium, coverage_limits, and exclusions (all absent on a 1-page endorsement).
+        agent2:
+          headline: Bimodal Null-Matrix Cluster Detected on 'commercial-property-quote'
+          detail: Cluster A (24-page base quotes) vs. Cluster B (1-page Schedule B endorsements) yields Jaccard similarity J(A,B) = 0.0667 <= 0.10 threshold -> Candidate SPLIT_ENTITY.
+      - index: 2
+        banner:
+          tone: info
+          headline: 3-Tier Refinery Assay PASSED · Proposing 'wind-deductible-endorsement' (v1.2.0)
+          message: Schema Refinery synthesized OKF entity 'wind-deductible-endorsement.okf.md' (Prio 40) with [:SUPERSEDES] + [:SPLIT_FROM] edges and verified 0.0% Negative Flip Rate across 36 historical BigQuery Iceberg documents.
+          agent_note: Click Beat 3 for 1-click Data Steward / Senior Broker approval to promote ont-rev-v1-2-insurance.
+        agent1:
+          headline: Contrastive Description Diff Ready for gemini-3.8-flash (thinking_budget=0)
+          detail: Updated 'distinguish_from' on commercial-property-quote and wind-deductible-endorsement achieves Krippendorff's alpha = 0.94 and Gwet's AC2 = 0.93 vs. gemini-4-argon.
+        agent2:
+          headline: "3-Tier Counterfactual Assay Gate: PASS (NFR = 0.0% · Rogan-Gladen 98.8%)"
+          detail: "Tier 1: [:SUPERSEDES] DAG acyclic & Decimal math valid · Tier 2: 0/36 historical flips · Tier 3: FA=0 corridor satisfied."
+      - index: 3
+        banner:
+          tone: success
+          headline: Ontology v1.2.0 Active (ont-rev-v1-2-insurance) · $100K Wind Deductible Reconciled!
+          message: Zone 6 Knowledge Catalog promoted 'wind-deductible-endorsement' (Prio 40) with [:SUPERSEDES] over 'commercial-property-quote' (Prio 20). Historical Turn-1 facts remain immutably pinned to ont-rev-v1-1-baseline via [:SPLIT_FROM].
+          agent_note: Click Beat 4 to verify the Day-2 Payoff on Harborview Marine Terminal LLC ($88M Placement).
+        agent1:
+          headline: "Active Ontology Revision: ont-rev-v1-2-insurance (8 OKF Entities)"
+          detail: Schedule B Wind Endorsement re-indexed as 'wind-deductible-endorsement' (Prio 40) with required=[currency, language, deductible, effective_date].
+        agent2:
+          headline: Declarative Graph Consolidation Complete ($50,000 -> $100,000)
+          detail: Resolved via edge-wind-endorsement-supersedes-prop-quote (Prio 40 > Prio 20). Bi-temporal lineage links v1.2.0 -> v1.1.0 via [:SPLIT_FROM].
+      - index: 4
+        banner:
+          tone: success
+          headline: Day-2 Zero-Quarantine Payoff Verified · Harborview Marine Terminal ($138ms, 0 Touchpoints)
+          message: Next placement's 1-page Schedule B Wind Endorsement ($75,000.00) classified directly as 'wind-deductible-endorsement' (Prio 40) under ont-rev-v1-2-insurance with 0 false-positive missing-field parks and 0 gemini-4-argon escalation tokens.
+          agent_note: "Full closed-loop Schema Evolution proven: Sparsity Detection -> 3-Tier Assay -> Bi-Temporal Promotion -> Day-2 Zero-Touch Auto-Consolidation."
+        agent1:
+          headline: Day-2 Endorsement Auto-Approved in 138 ms (0 Escalation Tokens)
+          detail: gemini-3.8-flash classified Harborview Schedule B directly as 'wind-deductible-endorsement' (ont-rev-v1-2-insurance) with 100% required-field match.
+        agent2:
+          headline: Two-Dimensional Lineage Verified Across Turn-1 (v1.1.0) & Turn-2 (v1.2.0)
+          detail: Turn-1 facts retain ont-rev-v1-1-baseline; Turn-2 facts carry ont-rev-v1-2-insurance + consolidation_edge_id='edge-wind-endorsement-supersedes-prop-quote'.
+    day2_payoff:
+      by_beat:
+        4:
+          day2_entity_id: ${entity:day2}
+          day2_client: Harborview Marine Terminal LLC
+          day2_program: $88,000,000.00 Coastal Marine Terminal Property Placement
+          classified_doctype: wind-deductible-endorsement
+          ontology_revision_id: ${active_revision}
+          consolidation_edge_id: edge-wind-endorsement-supersedes-prop-quote
+          resolved_deductible: $75,000.00 (Supersedes $25,000.00 Base Quote · Prio 40 > Prio 20)
+          false_positive_quarantine_parks: 0
+          latency_ms: 138
+          human_touchpoints: 0
+          escalation_tokens: 0

@@ -1,0 +1,84 @@
+id: loan-meridian-001
+domain: banking
+order: 10
+title: Commercial Real Estate Term Loan Underwriting
+entity_id: LOAN-MERIDIAN-001
+process_skill: commercial-loan-underwriting
+doctypes:
+- term-sheet
+- closing-disclosure
+- cre-credit-agreement
+- mai-appraisal
+display:
+  client: Meridian Logistics Center LLC
+  program: $45,000,000 Commercial Term Loan Underwriting
+  labels:
+    switcher: 🏦 Banking · Commercial Loan
+    domain_label: BANKING
+    header_tag: BORROWER · COMMERCIAL REAL ESTATE
+    portal_title: DocuBridge External Borrower & Lender Portal
+    portal_pill: 'Borrower: Meridian Logistics Center LLC'
+    portal_heading: Meridian Logistics Center LLC · Commercial Loan Portal
+    checklist_title: Meridian Logistics Center LLC — $45M CRE Term Loan Submission Checklist
+    tenant_id: tenant-meridian
+    short_name: Meridian
+    intake_caption: Meridian Logistics Center LLC ($45M CRE Term Loan) — Rent Roll validated in code (0
+      AI tokens); Credit Agreement Fee Addendum conflict parked in Quarantine.
+    intake_caption_sub: 'Path A: meridian-rent-roll-dscr-2026.xlsx (NOI $4.185M, DSCR 1.42x) | Path B:
+      syndicated-credit-agreement-meridian-2026.pdf ($50k Cover vs $100k Schedule B Page 4)'
+    consolidation_caption: Consolidation Rules Engine reconciles Schedule B Fee Addendum ($100,000, Prio
+      40) over Cover Term Sheet ($50,000, Prio 20) with 6-hop lineage.
+    watermark: 2026-10-19T21:00:00Z (LOAN-MERIDIAN-001 delta exported)
+    vault_uri: gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-addendum-v2
+    inbox_heading: Resolve Origination & Rate-Lock Fee Conflict (Meridian · Schedule B Addendum)
+agents:
+  underwriter: spiffe://agents.docubridge.io/internal/credit-officer-agent
+  portal: spiffe://agents.docubridge.io/portal/external-portal-agent
+seed:
+  context_id: ctx-meridian-001
+  facts:
+  - doc_id: doc-meridian-ts-v1
+    doctype: term-sheet
+    issuer: Syndicated Lenders Group
+    message: Accepted CRE Term Sheet & MAI Appraisal
+    key_fields:
+      currency: USD
+      loan_amount: $45,000,000.00
+      appraised_value: $62,500,000.00
+      origination_fee: $50,000.00
+      net_operating_income: $4,185,000.00
+    source_anchors:
+      origination_fee:
+        page_number: 1
+        bounding_box: [0.14, 0.31, 0.48, 0.36]
+        snippet: 'Base Origination Fee: $50,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-ts-v1/v1/ts.pdf
+      loan_amount:
+        page_number: 2
+        bounding_box: [0.15, 0.28, 0.52, 0.33]
+        snippet: 'Senior Term Loan Facility: $45,000,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-ts-v1/v1/ts.pdf
+      appraised_value:
+        page_number: 11
+        bounding_box: [0.18, 0.52, 0.6, 0.58]
+        snippet: 'As-Stabilized Appraised Collateral Value: $62,500,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-ts-v1/v1/ts.pdf
+    raw_document_marker: '%PDF-1.7 meridian-term-sheet'
+    recorded_at: '2026-10-19T18:00:00Z'
+    effective_from: '2026-11-01T00:00:00Z'
+  - doc_id: doc-meridian-addendum-v2
+    doctype: closing-disclosure
+    issuer: Syndicated Lenders Group
+    message: Accepted Schedule B Fee Addendum
+    key_fields:
+      currency: USD
+      origination_fee: $100,000.00
+    source_anchors:
+      origination_fee:
+        page_number: 4
+        bounding_box: [0.12, 0.44, 0.58, 0.51]
+        snippet: 'Schedule B Origination & Rate-Lock Fee: $100,000.00'
+        artifact_uri: gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-addendum-v2/v1/addendum.pdf
+    raw_document_marker: '%PDF-1.7 meridian-schedule-b-addendum'
+    recorded_at: '2026-10-19T20:00:00Z'
+    effective_from: '2026-11-01T00:00:00Z'

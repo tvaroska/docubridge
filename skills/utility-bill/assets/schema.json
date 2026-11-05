@@ -1,16 +1,43 @@
 {
   "type": "object",
-  "required": ["doctype", "issuer", "key_fields"],
+  "description": "Recurring residential or commercial utility statement (electric, gas, water, or municipal service) corroborating physical service address and account holder residency. Where to read: Identified by utility provider masthead, meter/usage summary, \"Service Address\" block, and billing statement date within the recency window. Distinguish from: Do NOT confuse with a government-issued photo identity document (`gov-id`), and carefully separate the physical `service_address` from a P.O. Box or billing/mailing address.",
+  "x_okf_revision_id": "ont-rev-v1-1-baseline",
+  "required": [
+    "doctype",
+    "issuer",
+    "key_fields"
+  ],
   "properties": {
-    "doctype": { "type": "string", "enum": ["utility-bill"] },
-    "issuer":  { "type": "string", "description": "canonicalized issuer key" },
+    "doctype": {
+      "type": "string",
+      "enum": [
+        "utility-bill"
+      ]
+    },
+    "issuer": {
+      "type": "string",
+      "description": "canonicalized issuer key"
+    },
     "key_fields": {
       "type": "object",
-      "required": ["name", "service_address", "statement_date"],
+      "required": [
+        "name",
+        "service_address",
+        "statement_date"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "service_address": { "type": "string" },
-        "statement_date": { "type": "string", "description": "ISO date (YYYY-MM-DD)" }
+        "name": {
+          "type": "string",
+          "description": "Full name of the utility account holder as printed on the statement. Where to read: Account Summary or Customer Address block at the top of Page 1. Distinguish from: Do NOT extract the utility provider's corporate name or remit-to payee."
+        },
+        "service_address": {
+          "type": "string",
+          "description": "Physical street address where utility service is metered and delivered. Where to read: Explicit 'Service Address' or 'Service Location' field above the meter reading table. Distinguish from: Do NOT extract the 'Mailing Address', 'Billing Address', or utility remittance P.O. Box."
+        },
+        "statement_date": {
+          "type": "string",
+          "description": "ISO date (YYYY-MM-DD) when the billing statement was issued. Where to read: Top-right Statement Summary box ('Statement Date' or 'Bill Date'). Distinguish from: Do NOT extract the 'Payment Due Date' or historical 'Previous Bill Date'."
+        }
       }
     }
   }

@@ -37,6 +37,15 @@ fields:
       what_it_is: "Final binding principal loan amount at settlement in the disclosure's currency."
       where_to_read: "Page 1, Loan Terms table, first row ('Loan Amount')."
       distinguish_from: "Do NOT extract 'Cash to Close', 'Sale Price of Property', or 'Total of Payments' from Page 5."
+  appraised_value:
+    type: string
+    required: false
+    monetary: true
+    synonyms: ["Appraised Property Value", "Appraised Prop. Value", "Collateral Value"]
+    description:
+      what_it_is: "Appraised collateral value the lender relied on at closing, when the disclosure restates it."
+      where_to_read: "Page 1, Closing Information block ('Appraised Prop. Value') or the Schedule B collateral summary row."
+      distinguish_from: "Do NOT extract 'Sale Price' or 'Estimated Prop. Value'; the certified valuation itself lives in the appraisal (`mai-appraisal`), which stays authoritative for collateral value."
   origination_fee:
     type: string
     required: true

@@ -5,6 +5,90 @@
   window.lastTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
   window.cachedTrustPolicies = [];
 
+  // Scenario manifests (GET /v1/demo/scenarios) are the only source of client /
+  // program / entity-id copy; nothing below names a scenario.
+  window.SCENARIOS = [];
+  window.scenarioForDomain = function(domain) {
+    const matches = window.SCENARIOS.filter(s => s.domain === domain);
+    return matches.find(s => s.seeded) || matches[0] || null;
+  };
+  window.stageScenario = function(stageKind, domain) {
+    const matches = window.SCENARIOS.filter(s => s.stage_kind === stageKind);
+    return matches.find(s => s.domain === domain) || null;
+  };
+  window.scenarioLabel = function(domain, key, fallback) {
+    const s = window.scenarioForDomain(domain);
+    if (!s) return fallback === undefined ? "" : fallback;
+    if (key === "client") return s.display.client;
+    if (key === "program") return s.display.program;
+    if (key === "entity_id") return s.entity_id;
+    const v = s.display.labels ? s.display.labels[key] : undefined;
+    return v === undefined ? (fallback === undefined ? "" : fallback) : v;
+  };
+  window.switcherDomains = function() {
+    const seen = [];
+    window.SCENARIOS.filter(s => s.seeded).forEach(s => { if (!seen.includes(s.domain)) seen.push(s.domain); });
+    return seen;
+  };
+  window.renderDomainSwitcher = function() {
+    const container = document.getElementById("domain-switcher");
+    window.switcherDomains().forEach(domain => {
+      let btn = document.getElementById("domain-btn-" + domain);
+      if (!btn && container) {
+        btn = document.createElement("button");
+        btn.id = "domain-btn-" + domain;
+        btn.className = "domain-btn";
+        btn.onclick = () => window.switchDomain(domain);
+        container.appendChild(btn);
+      }
+      if (btn) btn.textContent = window.scenarioLabel(domain, "switcher", window.scenarioForDomain(domain).title);
+    });
+  };
+  window.loadScenarios = async function() {
+    try {
+      const resp = await window.apiFetch("/v1/demo/scenarios");
+      if (resp.ok) window.SCENARIOS = (await resp.json()).scenarios || [];
+    } catch (_) {}
+    window.renderDomainSwitcher();
+    const consol = window.SCENARIOS.find(s => s.stage_kind === "consolidation");
+    if (consol) {
+      window.FALLBACK_COLLAB_STATE.entity_id = consol.entity_id;
+      window.FALLBACK_COLLAB_STATE.borrower_name = consol.display.client;
+      window.FALLBACK_COLLAB_STATE.facility_title = consol.display.program;
+    }
+    const evol = window.stageScenario("schema_evolution", window.currentSchemaEvolutionScenario)
+      || window.SCENARIOS.find(s => s.stage_kind === "schema_evolution");
+    if (evol) {
+      window.FALLBACK_SCHEMA_EVOL_STATE.entity_id = evol.entity_id;
+      window.FALLBACK_SCHEMA_EVOL_STATE.client_name = evol.display.client;
+      window.FALLBACK_SCHEMA_EVOL_STATE.program_title = evol.display.program;
+      window.FALLBACK_SCHEMA_EVOL_STATE.scenario_domain = evol.domain;
+    }
+  };
+  window.applyScenarioLabels = function() {
+    const dom = window.currentDomain;
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el && value) el.textContent = value;
+    };
+    setText("header-entity-tag", window.scenarioLabel(dom, "header_tag"));
+    setText("header-entity-name", window.scenarioLabel(dom, "client"));
+    setText("header-entity-sub", window.scenarioLabel(dom, "header_sub", window.scenarioLabel(dom, "program")));
+    setText("portal-header-title", window.scenarioLabel(dom, "portal_title"));
+    setText("portal-partner-pill", window.scenarioLabel(dom, "portal_pill"));
+    setText("portal-page-heading", window.scenarioLabel(dom, "portal_heading"));
+    setText("portal-checklist-title", window.scenarioLabel(dom, "checklist_title"));
+    setText("iceberg-watermark-label", window.scenarioLabel(dom, "watermark"));
+    setText("inbox-card-heading", window.scenarioLabel(dom, "inbox_heading"));
+    setText("otel-active-entity", window.getActiveEntityId());
+    setText("proof-vault-uri", window.scenarioLabel(dom, "vault_uri"));
+    const consol = window.stageScenario("consolidation", dom);
+    if (consol) {
+      setText("collab-entity-badge", consol.entity_id);
+      setText("collab-stage-title", (consol.display.labels && consol.display.labels.stage_title) || `${consol.display.client} — ${consol.display.program}`);
+    }
+  };
+
   const FALLBACK_ASSETS = [
     { asset_id: "asset.cloud_storage_audit_vault", zone: "audit_vault", physical_uri: "gs://docubridge-audit-vault/vault/", owner_domain: "enterprise-governance", classification: "internal_only" },
     { asset_id: "asset.alloydb_operational_store", zone: "operational_store", physical_uri: "alloydb://docubridge-enterprise-data/operational/bridge_operational_facts", owner_domain: "data-engineering", classification: "internal_only" },
@@ -60,9 +144,7 @@
   };
 
   window.getActiveEntityId = function() {
-    if (window.currentDomain === "mortgage") return "MORTGAGE-WESTBROOK-2026";
-    if (window.currentDomain === "insurance") return "terrepower-coastal-2027";
-    return "LOAN-MERIDIAN-001";
+    return window.scenarioLabel(window.currentDomain, "entity_id", "");
   };
 
   window.updateTraceBadge = function(traceId) {
@@ -124,32 +206,18 @@
       }
     }
 
-    const domLabel = window.currentDomain === "banking"
-      ? "BANKING"
-      : (window.currentDomain === "mortgage" ? "MORTGAGE" : "INSURANCE");
+    const domLabel = window.scenarioLabel(window.currentDomain, "domain_label", String(window.currentDomain || "").toUpperCase());
     if (sceneId === "scene-intake") {
       window.setCaption(
         `STAGE 1 · DUAL-PATH INTAKE & WORM VAULT (${domLabel})`,
-        window.currentDomain === "banking"
-          ? "Meridian Logistics Center LLC ($45M CRE Term Loan) — Rent Roll validated in code (0 AI tokens); Credit Agreement Fee Addendum conflict parked in Quarantine."
-          : (window.currentDomain === "mortgage"
-              ? "Westbrook Family Trust ($1.85M Jumbo Mortgage) — Form 1003 & IRS 4506-C validated in code (0 AI tokens); TRID Closing Disclosure Page 3 Rate-Lock Addendum parked in Quarantine."
-              : "Terrepower Coastal LLC ($142.5M TIV) — Property SOV validated in code (0 AI tokens); Chubb Schedule B Wind Deductible conflict parked in Quarantine."),
-        window.currentDomain === "banking"
-          ? "Path A: meridian-rent-roll-dscr-2026.xlsx (NOI $4.185M, DSCR 1.42x) | Path B: syndicated-credit-agreement-meridian-2026.pdf ($50k Cover vs $100k Schedule B Page 4)"
-          : (window.currentDomain === "mortgage"
-              ? "Path A: westbrook-1003-urla-4506c-2026.json (DTI 31.4%, Reserves 18 mos) | Path B: firstnational-trid-closing-disclosure-2026.pdf ($4,250 LE vs $8,500 CD Page 3)"
-              : "Path A: terrepower-coastal-sov-2027.xlsx ($142.5M TIV) | Path B: chubb-coastal-property-quote-2027.pdf ($50k Cover vs $100k Schedule B Page 4)")
+        window.scenarioLabel(window.currentDomain, "intake_caption"),
+        window.scenarioLabel(window.currentDomain, "intake_caption_sub")
       );
     } else if (sceneId === "scene-consolidation") {
       window.refreshScene2LineageAndSync();
       window.setCaption(
         `STAGE 2 · BI-TEMPORAL CONSOLIDATION & 6-HOP LINEAGE (${domLabel})`,
-        window.currentDomain === "banking"
-          ? "Consolidation Rules Engine reconciles Schedule B Fee Addendum ($100,000, Prio 40) over Cover Term Sheet ($50,000, Prio 20) with 6-hop lineage."
-          : (window.currentDomain === "mortgage"
-              ? "Consolidation Rules Engine reconciles Final TRID Closing Disclosure ($8,500, Prio 40) over Initial Loan Estimate ($4,250, Prio 20) with 6-hop lineage."
-              : "Consolidation Rules Engine reconciles Schedule B Wind Endorsement ($100,000, Prio 40) over Cover Quote ($50,000, Prio 20) with 6-hop lineage."),
+        window.scenarioLabel(window.currentDomain, "consolidation_caption"),
         "GET /v1/catalog/lineage -> INBOUND -> AUDIT_VAULT -> OPERATIONAL_STORE -> BUSINESS_VIEW -> BIGQUERY_ICEBERG -> USER_INTERACTION_A2UI"
       );
     } else if (sceneId === "scene-inbox") {
@@ -175,11 +243,11 @@
   };
 
   window.switchDomain = function(domain) {
-    window.currentDomain = (domain === "insurance" || domain === "mortgage") ? domain : "banking";
-    document.getElementById("domain-btn-banking").classList.toggle("active", window.currentDomain === "banking");
-    const mortBtn = document.getElementById("domain-btn-mortgage");
-    if (mortBtn) mortBtn.classList.toggle("active", window.currentDomain === "mortgage");
-    document.getElementById("domain-btn-insurance").classList.toggle("active", window.currentDomain === "insurance");
+    const known = window.switcherDomains();
+    window.currentDomain = (known.length === 0 || known.includes(domain)) ? (domain || "banking") : known[0];
+    document.querySelectorAll(".domain-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.id === "domain-btn-" + window.currentDomain);
+    });
 
     const day2Banner = document.getElementById("day2-payoff-banner");
     if (day2Banner) day2Banner.style.display = "none";
@@ -192,22 +260,15 @@
     if (activeEntityEl) activeEntityEl.textContent = window.getActiveEntityId();
     const collabStage = document.getElementById("banking-collab-stage");
     if (collabStage) {
-      collabStage.style.display = window.currentDomain === "banking" ? "block" : "none";
+      collabStage.style.display = window.stageScenario("consolidation", window.currentDomain) ? "block" : "none";
     }
     const schemaEvolStage = document.getElementById("schema-evolution-stage");
     if (schemaEvolStage) {
-      schemaEvolStage.style.display = window.currentDomain === "insurance" ? "block" : "none";
+      schemaEvolStage.style.display = window.stageScenario("schema_evolution", window.currentDomain) ? "block" : "none";
     }
 
     if (window.currentDomain === "banking") {
       // Header & Portal
-      document.getElementById("header-entity-tag").textContent = "BORROWER · COMMERCIAL REAL ESTATE";
-      document.getElementById("header-entity-name").textContent = "Meridian Logistics Center LLC";
-      document.getElementById("header-entity-sub").textContent = "$45,000,000 Commercial Term Loan Underwriting";
-      document.getElementById("portal-header-title").textContent = "DocuBridge External Borrower & Lender Portal";
-      document.getElementById("portal-partner-pill").textContent = "Borrower: Meridian Logistics Center LLC";
-      document.getElementById("portal-page-heading").textContent = "Meridian Logistics Center LLC · Commercial Loan Portal";
-      document.getElementById("portal-checklist-title").textContent = "Meridian Logistics Center LLC — $45M CRE Term Loan Submission Checklist";
       document.getElementById("portal-path-a-file").textContent = "📄 meridian-rent-roll-dscr-2026.xlsx";
       document.getElementById("portal-path-a-meta").textContent = "38 Commercial Tenants · Net Operating Income $4,185,000.00 · DSCR 1.42x";
       document.getElementById("portal-path-b-file").textContent = "📑 syndicated-credit-agreement-meridian-2026.pdf";
@@ -310,10 +371,8 @@
           <strong>6. User Interface Card:</strong> <span class="mono">a2ui://citation/LOAN-MERIDIAN-001/origination_fee#page=4</span>
         </div>
       `;
-      document.getElementById("iceberg-watermark-label").textContent = "2026-10-19T21:00:00Z (LOAN-MERIDIAN-001 delta exported)";
 
       // Scene 3: Inbox
-      document.getElementById("inbox-card-heading").textContent = "Resolve Origination & Rate-Lock Fee Conflict (Meridian · Schedule B Addendum)";
       document.getElementById("inbox-card-sub").innerHTML = 'Proposed by Agent: <span class="mono">$50,000</span> (Cover Term Sheet) vs. Schedule B Fee Addendum: <span class="mono">$100,000</span> (<span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span>)';
       document.getElementById("inbox-field-label").textContent = "VERIFIED ORIGINATION FEE VALUE";
       document.getElementById("input-verified-deductible").value = "$100,000";
@@ -328,13 +387,6 @@
       document.getElementById("btn-promote-trust").textContent = "3. Promote Credit Addendum Slice to Trusted Auto-Approve";
     } else if (window.currentDomain === "mortgage") {
       // Mortgage Mode (MORTGAGE-WESTBROOK-2026)
-      document.getElementById("header-entity-tag").textContent = "BORROWER · RESIDENTIAL JUMBO MORTGAGE";
-      document.getElementById("header-entity-name").textContent = "Westbrook Family Trust";
-      document.getElementById("header-entity-sub").textContent = "$1,850,000 30-Year Jumbo Mortgage · TRID Closing";
-      document.getElementById("portal-header-title").textContent = "DocuBridge External Borrower & Settlement Agent Portal";
-      document.getElementById("portal-partner-pill").textContent = "Borrower: Westbrook Family Trust";
-      document.getElementById("portal-page-heading").textContent = "Westbrook Family Trust · Residential Mortgage Closing Portal";
-      document.getElementById("portal-checklist-title").textContent = "Westbrook Family Trust — $1.85M Jumbo Mortgage TRID Closing Checklist";
       document.getElementById("portal-path-a-file").textContent = "📄 westbrook-1003-urla-4506c-2026.json";
       document.getElementById("portal-path-a-meta").textContent = "MISMO 3.4 URLA (Form 1003) + IRS 4506-C Transcripts · DTI 31.4% · 18 Mos Reserves";
       document.getElementById("portal-path-b-file").textContent = "📑 firstnational-trid-closing-disclosure-2026.pdf";
@@ -437,10 +489,8 @@
           <strong>6. User Interface Card:</strong> <span class="mono">a2ui://citation/MORTGAGE-WESTBROOK-2026/origination_fee#page=3</span>
         </div>
       `;
-      document.getElementById("iceberg-watermark-label").textContent = "2026-10-19T21:00:00Z (MORTGAGE-WESTBROOK-2026 delta exported)";
 
       // Scene 3: Inbox
-      document.getElementById("inbox-card-heading").textContent = "Resolve TRID Section A Origination & Rate-Lock Extension Variance (Westbrook · Page 3)";
       document.getElementById("inbox-card-sub").innerHTML = 'Proposed by Agent: <span class="mono">$4,250</span> (Initial Loan Estimate) vs. Signed TRID Closing Disclosure: <span class="mono">$8,500</span> (<span class="anchor-chip">Page 3 · Region [0.11, 0.48]</span>)';
       document.getElementById("inbox-field-label").textContent = "VERIFIED TRID SECTION A ORIGINATION FEE";
       document.getElementById("input-verified-deductible").value = "$8,500";
@@ -455,13 +505,6 @@
       document.getElementById("btn-promote-trust").textContent = "3. Promote Mortgage TRID Closing Slice to Trusted Auto-Approve";
     } else {
       // Insurance Mode
-      document.getElementById("header-entity-tag").textContent = "CLIENT · COMMERCIAL INSURANCE";
-      document.getElementById("header-entity-name").textContent = "Terrepower Coastal LLC";
-      document.getElementById("header-entity-sub").textContent = "2027 Property & Benefits Placement";
-      document.getElementById("portal-header-title").textContent = "DocuBridge External Client & Carrier Portal";
-      document.getElementById("portal-partner-pill").textContent = "Carrier: Chubb Commercial";
-      document.getElementById("portal-page-heading").textContent = "Chubb Commercial · Carrier Submission Portal";
-      document.getElementById("portal-checklist-title").textContent = "Terrepower Coastal LLC — 2027 Renewal Submission Checklist";
       document.getElementById("portal-path-a-file").textContent = "📄 terrepower-coastal-sov-2027.xlsx";
       document.getElementById("portal-path-a-meta").textContent = "14 Coastal Locations · Total Insured Value $142,500,000 · Exact Decimal schema check";
       document.getElementById("portal-path-b-file").textContent = "📑 chubb-coastal-property-quote-2027.pdf";
@@ -564,10 +607,8 @@
           <strong>6. User Interface Card:</strong> <span class="mono">a2ui://citation/terrepower-2027/deductible#page=4</span>
         </div>
       `;
-      document.getElementById("iceberg-watermark-label").textContent = "2026-10-19T21:00:00Z (terrepower-2027 delta exported)";
 
       // Scene 3: Inbox
-      document.getElementById("inbox-card-heading").textContent = "Resolve Coastal Wind Deductible Conflict (Chubb · Schedule B)";
       document.getElementById("inbox-card-sub").innerHTML = 'Proposed by Agent: <span class="mono">$50,000</span> (Cover Page) vs. Schedule B Endorsement: <span class="mono">$100,000</span> (<span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span>)';
       document.getElementById("inbox-field-label").textContent = "VERIFIED DEDUCTIBLE VALUE";
       document.getElementById("input-expert-memo").value = "Coastal Schedule B endorsement on page 4 overrides base cover page deductible to $100,000.";
@@ -582,6 +623,7 @@
     }
 
     window.setPersonaMode(window.currentPersonaMode);
+    window.applyScenarioLabels();
     const activeScene = document.querySelector(".scene.active");
     if (activeScene) {
       const id = activeScene.id;
@@ -646,9 +688,7 @@
     const displayEl = document.getElementById("persona-display");
     const jwtBox = document.getElementById("compound-jwt-box");
     const banner = document.getElementById("rbac-refusal-banner");
-    const tenantId = window.currentDomain === "banking"
-      ? "tenant-meridian"
-      : (window.currentDomain === "mortgage" ? "tenant-westbrook" : "tenant-terrepower");
+    const tenantId = window.scenarioLabel(window.currentDomain, "tenant_id", "tenant-" + window.currentDomain);
 
     if (window.currentPersonaMode === "junior") {
       displayEl.textContent = isLending
@@ -809,7 +849,7 @@
     const raw = (chipText || "Page 4 · Region [0.12, 0.44]").trim();
     const dom = window.currentDomain;
     let docId = "syndicated-credit-agreement-meridian-2026.pdf";
-    let vaultUri = "gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-addendum-v2";
+    let vaultUri = window.scenarioLabel(dom, "vault_uri", "");
     let sha = "sha256:9f84b7c2d0148e7a5a19e4b30f12e21c";
     let header = "SCHEDULE B — EXECUTED FEE & RATE-LOCK ADDENDUM";
     let prio = "Consolidation Priority 40";
@@ -821,7 +861,6 @@
       docId = raw.includes("Page 6") || raw.includes("Page 9")
         ? "form-1004-residential-appraisal-westbrook.pdf"
         : "firstnational-trid-closing-disclosure-2026.pdf";
-      vaultUri = "gs://docubridge-audit-vault/vault/MORTGAGE-WESTBROOK-2026/doc-westbrook-cd-v2";
       sha = "sha256:7c31e9a4b8201f3d9a82b4c10e77a904";
       header = raw.includes("Page 6")
         ? "FORM 1004 — UNIFORM RESIDENTIAL APPRAISAL REPORT"
@@ -836,7 +875,6 @@
       docId = raw.includes("Page 11")
         ? "aig-excess-property-binder-2027.pdf"
         : "chubb-coastal-property-quote-2027.pdf";
-      vaultUri = "gs://docubridge-audit-vault/vault/terrepower-coastal-2027/doc-terrepower-endorsement-v2";
       sha = "sha256:4a19d3e8f1024c9b7a62e1d40b88c802";
       header = "SCHEDULE B — NAMED WINDSTORM DEDUCTIBLE ENDORSEMENT";
       prio = "Consolidation Priority 40";
@@ -1081,8 +1119,8 @@
 
     if (tab === "bindings") {
       const bindings = (cat && cat.agent_registry && cat.agent_registry.bindings) || [
-        { binding_id: "binding-engine-to-catalog-mcp", display_name: "Agent Engine → Knowledge Catalog MCP", source_agent: "projects/100000000000/locations/us-central1/agents/agentregistry-5963861295097708544", target_resource: "projects/100000000000/locations/us-central1/mcpServers/agentregistry-knowledge-catalog-mcp", auth_provider: "google_workload_identity_spiffe", delegation_mode: "rfc8693_obo_compound_jwt" },
-        { binding_id: "binding-engine-to-alloydb-mcp", display_name: "Agent Engine → AlloyDB Bi-Temporal Store MCP", source_agent: "projects/100000000000/locations/us-central1/agents/agentregistry-5963861295097708544", target_resource: "projects/100000000000/locations/us-central1/mcpServers/agentregistry-alloydb-operational-store-mcp", auth_provider: "google_workload_identity_spiffe", delegation_mode: "rfc8693_obo_compound_jwt" },
+        { binding_id: "binding-engine-to-catalog-mcp", display_name: "Agent Engine → Knowledge Catalog MCP", source_agent: "projects/100000000000/locations/us-central1/agents/agentregistry-1000000000000000000", target_resource: "projects/100000000000/locations/us-central1/mcpServers/agentregistry-knowledge-catalog-mcp", auth_provider: "google_workload_identity_spiffe", delegation_mode: "rfc8693_obo_compound_jwt" },
+        { binding_id: "binding-engine-to-alloydb-mcp", display_name: "Agent Engine → AlloyDB Bi-Temporal Store MCP", source_agent: "projects/100000000000/locations/us-central1/agents/agentregistry-1000000000000000000", target_resource: "projects/100000000000/locations/us-central1/mcpServers/agentregistry-alloydb-operational-store-mcp", auth_provider: "google_workload_identity_spiffe", delegation_mode: "rfc8693_obo_compound_jwt" },
         { binding_id: "binding-credit-officer-to-inbox", display_name: "Credit Officer Agent → A2UI v0.9 Action Inbox", source_agent: "projects/100000000000/locations/us-central1/agents/agentregistry-credit-officer-agent", target_resource: "projects/100000000000/locations/us-central1/endpoints/agentregistry-a2ui-v09-inbox", auth_provider: "spiffe_jwt_svid_obo", delegation_mode: "rfc8693_obo_compound_jwt" }
       ];
       box.innerHTML = bindings.map(b => `
@@ -1175,7 +1213,7 @@
     const isLending = dom !== "insurance";
     const payload = dom === "banking"
       ? {
-          entity_id: "LOAN-MERIDIAN-001",
+          entity_id: window.getActiveEntityId(),
           doc_id: "syndicated-credit-agreement-meridian-2026.pdf",
           doctype: "addendum",
           issuer: "Syndicated",
@@ -1191,7 +1229,7 @@
         }
       : (dom === "mortgage"
           ? {
-              entity_id: "MORTGAGE-WESTBROOK-2026",
+              entity_id: window.getActiveEntityId(),
               doc_id: "firstnational-trid-closing-disclosure-2026.pdf",
               doctype: "closing-disclosure",
               issuer: "FirstNational",
@@ -1206,7 +1244,7 @@
               review_dwell_ms: 4800
             }
           : {
-              entity_id: "terrepower-coastal-2027",
+              entity_id: window.getActiveEntityId(),
               doc_id: "chubb-coastal-property-quote-2027.pdf",
               doctype: "quote",
               issuer: "Chubb",
@@ -1393,7 +1431,7 @@
       : (dom === "mortgage" ? "slice:mortgage-trid:closing-disclosure:MEDIUM" : "slice:aig:endorsement:MEDIUM");
     const shadowPayload = dom === "banking"
       ? {
-          entity_id: "LOAN-MERIDIAN-001",
+          entity_id: window.getActiveEntityId(),
           doc_id: "syndicated-credit-agreement-meridian-2026.pdf",
           issuer: "Syndicated",
           doctype: "addendum",
@@ -1404,7 +1442,7 @@
         }
       : (dom === "mortgage"
           ? {
-              entity_id: "MORTGAGE-WESTBROOK-2026",
+              entity_id: window.getActiveEntityId(),
               doc_id: "firstnational-trid-closing-disclosure-2026.pdf",
               issuer: "FirstNational",
               doctype: "closing-disclosure",
@@ -1414,7 +1452,7 @@
               risk_level: "MEDIUM"
             }
           : {
-              entity_id: "terrepower-coastal-2027",
+              entity_id: window.getActiveEntityId(),
               doc_id: "aig-excess-property-binder-2027.pdf",
               issuer: "AIG",
               doctype: "endorsement",
@@ -1467,7 +1505,7 @@
       : (dom === "mortgage" ? "slice:mortgage-trid:closing-disclosure:MEDIUM" : "slice:aig:endorsement:MEDIUM");
     const driftPayload = dom === "banking"
       ? {
-          entity_id: "LOAN-MERIDIAN-001",
+          entity_id: window.getActiveEntityId(),
           doc_id: "syndicated-credit-agreement-drift-2026.pdf",
           issuer: "Syndicated",
           doctype: "addendum",
@@ -1478,7 +1516,7 @@
         }
       : (dom === "mortgage"
           ? {
-              entity_id: "MORTGAGE-WESTBROOK-2026",
+              entity_id: window.getActiveEntityId(),
               doc_id: "firstnational-trid-closing-drift-2026.pdf",
               issuer: "FirstNational",
               doctype: "closing-disclosure",
@@ -1488,7 +1526,7 @@
               risk_level: "MEDIUM"
             }
           : {
-              entity_id: "terrepower-coastal-2027",
+              entity_id: window.getActiveEntityId(),
               doc_id: "aig-excess-property-drift-2027.pdf",
               issuer: "AIG",
               doctype: "endorsement",
@@ -1529,7 +1567,7 @@
 
     const ingestPayload = dom === "banking"
       ? {
-          entity_id: "LOAN-MERIDIAN-001",
+          entity_id: window.getActiveEntityId(),
           doc_id: "doc-meridian-day2-auto",
           doctype: "addendum",
           issuer: "Syndicated Credit Agreement",
@@ -1548,7 +1586,7 @@
         }
       : (dom === "mortgage"
           ? {
-              entity_id: "MORTGAGE-WESTBROOK-2026",
+              entity_id: window.getActiveEntityId(),
               doc_id: "doc-westbrook-day2-auto",
               doctype: "closing-disclosure",
               issuer: "FirstNational Home Loans",
@@ -1566,7 +1604,7 @@
               }
             }
           : {
-              entity_id: "terrepower-coastal-2027",
+              entity_id: window.getActiveEntityId(),
               doc_id: "doc-terrepower-day2-auto",
               doctype: "quote",
               issuer: "Chubb Syndicate 2987",
@@ -1664,9 +1702,9 @@
   };
 
   window.FALLBACK_COLLAB_STATE = {
-    entity_id: "LOAN-MERIDIAN-CONSOL-2026",
-    borrower_name: "Meridian Logistics Center LLC",
-    facility_title: "$1,800,000.00 Commercial Debt Consolidation Facility",
+    entity_id: "",
+    borrower_name: "",
+    facility_title: "",
     beat: 0,
     done: false,
     counts: { total: 3, satisfied: 0, waived: 0, required: 3 },
@@ -1977,7 +2015,7 @@
         window.renderConsolidationCollab(state);
         window.setCaption(
           "COLLABORATIVE CONSOLIDATION · RESET TO BEAT 0",
-          "Restored Meridian Logistics Center LLC ($1.80M Consolidation Facility) to initial 3-document checklist.",
+          ((window.stageScenario("consolidation", window.currentDomain) || { display: { labels: {} } }).display.labels.reset_caption) || "Restored the consolidation stage to its initial checklist.",
           "POST /v1/demo/consolidation-collab/reset -> beat=0, satisfied=0, waived=0, required=3, done=false"
         );
         return state;
@@ -2378,9 +2416,9 @@
   };
 
   window.FALLBACK_SCHEMA_EVOL_STATE = {
-    entity_id: "terrepower-coastal-2027",
-    client_name: "Terrepower Coastal LLC",
-    program_title: "$142,500,000.00 Commercial Coastal Property Placement",
+    entity_id: "",
+    client_name: "",
+    program_title: "",
     beat: 0,
     done: false,
     active_ontology_revision: "ont-rev-v1-1-baseline",
@@ -2490,7 +2528,7 @@
     if (btnIns) btnIns.className = !isBenefits ? "btn btn-primary" : "btn btn-outline";
 
     const entBadge = document.getElementById("schema-evol-entity-badge");
-    if (entBadge) entBadge.textContent = st.entity_id || (isBenefits ? "BENEFITS-APEX-HDHP-2027" : "terrepower-coastal-2027");
+    if (entBadge) entBadge.textContent = st.entity_id || ((window.stageScenario("schema_evolution", scen) || {}).entity_id || "");
     const titleEl = document.getElementById("schema-evol-card-title");
     if (titleEl && st.client_name && st.program_title) {
       titleEl.textContent = `${st.client_name} — ${st.program_title}`;
@@ -2750,7 +2788,7 @@
         refBox.innerHTML = `
           <div style="padding:10px;background:#ecfdf5;border:1.5px solid #10b981;border-radius:8px;font-size:12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <strong style="color:#047857;">⚡ Day-2 Payoff: ${d2.day2_client || "NorthStar Precision Systems"} (${d2.day2_entity_id || "BENEFITS-NORTHSTAR-DAY2"})</strong>
+              <strong style="color:#047857;">⚡ Day-2 Payoff: ${d2.day2_client || ""} (${d2.day2_entity_id || ""})</strong>
               <span class="badge badge-green">${d2.latency_ms || 134} ms · 0 Touchpoints</span>
             </div>
             <div class="mono" style="font-size:11px;margin-top:4px;color:#065f46;">
@@ -2820,17 +2858,19 @@
   });
 
   // Initialize Default Domain Mode (Banking default, or ?domain= / BRIDGE_DEFAULT_DEMO_DOMAIN), Seed Demo Scenarios & Live Telemetry on Load
-  document.addEventListener("DOMContentLoaded", function() {
+  document.addEventListener("DOMContentLoaded", async function() {
     window.renderCatalogAssets(FALLBACK_ASSETS);
     window.renderSpiffeAgents(FALLBACK_SPIFFE_AGENTS);
     window.renderTrustPolicies(FALLBACK_TRUST_POLICIES);
     window.renderOtelAnalytics(null);
-    let initialDomain = "banking";
+    await window.loadScenarios();
+    const domains = window.switcherDomains();
+    let initialDomain = domains[0] || "banking";
     try {
       const urlDom = (new URLSearchParams(window.location.search).get("domain") || "").trim().toLowerCase();
       const envDom = (window.DEFAULT_DEMO_DOMAIN || "").trim().toLowerCase();
       const candidate = urlDom || envDom;
-      if (candidate === "insurance" || candidate === "mortgage" || candidate === "banking") {
+      if (candidate && (domains.length === 0 || domains.includes(candidate))) {
         initialDomain = candidate;
       }
     } catch (_) {}

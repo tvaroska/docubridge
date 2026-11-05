@@ -1918,9 +1918,17 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
         demo_resp = client.get(route)
         assert demo_resp.status_code == 200
         assert "DOCUBRIDGE" in demo_resp.text
-        assert "Meridian Logistics Center LLC" in demo_resp.text
-        assert "Terrepower Coastal LLC" in demo_resp.text
+        assert 'id="domain-switcher"' in demo_resp.text
         assert "agents.legacy-vendor.internal" not in demo_resp.text
+    # Client / program copy is served by the scenario manifests, not the HTML shell.
+    scenario_clients = {
+        s["display"]["client"]
+        for s in client.get("/v1/demo/scenarios").json()["scenarios"]
+    }
+    assert {
+        "Meridian Logistics Center LLC",
+        "Terrepower Coastal LLC",
+    } <= scenario_clients
 
     assets_resp = client.get("/v1/catalog/assets")
     assert assets_resp.status_code == 200
@@ -2549,7 +2557,12 @@ def test_mortgage_underwriting_day2_payoff_and_telemetry_xray() -> None:
     assert demo_resp.status_code == 200
     html = demo_resp.text
     assert "domain-btn-mortgage" in html
-    assert "MORTGAGE-WESTBROOK-2026" in html
+    mortgage_entities = {
+        s["entity_id"]
+        for s in client.get("/v1/demo/scenarios").json()["scenarios"]
+        if s["domain"] == "mortgage"
+    }
+    assert "MORTGAGE-WESTBROOK-2026" in mortgage_entities
     assert "scene-telemetry" in html
     assert "source-proof-modal" in html
     assert "btn-verify-day2-payoff" in html
@@ -2932,7 +2945,7 @@ def test_skill_registry_versioning_rollback_and_process_instance_skill_lineage()
         headers=sr_headers,
         json={
             "binding_id": "bad-urn-binding",
-            "source_agent": "urn:agent:projects-docubridge-showcase:locations:us-central1:reasoningengines-5963861295097708544",
+            "source_agent": "urn:agent:projects-docubridge-showcase:locations:us-central1:reasoningengines-1000000000000000000",
             "target_resource": "projects/100000000000/locations/us-central1/mcpServers/agentregistry-custom-covenant-mcp",
         },
     )
@@ -2944,7 +2957,7 @@ def test_skill_registry_versioning_rollback_and_process_instance_skill_lineage()
         headers=sr_headers,
         json={
             "binding_id": "binding-engine-to-covenant-mcp",
-            "source_agent": "projects/100000000000/locations/us-central1/agents/agentregistry-5963861295097708544",
+            "source_agent": "projects/100000000000/locations/us-central1/agents/agentregistry-1000000000000000000",
             "target_resource": "projects/100000000000/locations/us-central1/mcpServers/agentregistry-custom-covenant-mcp",
         },
     )
@@ -3479,12 +3492,8 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> 
     from bridge.agent_gym import InMemoryAgentGymEngine
     from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
     from bridge.operational_store import InMemoryOperationalStore
-    from bridge.user_interaction import (
-        build_user_interaction_app,
-        reset_consolidation_collab_state,
-    )
+    from bridge.user_interaction import build_user_interaction_app
 
-    reset_consolidation_collab_state()
     op_store = InMemoryOperationalStore()
     catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
     inbox = InMemoryActionInboxStore()

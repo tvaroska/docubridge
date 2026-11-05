@@ -1,17 +1,60 @@
 {
   "type": "object",
-  "required": ["doctype", "key_fields"],
+  "description": "Final statutory TILA-RESPA Integrated Disclosure (TRID) Closing Disclosure or binding Schedule B closing fee addendum setting authoritative settlement terms, origination charges, and rate-lock extension fees at loan closing. Where to read: Identified by the \"Closing Disclosure\" banner on Page 1 (\"This form is a statement of final loan terms and closing costs\") or a signed \"Schedule B Fee Addendum / Closing Cost Details\" table on Pages 2-4. Distinguish from: Do NOT confuse with an initial TRID Loan Estimate (\"Loan Estimate\" header), a non-binding CRE Term Sheet, or a Credit Agreement (`cre-credit-agreement`) whose preliminary fee estimates are superseded at closing.",
+  "x_okf_revision_id": "ont-rev-v1-1-baseline",
+  "required": [
+    "doctype",
+    "issuer",
+    "key_fields"
+  ],
   "properties": {
-    "doctype": { "type": "string", "enum": ["trid-closing-disclosure"] },
+    "doctype": {
+      "type": "string",
+      "enum": [
+        "trid-closing-disclosure"
+      ]
+    },
+    "issuer": {
+      "type": "string",
+      "description": "Settlement agent, lender, or issuing mortgage institution."
+    },
     "key_fields": {
       "type": "object",
-      "required": ["loan_amount", "appraised_value", "origination_fee", "currency"],
+      "required": [
+        "loan_amount",
+        "origination_fee",
+        "currency",
+        "effective_date"
+      ],
       "properties": {
-        "loan_amount": { "type": "string", "description": "Principal loan facility amount" },
-        "appraised_value": { "type": "string", "description": "Appraised collateral value" },
-        "origination_fee": { "type": "string", "description": "Origination or rate-lock extension fee" },
-        "currency": { "type": "string", "description": "ISO 4217 currency code (e.g. USD)" },
-        "effective_date": { "type": "string", "description": "ISO date (YYYY-MM-DD)" }
+        "loan_amount": {
+          "type": "string",
+          "description": "Final binding principal loan amount at settlement in the disclosure's currency. Where to read: Page 1, Loan Terms table, first row ('Loan Amount'). Distinguish from: Do NOT extract 'Cash to Close', 'Sale Price of Property', or 'Total of Payments' from Page 5."
+        },
+        "appraised_value": {
+          "type": "string",
+          "description": "Appraised collateral value the lender relied on at closing, when the disclosure restates it. Where to read: Page 1, Closing Information block ('Appraised Prop. Value') or the Schedule B collateral summary row. Distinguish from: Do NOT extract 'Sale Price' or 'Estimated Prop. Value'; the certified valuation itself lives in the appraisal (`mai-appraisal`), which stays authoritative for collateral value."
+        },
+        "origination_fee": {
+          "type": "string",
+          "description": "Binding total origination and rate-lock extension fee charged by the lender at closing, including any Schedule B rate-lock extension override. Where to read: Page 2, Closing Cost Details, Section A ('A. Origination Charges' total) or the signed Schedule B Fee Addendum override row if attached. Distinguish from: Do NOT extract the superseded base origination fee from an earlier Loan Estimate or Term Sheet (`cre-credit-agreement`), and do NOT extract Section B ('Services Borrower Did Not Shop For') or Total Closing Costs (J)."
+        },
+        "annual_debt_service": {
+          "type": "string",
+          "description": "Total annualized principal and interest debt service obligation. Where to read: Page 1, Projected Payments table or Debt Service Summary schedule. Distinguish from: Do NOT extract a single month's escrow or HOA payment."
+        },
+        "interest_rate": {
+          "type": "string",
+          "description": "Final locked annual note interest rate as printed (e.g. 6.125%). Where to read: Page 1, Loan Terms table, 'Interest Rate' row. Distinguish from: Do NOT extract APR (Annual Percentage Rate) from Page 5."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 3-letter currency code for all monetary amounts in the disclosure. Where to read: Header currency symbol or explicit ISO currency notation (default USD for US TRID). Distinguish from: Do NOT return currency symbols like '$'—normalize to ISO 4217 (e.g. USD)."
+        },
+        "effective_date": {
+          "type": "string",
+          "description": "ISO date (YYYY-MM-DD) when the closing disclosure and loan terms take effect. Where to read: Page 1, Closing Information block, 'Closing Date' field. Distinguish from: Do NOT extract 'Date Issued' or 'Application Date' when 'Closing Date' is printed."
+        }
       }
     }
   }

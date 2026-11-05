@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -19,10 +19,6 @@ from bridge.user_interaction.auth import (
     AuthenticationRequiredError,
     resolve_compound_identity,
 )
-from bridge.user_interaction.consolidation_collab import (
-    reset_consolidation_collab_state,
-)
-from bridge.user_interaction.demo_seed import seed_demo_scenarios
 from bridge.user_interaction.schemas import (
     CompileSkillRequest,
     DialTrustPolicyRequest,
@@ -32,6 +28,9 @@ from bridge.user_interaction.schemas import (
     RollbackSkillRequest,
 )
 from contract.extraction import SourceAnchor
+
+if TYPE_CHECKING:
+    from bridge.showcase import ScenarioEngine
 
 
 def register_gym_routes(
@@ -43,6 +42,7 @@ def register_gym_routes(
     gym: AgentGymEngine,
     principal_roles: dict[str, CatalogRole] | None,
     require_auth: bool,
+    scenario_engine: ScenarioEngine | None = None,
 ) -> None:
     """Register Agent Gym distillation, 3-tier evaluation, skill compilation, and trust dial routes."""
 
@@ -375,21 +375,10 @@ def register_gym_routes(
         reseed_demo: bool = False,
     ) -> list[dict[str, Any]]:
         """Reset Programmable Trust policies (and optionally clear rules or reseed demo scenarios)."""
-        reset_consolidation_collab_state()
-        from bridge.refinery import schema_refinery_from_env
-        from bridge.user_interaction.schema_evolution_collab import (
-            reset_schema_evolution_collab_state,
-        )
-
-        reset_schema_evolution_collab_state(
-            refinery=schema_refinery_from_env(knowledge_catalog=catalog)
-        )
-        if reseed_demo:
-            seed_demo_scenarios(
-                operational_store=store,
-                knowledge_catalog=catalog,
-                agent_gym=gym,
-            )
+        if scenario_engine is not None:
+            scenario_engine.reset_all()
+            if reseed_demo:
+                scenario_engine.seed_all()
         results: list[dict[str, Any]] = []
         for p in gym.reset_trust_policies(clear_rules=clear_rules):
             dumped = p.model_dump(mode="json")

@@ -1,0 +1,133 @@
+document_title: "Meridian Logistics Center LLC - 2025 Audited Financials & Note 6 Debt Schedule"
+pages:
+  - elements:
+      - {op: "rect_fill", x: 0, y: 734, w: 612, h: 58, rgb: [0.08, 0.22, 0.42]}
+      - {op: "text", x: 44, y: 766, value: "GRANT & STERLING LLP  |  INDEPENDENT AUDITOR'S REPORT", font: "F2", size: 11.5, rgb: [1.0, 1.0, 1.0]}
+      - {op: "text", x: 44, y: 747, value: "Meridian Logistics Center LLC - FY 2025 Audited Financial Statements", font: "F1", size: 9.5, rgb: [0.9, 0.95, 1.0]}
+      - {op: "text", x: 430, y: 766, value: "DOC-MERIDIAN-FIN-2025", font: "F3", size: 8.5, rgb: [1.0, 1.0, 1.0]}
+      - {op: "hline", x1: 44, x2: 568, y: 46, rgb: [0.82, 0.85, 0.89], line_width: 0.6}
+      - {op: "text", x: 44, y: 30, value: "CONFIDENTIAL COMMERCIAL CREDIT RECORD  |  DOC-MERIDIAN-FIN-2025", font: "F1", size: 8.0, rgb: [0.42, 0.45, 0.5]}
+      - {op: "text", x: 492, y: 30, value: "Page 1 of 4", font: "F2", size: 8.5, rgb: [0.25, 0.28, 0.33]}
+      - {op: "text", x: 44, y: 696, value: "BORROWER ENTITY & AUDIT OPINION SUMMARY", font: "F2", size: 13, rgb: [0.12, 0.14, 0.18]}
+      - {op: "rect_fill", x: 44, y: 608, w: 524, h: 74, rgb: [0.96, 0.97, 0.99]}
+      - {op: "rect_stroke", x: 44, y: 608, w: 524, h: 74, rgb: [0.82, 0.85, 0.89], line_width: 0.8}
+      - {op: "text", x: 58, y: 662, value: "Legal Borrower: Meridian Logistics Center LLC", font: "F2", size: 10.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 58, y: 645, value: "Collateral Asset: 18,500 m2 Class-A Industrial Distribution Facility (Chicago, IL)", font: "F1", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 58, y: 628, value: "Audit Period Ended: December 31, 2025  |  Opinion: Unqualified (Clean GAAP Opinion)", font: "F1", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 58, y: 614, value: "Controller Contact: Jane Doe  |  Direct Phone: 312-555-0194  |  Tax/SSN: 999-11-2222", font: "F3", size: 8.5, rgb: [0.35, 0.38, 0.42]}
+      - {op: "text", x: 44, y: 574, value: "Independent Auditor's Opinion", font: "F2", size: 11, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 552, value: "We have audited the consolidated balance sheet of Meridian Logistics Center LLC as of", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 534, value: "December 31, 2025, and the related statements of operations, cash flows, and Note 6", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 516, value: "Schedule of Existing Debt Obligations. In our opinion, the financial statements present", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 498, value: "fairly, in all material respects, the financial position of Meridian Logistics Center LLC.", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 480, value: "", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 462, value: "Key Credit Highlights (FY 2025 Audited):", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 444, value: "  * Stabilized Net Operating Income (NOI / CFADS): $312,000.00 USD", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 426, value: "  * Proposed Consolidated Debt Facility Requested: $1,800,000.00 USD", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 408, value: "  * Proposed Annual Consolidated Debt Service:     $216,666.67 USD", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 390, value: "  * Complete Existing Creditor Breakdown:          See Page 4, Note 6 Debt Schedule", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+  - elements:
+      - {op: "rect_fill", x: 0, y: 734, w: 612, h: 58, rgb: [0.08, 0.22, 0.42]}
+      - {op: "text", x: 44, y: 766, value: "MERIDIAN LOGISTICS CENTER LLC  |  CONSOLIDATED BALANCE SHEET", font: "F2", size: 11.5, rgb: [1.0, 1.0, 1.0]}
+      - {op: "text", x: 44, y: 747, value: "As of December 31, 2025 (Amounts in USD)", font: "F1", size: 9.5, rgb: [0.9, 0.95, 1.0]}
+      - {op: "text", x: 430, y: 766, value: "DOC-MERIDIAN-FIN-2025", font: "F3", size: 8.5, rgb: [1.0, 1.0, 1.0]}
+      - {op: "hline", x1: 44, x2: 568, y: 46, rgb: [0.82, 0.85, 0.89], line_width: 0.6}
+      - {op: "text", x: 44, y: 30, value: "CONFIDENTIAL COMMERCIAL CREDIT RECORD  |  DOC-MERIDIAN-FIN-2025", font: "F1", size: 8.0, rgb: [0.42, 0.45, 0.5]}
+      - {op: "text", x: 492, y: 30, value: "Page 2 of 4", font: "F2", size: 8.5, rgb: [0.25, 0.28, 0.33]}
+      - {op: "text", x: 44, y: 694, value: "CONSOLIDATED BALANCE SHEET (AS OF 2025-12-31)", font: "F2", size: 12.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "rect_fill", x: 44, y: 654, w: 524, h: 22, rgb: [0.93, 0.95, 0.98]}
+      - {op: "text", x: 52, y: 660, value: "ASSETS", font: "F2", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 652, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 632, value: "Operating Cash & Liquidity Reserves", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 460, y: 632, value: "$412,500.00", font: "F3", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 624, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 604, value: "Accounts Receivable (Net Logistics Leases)", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 460, y: 604, value: "$195,000.00", font: "F3", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 596, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 576, value: "Industrial Land, Warehouse & Dock Improvements (Net)", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 460, y: 576, value: "$2,812,500.00", font: "F3", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 568, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "rect_fill", x: 44, y: 542, w: 524, h: 22, rgb: [0.93, 0.95, 0.98]}
+      - {op: "text", x: 52, y: 548, value: "TOTAL ASSETS", font: "F2", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 460, y: 548, value: "$3,420,000.00", font: "F2", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 540, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "rect_fill", x: 44, y: 514, w: 524, h: 22, rgb: [0.93, 0.95, 0.98]}
+      - {op: "text", x: 52, y: 520, value: "LIABILITIES & MEMBERS' EQUITY", font: "F2", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 512, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 492, value: "Current Trade Payables & Accrued Property Taxes", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 460, y: 492, value: "$0.00", font: "F3", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 484, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 464, value: "Existing Debt Facilities Scheduled for Consolidation (See Note 6, Page 4)", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 460, y: 464, value: "$1,800,000.00", font: "F3", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 456, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 436, value: "Members' Paid-In Capital & Retained Earnings", font: "F1", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 460, y: 436, value: "$1,620,000.00", font: "F3", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 428, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "rect_fill", x: 44, y: 402, w: 524, h: 22, rgb: [0.93, 0.95, 0.98]}
+      - {op: "text", x: 52, y: 408, value: "TOTAL LIABILITIES & MEMBERS' EQUITY", font: "F2", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 460, y: 408, value: "$3,420,000.00", font: "F2", size: 9.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 400, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+  - elements:
+      - {op: "rect_fill", x: 0, y: 734, w: 612, h: 58, rgb: [0.08, 0.22, 0.42]}
+      - {op: "text", x: 44, y: 766, value: "MERIDIAN LOGISTICS CENTER LLC  |  STATEMENT OF OPERATIONS & NOI", font: "F2", size: 11.5, rgb: [1.0, 1.0, 1.0]}
+      - {op: "text", x: 44, y: 747, value: "FY 2025 Audited Net Operating Income & Debt Service Capacity", font: "F1", size: 9.5, rgb: [0.9, 0.95, 1.0]}
+      - {op: "text", x: 430, y: 766, value: "DOC-MERIDIAN-FIN-2025", font: "F3", size: 8.5, rgb: [1.0, 1.0, 1.0]}
+      - {op: "hline", x1: 44, x2: 568, y: 46, rgb: [0.82, 0.85, 0.89], line_width: 0.6}
+      - {op: "text", x: 44, y: 30, value: "CONFIDENTIAL COMMERCIAL CREDIT RECORD  |  DOC-MERIDIAN-FIN-2025", font: "F1", size: 8.0, rgb: [0.42, 0.45, 0.5]}
+      - {op: "text", x: 492, y: 30, value: "Page 3 of 4", font: "F2", size: 8.5, rgb: [0.25, 0.28, 0.33]}
+      - {op: "text", x: 44, y: 694, value: "AUDITED OPERATING CASH FLOW & COVERAGE METRICS", font: "F2", size: 12.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 52, y: 656, value: "Gross Industrial Warehouse Lease Revenue", font: "F1", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 456, y: 656, value: "$684,000.00", font: "F3", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 648, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 624, value: "Less: Property Taxes, Insurance & Common Area Maintenance", font: "F1", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 456, y: 624, value: "($214,000.00)", font: "F3", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 616, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 592, value: "Less: Facility Management & Utilities", font: "F1", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 456, y: 592, value: "($158,000.00)", font: "F3", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 584, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "rect_fill", x: 44, y: 554, w: 524, h: 24, rgb: [0.9, 0.96, 0.92]}
+      - {op: "text", x: 52, y: 560, value: "STABILIZED NET OPERATING INCOME (ANNUAL NOI / CFADS)", font: "F2", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 456, y: 560, value: "$312,000.00", font: "F2", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 552, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 528, value: "Proposed Consolidated Annual Principal & Interest Service", font: "F1", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 456, y: 528, value: "$216,666.67", font: "F3", size: 10.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "hline", x1: 44, x2: 568, y: 520, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+  - elements:
+      - {op: "rect_fill", x: 0, y: 734, w: 612, h: 58, rgb: [0.08, 0.22, 0.42]}
+      - {op: "text", x: 44, y: 766, value: "MERIDIAN LOGISTICS CENTER LLC  |  NOTES TO FINANCIAL STATEMENTS", font: "F2", size: 11.5, rgb: [1.0, 1.0, 1.0]}
+      - {op: "text", x: 44, y: 747, value: "Note 6 - Schedule of Existing Liabilities to be Consolidated", font: "F1", size: 9.5, rgb: [0.9, 0.95, 1.0]}
+      - {op: "text", x: 430, y: 766, value: "DOC-MERIDIAN-FIN-2025", font: "F3", size: 8.5, rgb: [1.0, 1.0, 1.0]}
+      - {op: "hline", x1: 44, x2: 568, y: 46, rgb: [0.82, 0.85, 0.89], line_width: 0.6}
+      - {op: "text", x: 44, y: 30, value: "CONFIDENTIAL COMMERCIAL CREDIT RECORD  |  DOC-MERIDIAN-FIN-2025", font: "F1", size: 8.0, rgb: [0.42, 0.45, 0.5]}
+      - {op: "text", x: 492, y: 30, value: "Page 4 of 4", font: "F2", size: 8.5, rgb: [0.25, 0.28, 0.33]}
+      - {op: "text", x: 44, y: 694, value: "NOTE 6 - SCHEDULE OF EXISTING LIABILITIES TO BE CONSOLIDATED", font: "F2", size: 12.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 674, value: "Borrower requests a $1,800,000.00 Commercial Debt Consolidation Facility to retire", font: "F1", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 44, y: 658, value: "the following three (3) existing credit obligations recorded as of December 31, 2025:", font: "F1", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "rect_fill", x: 44, y: 345, w: 524, h: 180, rgb: [0.96, 0.98, 1.0]}
+      - {op: "rect_stroke", x: 44, y: 345, w: 524, h: 180, rgb: [0.1, 0.45, 0.91], line_width: 1.4}
+      - {op: "rect_fill", x: 44, y: 499, w: 524, h: 26, rgb: [0.1, 0.45, 0.91]}
+      - {op: "text", x: 52, y: 508, value: "CREDITOR / INSTITUTION", font: "F2", size: 8.8, rgb: [1, 1, 1]}
+      - {op: "text", x: 225, y: 508, value: "ACCOUNT REF", font: "F2", size: 8.8, rgb: [1, 1, 1]}
+      - {op: "text", x: 312, y: 508, value: "FACILITY TYPE", font: "F2", size: 8.8, rgb: [1, 1, 1]}
+      - {op: "text", x: 476, y: 508, value: "BALANCE (USD)", font: "F2", size: 8.8, rgb: [1, 1, 1]}
+      - {op: "text", x: 52, y: 476, value: "1. First National Bank", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 225, y: 476, value: "#FNB-4402", font: "F3", size: 9.5, rgb: [0.08, 0.3, 0.68]}
+      - {op: "text", x: 312, y: 476, value: "Senior Commercial Mortgage", font: "F1", size: 9.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 476, y: 476, value: "$1,200,000.00", font: "F3", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 52, y: 463, value: "External Lender - Official Payoff Statement Required at Closing", font: "F1", size: 8.0, rgb: [0.38, 0.42, 0.48]}
+      - {op: "hline", x1: 50, x2: 562, y: 456, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 436, value: "2. EquipLease Financial Corp", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 225, y: 436, value: "#8841", font: "F3", size: 9.5, rgb: [0.08, 0.3, 0.68]}
+      - {op: "text", x: 312, y: 436, value: "Fleet & Material Term Loan", font: "F1", size: 9.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 476, y: 436, value: "$350,000.00", font: "F3", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 52, y: 423, value: "External Lender - Balance as of 2025-12-31 (Subject to 2026 Paydown)", font: "F1", size: 8.0, rgb: [0.38, 0.42, 0.48]}
+      - {op: "hline", x1: 50, x2: 562, y: 416, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 396, value: "3. DocuBridge Commercial Bank", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 225, y: 396, value: "#LOC-9012", font: "F3", size: 9.5, rgb: [0.08, 0.3, 0.68]}
+      - {op: "text", x: 312, y: 396, value: "Internal Working Capital LOC", font: "F1", size: 9.0, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 476, y: 396, value: "$250,000.00", font: "F3", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 52, y: 383, value: "On-Us Internal Facility - Verified Directly via Core Banking Ledger", font: "F1", size: 8.0, rgb: [0.38, 0.42, 0.48]}
+      - {op: "hline", x1: 50, x2: 562, y: 376, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "rect_fill", x: 44, y: 345, w: 524, h: 26, rgb: [0.9, 0.94, 0.99]}
+      - {op: "text", x: 52, y: 354, value: "TOTAL EXISTING OBLIGATIONS TO CONSOLIDATE (3 FACILITIES)", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 472, y: 354, value: "$1,800,000.00", font: "F2", size: 10.0, rgb: [0.08, 0.3, 0.68]}

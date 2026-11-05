@@ -16,7 +16,7 @@
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
     <span style="color:#94a3b8;font-size:12.5px;" class="mono">spiffe://agents.docubridge.io/portal/external-portal-agent</span>
-    <button class="btn btn-outline" style="background:transparent;color:#e2e8f0;border-color:#475569;padding:6px 14px;" id="portal-partner-pill">Borrower: Meridian Logistics Center LLC</button>
+    <button class="btn btn-outline" style="background:transparent;color:#e2e8f0;border-color:#475569;padding:6px 14px;" id="portal-partner-pill">Loading scenario…</button>
     <button class="btn btn-primary" style="padding:6px 14px;" onclick="window.switchScene('scene-intake', 1, false)">→ Back to Internal Console</button>
   </div>
 </header>
@@ -34,8 +34,8 @@
     </div>
 
     <div class="nav-center">
-      <!-- 1-Click Domain Switcher (Banking, Mortgage & Insurance) -->
-      <div class="domain-toggle" role="group" aria-label="Domain Use Case Toggle">
+      <!-- 1-Click Domain Switcher (one button per seeded scenario domain, labels from the manifests) -->
+      <div class="domain-toggle" id="domain-switcher" role="group" aria-label="Domain Use Case Toggle">
         <button id="domain-btn-banking" class="domain-btn active" onclick="window.switchDomain('banking')">🏦 Banking · Commercial Loan</button>
         <button id="domain-btn-mortgage" class="domain-btn" onclick="window.switchDomain('mortgage')">🏠 Mortgage · TRID Closing</button>
         <button id="domain-btn-insurance" class="domain-btn" onclick="window.switchDomain('insurance')">🛡️ Insurance · Commercial Placement</button>
@@ -84,7 +84,7 @@
       </div>
       <div class="client-info">
         <div class="client-tag" id="header-entity-tag">BORROWER · COMMERCIAL REAL ESTATE</div>
-        <div class="client-name" id="header-entity-name">Meridian Logistics Center LLC</div>
+        <div class="client-name" id="header-entity-name">Loading scenario…</div>
         <div class="client-sub" id="header-entity-sub">$45,000,000 Commercial Term Loan Underwriting</div>
       </div>
     </div>
@@ -99,7 +99,7 @@
   <section id="scene-portal" class="scene">
     <div style="max-width:1020px;margin:0 auto;">
       <div style="margin-bottom:18px;">
-        <h1 style="font-size:28px;font-weight:800;margin:0;color:#0f172a;" id="portal-page-heading">Meridian Logistics Center LLC · Commercial Loan Portal</h1>
+        <h1 style="font-size:28px;font-weight:800;margin:0;color:#0f172a;" id="portal-page-heading">Loading scenario…</h1>
         <p style="font-size:13.5px;color:#64748b;margin:4px 0 0;" id="portal-page-desc">
           External zone — isolated to borrower rent rolls, credit agreements, and MAI appraisals. Internal credit committee memos, competing lender quotes, and guarantor SSNs never cross this boundary.
         </p>
@@ -108,13 +108,13 @@
       <div class="card" style="margin-bottom:18px;">
         <div class="card-header">
           <div>
-            <h2 class="card-title" id="portal-checklist-title">Meridian Logistics Center LLC — $45M CRE Term Loan Submission Checklist</h2>
+            <h2 class="card-title" id="portal-checklist-title">Loading scenario…</h2>
             <div class="card-sub">Connected to Live A2A Edge: <span class="mono" id="live-edge-url">https://docubridge-showcase-bridge-100000000000.us-central1.run.app</span></div>
           </div>
           <span class="badge badge-green" id="live-card-badge">● Live A2A Agent Card Verified (GCS Skills Active)</span>
         </div>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;font-size:12.5px;" class="mono">
-          <div style="color:#475569;font-weight:700;margin-bottom:4px;">GET /.well-known/agent-card.json → Gemini Platform · Agent Engine (projects/docubridge-showcase/locations/us-central1/reasoningEngines/5963861295097708544)</div>
+          <div style="color:#475569;font-weight:700;margin-bottom:4px;">GET /.well-known/agent-card.json → Gemini Platform · Agent Engine (projects/docubridge-showcase/locations/us-central1/reasoningEngines/1000000000000000000)</div>
           <div id="agent-card-preview" style="color:#0f172a;">protocolVersion=1.0 · runtime=BridgeA2aAgentEngine · workhorse=gemini-3.8-flash · reasoning=gemini-4-argon</div>
         </div>
       </div>
@@ -179,10 +179,10 @@
         <div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span class="badge badge-navy">COLLABORATIVE CONSOLIDATION LOAN · 4-BEAT WORKFLOW</span>
-            <span class="badge badge-blue mono" id="collab-entity-badge">LOAN-MERIDIAN-CONSOL-2026</span>
+            <span class="badge badge-blue mono" id="collab-entity-badge">—</span>
             <span class="badge badge-purple" id="collab-beat-pill">Beat 0 of 4 · Initial 3-Doc Checklist</span>
           </div>
-          <h2 class="card-title" style="margin-top:6px;font-size:17px;">Meridian Logistics Center LLC — $1,800,000.00 Commercial Debt Consolidation Facility</h2>
+          <h2 class="card-title" id="collab-stage-title" style="margin-top:6px;font-size:17px;">Loading scenario…</h2>
           <div class="card-sub">
             Dual-Zone Live Collaboration: External Borrower Portal Checklist (Left) ↔ Internal Bank Underwriter &amp; Dual-Agent Board (Right · <span class="mono">gemini-3.8-flash</span> Sense A + <span class="mono">gemini-4-argon</span> Sense B)
           </div>
@@ -282,7 +282,7 @@
         <div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span class="badge badge-purple">LIVE SCHEMA EVOLUTION &amp; ONTOLOGY LEARNING · 4-BEAT WORKFLOW</span>
-            <span class="badge badge-blue mono" id="schema-evol-entity-badge">BENEFITS-APEX-HDHP-2027</span>
+            <span class="badge badge-blue mono" id="schema-evol-entity-badge">—</span>
             <span class="badge badge-navy mono" id="schema-evol-rev-pill">ont-rev-v1-1-baseline · v1.1.0 (7 Entities)</span>
             <span class="badge badge-amber" id="schema-evol-beat-pill">Beat 0 of 4 · Baseline Ontology v1.1.0</span>
           </div>
@@ -295,7 +295,7 @@
               🏭 Commercial Property · $100K Coastal Wind Endorsement
             </button>
           </div>
-          <h2 class="card-title" id="schema-evol-card-title" style="margin-top:8px;font-size:17px;">Apex Global Manufacturing — 2027 Employee Health &amp; Benefits Renewal (HDHP + Group Life)</h2>
+          <h2 class="card-title" id="schema-evol-card-title" style="margin-top:8px;font-size:17px;">Loading scenario…</h2>
           <div class="card-sub" id="schema-evol-card-sub">
             Bi-Temporal Knowledge Graph &amp; Continuous Learning: 7-Node Graph (`HDHP` includes `HSA` · excludes `FSA` + `$125K` Rate Addendum overrides `$140K` Base Quote overrides `$145K` Manual Entry) ↔ Socratic Challenge (<span class="mono">gemini-3.8-flash</span> + <span class="mono">gemini-4-argon</span>)
           </div>
@@ -392,7 +392,7 @@
       <div class="card">
         <div class="card-header">
           <div>
-            <div style="font-size:15px;font-weight:800;color:var(--brand-slate);" id="intake-c1-title">Meridian Commercial Rent Roll &amp; DSCR</div>
+            <div style="font-size:15px;font-weight:800;color:var(--brand-slate);" id="intake-c1-title">Loading scenario…</div>
             <div style="font-size:12px;color:var(--brand-muted);" class="mono" id="intake-c1-file">meridian-rent-roll-dscr-2026.xlsx</div>
           </div>
           <span class="badge badge-green">Accepted · Path A</span>
@@ -544,7 +544,7 @@
           <div style="font-size:12.5px;color:#334155;line-height:1.55;">
             <div><strong>Target Table:</strong> <span class="mono">docubridge_lakehouse.bq_operational_facts_iceberg</span></div>
             <div><strong>Format:</strong> Open Iceberg over Cloud Storage (Watermarked Incremental CDC)</div>
-            <div><strong>Latest Watermark:</strong> <span class="mono" id="iceberg-watermark-label">2026-10-19T21:00:00Z (LOAN-MERIDIAN-001 delta exported)</span></div>
+            <div><strong>Latest Watermark:</strong> <span class="mono" id="iceberg-watermark-label">—</span></div>
           </div>
         </div>
       </div>
@@ -621,7 +621,7 @@
         <div style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;flex-wrap:wrap;">
             <div>
-              <div style="font-size:15px;font-weight:800;color:var(--brand-slate);" id="inbox-card-heading">Resolve Origination &amp; Rate-Lock Fee Conflict (Meridian · Schedule B Addendum)</div>
+              <div style="font-size:15px;font-weight:800;color:var(--brand-slate);" id="inbox-card-heading">Loading scenario…</div>
               <div style="font-size:12.5px;color:var(--brand-muted);" id="inbox-card-sub">Proposed by Agent: <span class="mono">$50,000</span> (Cover Term Sheet) vs. Schedule B Fee Addendum: <span class="mono">$100,000</span> (<span class="anchor-chip">Page 4 · Region [0.12, 0.44]</span>)</div>
             </div>
             <span class="badge badge-red">HIGH RISK · $100,000 Authority</span>
@@ -933,7 +933,7 @@
         <div style="font-size:12px;color:#334155;line-height:1.55;">
           <div><strong><span class="mono">trace_id</span>:</strong> <span class="mono" id="otel-active-trace-id">4bf92f3577b34da6a3ce929d0e0e4736</span></div>
           <div><strong>Zero-Token Spans:</strong> <span class="mono" id="finops-zero-token-count">12 deterministic code spans</span></div>
-          <div><strong>Entity:</strong> <span class="mono" id="otel-active-entity">LOAN-MERIDIAN-001</span></div>
+          <div><strong>Entity:</strong> <span class="mono" id="otel-active-entity">—</span></div>
         </div>
       </div>
     </div>
@@ -1134,7 +1134,7 @@ LIMIT 100;</pre>
             Zone 3 · Write-Once WORM Audit Vault Verification
           </div>
           <div style="font-size:12px;line-height:1.65;color:#1e293b;">
-            <div><strong>Vault URI:</strong> <span class="mono" id="proof-vault-uri" style="color:#059669;">gs://docubridge-audit-vault/vault/LOAN-MERIDIAN-001/doc-meridian-addendum-v2</span></div>
+            <div><strong>Vault URI:</strong> <span class="mono" id="proof-vault-uri" style="color:#059669;">—</span></div>
             <div><strong>SHA-256 Digest:</strong> <span class="mono" id="proof-sha256">sha256:9f84b7c2d0148e7a5a19e4b30f12e21c</span></div>
             <div><strong>Retention Policy:</strong> <span class="badge badge-green">Locked 7 Years (2,555 Days · WORM)</span></div>
           </div>
@@ -1154,14 +1154,14 @@ LIMIT 100;</pre>
 <div class="caption-banner" id="caption-banner">
   <div class="caption-top">
     <span class="caption-part-badge" id="caption-badge">STAGE 1 · DUAL-PATH INTAKE &amp; WORM VAULT (BANKING)</span>
-    <span class="caption-headline" id="caption-headline">Meridian Logistics Center LLC ($45M CRE Term Loan) — Rent Roll validated in code (0 AI tokens); Credit Agreement Fee Addendum conflict parked in Quarantine.</span>
+    <span class="caption-headline" id="caption-headline">Loading scenario…</span>
   </div>
   <div class="caption-sub" id="caption-sub">
     Path A: meridian-rent-roll-dscr-2026.xlsx (NOI $4.185M, DSCR 1.42x) | Path B: syndicated-credit-agreement-meridian-2026.pdf ($50k Cover vs $100k Schedule B Page 4)
   </div>
 </div>
 
-<!-- Domain Scenarios: LOAN-MERIDIAN-001 (Meridian Logistics Center LLC) | MORTGAGE-WESTBROOK-2026 (Westbrook Family Trust) | terrepower-coastal-2027 (Terrepower Coastal LLC) -->
+<!-- Domain scenarios are loaded from GET /v1/demo/scenarios (scenarios/<name>/scenario.yaml) -->
 <script src="/demo/enterprise-demo.js"></script>
 </body>
 </html>

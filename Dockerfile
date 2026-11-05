@@ -41,6 +41,7 @@ COPY --chown=appuser:appuser catalog/ ./catalog/
 COPY --chown=appuser:appuser skills/ ./skills/
 COPY --chown=appuser:appuser wiki/ ./wiki/
 COPY --chown=appuser:appuser demo/ ./demo/
+COPY --chown=appuser:appuser scenarios/ ./scenarios/
 
 # Install the project in editable mode without re-resolving dependencies so the
 # `bridge-serve` console script is registered in `/app/.venv/bin/bridge-serve`

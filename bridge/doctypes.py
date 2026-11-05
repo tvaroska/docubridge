@@ -1,8 +1,11 @@
 """Doctype schema knowledge — the ONE place a doctype skill's ``schema.json`` is read.
 
 A **doctype** skill folder declares its field shape in a ``bridge-schema`` asset
-(default ``assets/schema.json``). That asset has two consumers, and they must not
-learn to disagree:
+(default ``assets/schema.json``). When the doctype also has a
+``catalog/doctypes/<name>.okf.md`` bundle, that bundle is canonical and the asset is
+a generated copy of it (``bridge/refinery/okf_loader.py::regenerate_skill_schemas``);
+:func:`doctype_schemas` then renders the schema from the bundle and never reads the
+asset. Either way the schema has two consumers, and they must not learn to disagree:
 
 1. ``bridge/extraction/gemini.py`` (Path B) renders the declared fields into the
    extraction prompt's installed-doctype catalog and pins their UNION as the
@@ -186,8 +189,23 @@ def doctype_description(schema: dict) -> str:
     return str(schema.get("description", "") or "").strip()
 
 
-def entity_spec_to_json_schema(spec: Any) -> dict[str, Any]:
-    """Convert an ``OntologyEntitySpec`` into a doctype JSON Schema dictionary."""
+def entity_spec_to_json_schema(
+    spec: Any,
+    *,
+    field_enums: dict[str, tuple[str, ...]] | None = None,
+    tables: dict[str, dict[str, Any]] | None = None,
+    schema_version: str | None = None,
+) -> dict[str, Any]:
+    """Convert an ``OntologyEntitySpec`` into a doctype JSON Schema dictionary.
+
+    This is the ONE rendering of an OKF bundle as ``assets/schema.json``: the loader
+    uses it for every doctype whose bundle exists, and the generator writes its
+    output to disk, so both sides agree by construction. ``field_enums`` /
+    ``tables`` / ``schema_version`` are the bundle's JSON-Schema-only extras (see
+    ``bridge/refinery/okf_loader.py``); key order is fixed so the serialized file
+    is deterministic.
+    """
+    enums = field_enums or {}
     props: dict[str, Any] = {
         "doctype": {"type": "string", "enum": [spec.entity_id]},
     }
@@ -201,10 +219,11 @@ def entity_spec_to_json_schema(spec: Any) -> dict[str, Any]:
     field_props: dict[str, Any] = {}
     required_fields: list[str] = []
     for fname, fspec in spec.fields.items():
-        field_props[fname] = {
-            "type": fspec.field_type,
-            "description": fspec.description.render(),
-        }
+        entry: dict[str, Any] = {"type": fspec.field_type}
+        if enums.get(fname):
+            entry["enum"] = list(enums[fname])
+        entry["description"] = fspec.description.render()
+        field_props[fname] = entry
         if fspec.required:
             required_fields.append(fname)
     props["key_fields"] = {
@@ -212,7 +231,24 @@ def entity_spec_to_json_schema(spec: Any) -> dict[str, Any]:
         "required": required_fields,
         "properties": field_props,
     }
+    if tables:
+        props["tables"] = {
+            "type": "object",
+            "properties": {
+                tname: {
+                    "type": "array",
+                    "description": str(tspec.get("description") or ""),
+                    "items": {
+                        "type": "object",
+                        "required": list(tspec.get("required") or []),
+                        "properties": dict(tspec.get("columns") or {}),
+                    },
+                }
+                for tname, tspec in tables.items()
+            },
+        }
     return {
+        **({"version": schema_version} if schema_version else {}),
         "type": "object",
         "description": spec.entity_description.render(),
         "x_okf_revision_id": spec.revision_id,
@@ -358,13 +394,22 @@ def tables_model(doctype: str, schema: dict) -> type[BaseModel]:
 
 
 def doctype_schemas() -> dict[str, dict]:
-    """Read every installed doctype skill's ``bridge-schema`` asset through the port.
+    """Read every installed doctype skill's schema — OKF bundle first, asset second.
 
-    Half-installed policy (deliberately asymmetric): a declared-but-ABSENT asset is a
-    legitimate registry state (a skill installed with no assets), so that doctype
-    contributes its name only — one half-installed unrelated doctype must not kill all
-    extraction. A PRESENT but unparsable asset is an unambiguous authoring bug and gets
-    the repo's refuse-loud treatment (``ValueError`` naming the skill and the asset).
+    A doctype whose ``catalog/doctypes/<name>.okf.md`` bundle exists gets its schema
+    rendered from that bundle (``entity_spec_to_json_schema``), never from the
+    skill's ``assets/schema.json`` — the asset is a generated copy of the same
+    bundle (``python -m bridge.refinery.okf_loader --write-schemas``) and
+    ``tests/test_doctype_consistency.py`` holds the two byte-identical. When an
+    ontology revision beyond baseline is active its entity spec replaces the file's
+    field set; the bundle's enum/table extras still apply.
+
+    Doctypes without a bundle keep the asset path. Half-installed policy
+    (deliberately asymmetric): a declared-but-ABSENT asset is a legitimate registry
+    state (a skill installed with no assets), so that doctype contributes its name
+    only — one half-installed unrelated doctype must not kill all extraction. A
+    PRESENT but unparsable asset is an unambiguous authoring bug and gets the repo's
+    refuse-loud treatment (``ValueError`` naming the skill and the asset).
     """
     # Lazy port import (mirrors ``bridge/edge/skills.py::loaded_skills``):
     # ``bridge.ports.local`` imports ``bridge.extraction.fixture`` at module level, so
@@ -374,10 +419,11 @@ def doctype_schemas() -> dict[str, dict]:
     from bridge.ports import Port, get_adapter, resolve_mode
     from bridge.refinery.okf_loader import (
         BASELINE_REVISION_ID,
-        load_okf_entity_specs,
+        load_okf_doctype_bundles,
     )
 
-    okf_specs = load_okf_entity_specs()
+    bundles = load_okf_doctype_bundles()
+    okf_specs: dict[str, Any] = {eid: b.spec for eid, b in bundles.items()}
     active_revision_id = BASELINE_REVISION_ID
     try:
         from bridge.knowledge_catalog import knowledge_catalog_from_env
@@ -394,6 +440,15 @@ def doctype_schemas() -> dict[str, dict]:
     for meta in registry.list_skills():
         if meta.kind != "doctype":
             continue  # process skills carry no field schema
+        bundle = bundles.get(meta.name)
+        if bundle is not None:
+            schemas[meta.name] = entity_spec_to_json_schema(
+                okf_specs.get(meta.name, bundle.spec),
+                field_enums=bundle.field_enums,
+                tables=bundle.tables,
+                schema_version=bundle.schema_version,
+            )
+            continue
         rel = meta.schema_asset or DEFAULT_SCHEMA_ASSET
         try:
             raw = registry.read_asset(meta.name, rel)

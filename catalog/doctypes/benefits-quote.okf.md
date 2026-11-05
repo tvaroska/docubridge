@@ -5,6 +5,7 @@ entity_id: benefits-quote
 context_set: employee-benefits-procurement
 revision_id: ont-rev-v1-1-baseline
 source_priority: 20
+schema_version: "2.0"
 aliases: []
 declares_issuer: false
 issuer_description: "Employee benefits insurance carrier issuing the voluntary or group rate proposal."
@@ -100,6 +101,7 @@ fields:
       distinguish_from: "Do NOT extract the effective inception date."
   product_line:
     type: string
+    enum: [AD_AND_D, CRITICAL_ILLNESS, HOSPITAL_INDEMNITY, LIFE]
     required: false
     monetary: false
     synonyms: ["Voluntary Benefit Line", "Coverage Type"]
@@ -180,6 +182,50 @@ fields:
       what_it_is: "Number of days a covered employee waits after a disability or benefit claim before benefits begin (e.g. 90 days)."
       where_to_read: "Page 14 Schedule of Benefits or Policy Riders ('Elimination Period / Waiting Period: 90 Days')."
       distinguish_from: "Do NOT confuse the 90-day Benefit Waiting Period on Page 14 with the 30-day New-Hire Enrollment Waiting Period on Page 2."
+
+tables:
+  rates:
+    description: "one row per premium rate printed in the quote"
+    required: [coverage_tier, amount, frequency]
+    columns:
+      coverage_tier:
+        type: string
+        enum: [EE, EE_SPOUSE, EE_CHILDREN, FAMILY]
+        description: "who the rate covers: employee, employee + spouse, employee + children, family"
+      tobacco:
+        type: string
+        enum: [UNI, NON_TOBACCO, TOBACCO]
+        description: "tobacco rating class (UNI = unismoker / not distinguished)"
+      age_band:
+        type: string
+        description: "age band as printed (e.g. 30-34)"
+      amount:
+        type: string
+        description: "the rate exactly as printed, in the quote's native currency; never computed"
+      frequency:
+        type: string
+        enum: [MONTHLY, BI_WEEKLY, WEEKLY, SEMI_MONTHLY, ANNUAL]
+        description: "billing frequency the rate amount is expressed in, per row (carriers mix them)"
+      rate_basis:
+        type: string
+        enum: [FLAT, PER_1000, PER_UNIT]
+        description: "FLAT premium, per $1,000 of benefit, or per unit of benefit"
+      benefit_amount:
+        type: string
+        description: "benefit amount the rate is priced at, as printed"
+  design:
+    description: "one row per benefit-design provision printed in the quote"
+    required: [category, value]
+    columns:
+      category:
+        type: string
+        description: "the benefit provision, in standard terms where obvious (e.g. Heart Attack)"
+      category_original:
+        type: string
+        description: "the carrier's own term for the provision, verbatim"
+      value:
+        type: string
+        description: "the provision's value as printed (e.g. $10,000, 6 months, Yes)"
 
 edges:
   - edge_id: edge-benefits-quote-feeds-premium

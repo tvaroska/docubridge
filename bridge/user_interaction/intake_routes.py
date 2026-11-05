@@ -18,7 +18,6 @@ from bridge.user_interaction.auth import (
     AuthenticationRequiredError,
     resolve_compound_identity,
 )
-from bridge.user_interaction.demo_seed import seed_demo_scenarios
 from bridge.user_interaction.schemas import IngestSubmissionRequest
 from bridge.user_interaction.surfaces import ingest_accepted_submission
 from contract.enums import Disposition, Gate
@@ -117,15 +116,6 @@ def register_intake_and_demo_routes(
             since_recorded_at=since_recorded_at,
         )
         return batch.model_dump(mode="json")
-
-    @router.post("/v1/demo/seed")
-    def seed_demo_scenarios_endpoint() -> dict[str, Any]:
-        """Seed baseline bi-temporal facts and 6-hop lineage across Banking, Mortgage, and Insurance scenarios."""
-        return seed_demo_scenarios(
-            operational_store=store,
-            knowledge_catalog=catalog,
-            agent_gym=gym,
-        )
 
     @router.get("/demo", response_class=HTMLResponse)
     @router.get("/console", response_class=HTMLResponse)

@@ -347,3 +347,116 @@ def test_skill_name_detector_positive_control(tmp_path):
     in_call = tmp_path / "call.py"
     in_call.write_text('def f():\n    """Doc."""\n    return load("benefits-rfp")\n')
     assert _skill_name_literals(in_call, names) == [(3, "benefits-rfp")]
+
+
+# --------------------------------------------------------------------------- #
+# Scenario literals (P9-1): bridge/ must not name a showcase scenario           #
+# --------------------------------------------------------------------------- #
+SCENARIOS_DIR = REPO_ROOT / "scenarios"
+
+# Keys inside ``scenarios/*/scenario.yaml`` whose string values identify a scenario.
+_SCENARIO_IDENTITY_KEYS = frozenset(
+    {
+        "entity_id",
+        "client",
+        "borrower",
+        "program",
+        "client_name",
+        "borrower_name",
+        "day2_entity_id",
+        "day2_client",
+        "day2_borrower",
+    }
+)
+
+# Files outside ``bridge/showcase/`` that still carry a scenario literal — each a named
+# exception with its reason. The test also fails if an entry stops naming a scenario,
+# so the list cannot rot into a blanket waiver. These predate P9-1 and are tracked
+# for removal in the roadmap's Phase 9 follow-ups.
+SCENARIO_LITERAL_ALLOWLIST = {
+    "bridge/refinery/assay.py": "historical replay corpus pins the seeded deal ids",
+    "bridge/refinery/benefits_assay.py": "historical replay corpus pins the seeded deal id",
+}
+
+
+def _scenario_identity_strings() -> set[str]:
+    """Every entity id / client / borrower / program string declared by a manifest."""
+    import yaml
+
+    found: set[str] = set()
+
+    def walk(node, key=None):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, k)
+            if "related_entity_ids" in node and isinstance(
+                node["related_entity_ids"], dict
+            ):
+                found.update(str(v) for v in node["related_entity_ids"].values())
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+        elif isinstance(node, str) and key in _SCENARIO_IDENTITY_KEYS and node.strip():
+            if not node.startswith("${"):
+                found.add(node)
+
+    for manifest in SCENARIOS_DIR.glob("*/scenario.yaml"):
+        walk(yaml.safe_load(manifest.read_text(encoding="utf-8")))
+    return found
+
+
+def _scenario_literals(py_path: Path, needles: set[str]) -> list[tuple[int, str]]:
+    """(line, value) of every non-docstring string constant CONTAINING a scenario string."""
+    try:
+        tree = ast.parse(py_path.read_text(encoding="utf-8"), filename=str(py_path))
+    except (SyntaxError, UnicodeDecodeError):
+        return []
+    docstrings = _docstring_nodes(tree)
+    lowered = {n.lower() for n in needles}
+    return [
+        (node.lineno, node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+        and any(n in node.value.lower() for n in lowered)
+    ]
+
+
+def test_showcase_names_no_scenario_literals():
+    """No string constant anywhere in ``bridge/`` (``bridge/showcase/`` included,
+    docstrings excluded) names a scenario entity id, client, borrower or program —
+    those live only in ``scenarios/<name>/scenario.yaml``."""
+    needles = _scenario_identity_strings()
+    assert len(needles) >= 8, needles
+    hits = {
+        str(py.relative_to(REPO_ROOT)): found
+        for py in _core_files()
+        if (found := _scenario_literals(py, needles))
+    }
+    offenders = {f: h for f, h in hits.items() if f not in SCENARIO_LITERAL_ALLOWLIST}
+    assert not offenders, (
+        "bridge/ names a showcase scenario — move the string into scenarios/<name>/"
+        "scenario.yaml and read it from the manifest:\n"
+        + "\n".join(
+            f"  {file}:{line}: {value[:80]!r}"
+            for file, found in offenders.items()
+            for line, value in found
+        )
+    )
+    stale = sorted(set(SCENARIO_LITERAL_ALLOWLIST) - set(hits))
+    assert not stale, (
+        f"allowlisted files no longer name a scenario — drop them: {stale}"
+    )
+
+
+def test_scenario_literal_detector_positive_control(tmp_path):
+    needles = {"LOAN-EXAMPLE-001", "Example Client LLC"}
+    flagged = tmp_path / "flagged.py"
+    flagged.write_text('URI = "gs://bucket/vault/LOAN-EXAMPLE-001/doc"\n')
+    assert _scenario_literals(flagged, needles) == [
+        (1, "gs://bucket/vault/LOAN-EXAMPLE-001/doc")
+    ]
+    docstring_only = tmp_path / "doc.py"
+    docstring_only.write_text('"""Seeds Example Client LLC."""\n\nX = 1\n')
+    assert _scenario_literals(docstring_only, needles) == []
