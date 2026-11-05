@@ -1,11 +1,6 @@
 ---
 type: atom
-related:
-  - "a2a-edge.md"
-  - "adk.md"
-  - "long-running.md"
-  - "collect.md"
-  - "collect-scenarios.md"
+up: "edges.md"
 tags: [bridge]
 ---
 
@@ -148,4 +143,4 @@ The Bridge side stays green in each case: the cells are carried verbatim and the
 - **Experimental surfaces:** `RemoteA2aAgent` is `@a2a_experimental` and `ResumabilityConfig` is `@experimental` in `google-adk` 2.7.0 — pin versions and isolate behind the shared port suite so a breaking change is caught immediately.
 
 ## Related
-- [A2A edge](a2a-edge.md) (server side), [running on ADK](adk.md), [long-running collection](long-running.md), [Collect](collect.md), [Collect scenarios](collect-scenarios.md) (rejection · delays · keeping context)
+- [A2A edge](a2a-edge.md) (server side), [running on ADK](adk.md), [long-running collection](long-running.md), [Collect](collect.md), [Collect](collect.md) § Scenarios (rejection · delays · keeping context)

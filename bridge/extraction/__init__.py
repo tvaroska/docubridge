@@ -4,7 +4,7 @@ Extraction is the **capability** axis (``fixture|gemini|docai``, selected by con
 not a local↔gcp store swap (design/ports.md). This layer provides the fixture
 (deterministic corpus-based) engine (P1-2), the Gemini engine (P7-6, the deployed
 schema-driven engine) and the Document AI OCR pre-pass that turns the Gemini engine
-into the ``docai`` engine for scanned/raster documents (design/docai-prepass.md).
+into the ``docai`` engine for scanned/raster documents (design/extraction.md).
 """
 
 from .containers import (

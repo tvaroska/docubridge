@@ -28,7 +28,7 @@ backend swap (like Sessions' ``InMemory…↔Vertex``), not a new managed port. 
   time-limited V4 GCS signed URL — **bytes never ride the response** (the route +
   contract stay put). Signing on Cloud Run uses IAM SignBlob via the SA's existing
   self-scoped ``serviceAccountTokenCreator`` grant (P7-1) — no private key, no new
-  IAM. See ``design/gcp-substrate.md`` §runtime.
+  IAM. See ``design/runtime.md`` §runtime.
 - *Inbound byte source:* :func:`resolve_bytes` is the edge's never-raising wrapper
   around the shared artifact resolver (``bridge/extraction/resolve.py``): a
   corpus-relative name, a party's http(s) URL fetched under the default-deny

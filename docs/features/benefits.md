@@ -129,7 +129,7 @@ updates the requirements. The board host then drains carrier replies onto that R
   - runtime envs (`BRIDGE_EMAIL_BUCKET`, `BRIDGE_EMAIL_MAILBOX`, the `BRIDGE_EMAIL_TOKEN_SECRET` secret ref)
   - the webhook-only Cloud Run service with its deliberate `allUsers` invoker
   - `tests/email.tftest.hcl` (10 runs).
-- **Design:** `design/email-intake.md` (new), plus `ports.md`, `bridge.md`, `edges.md`, `gcp-substrate.md`.
+- **Design:** `design/email-intake.md` (new), plus `ports.md` (including its Terraform section, formerly `gcp-substrate`), `bridge.md`, `edges.md`.
 
 **Verification.**
 - T1: ruff clean. pytest 1063 passed / 41 skipped after the CRITICAL-review fixes (1046 before them; the new skips are live legs only). `-m port` 12 / 11. `uv lock --check` OK. terraform fmt/validate clean; `terraform test` 31 passed.
@@ -329,7 +329,7 @@ renders it.
   `ProgramComparison.test.tsx` (vitest) renders 4 legs + gap flag, then post-revise
   conformant render (no flag).
 
-**Home = Ops Dashboard, not provider portal.** Per `design/frontend.md` "Surface
+**Home = Ops Dashboard, not provider portal.** Per `design/human-edge.md` "Surface
 capabilities by demo": Benefits → "dashboard **program comparison view**". Only the provider
 portal is a true A2UI (Path-B human-input) host; the two internal surfaces (console,
 dashboard) are showcase observability over SSE, not A2UI protocol. The task title says

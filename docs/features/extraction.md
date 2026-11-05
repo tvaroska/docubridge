@@ -136,7 +136,7 @@ The dashboard numbers are the next bottleneck: every SSE frame carries every ent
 - `pyproject.toml` `gcp` extra: `google-cloud-documentai>=3.0`.
 - Terraform: `docai_processor` → the runtime env plus a cross-project `roles/documentai.apiUser` grant (`manage_docai_grant`, `docai_grant` output).
 - `tests/corpus_scanned_pdf.py`: a deterministic raster-only render of carrier-C with no text layer.
-- `design/docai-prepass.md`: the shared contract (the consumer's `ADP_DOCAI_PROCESSOR` is the same setting).
+- `design/extraction.md`: the shared contract (the consumer's `ADP_DOCAI_PROCESSOR` is the same setting).
 
 **T2 evidence.**
 - `uv run pytest tests/test_docai_extraction.py` gives 36 passed / 2 gated live skips.

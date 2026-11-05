@@ -36,7 +36,7 @@ DEFAULT_MAX_ROUNDS = 6
 
 STATE_GATE_ROUNDS = "gate_rounds"
 STATE_LATEST_TURN = "latest_turn"
-# The durable, 1:1-with-casefile exchange id (design/collect-scenarios.md:
+# The durable, 1:1-with-casefile exchange id (design/collect.md:
 # "keeping context = keeping the context_id alive"). The gate threads it here from
 # the decoded turn so the send-path interceptor can continue the SAME exchange
 # across rounds (AGENT-5).

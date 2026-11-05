@@ -1,7 +1,7 @@
 """Path-A validate-only (PATH-A) — a party-with-agent asserts structured extraction
 fields; the Bridge **schema-validates + disposes, with NO extraction-port call**.
 
-Dual-path (``design/dual-path.md``): when the party has its own agent, the response
+Dual-path (``design/a2a-edge.md``): when the party has its own agent, the response
 is a structured data part carrying the extraction fields the party self-reports. The
 Bridge does not re-read a document (there are no bytes) — it validates the assertion's
 shape and runs the disposition gate over the **asserted** signals. Path A skips the

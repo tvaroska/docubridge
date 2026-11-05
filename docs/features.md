@@ -94,7 +94,7 @@ The build broken into named, individually-verifiable features, each pinned to it
 
 ---
 
-## G. Initiation surfaces & frontend ([frontend](../design/frontend.md))
+## G. Initiation surfaces & frontend ([human edge](../design/human-edge.md))
 
 > A2UI is **strictly Bridge → document provider**. The service agent does not speak A2UI; its console is SSE observability/control — showcase.
 
@@ -109,7 +109,7 @@ The build broken into named, individually-verifiable features, each pinned to it
 
 ---
 
-## H. A2UI edge & dual-path ([a2ui-edge](../design/a2ui-edge.md), [dual-path](../design/dual-path.md))
+## H. A2UI edge & dual-path ([human-edge](../design/human-edge.md), [dual-path](../design/a2a-edge.md#dual-path-fulfillment))
 
 | ID | Feature | Construct | Area | CUJ | Acceptance |
 |---|---|---|---|---|---|
@@ -167,7 +167,7 @@ The build broken into named, individually-verifiable features, each pinned to it
 
 ---
 
-## L. GCP substrate & zones ([substrate](../design/gcp-substrate.md), [zones](../design/zones.md))
+## L. GCP substrate & zones ([runtime](../design/runtime.md), [zones](../design/zones.md))
 
 > Terraform is organized **by substrate primitive** (what it provisions), never one-module-per-platform-service. "Terraform provisions substrate; the ports provision services."
 
@@ -198,7 +198,7 @@ The build broken into named, individually-verifiable features, each pinned to it
 
 ---
 
-## N. Benefits — Negotiate over a program ([patterns](../design/patterns.md), [aggregate-model](../design/aggregate-model.md), [fulfillment-graph](../design/fulfillment-graph.md), [outbound](../design/outbound.md))
+## N. Benefits — Negotiate over a program ([patterns](../design/patterns.md), [aggregate-model](../design/aggregate-model.md), [extraction](../design/extraction.md), [outbound](../design/outbound.md))
 
 | ID | Feature | Construct | Area | CUJ | Acceptance |
 |---|---|---|---|---|---|
@@ -223,7 +223,7 @@ The build broken into named, individually-verifiable features, each pinned to it
 
 ---
 
-## P. Extraction depth ([ports](../design/ports.md), [docai-prepass](../design/docai-prepass.md))
+## P. Extraction depth ([ports](../design/ports.md), [extraction / Document AI pre-pass](../design/extraction.md#document-ai-pre-pass--the-docai-engine))
 
 | ID | Feature | Construct | Area | CUJ | Acceptance |
 |---|---|---|---|---|---|

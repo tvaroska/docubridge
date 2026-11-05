@@ -1,12 +1,6 @@
 ---
-type: concept
-up: "bridge.md"
-related:
-  - "patterns.md"
-  - "disposition.md"
-  - "collect.md"
-  - "gcp-substrate.md"
-  - "../spec/standards.md"
+type: atom
+up: "runtime.md"
 tags: [bridge, adk]
 ---
 
@@ -32,7 +26,7 @@ Concretely, each concern lands on its native construct:
 | Durable session / state | `SessionService` | a bespoke store adapter |
 | Local ↔ deployed | swap the service backend (`InMemory…` ↔ `Database…` on Cloud SQL / `Gcs…`) | a custom durability layer |
 
-The reward for staying standard: the same agent code runs locally and deployed by swapping service backends — the deployed runtime is Cloud Run v2 hosting the ADK `App` (sessions, tasks and exchange records ride Cloud SQL behind their ports; see [gcp-substrate](gcp-substrate.md)) — and a reader who knows ADK already knows how the Bridge works.
+The reward for staying standard: the same agent code runs locally and deployed by swapping service backends — the deployed runtime is Cloud Run v2 hosting the ADK `App` (sessions, tasks and exchange records ride Cloud SQL behind their ports; see [runtime](runtime.md)) — and a reader who knows ADK already knows how the Bridge works.
 
 ## The one inversion we keep — and why it's still standard
 
@@ -84,7 +78,7 @@ The application stack is chosen to run *with* the platform it showcases — the 
 | **Data store** | **Cloud SQL for PostgreSQL** — indexed relational keys + a JSONB document column; one implementation serves both the local and GCP adapters. |
 | **Frontend (3 surfaces + A2UI renderer)** | **React + TypeScript + Vite**, **MUI (Material UI)**. |
 | **HITL / graph durability** | **ADK runtime session durability** — suspend/resume via `LongRunningFunctionTool` + id-matched `FunctionResponse`, recovered from the persisted `SessionService`. No bespoke workflow engine; delegate behind a port only if the fulfillment graph ever outgrows session-persisted states. |
-| **IaC** | **Terraform** (organized by substrate primitive — see [gcp-substrate](gcp-substrate.md)). |
+| **IaC** | **Terraform** (organized by substrate primitive — see [runtime](runtime.md)). |
 | **Tests** | **pytest** (the shared port suite, run against local + GCP adapters) · **Playwright** (frontend/e2e). |
 | **Tooling** | **uv** (Python) · **pnpm** (frontend). |
 
@@ -112,7 +106,7 @@ The "prefer the native construct" principle commits the design to a few ADK surf
 - [Collect](collect.md) — the same LLM-drives / code-gates split on the client side
 - [A2A consumer](a2a-consumer.md) — the native construct for calling *another* A2A agent (`RemoteA2aAgent`)
 - [artifacts](artifacts.md) — documents as versioned ADK artifacts, and how they cross the wire
-- [GCP substrate](gcp-substrate.md) — the service backends that swap in on deploy
+- [runtime](runtime.md) — the service backends that swap in on deploy
 
 ## Related
 - [exchange patterns](patterns.md), [the Bridge](bridge.md), [A2A consumer](a2a-consumer.md)

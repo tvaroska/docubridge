@@ -1,17 +1,12 @@
 ---
 type: atom
-related:
-  - "a2a-consumer.md"
-  - "long-running.md"
-  - "gcp-substrate.md"
-  - "service-agent-architecture.md"
-  - "ports.md"
+up: "runtime.md"
 tags: [bridge, deploy]
 ---
 
 # Deploying the resumable Collect loop
 
-> How the durable park/resume path ([a2a-consumer](a2a-consumer.md), [service-agent-architecture](service-agent-architecture.md)) runs on GCP. The governing move is to keep **restore** (come back to the same paused state) separate from **wake** (the trigger that re-enters the loop): restore is stock-ADK config that is deployment-agnostic and runs headless with no HTTP; wake is a small custom piece whose home depends on the runtime. Substrate: [gcp-substrate](gcp-substrate.md).
+> How the durable park/resume path ([a2a-consumer](a2a-consumer.md), [service-agent-architecture](service-agent-architecture.md)) runs on GCP. The governing move is to keep **restore** (come back to the same paused state) separate from **wake** (the trigger that re-enters the loop): restore is stock-ADK config that is deployment-agnostic and runs headless with no HTTP; wake is a small custom piece whose home depends on the runtime. Substrate: [runtime](runtime.md).
 
 ## The one distinction that decides everything: restore ≠ wake
 
@@ -27,7 +22,7 @@ Because restore runs with **no HTTP**, the deployment target is not load-bearing
 
 ## The substrate
 
-The resume path maps onto the GCP substrate ([gcp-substrate](gcp-substrate.md)) as a set of port swaps ([ports](ports.md)), each a no-op for the agent:
+The resume path maps onto the GCP substrate ([runtime](runtime.md)) as a set of port swaps ([ports](ports.md)), each a no-op for the agent:
 
 | Port | Local (dev) | GCP (deploy) | Role in resume |
 |---|---|---|---|
@@ -78,4 +73,4 @@ The two custom pieces are the whole of the wake delta; everything downstream of 
 - [A2A consumer](a2a-consumer.md) — the `RemoteA2aAgent` construct, park/resume, and the state-restore breakdown
 - [long-running collection](long-running.md) — the idle-driven, weeks-scale lifecycle the park serves
 - [service-agent reference architecture](service-agent-architecture.md) — the durable `Workflow` graph being deployed
-- [GCP substrate](gcp-substrate.md) · [ports](ports.md) — the managed adapters and the local↔GCP swap discipline
+- [runtime](runtime.md) · [ports](ports.md) — the managed adapters and the local↔GCP swap discipline

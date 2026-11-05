@@ -1,32 +1,32 @@
 ---
 type: atom
-related:
-  - "bridge.md"
-  - "patterns.md"
-  - "ports.md"
-tags: [bridge]
+up: "knowledge-model.md"
+tags: [bridge, skills]
 ---
 
-# Skills — demos as configuration
+# Skills — how the Bridge collects, and demos as configuration
 
-> Once the primitives are the architecture, every demo is the same machine, configured by **two kinds of skill**. Adding a document type — or a whole demo — is a runtime upload with **no code change and no redeploy**.
+> A bundle in `catalog/doctypes/` says what a document *is* ([ontology](ontology.md)); a skill in `skills/` says how the Bridge *collects* it and how it behaves. Once the primitives are the architecture, every demo is the same machine, configured by **two kinds of skill**. Adding a document type — or a whole demo — is a runtime upload with **no code change and no redeploy**.
 
 Skills are authored in the open **[Agent Skills format](https://agentskills.io)** (the Anthropic-originated standard: a folder with a `SKILL.md` — YAML frontmatter `name` + `description`, plus a Markdown body — optionally bundling `assets/`, `references/`, `scripts/`). The Bridge is a skills host: it installs skill folders and consumes them. Two Bridge-specific *kinds* are distinguished by a `metadata.bridge-kind` field, because one document type is used across many processes and one process consumes many document types:
 
 ```
-document-type skill               parameterizes a TASK
-    = schema + prompt             what to extract from one doc kind (Gemini)
-    + engine binding (optional)   Document AI: a custom processor plus an entity→field map
-    + per-document validation     is THIS document acceptable
-    + four disposition signals    legibility / type match / confidence / completeness
+document-type skill               the installable unit for ONE doc kind
+    = discovery metadata          name + description on the Agent Card's doctype: tags
+    + generated schema            assets/schema.json, rendered from the OKF bundle (never hand-edited)
+    + extraction notes            the SKILL.md body + references/ (issuer canonicalization)
+    + per-document validation     assets/validation.yaml — rules + which disposition signals the Bridge owns
+    + engine keys (declarative)   bridge-extraction-engine / bridge-docai-processor, not read by the Bridge
 
 process skill                     parameterizes an EXCHANGE — a lean catalog
-    = exchange pattern            extract | request | negotiate | deliver | collect
-    + policy                      reminders, SLA, retries, escalation, thresholds
-    + candidate doctypes          which doctype skills may appear (label space)
+    = exchange pattern            request | negotiate | deliver | collect (a selector, not a definition)
+    + candidate doctypes          which doctype skills may appear (the label space)
+    + policy                      assets/policy.yaml — thresholds, SLA ladder, retry cap, rfp: block
+    + review ownership            bridge-hitl: park | report
+    + satisfaction prose          bridge-satisfaction — advisory, read by bridge/satisfaction.py
 ```
 
-A doctype skill binds to the [extraction port](ports.md) engine-agnostically: schema and prompt drive the Gemini request under every engine — including the Document AI engine, whose OCR [pre-pass](docai-prepass.md) uses the one processor configured for the deployment (`BRIDGE_DOCAI_PROCESSOR`), not a per-doctype key — and the optional per-doctype processor mapping is reserved for a doctype-specific custom extractor; a doctype without one is never refused (its capability envelope). A doctype skill is reusable and pattern-agnostic; a process skill is a **lean catalog** — it holds **no** requirement slots, conditional logic, or **formal** completeness rules. It **may** carry a **prose satisfaction description** (natural language, never a rule language/DSL). The completeness *decision* is the **agent's**, asserted at runtime; the Bridge best-efforts an advisory assessment from that prose description (see [Collect](collect.md)). A one-shot extract is a single-doctype process skill. A full **demo implementation** is exactly this configuration plus a thin driver — it consumes the [core Bridge](bridge.md) without changing it, which is why adding a demo is adding configuration, not forking the platform.
+A doctype skill binds to the [extraction port](ports.md) engine-agnostically: the schema rendered from its bundle and the `SKILL.md` notes drive the Gemini request under every engine — including the Document AI engine, whose OCR [pre-pass](extraction.md#document-ai-pre-pass--the-docai-engine) uses the one processor configured for the deployment (`BRIDGE_DOCAI_PROCESSOR`), not a per-doctype key — and the optional per-doctype processor mapping is reserved for a doctype-specific custom extractor; a doctype without one is never refused (its capability envelope). A doctype skill is reusable and pattern-agnostic; a process skill is a **lean catalog** — it holds **no** requirement slots, conditional logic, or **formal** completeness rules. It **may** carry a **prose satisfaction description** (natural language, never a rule language/DSL). The completeness *decision* is the **agent's** (sense B, e.g. `agents/address/gate.py::is_satisfied`), asserted at runtime; the prose feeds `bridge/satisfaction.py`, which best-efforts an advisory proposal from it (see [Collect](collect.md)). A one-shot extract is a single-doctype process skill. A full **demo implementation** is exactly this configuration plus a thin driver — it consumes the [core Bridge](bridge.md) without changing it, which is why adding a demo is adding configuration, not forking the platform.
 
 ## Packaged as Agent Skills
 
@@ -35,10 +35,10 @@ Every skill is one Agent Skills folder. Frontmatter `name` (lowercase, hyphens, 
 **Doctype skill** — `utility-bill/`:
 ```
 utility-bill/
-├── SKILL.md                # frontmatter + extraction prompt (body)
+├── SKILL.md                # frontmatter + extraction notes (body)
 ├── assets/
-│   ├── schema.json         # extraction schema (Gemini constrained JSON)
-│   └── validation.yaml     # per-document rules + disposition-signal config
+│   ├── schema.json         # GENERATED from catalog/doctypes/utility-bill.okf.md (okf_loader --write-schemas)
+│   └── validation.yaml     # per-document rules + disposition-signal ownership
 └── references/
     └── issuer-canonicalization.md   # optional: issuer-key rules, loaded on demand
 ```
@@ -48,9 +48,10 @@ name: utility-bill
 description: A utility bill (electricity, water, gas) from a service provider. Use as
   proof of address. Extracts and canonicalizes the issuer/company, account-holder name,
   service address, and statement date; validates the bill is recent and shows an address.
-license: Proprietary. LICENSE.txt has complete terms
+license: Apache-2.0
 metadata:
   bridge-kind: doctype
+  bridge-tags: "doctype address proof-of-address"
   bridge-extraction-engine: gemini  # declarative; the engine is BRIDGE_EXTRACTION_ENGINE
   bridge-docai-processor: ""        # declarative; not read (the OCR pre-pass uses BRIDGE_DOCAI_PROCESSOR)
   bridge-schema: assets/schema.json
@@ -103,12 +104,12 @@ The `bridge-pattern` value is a **selector over a closed set of built-in flows**
 
 ## Doctype field schemas and validation
 
-A doctype skill's `assets/schema.json` is the **authoritative, enforced source of truth** for that document type's extracted fields, validated on ingest and over fixtures. On the wire the extracted `key_fields` is an open `dict[str, str]`; the schema is what constrains and enforces it. Row-shaped data (a carrier rate sheet) is declared under `properties.tables` and rides in the sibling `tables` map (see `design/a2a-consumer.md` § Structured rows); `benefits-quote` (schema v2) declares `rates` and `design`. Two doctype skills:
+A doctype's field shape is declared **once**, in its OKF bundle (`catalog/doctypes/<doctype>.okf.md`, [ontology](ontology.md)): field names, types, `required`, closed `enum` vocabularies and row-shaped `tables`. The skill's `assets/schema.json` is a generated rendering of that bundle (`python -m bridge.refinery.okf_loader --write-schemas`), kept in the folder because the registry ships the folder as-is; `tests/test_doctype_consistency.py` holds the two byte-identical, and `bridge/doctypes.py::doctype_schemas` renders from the bundle rather than reading the asset whenever a bundle exists. On the wire the extracted `key_fields` is an open `dict[str, str]`; the schema is what constrains and enforces it — validated on ingest (Path A) and pinned on the extraction request (Path B). Row-shaped data (a carrier rate sheet) is declared under `tables` and rides in the sibling `tables` map (see `design/a2a-consumer.md` § Structured rows); `benefits-quote` (schema v2) declares `rates` and `design`. Two doctype skills:
 
 - **`gov-id`** — required fields `doctype` (enum `gov-id`) plus `key_fields`: `name`, `address`, `doc_number`, `issuing_authority`, `expiry` (ISO date). Validation rules `not_expired` (expiry in the future) and `complete_fields`. (These field names are the ones the eval corpus enforces — see `wiki/evals/address/expected.json`.)
 - **`utility-bill`** — required fields `doctype` (enum `utility-bill`), `issuer` (canonicalized), plus `key_fields`: `name` (account holder), `service_address`, `statement_date`. Validation rules `recent_bill` (`window_days: 90`) and `address_present`. Issuer canonicalization maps `PowerCo` / `Power Co.` / `PowerCo Ltd` → `power-co`.
 
-`assets/schema.json` is **read at extraction time through the `skill_registry` port** (`read_asset`), not just at validation time: the Gemini engine renders every installed doctype's declared fields into the prompt and pins their union as the request's structured-output schema ([ports](ports.md)). The schema is what the model is constrained by — it is not decorative metadata, and a newly installed doctype skill changes extraction with no redeploy.
+The schema is **read at extraction time** (`doctype_schemas`, through the `skill_registry` port for the installed list), not just at validation time: the Gemini engine renders every installed doctype's declared fields and contrastive descriptions into the prompt and pins their union as the request's structured-output schema ([extraction](extraction.md)). The schema is what the model is constrained by — it is not decorative metadata — and a newly installed doctype skill (with its bundle) changes extraction with no redeploy. What stays in the **skill** rather than the bundle is behaviour: `assets/validation.yaml` carries the per-document rules and which disposition signals the Bridge owns.
 
 Both use the disposition signals `legibility`, `type_match`, and `confidence` as Bridge-authoritative (Sense A); `completeness` is the agent's Sense-B call, best-efforted by the Bridge as advisory (see [disposition](disposition.md)).
 

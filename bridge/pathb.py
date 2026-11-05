@@ -1,7 +1,7 @@
 """Path-B extraction graph (PATH-B) — the deterministic, durable-friendly state
 machine the human portal drives.
 
-Graph shape (``design/fulfillment-graph.md``)::
+Graph shape (``design/extraction.md``)::
 
     receive_document → extract → quality_gate ─┬─ pass ─→ confidence_gate ─┬─ auto_approve → ACCEPT
                                                │                          └─ hitl_review → HITL (park)
@@ -13,7 +13,7 @@ This is a **Bridge-side** engine: pure (no ``google.adk``, no ``a2a``) so it uni
 without a Runner/model, reusing ``bridge.signals`` + ``bridge.disposition`` (the sole
 disposition authority — the graph routes on ``verdict.gate``, it never re-decides).
 
-**Escalation is NOT rejection (§2a / ``design/dual-path.md``).** When extraction
+**Escalation is NOT rejection (§2a / ``design/a2a-edge.md``).** When extraction
 keeps failing to *read* a document, Path B routes it to a **human** (``escalated``,
 disposition ``PENDING``) — never ``rejected``. "The document was never judged wrong; the
 Bridge just could not read it." Only a wrong doctype (``Gate.unsupported``) is a

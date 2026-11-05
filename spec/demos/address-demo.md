@@ -2,7 +2,7 @@
 type: atom
 related:
   - "demo-suite.md"
-  - "../../design/dual-path.md"
+  - "../../design/a2a-edge.md"
   - "../../design/collect.md"
   - "../../design/proactive.md"
 tags: [bridge]
@@ -31,10 +31,10 @@ A fintech servicer onboards a new customer, *Jordan Lee* (synthetic identity). T
 
 ### Exchange 1 — Path A, the fast case (~30s)
 A counterparty that *has* an agent returns a **structured government-ID assertion** on the A2A edge (name + address + expiry, carrying the exchange context token). Bridge does **validate-only** — schema + [disposition](../../design/disposition.md), no extraction call — appends one `gov-id` entry to the ledger. Agent's function is satisfied on the first document; delivered instantly.
-**Proves:** pull spine · [dual-path](../../design/dual-path.md) (A) · alternative satisfaction resolved by the ID branch · no extraction on Path A.
+**Proves:** pull spine · [dual-path](../../design/a2a-edge.md#dual-path-fulfillment) (A) · alternative satisfaction resolved by the ID branch · no extraction on Path A.
 
 ### Exchange 2 — Path B, the meaty case (the real demo)
-Jordan has no passport handy, so goes the **two-bills** branch via the [A2UI portal](../../design/a2ui-edge.md):
+Jordan has no passport handy, so goes the **two-bills** branch via the [provider portal](../../design/human-edge.md):
 
 | Beat | What happens | Ledger after | Proves |
 |---|---|---|---|
@@ -68,7 +68,7 @@ That one narrative hits every beat: pull spine, both edges, dual-path, bounded C
 **Capabilities the demo forces (the step up from a plain single-doc pull):**
 - **Classification** — route an unlabeled upload to `gov-id` vs `utility-bill` against the label space, or flag wrong/unrequested. Gemini classifies against the candidate doctypes.
 - **Classified ledger** — the Bridge's append-only "what we have": `{doctype, key fields (issuer, address, expiry), disposition}`, derivable as a view over the exchange's tasks (one doc per task).
-- **Driver (two initiation surfaces)** — a thin stand-in for the servicer's internal agent that requests proof and starts the [`Workflow` graph](../../design/service-agent-architecture.md) (which reads the ledger, runs the satisfaction function via the gate, and re-requests or finalizes). Realized as (1) a **CLI** (`python -m agents.address …`, scriptable, drives the golden/eval runs) and (2) the **[Agent Console](../../design/frontend.md)** (Vite+React: new-session-from-prepared-request button + session list with live status). Both are `App`/`Runner` hosts, not ADK agents. Sense B lives in the graph's **gate node**, not the driver.
+- **Driver (two initiation surfaces)** — a thin stand-in for the servicer's internal agent that requests proof and starts the [`Workflow` graph](../../design/service-agent-architecture.md) (which reads the ledger, runs the satisfaction function via the gate, and re-requests or finalizes). Realized as (1) a **CLI** (`python -m agents.address …`, scriptable, drives the golden/eval runs) and (2) the **[Agent Console](../../design/human-edge.md)** (Vite+React: new-session-from-prepared-request button + session list with live status). Both are `App`/`Runner` hosts, not ADK agents. Sense B lives in the graph's **gate node**, not the driver.
 
 **Core machinery the demo relies on:**
 - Extraction port — **fixture** adapter (deterministic, for a reliable stage run) + **Gemini** adapter (impressive on real sample docs).
@@ -91,4 +91,4 @@ That one narrative hits every beat: pull spine, both edges, dual-path, bounded C
 **Address-match check.** Whether the bill's address matches the ID's / the account sits on the **agent** side (sense B) here, consistent with our model. Having the Bridge *surface* an address-mismatch flag as a pack-declared rule (sense A) would enrich beat 4 but nudges toward "declared rules in the skill"; the design keeps this on the agent side.
 
 ## Related
-- [demo implementations](demo-suite.md), [dual-path fulfillment](../../design/dual-path.md), [Collect](../../design/collect.md), [proactive follow-up](../../design/proactive.md), [frontend](../../design/frontend.md)
+- [demo implementations](demo-suite.md), [dual-path fulfillment](../../design/a2a-edge.md#dual-path-fulfillment), [Collect](../../design/collect.md), [proactive follow-up](../../design/proactive.md), [human edge](../../design/human-edge.md)

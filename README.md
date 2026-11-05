@@ -201,10 +201,11 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 | [BANKING.md](BANKING.md) | 5-scene Enterprise Showcase (Banking, Mortgage & Insurance), 6-Zone Data Architecture, Agent Gym & BigQuery SQL Eval |
 | [docs/demo-click-path.md](docs/demo-click-path.md) | 5-minute live demo click-path, Agent Registry & Gateway walkthrough, and BigQuery SQL evaluation guide |
 | [DECISIONS.md](DECISIONS.md) | Executive Architecture Decision Records (ADR-01 through ADR-13) |
-| [design/bridge.md](design/bridge.md) | The mediation product in one page |
-| [design/agent-gym.md](design/agent-gym.md) | Agent Gym continuous learning, Day-2 payoff, Two-Sided Oversight (`RSR`) & Programmable Trust |
-| [design/harness-evolve.md](design/harness-evolve.md) | Agent Gym × Harness Evolve (`SKILL.md` compilation) & multi-tier Document AI uptraining |
-| [design/ports.md](design/ports.md) | Hexagonal Ports & Adapters (`bridge/ports/`) across all 13 managed-service boundaries |
+| [design/bridge.md](design/bridge.md) | The mediation product in one page — the root of the design tree |
+| [design/model.md](design/model.md) | What the Bridge is: exchange / task / session / party, the closed pattern set, disposition, artifacts, outbound |
+| [design/edges.md](design/edges.md) | How you talk to it: the A2A edge and consumer, the service-agent shape, the human edge, email intake, RFP views |
+| [design/knowledge-model.md](design/knowledge-model.md) | What things are (ontology) vs. how we collect them (skills) vs. how it learns (Schema Refinery, Agent Gym, Harness Evolve) |
+| [design/runtime.md](design/runtime.md) | How it runs: ADK, the 13 managed-service ports, the two-zone trust boundary, proactive follow-up, deploying the resumable loop |
 | [spec/cujs.md](spec/cujs.md) | Critical User Journeys (`CUJ-1` through `CUJ-15`) |
 | [design/architecture.md](design/architecture.md) | As-built repository and module map |
 | [docs/features.md](docs/features.md) | Feature catalog across all phases and sprints |
@@ -218,4 +219,5 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 - **Sense A / Sense B** — the Bridge judges one document against declared rules (A). The calling agent decides whether the set is complete or which quote to bind (B).
 - **Port & Adapter (`Port`)** — a managed-service boundary (`bridge/ports/`) with a local adapter and a GCP adapter; the same `@pytest.mark.port` tests run against both (`BRIDGE_PORT_MODE=local|gcp`). Parity is terminal-outcome, not ledger-identical.
 - **Skill vs eval** — a skill (`skills/`) is how the Bridge behaves; an eval (`wiki/evals/`) is how we verify it behaved.
+- **Ontology vs skill** — a bundle in `catalog/doctypes/` says what a document *is*; a skill in `skills/` says how the Bridge *collects* it and how it behaves.
 

@@ -1,12 +1,6 @@
 ---
-type: concept
-up: "bridge.md"
-related:
-  - "adk.md"
-  - "edges.md"
-  - "a2a-edge.md"
-  - "disposition.md"
-  - "gcp-substrate.md"
+type: atom
+up: "model.md"
 tags: [bridge, adk, artifacts]
 ---
 
@@ -59,7 +53,7 @@ Both halves of that only hold if the failure taxonomy is complete. A party's art
 
 ## Local ↔ deployed — one more backend swap
 
-The artifact story swaps backends exactly like sessions do ([substrate](gcp-substrate.md)): **`InMemoryArtifactService`** locally, **`GcsArtifactService`** on deploy, with **no agent-code change**. The scoped fetch endpoint serves bytes directly from memory locally and issues a **GCS signed URL** on deploy — same contract, different backend.
+The artifact story swaps backends exactly like sessions do ([runtime](runtime.md)): **`InMemoryArtifactService`** locally, **`GcsArtifactService`** on deploy, with **no agent-code change**. The scoped fetch endpoint serves bytes directly from memory locally and issues a **GCS signed URL** on deploy — same contract, different backend.
 
 ## Read next
 - [running on Google ADK](adk.md) — why native constructs, and the runtime that saves/loads these
@@ -67,4 +61,4 @@ The artifact story swaps backends exactly like sessions do ([substrate](gcp-subs
 - [aggregate model](aggregate-model.md) — the *other* artifact (the metadata ledger)
 
 ## Related
-- [disposition](disposition.md), [GCP substrate](gcp-substrate.md), [two edges](edges.md)
+- [disposition](disposition.md), [runtime](runtime.md), [edges](edges.md)

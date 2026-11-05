@@ -5,7 +5,7 @@ related:
   - "../design/a2a-consumer.md"
   - "../design/ports.md"
   - "../design/adk.md"
-  - "../design/dual-path.md"
+  - "../design/a2a-edge.md"
 tags: [bridge]
 ---
 
@@ -39,7 +39,7 @@ The Ring-1 standard is the **A2A contract between a service agent (consumer) and
 
 **The one sanctioned Ring-1 deviation.** Using `INPUT_REQUIRED` for *"parked, awaiting a **third party**"* (not "prompt the caller") bends wire semantics an external reader may misread — the most expensive class of deviation under this rule. It is accepted only because it is the sole state that unlocks ADK's native zero-compute pause, and it stays a **tracked risk**. Everything else at Ring 1 stays literally canonical.
 
-**Format is orthogonal to capability.** Whether a request arrives as structured `CollectRequest` JSON or free text is an `input_modes` + content-routing concern on a single per-process `AgentSkill` ([dual-path](../design/dual-path.md)), **not** a second wire dialect or a per-format skill.
+**Format is orthogonal to capability.** Whether a request arrives as structured `CollectRequest` JSON or free text is an `input_modes` + content-routing concern on a single per-process `AgentSkill` ([dual-path](../design/a2a-edge.md#dual-path-fulfillment)), **not** a second wire dialect or a per-format skill.
 
 ## Ring 2 & Ring 3 — pointers
 

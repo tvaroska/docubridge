@@ -1,18 +1,12 @@
 ---
 type: atom
-related:
-  - "a2a-edge.md"
-  - "ports.md"
-  - "proactive.md"
-  - "party-memory.md"
-  - "patterns.md"
-  - "zones.md"
+up: "model.md"
 tags: [bridge, outbound]
 ---
 
 # Outbound direction (the Bridge as client)
 
-> The core motion is the **solicited pull spine** — a party responds *inbound* to an exchange the servicer opened ([dual-path](dual-path.md)). But an assistant that only ever waits is half an assistant: it also **chases**, **delivers**, and **dials counterparties**. Outbound is therefore a **first-class direction**, not a "someday" edge. This note is the design home for everything the Bridge *sends*.
+> The core motion is the **solicited pull spine** — a party responds *inbound* to an exchange the servicer opened ([dual-path](a2a-edge.md#dual-path-fulfillment)). But an assistant that only ever waits is half an assistant: it also **chases**, **delivers**, and **dials counterparties**. Outbound is therefore a **first-class direction**, not a "someday" edge. This note is the design home for everything the Bridge *sends*.
 
 ## Three outbound activities
 
@@ -32,7 +26,7 @@ Outbound is **not** a new protocol or a Ring-1 deviation. It reuses the existing
 
 - **Egress trust boundary.** All dial-out leaves through the [two-zone](zones.md) boundary authenticated as a workload (Agent Identity); the outbound transport never carries a long-lived party bearer token.
 - **Idempotency & retries** live in the port adapter (a send is crash-safe and re-drivable), consistent with the [Scheduler](proactive.md) port's idempotent alarms.
-- **Channel and copy.** A nudge carries a fixed channel (`email`) and the Bridge's default chase copy. [Party memory](party-memory.md) is the intended source of per-party defaults (preferred channel/format/language, advisory and overridable), but its port declares no methods, so nothing pre-selects them.
+- **Channel and copy.** A nudge carries a fixed channel (`email`) and the Bridge's default chase copy. [Party memory](zones.md#party-memory--a-reserved-advisory-only-port) is the intended source of per-party defaults (preferred channel/format/language, advisory and overridable), but its port declares no methods, so nothing pre-selects them.
 
 ## One architecture for all three activities
 
@@ -53,4 +47,4 @@ See [proactive](proactive.md) for ladder timing and [rfp-views](rfp-views.md#the
 **Cold, unsolicited inbound push** (the [Extract](patterns.md) pattern — a party pushing a document with no open exchange) is a **secondary edge**, distinct from outbound: it is traffic the Bridge *receives* unsolicited, not traffic it *sends*. No edge accepts it without an open exchange. It is not part of this note's scope.
 
 ## Related
-- [A2A edge](a2a-edge.md) · [A2A consumer](a2a-consumer.md) · [ports](ports.md) · [proactive follow-up](proactive.md) · [party memory](party-memory.md) · [patterns](patterns.md)
+- [A2A edge](a2a-edge.md) · [A2A consumer](a2a-consumer.md) · [ports](ports.md) · [proactive follow-up](proactive.md) · [party memory](zones.md#party-memory--a-reserved-advisory-only-port) · [patterns](patterns.md)

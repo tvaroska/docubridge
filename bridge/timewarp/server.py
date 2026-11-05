@@ -1,7 +1,7 @@
 """Time-warp ASGI host (P6-5, FE-5) — local-only, plain REST.
 
 A standalone ``FastAPI`` host (internal zone, **local-only**, not deployed —
-``design/frontend.md``: "plain REST, runs locally, not deployed") that exposes the
+``design/human-edge.md``: "plain REST, runs locally, not deployed") that exposes the
 ``TimewarpHost`` engine over REST so the presenter stage can drive the SLA ladder:
 arm a session's ladder, fast-forward N ticks, single-step, get state, pause/resume, and
 replay/reset. The clock advances only by these explicit calls — deterministic stage time.

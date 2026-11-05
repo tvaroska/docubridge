@@ -1,10 +1,6 @@
 ---
 type: atom
-related:
-  - "a2a-edge.md"
-  - "collect.md"
-  - "proactive.md"
-  - "aggregate-model.md"
+up: "patterns.md"
 tags: [bridge]
 ---
 

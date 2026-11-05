@@ -1,12 +1,6 @@
 ---
 type: atom
-related:
-  - "edges.md"
-  - "aggregate-model.md"
-  - "long-running.md"
-  - "a2a-consumer.md"
-  - "../spec/standards.md"
-  - "adk.md"
+up: "edges.md"
 tags: [bridge]
 ---
 
@@ -96,9 +90,29 @@ Contract delta (D10): only an additive contract.HumanReviewResolution (extra="fo
 
 **Programs (multi-party fan-out).** Each leg is its own context + party — competitors never share a context (isolation by per-leg addressing, not UI filtering). A provider-facing program context links the legs and carries the rollup.
 
-**Request intake — format vs capability (decided; as-built).** The structured `CollectRequest` JSON `DataPart` is the primary intake shape. A natural-language (`text/plain`) request is accepted on the same axis as the [dual-path](dual-path.md) shape: a process skill advertises **one `AgentSkill` with two `input_modes` (`application/json` + `text/plain`), routed by content**, with a free-text part parsed into a `CollectRequest` — **not** a second per-format `AgentSkill`, because A2A skills are discovery metadata (a capability axis), not addressable routes, and a format split would multiply the process-keyed skill taxonomy. This keeps input *format* on `input_modes` + content routing, orthogonal to the *capability* axis ([Ring 1](../spec/standards.md) D2/D3). Free-text-from-a-human belongs to the [A2UI](a2ui-edge.md) party edge.
+**Request intake — format vs capability (decided; as-built).** The structured `CollectRequest` JSON `DataPart` is the primary intake shape. A natural-language (`text/plain`) request is accepted on the same axis as the [dual-path](a2a-edge.md#dual-path-fulfillment) shape: a process skill advertises **one `AgentSkill` with two `input_modes` (`application/json` + `text/plain`), routed by content**, with a free-text part parsed into a `CollectRequest` — **not** a second per-format `AgentSkill`, because A2A skills are discovery metadata (a capability axis), not addressable routes, and a format split would multiply the process-keyed skill taxonomy. This keeps input *format* on `input_modes` + content routing, orthogonal to the *capability* axis ([Ring 1](../spec/standards.md) D2/D3). Free-text-from-a-human belongs to the [human edge](human-edge.md) party edge.
 
 The dual `input_modes` advertisement lives in the skill metadata (`SkillMeta.input_modes`, `bridge/edge/skills.py`) and feeds the dynamic Agent Card (`bridge/edge/card.py`); content routing is `bridge/edge/intake.py:decode_intake` (structured JSON wins when both are present, else text falls back). On the deterministic edge text + files → parse_text_request → Collector; on the hybrid edge a text-only message is routed to the LlmAgent as an intent (R4), not parsed into a CollectRequest.
 
+## Dual-path fulfillment
+
+> When a servicer requests a doc from party X, X responds — **indistinguishably to the requester** — in one of two modes, decided only by **what kind of response arrives**.
+
+| Mode | Party | What arrives | Bridge does |
+|---|---|---|---|
+| **Path A — structured** | has an agent | a structured data response on the A2A edge (carrying the exchange context token) | **validate-only** — schema validation + [disposition](disposition.md), **no extraction call** |
+| **Path B — portal** | no agent | PDF / free-text / form via the A2UI portal | **extract / normalize** → disposition → HITL if flagged (the [extraction graph](extraction.md)) |
+| **Operator-fulfilled** | internal human | upload on X's behalf | as Path B; lower priority |
+
+**Path-A schema validation is skill-driven.** The typed key-field model an assertion must satisfy is built from the asserted doctype's **skill schema** — the doctype skill's `bridge-schema` asset (default `assets/schema.json`), read through the `skill_registry` port by `bridge/doctypes.py`, the same reader the Path-B extraction prompt is built from. Installing a doctype skill folder therefore gives that doctype Path-A validation too, with no code change and no redeploy; the schema's `required` key fields are mandatory and an undeclared key is refused (`extra="forbid"`), raising at validation before any disposition. Skip policy: a doctype with **no installed skill** skips the typed check and stays a free string, so the [disposition](disposition.md) label-space gate rejects it `unsupported` (an out-of-label-space document must remain reportable); an installed skill whose asset is **absent** skips the check with a warning (a capability gap is never silent); an installed asset that is **unparsable** refuses loud.
+
+**Party-first, inbound.** Both modes are the party *responding* to an already-open exchange — the Bridge minted the context at request time. That is why the **pull path** itself needs no A2A client. (Outbound — chases, delivery, dialing counterparties — is a first-class direction handled separately: [outbound direction](outbound.md).)
+
+**The migration payoff.** When a Path-B party later builds its own A2A agent, it flips to Path A by **config only** — history preserved, and the servicer's code never changes. Both modes coexist on the same exchange (e.g. a party agent returns a structured ID assertion on Path A; a human uploads an ID photo or two bill PDFs on Path B).
+
+**Escalation is not rejection (Path B).** When extraction keeps failing to *read* a document, Path B routes it to a **human** (escalated, disposition `PENDING`) rather than rejecting it — the document was never judged wrong, the Bridge just could not read it. A resubmission awaits a *fresh document*, not a human decision, so it is handled **inside a single exchange task** (the Bridge chases the resubmission and returns one terminal ledger carrying the rejected doc then the accepted one), not as a new fulfillment round.
+
+This is the concrete meaning of "uniform internal interface regardless of party maturity": the messy variety lives at the edge, and everything past intake is one normalized artifact stream.
+
 ## Related
-- [two edges](edges.md), [aggregate model](aggregate-model.md), [artifacts](artifacts.md), [disposition](disposition.md), [long-running collection](long-running.md), [A2A consumer](a2a-consumer.md) (the calling side)
+- [edges](edges.md), [human edge](human-edge.md) (Path B's surface), [aggregate model](aggregate-model.md), [artifacts](artifacts.md), [disposition](disposition.md), [long-running collection](long-running.md), [A2A consumer](a2a-consumer.md) (the calling side)

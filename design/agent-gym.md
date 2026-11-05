@@ -1,17 +1,20 @@
 ---
 type: atom
-up: "bridge.md"
-related:
-  - "a2ui-edge.md"
-  - "disposition.md"
-  - "architecture.md"
-  - "harness-evolve.md"
+up: "knowledge-model.md"
 tags: [bridge, agent-gym, hitl, governance]
 ---
 
 # Agent Gym & Programmable Trust
 
-> Continuous learning from single-example expert fixes ("Example of One") and graduated autonomy across the 6-zone Enterprise Data Architecture (`bridge/agent_gym/`, `bridge/a2ui_inbox/`, `bridge/user_interaction/`, `bridge/knowledge_catalog.py`).
+> Continuous learning from single-example expert fixes ("Example of One") and graduated autonomy across the 6-zone Enterprise Data Architecture (`bridge/agent_gym/`, `bridge/a2ui_inbox/`, `bridge/user_interaction/`, `bridge/knowledge_catalog.py`). The Gym is the learning loop for **layer 2** of the [knowledge model](knowledge-model.md): it tunes how the Bridge collects and behaves — hints, aliases, precedence, presentation, trust — and leaves what a document *is* to the [Schema Refinery](schema-refinery.md) and whether a set is *complete* to the calling agent.
+
+Which layer each learning loop changes:
+
+| Loop | Layer | What it writes | Never touches |
+|---|---|---|---|
+| **Agent Gym** (this note) | 2 — skills / behaviour | `TribalKnowledgeRule`s (`EXTRACTION_HINT`, `ENTITY_ALIAS`, `CONSOLIDATION_PRIORITY`, `PRESENTATION_PREFERENCE`), `ProgrammableTrustPolicy` dials, and — via [`compile_rules_to_skill`](harness-evolve.md) — a new `SkillRevision` of a doctype skill's `SKILL.md` | field names, types, `required`, enums (layer 1); the sense-B decision (layer 3); the deterministic `Decimal` math |
+| **Schema Refinery** | 1 — ontology | `OntologyRevision`s: contrastive descriptions, edges, entity splits / merges, field cardinality | process policy, trust dials, completeness |
+| **Two-sided oversight** (§2) | 3 — measured, not learned | `oversight_rsr_score`, spot-check sampling, reviewer calibration signals | the Bridge learns nothing from it directly; it gates what the other two loops may promote |
 
 ## 1. As-Built Architecture (5 Pillars)
 
@@ -47,4 +50,4 @@ tags: [bridge, agent-gym, hitl, governance]
 | **4. Continuous Spot-Checks & Seeded Honeypots** | Bainbridge (1983); Endsley (2023); Dawid & Skene (1979) | `ProgrammableTrustPolicy.spot_check_sample_rate` (`bridge/agent_gym/models.py`) and `generate_synthetic_stress_suite`. | Routes a configurable `spot_check_sample_rate` (default `0.05` / 5% of `trusted_auto_approve` traffic) plus periodic seeded perturbations from `generate_synthetic_stress_suite` into `guided_review` to prevent skill atrophy and continuously calibrate reviewer $\text{RSR}$. |
 
 ## Related
-- [Agent Gym × Harness Evolve & Multi-Tier Extraction](harness-evolve.md) · [the Bridge](bridge.md) · [A2UI edge](a2ui-edge.md) · [disposition](disposition.md) · [project layout](architecture.md)
+- [Agent Gym × Harness Evolve & Multi-Tier Extraction](harness-evolve.md) · [the Bridge](bridge.md) · [human edge](human-edge.md) · [disposition](disposition.md) · [project layout](architecture.md)

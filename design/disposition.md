@@ -1,9 +1,6 @@
 ---
 type: atom
-related:
-  - "patterns.md"
-  - "fulfillment-graph.md"
-  - "skills.md"
+up: "model.md"
 tags: [bridge]
 ---
 
@@ -84,4 +81,4 @@ The gate's order, thresholds and boundary semantics are a published contract: th
 Rejected ledger entries and outstanding requirements carry a machine `reason_code` **and** a human `message`, so both the routing decision and its explanation travel with the record. Outstanding work is modelled with `Requirement`, `RequirementsList`, and `RequirementStatus` types: the Bridge proposes what is still outstanding as a `RequirementsList` (each `Requirement` bearing its `reason_code` + `message` and a `RequirementStatus`), which the app reads to decide the sense-B call.
 
 ## Related
-- [patterns](patterns.md), [extraction graph](fulfillment-graph.md), [skills](skills.md), [Agent Gym & Programmable Trust](agent-gym.md)
+- [patterns](patterns.md), [extraction graph](extraction.md), [skills](skills.md), [Agent Gym & Programmable Trust](agent-gym.md)

@@ -23,11 +23,12 @@ Clean-slate build (`~/projects/docubridge`). Requirements (THE WHAT) live in
 
 ```
 spec/       THE WHAT — requirements (cujs, standards, demos/, open-questions); forkable, protected
-design/     THE HOW — architecture, ports, zones, patterns, agent-gym, harness-evolve (source of truth)
+design/     THE HOW — bridge.md → five areas: model, edges, knowledge-model, runtime, architecture (source of truth)
 contract/   shared Pydantic wire types — the ONLY package both bridge/ and agents/ import
 bridge/     the reusable Bridge CORE — NEVER imports agents/
 agents/     service-agent consumers + demo drivers (Address, Benefits carriers, console)
-skills/     Agent Skills the Bridge loads at runtime
+catalog/    OKF doctype bundles (catalog/doctypes/*.okf.md) — canonical field schemas; skills/<doctype>/assets/schema.json is generated from them
+skills/     Agent Skills the Bridge loads at runtime (process = how to collect; doctype = the installable unit pointing at its bundle)
 demo/       5-scene Enterprise Showcase Console (enterprise-demo.html) + GCP video recorder
 frontend/   the four React/Vite apps + shared lib + e2e
 terraform/  IaC by substrate primitive (network, iam, database, secrets, gcs, tasks, telemetry, runtime, gateway, frontend)
@@ -54,7 +55,7 @@ Live milestone status lives in [`docs/roadmap.md`](docs/roadmap.md) (with an eph
 | `DECISIONS.md` | Append-only decision/learning log (committed) |
 | `CRITICAL.md` | Registry of protected/sensitive paths (auto-escalate) |
 | `spec/` | THE WHAT — requirements. Forkable, status-free, **protected**. `cujs.md`, `standards.md`, `demos/*.md`, `open-questions.md` |
-| `design/` | THE HOW (as built) — `architecture.md`, `ports.md`, `zones.md`, `patterns.md` + per-atom design notes; the design source of truth |
+| `design/` | THE HOW (as built) — `bridge.md` (root) → `model.md`, `edges.md`, `knowledge-model.md`, `runtime.md`, `architecture.md` (areas) → per-atom design notes; every file carries `type` / `up` / `down` front-matter and `tests/test_documentation_contract.py` asserts the tree; the design source of truth |
 | `docs/` | Planning/ops — `roadmap.md`, `features.md`, `upstream-adk-issues.md` |
 | `wiki/evals/` | The eval corpus (Address + Benefits oracles) — a runtime fixture, referenced by code + tests |
 

@@ -1,20 +1,10 @@
 ---
 type: root
 down:
-  - "aggregate-model.md"
+  - "model.md"
   - "edges.md"
-  - "patterns.md"
-  - "adk.md"
-  - "../spec/standards.md"
-  - "artifacts.md"
-  - "skills.md"
-  - "gcp-substrate.md"
-  - "outbound.md"
-  - "agent-gym.md"
-  - "harness-evolve.md"
-  - "schema-refinery.md"
-  - "../spec/demos/demo-suite.md"
-  - "../spec/cujs.md"
+  - "knowledge-model.md"
+  - "runtime.md"
   - "architecture.md"
 tags: [bridge]
 ---
@@ -25,7 +15,7 @@ tags: [bridge]
 
 **Why it exists.** An expert doesn't chase paperwork — an assistant does. The assistant emails the five carriers, re-reads the one reply that came back as a photo, notices two are in different currencies, nudges the one who's late, and only walks in when there's **one clean view** to decide on. The Bridge is that assistant for a servicer's agent: the internal agent stays precise and impatient; the Bridge absorbs a world that is neither. Extraction (PDF → JSON) is already covered well by dedicated services — the durable value is **mediation**: owning the multi-turn, multi-party, multi-format relationship end to end. Extraction itself sits behind a [port](ports.md) with swappable engines — Gemini or Document AI, chosen by config — because work a purpose-built service already does well is exactly the thing you should delegate and be able to swap.
 
-**How it works.** [A2A](patterns.md) is the protocol the exchanges run on — a servicer's agent and the Bridge (and agent counterparties) speak it natively, so a solicitation, a chase, and a delivery are all just tracked tasks in one shared vocabulary. Parties who *aren't* agents still get folded into the same model through the human-facing edge. The servicer's agent sees one uniform interface; who's on the other end is the Bridge's problem.
+**How it works.** [A2A](patterns.md) is the protocol the exchanges run on — a servicer's agent and the Bridge (and agent counterparties) speak it natively, so a solicitation, a chase, and a delivery are all just tracked tasks in one shared vocabulary. Parties who *aren't* agents still get folded into the same model through the [human-facing edge](human-edge.md). The servicer's agent sees one uniform interface; who's on the other end is the Bridge's problem.
 
 **Who it's for.** Two audiences, in order. First, teams **evaluating the Gemini platform** — the Bridge is the flagship showcase of what the platform makes possible end to end: Agent Runtime, Skill Registry, Memory Bank, Agent Gateway, Agent Identity, A2A and A2UI wired into one real, deployed system rather than a toy. Second, servicers who could **adopt it as a product** — a managed mediation service their agent calls once and gets clean, ready-to-act documentation back. The ports, the managed-GCP wiring, and the trust boundary *are* the demonstration; the extraction inside is delegated to dedicated services.
 
@@ -37,31 +27,14 @@ tags: [bridge]
 
 ## Read next
 
-**Start here — the model**
-- [aggregate model](aggregate-model.md) — exchange / task / session / party; read this first
+Five areas, each one page, each answering one question before it links deeper:
 
-**How it's built** (dive as you like)
-- [running on Google ADK](adk.md) — the platform principle: native constructs, as standard as possible
-- [standardization rings](../spec/standards.md) — which layer bends when standard and custom conflict; the **Ring 1** wire standard (D1–D5)
-- [documents as artifacts](artifacts.md) — versioned ADK artifacts, moved across the wire by reference
-- [two edges](edges.md) — A2A for agents, A2UI for humans
-- [exchange patterns](patterns.md) — Request / Negotiate / Deliver / Collect
-- [long-running collection](long-running.md) — the durable A2A task; days/weeks with no held connection
-- [A2A consumer](a2a-consumer.md) — how an agent calls the Bridge: `RemoteA2aAgent`, `input-required` pause, status updates
-- [service-agent reference architecture](service-agent-architecture.md) — the reusable whole-agent shape: `Workflow` graph (collect · gate · present) on one durable session
-- [skills](skills.md) — demos as configuration
-- [GCP substrate](gcp-substrate.md) — ports, network zones, deploy, proactive engine
-- [Agent Gym & Programmable Trust](agent-gym.md) — continuous learning, graduated autonomy, and two-sided human-oversight calibration literature
-- [Agent Gym × Harness Evolve & Multi-Tier Extraction](harness-evolve.md) — combining daytime SME capture with nightly `SKILL.md` compilation and Document AI Standard/Custom Extractor evolution
-- [Schema Refinery & Ontology-Driven Document Types](schema-refinery.md) — replacing flat `doctype` skills with OKF-backed Knowledge Catalog entries, an AlloyDB + BigQuery Knowledge Graph, automated taxonomy/description evaluation, snapshot isolation, and cross-revision lineage
+- [model](model.md) — **what the Bridge is**: exchange / task / session / party, the closed pattern set, disposition, artifacts, the outbound direction.
+- [edges](edges.md) — **how you talk to it**: the A2A server and its consumer, the service-agent shape, the human edge, email as a transport, the RFP read API.
+- [knowledge model](knowledge-model.md) — **what things are vs. how we collect them vs. how it learns**: ontology, skills, extraction, Schema Refinery, Agent Gym, Harness Evolve.
+- [runtime](runtime.md) — **how it runs**: ADK, the 13 ports, the two-zone trust boundary, proactive follow-up, deploying the resumable loop.
+- [architecture](architecture.md) — **where things live**: the repo map and the boundaries between its parts.
 
-**Context**
-- [demo implementations](../spec/demos/demo-suite.md) — the three demos on one deployed core
-- [CUJ catalog](../spec/cujs.md) — the canonical user journeys, mapped to patterns and demos
-- [outbound direction](outbound.md) — chases, delivery, and dialing counterparties
-
-**Layout**
-- [project layout](architecture.md) — the repo map and the boundaries between its parts
-- [open questions](../spec/open-questions.md) — what's still genuinely undecided
+Requirements live in [`spec/`](../spec/cujs.md) (the CUJ catalog, the [standardization rings](../spec/standards.md), the [demo suite](../spec/demos/demo-suite.md), [open questions](../spec/open-questions.md)).
 
 > Planning artifacts live **outside `design/`** (design is `design/`'s job; sequencing is not): the feature catalog at `docs/features.md` and the milestones + live status at `docs/roadmap.md` (an ephemeral root `TODO.md` may be created during an active sprint). Forkable requirements live in `spec/`.

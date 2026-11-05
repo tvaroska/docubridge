@@ -1,11 +1,6 @@
 ---
 type: atom
-related:
-  - "a2a-consumer.md"
-  - "adk.md"
-  - "collect.md"
-  - "long-running.md"
-  - "aggregate-model.md"
+up: "edges.md"
 tags: [bridge, reference-architecture]
 ---
 

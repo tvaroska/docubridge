@@ -1,12 +1,6 @@
 ---
 type: atom
-up: "frontend.md"
-related:
-  - "frontend.md"
-  - "zones.md"
-  - "outbound.md"
-  - "email-intake.md"
-  - "a2ui-edge.md"
+up: "edges.md"
 tags: [bridge, frontend, rfp, collect]
 ---
 

@@ -84,7 +84,7 @@ injected ``prepass`` (``bridge/extraction/docai.py::DocAIPrepass``): the client'
 Document AI processor OCRs the resolved document once, before the retry loop, and the
 text rides as a third part next to the original document
 (``[prompt, document, ocr_context]``). Everything schema-driven is shared; with no
-prepass the request is exactly ``[prompt, document]`` (design/docai-prepass.md).
+prepass the request is exactly ``[prompt, document]`` (design/extraction.md).
 
 Parity with the corpus is **terminal-outcome, never ledger-identical** (CLAUDE.md;
 design/ports.md): a real Gemini call will not reproduce the corpus's exact confidence

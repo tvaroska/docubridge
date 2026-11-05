@@ -4,7 +4,7 @@ Two pure classifiers over the same wire primitives ``bridge.edge.wire`` /
 ``bridge.edge.intake`` use:
 
 **``classify_path(message) -> Path``** decides the fulfillment path by **what kind of
-response arrived** (``design/dual-path.md``):
+response arrived** (``design/a2a-edge.md``):
 
 - a structured **extraction-assertion** data part (validates as the
   ``ExtractionResult`` / ``ExtractionFields`` shape, ``extra="forbid"``) present →

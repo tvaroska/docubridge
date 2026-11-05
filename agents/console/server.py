@@ -9,7 +9,7 @@ the returned requirements), and **streams status over SSE** — the first
 ``text/event-stream`` surface in the repo (§1.7).
 
 This is **SSE observability/control, NOT A2UI** — the service agent does not speak A2UI
-(``design/frontend.md``). It renders the contract ``ExchangeTurn`` directly; it does
+(``design/human-edge.md``). It renders the contract ``ExchangeTurn`` directly; it does
 **not** import ``bridge/edge/a2ui.py`` or emit an ``A2uiView``.
 
 Isolation (§2b): imports ``agents.address.*`` (via the engine) + ``contract.*`` +

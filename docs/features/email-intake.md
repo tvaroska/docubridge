@@ -12,7 +12,7 @@ implementation **substance** and rationale (with architectural decisions logged 
   (extraction, correlation, filing), token-based reply addresses, deployed topology.
 - `design/rfp-views.md` — RFP read API surface (served by both demo hosts and the
   deployed board host).
-- `design/gcp-substrate.md` — deployed services (webhook, runtime, RFP board host),
+- `design/ports.md` § Terraform — deployed services (webhook, runtime, RFP board host),
   Cloud Scheduler drain trigger.
 
 ---

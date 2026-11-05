@@ -1,12 +1,6 @@
 ---
 type: reference
 up: "bridge.md"
-related:
-  - "adk.md"
-  - "ports.md"
-  - "gcp-substrate.md"
-  - "../spec/demos/demo-suite.md"
-  - "../spec/cujs.md"
 tags: [bridge, layout]
 ---
 
@@ -25,7 +19,7 @@ docubridge/
 │   ├── dashboard/   ops read-model + SSE, /rfps API, RFP board host
 │   ├── timewarp/    local-only time-warp host
 │   ├── ports/       local/ + gcp/ adapters, registry.py
-│   ├── extraction/  extraction engine (fixture, gemini with Agent Gym hints, docai OCR pre-pass)
+│   ├── extraction/  extraction engines (fixture, gemini with Agent Gym hints, docai OCR pre-pass), page-window chunking, container + office prepass
 │   ├── email_ingress/  email intake + correlation
 │   ├── demos/       fenced demo-host glue (seeding) — the core never imports it
 │   ├── adk/         ADK integration core (experimental-surface register)
@@ -38,7 +32,7 @@ docubridge/
 │   ├── gatepin.py           gate inversion — pinned gate inputs held at the agent
 │   ├── calibration.py       threshold corridor + autorater / HITL calibration math
 │   ├── policy.py            disposition-policy loader (process skill `disposition:` block)
-│   ├── doctypes.py          the one reader of a doctype skill's `schema.json`
+│   ├── doctypes.py          the one reader of a doctype's schema (OKF bundle first, generated `schema.json` second) + ontology slicing
 │   ├── satisfaction.py / satisfaction_llm.py  advisory set-satisfaction proposal (rule / model)
 │   ├── patha.py / pathb.py  Path-A validate-only + Path-B extraction graph
 │   ├── offscript.py         off-script intent routing tools
@@ -75,10 +69,10 @@ docubridge/
 │   ├── conformance/, perf/
 │   └── address/, test_*.py
 ├── spec/            THE WHAT — requirements: cujs.md, standards.md, demos/, open-questions.md (forkable, protected)
-├── design/          THE HOW — design docs (this dir); the design source of truth (status-free)
+├── design/          THE HOW — bridge.md → model / edges / knowledge-model / runtime / architecture; the design source of truth (status-free)
 ├── docs/            implementation-facing docs (features.md, roadmap.md, upstream-adk-issues.md)
 ├── wiki/evals/      the eval corpus (spec corpus — a runtime fixture, referenced by code + tests)
-└── catalog/doctypes/ OKF doctype bundles (entity scope, contrastive fields, ontology edges)
+└── catalog/doctypes/ OKF doctype bundles — canonical field schemas, contrastive descriptions, ontology edges (design/ontology.md)
 ```
 
 **Design vs. planning.** `design/` is the design source of truth (status-free), and `spec/` holds forkable requirements. Sequencing lives outside them: `docs/features.md` (the feature catalog) and `docs/roadmap.md` (milestones + live status; an ephemeral root `TODO.md` may be created during an active sprint). These reference `design/`; it does not depend on them.
@@ -86,7 +80,7 @@ docubridge/
 **The load-bearing invariant:** `bridge/` **never imports** `agents/` ([shared contract types](adk.md)). The core is a reusable artifact; the agents consume it. Both may import `contract/` (the shared third package) — that is the only permitted cross-link. Parity of logic that must agree across the two (canonicalization, disposition, `is_satisfied`) is held by the **shared port suite + an isolation-guard test**, never by import.
 
 ### `bridge/` — the core
-The [`LlmAgent` `document_bridge`](adk.md) + tools; extraction as an `AgentTool`; HITL as a `LongRunningFunctionTool`; the [ports](ports.md) behind their ABCs (each with a local + GCP adapter); the [A2A edge](a2a-edge.md) and [A2UI edge](a2ui-edge.md); disposition + classification (`bridge.classification.canonicalize_issuer`); the extraction fixture table (`bridge.extraction.fixture`); the [outbound A2A client](outbound.md).
+The [`LlmAgent` `document_bridge`](adk.md) + tools; extraction as an `AgentTool`; HITL as a `LongRunningFunctionTool`; the [ports](ports.md) behind their ABCs (each with a local + GCP adapter); the [A2A edge](a2a-edge.md) and [human edge](human-edge.md); disposition + classification (`bridge.classification.canonicalize_issuer`); the extraction fixture table (`bridge.extraction.fixture`); the [outbound A2A client](outbound.md).
 
 HTTP hosts: `bridge.edge.server:build_a2a_app` (A2A JSON-RPC server + `/artifacts` fetch), `bridge.portal.server:build_portal_app` (provider portal), `bridge.dashboard.server:build_dashboard_app` (ops dashboard, SSE, `/rfps` routes), `bridge.dashboard.board_host:build_rfp_board_app` (deployed RFP board host), `bridge.edge.email_ingress:build_email_app` (email intake webhook), `bridge.timewarp.server:build_timewarp_app` (local-only), `bridge.demos.rfp_demo:build_rfp_demo_app` (fenced local RFP demo host), `bridge.demos.showcase:build_showcase_app` (fenced local showcase runner), `bridge/edge/mock.py` (mock Bridge).
 
@@ -110,8 +104,8 @@ The [service-agent `Workflow` shape](service-agent-architecture.md): a `RemoteA2
 
 The portal lives in `bridge/portal/` (`bridge.portal.server:build_portal_app`, the A2UI Path-B host + `rfp_checklist.py`, the leg-addressed carrier checklist), not in `agents/address/`.
 
-### `skills/` vs `wiki/evals/`
-[Skills](skills.md) are *how the Bridge behaves* (runtime config); [evals](../spec/cujs.md) are *how we check it behaved* (spec). Keep them separate.
+### `catalog/doctypes/` vs `skills/` vs `wiki/evals/`
+A bundle in [`catalog/doctypes/`](ontology.md) says what a document *is* (field names, types, `required`, enums, tables, edges — a doctype skill's `assets/schema.json` is generated from it); a [skill](skills.md) says *how the Bridge collects* it and behaves (runtime config); an [eval](../spec/cujs.md) is *how we check it behaved* (spec). Keep the three separate ([knowledge model](knowledge-model.md)).
 
 Installed skills:
 - **Address:** `address-proof` (process), `gov-id`, `utility-bill` (doctypes)
@@ -119,25 +113,25 @@ Installed skills:
 - **RFP:** `benefits-rfp` (emergent-Collect process)
 - **Financial Services & Insurance:** `commercial-loan-underwriting` (process), `trid-closing-disclosure`, `cre-credit-agreement`, `mai-appraisal`, `commercial-property-quote` (doctypes)
 
-The eval corpus is the enforced source of truth for field names + expected dispositions.
+The eval corpus is the enforced source of truth for expected dispositions; `tests/test_doctype_consistency.py` holds each doctype's generated schema to its bundle.
 
 ### `frontend/` — four apps, three actor surfaces
 `provider-portal/` (external zone), `agent-console/` + `ops-dashboard/` (internal zone), `timewarp/` (presenter control, local-only).
 
 `shared/` (`@docubridge/shared`) holds the shared theme (`theme.ts`), `Panel.tsx`, `Badges.tsx`, `domain/contract.ts` (snake_case → camelCase mirror) and `domain/rfp.ts`, with vitest tests. The apps import it.
 
-`e2e/` holds Playwright end-to-end tests, stubbed at the network boundary. See [frontend](frontend.md).
+`e2e/` holds Playwright end-to-end tests, stubbed at the network boundary. See [human edge](human-edge.md).
 
 ### `terraform/` — substrate primitives
-`network`, `runtime` (Cloud Run v2), `gateway`, `iam`, `database` (Cloud SQL), `tasks` (Cloud Tasks), `secrets`, `frontend`, and the `gcs` module holding the Skill Registry, Artifacts and email-landing buckets ([substrate](gcp-substrate.md)). Terraform provisions substrate; the ports provision services.
+`network`, `runtime` (Cloud Run v2), `gateway`, `iam`, `database` (Cloud SQL), `tasks` (Cloud Tasks), `secrets`, `frontend`, and the `gcs` module holding the Skill Registry, Artifacts and email-landing buckets ([runtime](runtime.md)). Terraform provisions substrate; the ports provision services.
 
 ## Settled design decisions
 - **ADK is pinned `google-adk >= 2.11.0, < 3`** — the [experimental-surfaces list](adk.md) is the risk register.
-- **Three demos only** (Address, Benefits, RFP); the former "Maturity" demo is dropped ([frontend](frontend.md) folds the X-Ray in as a presentation mode).
+- **Three demos only** (Address, Benefits, RFP); the former "Maturity" demo is dropped ([human edge](human-edge.md) folds the X-Ray in as a presentation mode).
 - **Outbound is first-class** ([outbound](outbound.md)); the pull spine remains the core motion.
 - **Completeness** is the app's Sense-B decision; a process skill may carry a **prose** satisfaction description the Bridge best-efforts (no DSL) ([collect](collect.md), [skills](skills.md)).
 
 Remaining genuinely-open items live in [open-questions](../spec/open-questions.md).
 
 ## Related
-- [the Bridge](bridge.md) · [running on ADK](adk.md) · [ports](ports.md) · [Agent Gym & Programmable Trust](agent-gym.md) · [demos](../spec/demos/demo-suite.md) · [CUJ catalog](../spec/cujs.md)
+- [the Bridge](bridge.md) · [model](model.md) · [edges](edges.md) · [knowledge model](knowledge-model.md) · [runtime](runtime.md) · [demos](../spec/demos/demo-suite.md) · [CUJ catalog](../spec/cujs.md)

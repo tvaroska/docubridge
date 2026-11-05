@@ -4,7 +4,7 @@ related:
   - "demo-suite.md"
   - "../../design/patterns.md"
   - "../../design/a2a-edge.md"
-  - "../../design/a2ui-edge.md"
+  - "../../design/human-edge.md"
   - "../../design/disposition.md"
 tags: [bridge]
 ---
@@ -20,10 +20,10 @@ A benefits broker's agent must source a group health plan for client *Acme Corp*
 | Beat | What happens | Proves |
 |---|---|---|
 | 1 · Fan-out | Agent opens `program:acme-2026`, requests a quote on four isolated legs. | program context linking N legs · per-leg party isolation |
-| 2 · Mixed responses | **Two carriers answer via their own agents (Path A):** Carrier A's agent is built with **Google ADK**, Carrier B's with **LangGraph** — both respond over A2A (USD). Carriers C, D upload PDFs (Path B) in **EUR / French** and **GBP / German**. | [dual-path](../../design/dual-path.md) at fan-out scale · **A2A framework interoperability** (ADK ↔ LangGraph ↔ the Bridge) · heterogeneous inputs |
+| 2 · Mixed responses | **Two carriers answer via their own agents (Path A):** Carrier A's agent is built with **Google ADK**, Carrier B's with **LangGraph** — both respond over A2A (USD). Carriers C, D upload PDFs (Path B) in **EUR / French** and **GBP / German**. | [dual-path](../../design/a2a-edge.md#dual-path-fulfillment) at fan-out scale · **A2A framework interoperability** (ADK ↔ LangGraph ↔ the Bridge) · heterogeneous inputs |
 | 3 · Normalize | Multilingual extraction + **FX normalization** map every quote to one schema, one currency, one language. | the normalization that makes comparison possible |
 | 3b · Hard documents | Carrier C's quote also arrives as a **scanned** PDF with no text layer: an OCR pre-pass reads the pixels while extraction still maps onto the doctype schema, and the scan lands the same normalized quote and gaps as the native PDF. A carrier rate sheet runs to **1000 rows** over two dozen pages: extraction returns every row, in order, and a flagged row is reported at its position in the whole sheet — a truncated answer fails loud, never silently short. | extraction holds on raster and rate-sheet-scale documents · no silent row loss |
-| 4 · Compare + standard-gap | The [program comparison view](../../design/a2ui-edge.md) renders four legs side by side; each is flagged against the **program standard** via pack-declared rules (e.g. "deductible ≤ X", "must cover Y") — [sense A](../../design/disposition.md). Carrier B's quote shows a coverage gap. | **the golden payoff** · declared-rule standard-gap (Bridge surfaces, never decides the deal) |
+| 4 · Compare + standard-gap | The [program comparison view](../../design/human-edge.md) renders four legs side by side; each is flagged against the **program standard** via pack-declared rules (e.g. "deductible ≤ X", "must cover Y") — [sense A](../../design/disposition.md). Carrier B's quote shows a coverage gap. | **the golden payoff** · declared-rule standard-gap (Bridge surfaces, never decides the deal) |
 | 5 · Negotiate | Agent pushes back on Carrier B's gap over A2A; **B's LangGraph agent** returns a **revised quote** → a new artifact **version** on the same leg; the comparison updates live. | Negotiate pattern · versioned revise loop · **multi-turn A2A with a non-ADK counterparty** |
 | 6 · Bind + rollup | Agent binds the winning leg (**sense B — the deal is the agent's**); the Bridge records per-leg bind → **program rollup** → audit trail. | bind → rollup → audit · the mediator never decides acceptance |
 
@@ -35,8 +35,8 @@ A benefits broker's agent must source a group health plan for client *Acme Corp*
 
 **Depth capabilities:**
 - **Programs** — a provider-facing program context that links N legs and carries the rollup; per-leg isolation enforced by addressing ([Programs](../../design/a2a-edge.md)). Program-scale Gateway addressing.
-- **Multilingual extraction + FX normalization** — the [extraction graph](../../design/fulfillment-graph.md)'s translate + convert layer: map every quote to one schema/currency/language.
-- **Scanned-document extraction** — an OCR pre-pass in front of the same schema-driven request, so a raster PDF with no text layer extracts against the doctype schema unchanged ([Document AI pre-pass](../../design/docai-prepass.md)).
+- **Multilingual extraction + FX normalization** — the [extraction graph](../../design/extraction.md)'s translate + convert layer: map every quote to one schema/currency/language.
+- **Scanned-document extraction** — an OCR pre-pass in front of the same schema-driven request, so a raster PDF with no text layer extracts against the doctype schema unchanged ([Document AI pre-pass](../../design/extraction.md#document-ai-pre-pass--the-docai-engine)).
 - **Large-document extraction** — a long document is extracted in page windows and merged in page order, so a rate sheet of a thousand rows returns every row and a truncated response fails loud ([ports](../../design/ports.md)).
 - **Declared-rule standard-gap disposition** — flag each normalized quote against the program standard (sense A); routes to negotiation.
 - **Negotiate + versioned revise loop** — artifact versioning on the same leg; the comparison recomputes as versions land.
@@ -58,4 +58,4 @@ A benefits broker's agent must source a group health plan for client *Acme Corp*
 - **Program standard rules** — a separate declared-standard asset in the process skill, agent-overridable per client.
 
 ## Related
-- [demo implementations](demo-suite.md), [patterns](../../design/patterns.md), [A2A edge / Programs](../../design/a2a-edge.md), [A2UI edge / comparison](../../design/a2ui-edge.md), [disposition](../../design/disposition.md)
+- [demo implementations](demo-suite.md), [patterns](../../design/patterns.md), [A2A edge / Programs](../../design/a2a-edge.md), [human edge / comparison](../../design/human-edge.md), [disposition](../../design/disposition.md)

@@ -8,7 +8,7 @@ text layer rides into the Gemini request as an extra grounding part next to the
 original document. Gemini still classifies, maps carrier terms onto the installed
 doctype's fields through the skill catalog, and answers under the pinned response
 schema — everything schema-driven (catalog, retry, null-pruning, by-reference) is
-inherited unchanged. That is the "build it once" shape (design/docai-prepass.md).
+inherited unchanged. That is the "build it once" shape (design/extraction.md).
 
 **The pre-pass contract.**
 

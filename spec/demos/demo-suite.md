@@ -32,7 +32,7 @@ tags: [bridge]
 > Separate demo implementations risk reading as three apps. They aren't: the separation is at **packaging** time, coexistence is at **runtime**. Three proofs that one deployed core handles every use-case *together*:
 
 - **One Agent Card, all demos.** The [Agent Card](../../design/a2a-edge.md) is generated from *installed* skills — load Address + Benefits + RFP into one core and the card advertises every doctype/process at once: a single agent that speaks all three use-cases.
-- **One dashboard, mixed exchanges.** The [dashboard](../../design/a2ui-edge.md) groups by *exchange*, not by demo — an Address request, a Benefits program, and an RFP casefile run **concurrently** on one view, over one shared exchange/task store. One dashboard host serves all three types — `/exchanges` for Address and RFP exchanges, `/programs` for Benefits programs.
+- **One dashboard, mixed exchanges.** The [dashboard](../../design/human-edge.md) groups by *exchange*, not by demo — an Address request, a Benefits program, and an RFP casefile run **concurrently** on one view, over one shared exchange/task store. One dashboard host serves all three types — `/exchanges` for Address and RFP exchanges, `/programs` for Benefits programs.
 - **Live-add without disturbing what's running.** Add RFP *while Address and Benefits exchanges are already in flight* — the new use-case joins the same card and dashboard, no redeploy, no interruption.
 
 The artifact that drives this is the **showcase runner** — not a fourth demo, but the harness that boots one core with all demos loaded and exercises them together (`scripts/run-showcase.sh`; Driver `tests/test_showcase.py::test_exercises_all_three_concurrently_on_one_core`).

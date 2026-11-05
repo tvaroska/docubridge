@@ -1,29 +1,23 @@
 ---
 type: atom
-up: "bridge.md"
-related:
-  - "agent-gym.md"
-  - "harness-evolve.md"
-  - "skills.md"
-  - "ports.md"
-  - "disposition.md"
+up: "knowledge-model.md"
 tags: [bridge, schema-refinery, knowledge-catalog, ontology, okf, lineage]
 ---
 
 # Schema Refinery & Ontology-Driven Document Types
 
-> **Architecture Proposal (Approved 2026-10-29):** Separates procedural **process workflows** (kept as ADK/A2A `AgentSkill`s) from declarative **document ontologies** (`doctype`s), moving `doctype` schemas, contrastive descriptions, authority hierarchies, and field-to-metric formulas into **Zone 6 Knowledge Catalog + Knowledge Graph** authored in **OKF (Open Knowledge Format)** and continuously evaluated and evolved by **Schema Refinery** over **AlloyDB** and **BigQuery**.
+> Separates procedural **process workflows** (kept as ADK/A2A `AgentSkill`s) from declarative **document ontologies** (`doctype`s), moving `doctype` schemas, contrastive descriptions, authority hierarchies, and field-to-metric formulas into **Zone 6 Knowledge Catalog + Knowledge Graph** authored in **OKF (Open Knowledge Format)** and continuously evaluated and evolved by **Schema Refinery** over **AlloyDB** and **BigQuery**.
 
 ---
 
-## 1. Problem Statement & Motivation
+## 1. Motivation — the limits of flat doctype skills
 
-Today, [`skills/`](../skills/) uses a single packaging mechanism (`SKILL.md` folders parsed by [`bridge/edge/skills.py`](../bridge/edge/skills.py)) for two fundamentally different architectural layers:
+Before the ontology layer, [`skills/`](../skills/) used a single packaging mechanism (`SKILL.md` folders parsed by [`bridge/edge/skills.py`](../bridge/edge/skills.py)) for two fundamentally different architectural layers:
 
 1. **Procedural Process Skills (`bridge-kind: process`):** `commercial-loan-underwriting`, `benefits-procurement`, `address-proof`. These are true agent skills advertised as `AgentSkill` objects on `/.well-known/agent-card.json`, governing SLA timers (`assets/policy.yaml`), HITL parking (`bridge-hitl`), and multi-turn orchestration.
 2. **Declarative Document Types (`bridge-kind: doctype`):** `trid-closing-disclosure`, `cre-credit-agreement`, `mai-appraisal`, `commercial-property-quote`, `utility-bill`, `gov-id`. These are **never advertised as standalone A2A skills** (`loaded_skills()` filters them out). They carry no tool code — only `assets/schema.json` and `assets/validation.yaml`.
 
-Because flat `skills/<doctype>/` folders can only describe one document type in isolation, four structural limitations exist in the current codebase:
+Because a flat `skills/<doctype>/` folder can only describe one document type in isolation, four structural limitations followed; each names the code location it was observed at:
 
 | Current Limitation | Exact Code Location | Impact |
 | :--- | :--- | :--- |
@@ -34,94 +28,9 @@ Because flat `skills/<doctype>/` folders can only describe one document type in 
 
 ---
 
-## 2. Target Architecture: OKF + Knowledge Catalog + AlloyDB/BigQuery Graph
+## 2. The ontology layer the Refinery evolves
 
-### 2.1 Clean Separation: `process` = ADK Skill, `doctype` = Catalog Entity
-
-```mermaid
-flowchart TB
-    subgraph A2A["A2A & ADK Orchestration Layer (Procedural)"]
-        PS["Process Skills (skills/<process>/SKILL.md)<br/>commercial-loan-underwriting · benefits-procurement · address-proof"]
-    end
-
-    subgraph KC["Zone 6: Knowledge Catalog & Schema Refinery (Declarative Ontology)"]
-        OKF["OKF Bundles (catalog/doctypes/*.okf.md + ontology.yaml)<br/>Entity Descriptions · Contrastive Field Schemas · Quality Rules · Graph Edges"]
-        SR["Schema Refinery (bridge/refinery/)<br/>Taxonomy Assay · Contrastive Description Optimizer · 3-Tier Counterfactual Gate"]
-    end
-
-    subgraph Substrate["Existing Dual-Engine Substrate (Zero New Infra)"]
-        ADB["AlloyDB / Cloud SQL (Online Hot Path <5ms)<br/>ontology_revisions · ontology_entities · ontology_edges · shadow_comparisons"]
-        BQ["BigQuery (Offline Evaluation & Property Graph)<br/>CREATE PROPERTY GRAPH · otel_spans Gap Mining · Iceberg Counterfactual Replay"]
-    end
-
-    PS -->|"bridge-context-set: commercial-loan-package"| ADB
-    OKF <-->|"kcmd push / local load"| ADB
-    OKF <-->|"CREATE PROPERTY GRAPH"| BQ
-    ADB <-->|"watermarked sync + span stream"| BQ
-    BQ -->|"Drift & Taxonomy Signals"| SR
-    SR -->|"Promotes immutable OntologyRevision"| ADB
-```
-
-### 2.2 How Every Current `doctype` Artifact Maps to the New Model
-
-| Current `doctype` Artifact | New Representation | Runtime Consumer |
-| :--- | :--- | :--- |
-| **`SKILL.md` Frontmatter & Prose** | **OKF Entity Header & Contrastive Entity Description** (`what_it_is`, `where_to_read`, `distinguish_from`) | `build_extraction_prompt()` and `build_response_schema()` include the entity's contrastive description so `gemini-3.8-flash` disambiguates boundary documents accurately. |
-| **`assets/schema.json`** | **Knowledge Catalog `Entry` (`semantic-entity`) + Schema Aspect** (`fields`, `tables`, `synonyms`, `monetary_unit`) | `doctype_schemas()` reads from the active `OntologyRevision` in AlloyDB (or local OKF in `PortMode.LOCAL`), feeding both Path A Pydantic `create_model` and Path B Gemini structured output. |
-| **`assets/validation.yaml`** | **Catalog `QualityRule` & `sql-expressions` Aspects** | Unifies Zone 2 intake validation (`Rule 0`) with Zone 6 `QualityRule` definitions. |
-| **Hardcoded `source_priority_for_doctype` & `_MONEY_KEYS`** | **Knowledge Graph Edges (`EntryLinks`)**:<br>• `(:Doctype)-[:SUPERSEDES {priority: 40, fields: [...]}]->(:Doctype)`<br>• `(:DoctypeField)-[:FEEDS_METRIC {op: "sum"}]->(:GlossaryTerm)`<br>• `(:Process)-[:REQUIRES_CORROBORATION {distinct_issuer: true}]->(:Doctype)` | `consolidate_entry()`, `resolve_active_facts()`, and `compute_financial_summary()` become 100% graph-driven with zero hardcoded domain strings. |
-
-### 2.3 Example OKF Doctype & Graph Definition (`catalog/doctypes/trid-closing-disclosure.okf.md`)
-
-By authoring doctypes in **OKF**, `PortMode.LOCAL` reads the Markdown/YAML files directly from disk in milliseconds (preserving ADR-01 offline unit testing), while `PortMode.GCP` syncs them into Google Cloud Knowledge Catalog (`dataplex.googleapis.com`) and AlloyDB:
-
-```markdown
----
-okf_version: "0.2"
-entry_type: semantic-entity
-entity_id: trid-closing-disclosure
-context_set: commercial-loan-package
-revision_id: ont-rev-v1-1-baseline
-source_priority: 40
-entity_description:
-  what_it_is: "Final CFPB TILA-RESPA Integrated Disclosure (TRID) Closing Disclosure or executed commercial loan closing settlement statement."
-  where_to_read: "Inspect Page 1 Loan Terms table for principal and Page 3 Section A (or attached Schedule B addendum) for final origination and rate-lock fees."
-  distinguish_from: "Do NOT classify preliminary Loan Estimates, non-binding Term Sheets, or standalone base Credit Agreements (cre-credit-agreement) as trid-closing-disclosure."
-fields:
-  loan_amount:
-    type: Decimal
-    required: true
-    synonyms: ["Principal Loan Amount", "Total Facility Principal"]
-    description:
-      what_it_is: "Final bound principal loan facility amount at closing."
-      where_to_read: "Page 1, Loan Terms -> Loan Amount."
-      distinguish_from: "Excludes appraised collateral value (appraised_value) or uncommitted accordion capacity."
-    feeds_metric: "term.loan_to_value_ratio.numerator"
-  appraised_value:
-    type: Decimal
-    required: false
-    synonyms: ["Appraised Property Value", "Collateral Valuation"]
-    description:
-      what_it_is: "Verified appraised value of the underlying real estate collateral."
-      where_to_read: "Page 1, Transaction Information / Property Valuation."
-      distinguish_from: "Excludes loan principal (loan_amount) or replacement cost insurance TIV."
-    feeds_metric: "term.loan_to_value_ratio.denominator"
-  origination_fee:
-    type: Decimal
-    required: true
-    synonyms: ["Schedule B Rate-Lock Extension Fee", "Lender Origination Charge", "Points"]
-    description:
-      what_it_is: "Total binding origination and rate-lock extension fee charged by the lender."
-      where_to_read: "Prioritize executed Schedule B / Page 3 Section A itemization over Page 1 summary estimates."
-      distinguish_from: "Excludes third-party title insurance premiums, recording taxes, or appraisal fees."
-    feeds_metric: "term.total_deductible_or_fees"
-edges:
-  - rel: SUPERSEDES
-    target: cre-credit-agreement
-    priority_rank: 40
-    on_fields: ["origination_fee", "loan_amount"]
----
-```
+The declarative half — `process` = ADK skill, `doctype` = catalog entity authored in OKF v0.2 under `catalog/doctypes/`, parsed by `bridge/refinery/okf_loader.py` into `contract/refinery.py` types, rendered into the generated `assets/schema.json`, and consumed by extraction, Path-A validation and consolidation — is specified in [ontology](ontology.md). The Refinery below reads and writes that layer only: it never edits a process skill's policy ([skills](skills.md)) and never decides completeness ([knowledge model](knowledge-model.md)).
 
 ---
 
@@ -213,78 +122,21 @@ flowchart LR
 
 ---
 
-## 5. Proposed Data Models & AlloyDB / BigQuery Schema Additions
+## 5. Data Models & AlloyDB / BigQuery Schema
 
-### 5.1 New Pydantic Models (`bridge/refinery/models.py`)
+### 5.1 Wire Models (`contract/refinery.py`)
 
-```python
-class ContrastiveDescription(BaseModel):
-    """Three-part contrastive description for zero-thinking workhorse disambiguation."""
+Shared by `bridge/` and `agents/`, all `extra="forbid"`, frozen:
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+- `ContrastiveDescription` — `what_it_is` / `where_to_read` / `distinguish_from`, with `render()` producing the one prompt/schema description string.
+- `OntologyEdge` — `edge_id`, `source_id`, `relation` (`EdgeRelation`: `SUPERSEDES`, `FEEDS_METRIC`, `REQUIRES_CORROBORATION`, `ALIAS_OF`, `DISTINCT_FROM`, `SPLIT_FROM`, `MERGED_INTO`, `ALIASED_FROM`, `INCLUDES`, `EXCLUDES`), `target_id`, `priority_rank`, `on_fields`, `metric_operation`, `condition_expr`, `effective_from_revision`.
+- `OntologyFieldSpec` / `OntologyEntitySpec` — the parsed OKF bundle ([ontology](ontology.md)).
+- `RefineryProposalKind` — `REFINE_DESCRIPTION`, `UPSERT_EDGE`, `PROPOSE_NEW_ENTITY`, `SPLIT_ENTITY`, `MERGE_ENTITY`, `CHANGE_FIELD_CARDINALITY`; `RefineryProposalStatus` — `CANDIDATE`, `ASSAY_PASSED`, `ASSAY_FAILED`, `PROMOTED`, `REJECTED`.
+- `RefineryProposal` — the candidate mutation: target entity / field, before and after descriptions, a proposed entity, added edges, migrated fields, evidence metrics, and the assay report and promoted revision it resolved to.
+- `RefineryAssayReport` — the 3-tier scorecard: Tier 1 flags (`dag_acyclic`, `decimal_formulas_valid`, `corridor_fa_zero`, `paired_removal_intact`), Tier 2 replay (`replayed_deal_count`, `negative_flip_rate`, `conflicts_resolved_delta`, `quarantine_reduction_delta`), Tier 3 calibration (`perturbation_krippendorff_alpha`, `workhorse_teacher_ac2`, `rogan_gladen_pass_rate`, bimodal Jaccard similarity / distance), `passed`.
+- `OntologyRevision` — `revision_id`, `version`, `parent_revision_id`, `state` (`OntologyRevisionState`: `DRAFT`, `ASSAY`, `SHADOW`, `ACTIVE`, `DEPRECATED`), `content_sha256`, `entities`, `edges`, `promoted_proposal_ids`, bi-temporal `effective_from` / `effective_to` / `recorded_at`.
 
-    what_it_is: str
-    where_to_read: str = ""
-    distinguish_from: str = ""
-
-
-class OntologyEdge(BaseModel):
-    """Directed edge in the Knowledge Catalog / Ontology Graph."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    edge_id: str
-    source_id: str
-    relation: Literal[
-        "SUPERSEDES",
-        "FEEDS_METRIC",
-        "REQUIRES_CORROBORATION",
-        "ALIAS_OF",
-        "DISTINCT_FROM",
-        "SPLIT_FROM",
-        "MERGED_INTO",
-    ]
-    target_id: str
-    priority_rank: int | None = None
-    on_fields: tuple[str, ...] = ()
-    condition_expr: str | None = None
-
-
-class RefineryProposalKind(StrEnum):
-    REFINE_DESCRIPTION = "refine_description"
-    UPSERT_EDGE = "upsert_edge"
-    PROPOSE_NEW_ENTITY = "propose_new_entity"
-    SPLIT_ENTITY = "split_entity"
-    MERGE_ENTITY = "merge_entity"
-    CHANGE_FIELD_CARDINALITY = "change_field_cardinality"
-
-
-class RefineryAssayReport(BaseModel):
-    """3-Tier Schema Refinery evaluation scorecard."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    assay_id: str
-    proposal_id: str
-    # Tier 1: Deterministic Graph & Rule 0
-    dag_acyclic: bool
-    decimal_formulas_valid: bool
-    paired_removal_intact: bool
-    corridor_fa_zero: bool
-    # Tier 2: BigQuery Historical Counterfactual Backtest
-    historical_deals_replayed: int
-    conflicts_resolved_delta: int
-    negative_flip_rate: float  # Must be == 0.0
-    bimodality_jaccard_before: float | None = None
-    bimodality_jaccard_after: float | None = None
-    # Tier 3: Statistical & Judge Calibration
-    perturbation_krippendorff_alpha: float  # Must be >= 0.80
-    workhorse_teacher_ac2: float  # Must be >= 0.80
-    rogan_gladen_pass_rate: float
-    passed_assay: bool
-```
-
-### 5.2 AlloyDB Tables (Shared on `DsnSqlRuntime` in `bridge/sql_runtime.py`)
+### 5.2 AlloyDB Tables (`bridge/refinery/sql_store.py`, shared on `DsnSqlRuntime` in `bridge/sql_runtime.py`)
 
 1. `refinery_ontology_revisions`: `(revision_id PK, parent_revision_id, semver, state [DRAFT|ASSAY|SHADOW|ACTIVE|DEPRECATED], okf_bundle_json, archive_sha256, created_at)`
 2. `refinery_proposals`: `(proposal_id PK, kind, target_entity_id, proposed_diff_json, status, trigger_signal_ids_json, created_at)`
@@ -312,4 +164,4 @@ class RefineryAssayReport(BaseModel):
 - **`FX-1` — 3-Arm Ontology Ablation Benchmark (`RefineryAssayReport`):** Extend `evaluate_ontology_proposal()` to score candidate ontology revisions across three explicit ablation arms—**Arm 0 (Schema-Only Control:** flat JSON `field: type` with no contrastive descriptions or graph edges), **Arm 1 (+ Contrastive Descriptions:** adding `what_it_is` / `where_to_read` / `distinguish_from` to isolate Stage-1 `gemini-3.8-flash` extraction lift), and **Arm 2 (+ Full Ontology Graph:** adding `[:SUPERSEDES]`, `[:INCLUDES]` / `[:EXCLUDES]`, and `[:SPLIT_FROM]` edges to isolate Stage-2 consolidation conflict-resolution lift and quarantine reduction).
 
 ## Related
-- [Agent Gym & Programmable Trust](agent-gym.md) · [Agent Gym × Harness Evolve](harness-evolve.md) · [skills](skills.md) · [ports](ports.md) · [disposition](disposition.md) · [the Bridge](bridge.md)
+- [knowledge model](knowledge-model.md) · [ontology](ontology.md) · [Agent Gym & Programmable Trust](agent-gym.md) · [Agent Gym × Harness Evolve](harness-evolve.md) · [skills](skills.md) · [ports](ports.md) · [disposition](disposition.md)

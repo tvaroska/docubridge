@@ -7,7 +7,7 @@ gate round counter back off that session service; (4) compute
 ``satisfied = is_satisfied(turn.status)`` and a ``running|parked|done|error`` status;
 (5) project a snapshot + stream SSE frames. It mints no disposition and never
 re-implements the gate/workflow — **Sense B lives in the gate, not here**
-(``design/frontend.md`` §1).
+(``design/human-edge.md`` §1).
 
 Isolation (§2b): imports ``agents.address.*`` (driver, gate) + ``contract.*`` + stdlib
 only; NEVER ``bridge/`` — the Bridge is reached by card URL alone. No ``fastapi`` import

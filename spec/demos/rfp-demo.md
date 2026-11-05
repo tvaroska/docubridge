@@ -31,7 +31,7 @@ A procurement team's agent runs an **RFP** to onboard a new supplier, *Nimbus Lo
 
 | Beat | What happens | Proves |
 |---|---|---|
-| 0 · Live-add | With Address + Benefits exchanges already running, upload the **RFP doctype + process skills** to the core. The [Agent Card](../../design/a2a-edge.md) regenerates; the [dashboard](../../design/a2ui-edge.md) gains RFP exchanges — **no redeploy, no interruption.** | **the reusability headline** · one core speaks a new industry live |
+| 0 · Live-add | With Address + Benefits exchanges already running, upload the **RFP doctype + process skills** to the core. The [Agent Card](../../design/a2a-edge.md) regenerates; the [dashboard](../../design/human-edge.md) gains RFP exchanges — **no redeploy, no interruption.** | **the reusability headline** · one core speaks a new industry live |
 | 1 · Post Requirements | Agent posts the initial Requirements; Bridge opens the casefile and begins chasing outstanding items. | agent-owned Requirements · Bridge-owned Collection status |
 | 2 · Messy intake | Nimbus submits a bundle: proposal + pricing, one **unlabeled** scan, and the insurance cert is **the wrong document**. Bridge **classifies** each against the candidate doctypes, matches an open item, normalizes, dispositions per item, flags the wrong/unrequested one. | **open-set classification** · per-item disposition · Collection status live |
 | 3 · Emergent requirement | The proposal reveals Nimbus is an **international** supplier → the agent **adds** a tax-residency form to Requirements ("self-employed → tax return" style conditional — the *agent* adds an item, not a Bridge trigger). Bridge chases the delta. | **agent-mutated Requirements** · conditional logic stays sense B |

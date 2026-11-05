@@ -14,7 +14,7 @@ tags: [bridge, cuj]
 | CUJ | Journey | Pattern | Demo |
 |---|---|---|---|
 | **CUJ-1** | Servicer requests a **single document** and receives it normalized (one-turn pull). | [Request](../design/patterns.md) | Address |
-| **CUJ-2** | A **human party uploads** via the portal → extract → normalize → disposition ([extraction graph](../design/fulfillment-graph.md)). | Request | Address |
+| **CUJ-2** | A **human party uploads** via the portal → extract → normalize → disposition ([extraction graph](../design/extraction.md)). | Request | Address |
 | **CUJ-3** | Bridge **delivers a finished document outward** (Deliver) ([outbound](../design/outbound.md)). | [Deliver](../design/patterns.md) | Benefits |
 | **CUJ-4** | **Resubmission loop** — a blurry doc hits the quality gate, party re-sends a clear copy (≤ 3). | Request | Address |
 | **CUJ-5** | **HITL review** — a flagged/mid-confidence extraction parks for a human, then resumes. | Request | Address |

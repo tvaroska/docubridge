@@ -10,7 +10,7 @@ implementation **substance** and rationale (with architectural decisions logged 
 When `/implement` finishes a task, it appends a completed entry below.
 
 **Requirements (THE WHAT) live in `spec/` and `design/`, already authored — do not duplicate here:**
-- `design/gcp-substrate.md` — the GCP substrate architecture, substrate-by-primitive
+- `design/runtime.md` (the runtime area) and `design/ports.md` § Terraform — the GCP substrate architecture, substrate-by-primitive
   module layout, runtime = Cloud Run v2, managed services for each port.
 - `design/zones.md` — two-zone network model (external/DMZ + internal), trust boundary,
   isolation, Gateway scoping.
@@ -1037,7 +1037,7 @@ URLs are baked into the bundles.
   documentation files gratuitously).
 
 - **timewarp not provisioned**: Confirmed no `timewarp` bucket/resource in
-  `modules/frontend/main.tf` — it is local-only by design (`design/frontend.md` lines 38,
+  `modules/frontend/main.tf` — it is local-only by design (`design/human-edge.md` lines 38,
   53).
 
 **Why public portal vs private console/dashboard (zone boundary):**

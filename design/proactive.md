@@ -1,9 +1,6 @@
 ---
 type: atom
-related:
-  - "gcp-substrate.md"
-  - "skills.md"
-  - "a2ui-edge.md"
+up: "runtime.md"
 tags: [bridge]
 ---
 
@@ -15,7 +12,7 @@ The current design is otherwise entirely **reactive** — something arrives, we 
 
 - **A durable Scheduler/Timer port** — a clock behind a [port](ports.md) like every other managed service: local adapter (in-process, with an **injectable virtual clock** for tests) + GCP adapter (**Cloud Tasks**). Idempotent, crash-safe — timer state persists and recovers on restart.
 - **An SLA / policy engine** — cadence, deadlines, max nudges, escalation ladder — read from the [process-skill policy](skills.md), so **policy lives in the skill**; `pattern` stays a [selector over built-in flows](patterns.md), not skill-defined.
-- **Egress via the visibility read-model *and* a real send** — a stalled request always stamps internal overdue / escalated events and party status on the [dashboard](a2ui-edge.md), so a stall is visible even with no send. The real party-channel nudge (the actual send) rides the [outbound path](outbound.md) — ladder nudges on `overdue`/`reminder` via `build_nudge_notifier`; `escalated` stamps the stall and sends nothing.
+- **Egress via the visibility read-model *and* a real send** — a stalled request always stamps internal overdue / escalated events and party status on the [dashboard](human-edge.md), so a stall is visible even with no send. The real party-channel nudge (the actual send) rides the [outbound path](outbound.md) — ladder nudges on `overdue`/`reminder` via `build_nudge_notifier`; `escalated` stamps the stall and sends nothing.
 
 ## Per-skill ladders
 
@@ -34,4 +31,4 @@ The operator's "Chase now" (`POST /rfps/{id}/chase`, `Nudge.seq`, `bridge.rfp.re
 **The demo beat.** Let a request go unfulfilled past its SLA window (virtual clock) and watch it move `overdue` → `escalated` with a reminder fired — never silently stalling.
 
 ## Related
-- [GCP substrate](gcp-substrate.md), [skills](skills.md), [A2UI edge](a2ui-edge.md)
+- [runtime](runtime.md), [skills](skills.md), [human edge](human-edge.md)

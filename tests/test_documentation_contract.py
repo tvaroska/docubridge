@@ -37,6 +37,88 @@ from bridge.sql_runtime import get_active_dsn_runtime
 from bridge.user_interaction.demo_seed import seed_demo_scenarios
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DESIGN_DIR = REPO_ROOT / "design"
+DESIGN_ROOT_DOC = DESIGN_DIR / "bridge.md"
+DESIGN_ROOT_CHILD_COUNT = 5
+DESIGN_MAX_DEPTH = 3
+DESIGN_AREA_MAX_LINES = 80
+# Basenames removed by the design re-tree; none may be referenced again.
+DELETED_DESIGN_BASENAMES = (
+    "collect-scenarios.md",
+    "dual-path.md",
+    "a2ui-edge.md",
+    "frontend.md",
+    "fulfillment-graph.md",
+    "docai-prepass.md",
+    "party-memory.md",
+    "gcp-substrate.md",
+)
+
+
+def _design_front_matter(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n"), f"{path.name} has no YAML front-matter"
+    end = text.index("\n---\n", 4)
+    loaded = yaml.safe_load(text[4:end])
+    assert isinstance(loaded, dict), f"{path.name} front-matter is not a mapping"
+    return loaded
+
+
+def test_design_tree_is_a_tree() -> None:
+    """``design/bridge.md`` ``down:`` links form a tree that reaches every design doc once."""
+    reached: dict[str, int] = {}
+
+    def walk(path: Path, depth: int, parent: Path | None) -> None:
+        assert path.is_file(), f"down: target {path.name} does not exist"
+        assert path.name not in reached, f"{path.name} reached twice (cycle or shared)"
+        assert depth <= DESIGN_MAX_DEPTH, f"{path.name} at depth {depth}"
+        reached[path.name] = depth
+        fm = _design_front_matter(path)
+        assert fm.get("type") in {"root", "area", "atom", "reference"}, path.name
+        assert "tags" in fm, f"{path.name} front-matter missing tags"
+        if parent is None:
+            assert fm["type"] == "root" and "up" not in fm, path.name
+        else:
+            assert fm.get("up") == parent.name, (
+                f"{path.name} up: {fm.get('up')!r} != actual parent {parent.name!r}"
+            )
+        if fm["type"] == "area":
+            line_count = len(path.read_text(encoding="utf-8").splitlines())
+            assert line_count <= DESIGN_AREA_MAX_LINES, (
+                f"area page {path.name} is {line_count} lines"
+            )
+        children = fm.get("down") or []
+        assert isinstance(children, list), f"{path.name} down: is not a list"
+        for child in children:
+            assert "/" not in child, f"{path.name} down: {child!r} leaves design/"
+            walk(DESIGN_DIR / child, depth + 1, path)
+
+    root_fm = _design_front_matter(DESIGN_ROOT_DOC)
+    assert len(root_fm.get("down") or []) == DESIGN_ROOT_CHILD_COUNT
+    walk(DESIGN_ROOT_DOC, 0, None)
+
+    all_docs = {p.name for p in DESIGN_DIR.glob("*.md")}
+    assert set(reached) == all_docs, (
+        f"unreached: {sorted(all_docs - set(reached))}; "
+        f"phantom: {sorted(set(reached) - all_docs)}"
+    )
+
+
+def test_design_docs_no_stale_basenames() -> None:
+    """No tracked markdown still names a design file removed by the re-tree."""
+    scanned: list[Path] = [
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "AGENTS.md",
+        REPO_ROOT / "DECISIONS.md",
+    ]
+    for sub in ("design", "docs", "spec"):
+        scanned.extend(sorted((REPO_ROOT / sub).rglob("*.md")))
+    for md_path in scanned:
+        text = md_path.read_text(encoding="utf-8")
+        for stale in DELETED_DESIGN_BASENAMES:
+            assert stale not in text, (
+                f"{md_path.relative_to(REPO_ROOT)} references removed {stale!r}"
+            )
 
 
 def test_uvicorn_factories_in_docs_are_importable_callables() -> None:

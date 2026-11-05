@@ -1,9 +1,6 @@
 ---
 type: atom
-related:
-  - "bridge.md"
-  - "collect.md"
-  - "party-memory.md"
+up: "model.md"
 tags: [bridge]
 ---
 
@@ -30,9 +27,9 @@ tags: [bridge]
 
 The Exchange **materializes into a standalone stored record** only when genuine **exchange-only state** appears that cannot be derived from the tasks: an agent-owned **Requirements artifact** (emergent, agent-mutated Collect), a **process-skill binding** stored on the exchange, **program membership**, or **reopen** state (an exchange resurrected after closure). Materialization is a one-way transition triggered by the first appearance of such state; once materialized, the record is the source of truth for that exchange and the view derives from record + tasks. Materialization must never mint a new id — exchange identity remains the A2A context token throughout. The emergent-Collect **RFP aggregate** is such a materialized record: it is stored through the Exchange store port, keyed by its own handle (the RFP id), carrying the exchange's A2A context token as an indexed, non-unique attribute (never a minted exchange id), and versioned for optimistic concurrency so a write derived from a superseded read is refused rather than lost. An RFP opened over the [A2A edge](a2a-edge.md) takes the exchange's A2A context token as its RFP id, so the `ExchangeTurn.context_id` the agent gets back names the record, and a follow-up on the same context addresses it. Bounded Collect (Address) stays a derived view; its default read path is assembled from tasks.
 
-**Party is not an aggregate.** The internal agent already knows its counterparties, so it supplies a stable counterparty reference. Cross-exchange memory keys on that reference, not a Bridge-owned entity — see [party memory](party-memory.md).
+**Party is not an aggregate.** The internal agent already knows its counterparties, so it supplies a stable counterparty reference. Cross-exchange memory keys on that reference, not a Bridge-owned entity — see [party memory](zones.md#party-memory--a-reserved-advisory-only-port).
 
 **Interrupt/resume is recovered from the persisted session**, not an in-memory map — so multi-day HITL resume is crash-safe.
 
 ## Related
-- [the Bridge](bridge.md), [Collect](collect.md), [party memory](party-memory.md)
+- [the Bridge](bridge.md), [Collect](collect.md), [party memory](zones.md#party-memory--a-reserved-advisory-only-port)

@@ -1,7 +1,7 @@
 """The ``docai`` extraction engine — Document AI OCR pre-pass feeding Gemini.
 
 The ``docai`` engine is ``GeminiExtractor(prepass=DocAIPrepass())``
-(``bridge/extraction/docai.py``, design/docai-prepass.md): the client's Document AI
+(``bridge/extraction/docai.py``, design/extraction.md): the client's Document AI
 processor OCRs a scanned/raster document once, and the text layer rides into the same
 schema-driven Gemini request as a third part next to the original document.
 

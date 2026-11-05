@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 // P6-5 phase-gate e2e. Runs the BUILT presenter stage via `vite preview`; the spec stubs the
 // time-warp REST at the network boundary (`page.route`), so NO Python host and NO sibling
-// apps need to be running (gotcha #9, design/frontend.md watch-item). Deterministic and
+// apps need to be running (gotcha #9, design/human-edge.md watch-item). Deterministic and
 // small — the phase-gate e2e, not an exhaustive suite.
 
 const PORT = 4317;

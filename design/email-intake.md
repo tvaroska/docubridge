@@ -1,12 +1,6 @@
 ---
 type: atom
-up: "ports.md"
-related:
-  - "ports.md"
-  - "edges.md"
-  - "collect.md"
-  - "artifacts.md"
-  - "gcp-substrate.md"
+up: "edges.md"
 tags: [bridge, edge, collect, email]
 ---
 
@@ -124,7 +118,7 @@ Three Cloud Run services on one image:
   - If Scheduler's calls are refused by internal-only ingress in a given project, set `rfp_board_ingress = "INGRESS_TRAFFIC_ALL"`; the invoker grant still gates every request.
 - The email bucket is UBLA, public access prevention is enforced, and a lifecycle rule deletes objects after `email_retention_days` (default 30). Retention is the lifecycle policy, never Bridge GC.
 
-Terraform gates the webhook, bucket and secrets on `enable_email_ingress` and the board host on `enable_rfp_board` (both default `false`); a root `check` warns when email intake is enabled without a board host to drain it. `scripts/deploy.sh` enables `cloudscheduler.googleapis.com`. The three secret values are never in HCL ([gcp substrate](gcp-substrate.md)).
+Terraform gates the webhook, bucket and secrets on `enable_email_ingress` and the board host on `enable_rfp_board` (both default `false`); a root `check` warns when email intake is enabled without a board host to drain it. `scripts/deploy.sh` enables `cloudscheduler.googleapis.com`. The three secret values are never in HCL ([gcp substrate](runtime.md)).
 
 ## Provisioning
 
