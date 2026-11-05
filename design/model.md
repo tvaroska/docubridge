@@ -2,6 +2,7 @@
 type: area
 up: "bridge.md"
 down:
+  - "actors.md"
   - "aggregate-model.md"
   - "patterns.md"
   - "disposition.md"
@@ -20,6 +21,7 @@ The invariants this area turns on: the Bridge owns **sense A** (is *this documen
 
 ## Read next
 
+- [actors](actors.md) — the five actors in every exchange (calling agent, DocuBridge, document provider, reviewer, domain expert): what each owns, must never do, and where that is enforced.
 - [aggregate model](aggregate-model.md) — what the exchange / task / session / party objects are and how their identifiers relate; read this first.
 - [exchange patterns](patterns.md) — which flows exist, why the set is closed, and how a process skill selects one.
   - [Collect](collect.md) — how a document *set* is assembled turn by turn, who decides completeness, and what happens on rejection, delay and restart.

@@ -217,6 +217,7 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 
 - **Exchange** — one A2A context: a durable multi-turn interaction about a *set* of documents.
 - **Sense A / Sense B** — the Bridge judges one document against declared rules (A). The calling agent decides whether the set is complete or which quote to bind (B).
+- **Actors** — five take part in every exchange: the **calling agent** (decides what is needed and when it is complete), **DocuBridge** (judges each document, chases, parks, vaults), the **document provider** (sends documents), the **reviewer** (unblocks parked cases within an authority limit), and the **domain expert** (whose corrections become Calibration lessons). One table: [design/actors.md](design/actors.md).
 - **Port & Adapter (`Port`)** — a managed-service boundary (`bridge/ports/`) with a local adapter and a GCP adapter; the same `@pytest.mark.port` tests run against both (`BRIDGE_PORT_MODE=local|gcp`). Parity is terminal-outcome, not ledger-identical.
 - **Calibration** — the learning capability: Schema Refinery evolves the ontology, Agent Gym evolves the skills; both promote only through the statistical gates in `bridge/calibration.py`.
 - **Skill vs eval** — a skill (`skills/`) is how the Bridge behaves; an eval (`wiki/evals/`) is how we verify it behaved.
