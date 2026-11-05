@@ -1,7 +1,7 @@
 ---
 name: benefits-quote
 description: A group-benefits insurance quote from a carrier. Use when comparing carrier quotes for a program. Extracts premium, deductible, coverage limits, exclusions, currency, language, effective dates, product line and commission, plus the rate table and benefit-design rows; validates the quote is complete and dated.
-license: Proprietary. LICENSE.txt has complete terms
+license: Apache-2.0
 metadata:
   bridge-kind: doctype
   bridge-tags: "doctype benefits quote insurance"

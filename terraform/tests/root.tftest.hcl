@@ -77,3 +77,32 @@ run "root_wires_frontend_when_enabled" {
     error_message = "root must expose the portal URL from frontend_ssl_domains"
   }
 }
+
+# The deny-list is operator-supplied (deploy.sh: BLOCKED_PROJECT_IDS ->
+# TF_VAR_blocked_project_ids); no real project id is committed here.
+run "root_refuses_blocked_project_id" {
+  command = plan
+
+  variables {
+    project_id          = "blocked-core-project"
+    region              = "us-central1"
+    blocked_project_ids = ["blocked-core-project", "another-blocked-project"]
+  }
+
+  expect_failures = [var.project_id]
+}
+
+run "root_allows_project_outside_block_list" {
+  command = plan
+
+  variables {
+    project_id          = "test-project"
+    region              = "us-central1"
+    blocked_project_ids = ["blocked-core-project", "another-blocked-project"]
+  }
+
+  assert {
+    condition     = output.runtime_service_name == "bridge-runtime"
+    error_message = "a project outside blocked_project_ids must plan normally"
+  }
+}

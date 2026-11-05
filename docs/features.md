@@ -1,6 +1,6 @@
 # Feature catalog
 
-The build broken into named, individually-verifiable features, each pinned to its ADK/A2A construct, the **area** it belongs to (Core · Address · Benefits · RFP · Enterprise · Deploy), the [CUJ](../spec/cujs.md) it serves, and a one-line acceptance check. This is the *what*; [`TODO.md`](../TODO.md) is the *in what order*, and [`roadmap.md`](roadmap.md) is the milestone view. Each feature links back to the design note ([`design/`](../design/bridge.md)) that specifies it — this catalog re-specifies nothing.
+The build broken into named, individually-verifiable features, each pinned to its ADK/A2A construct, the **area** it belongs to (Core · Address · Benefits · RFP · Enterprise · Deploy), the [CUJ](../spec/cujs.md) it serves, and a one-line acceptance check. This is the *what*; [`roadmap.md`](roadmap.md) is the *in what order* and the milestone view with live status. Each feature links back to the design note ([`design/`](../design/bridge.md)) that specifies it — this catalog re-specifies nothing.
 
 **Area legend.** `Core` = the reusable Bridge (`bridge/`, `contract/`); `Address` / `Benefits` / `RFP` = the demo whose skills/consumer exercise it; `Enterprise` = the 6-Zone Enterprise Data Architecture, Agent Gym, Agent Registry & Gateway, and BigQuery SQL Trace Evaluation; `Deploy` = GCP substrate. Area is a *decision*, not progress — this catalog carries no status markers.
 
@@ -240,14 +240,13 @@ The build broken into named, individually-verifiable features, each pinned to it
 | ENT‑2 | Zone 3–4 Bi-Temporal Operational Store + Decimal Consolidation | `bridge/operational_store/` (`SqlOperationalStore`, `ConsolidationEngine`) | Enterprise | 1,10 | Append-only `recorded_at` vs `effective_from` facts, Source Priority Hierarchy, and `Decimal` math |
 | ENT‑3 | Zone 4 Role-Based Views + BigQuery Iceberg Sync | `bridge/operational_store/` (`broker_view`, `claims_view`, `underwriter_view`, `export_bigquery_sync_batch`) | Enterprise | — | Click-to-source-page bounding-box traceability and watermarked incremental Iceberg CDC |
 | ENT‑4 | Zone 5 A2UI v0.9 Action Inbox & Governed Surfaces | `bridge/a2ui_inbox/`, `bridge/user_interaction/` | Enterprise | 2,5 | Security-zone catalog isolation, `4+1` governance verbs, and immutable RFC 6902 JSON Patch audit trails |
-| ENT‑5 | Zone 6 Knowledge Catalog + SPIFFE Zero-Trust Identity | `bridge/knowledge_catalog.py`, `bridge/identity.py` | Enterprise | — | 6-hop lineage graph, asymmetric `RS256`/`ES256` SPIFFE JWT-SVIDs, and OBO least-privilege intersection |
-| ENT‑6 | Agent Gym Continuous Learning & Programmable Trust | `bridge/agent_gym/`, `bridge/calibration.py` | Enterprise | 5 | Two-Sided Oversight (`RSR >= 0.80`), 3-Tier evaluation gate, Programmable Trust ladder, and `SKILL.md` compilation |
+| ENT‑5 | Zone 6 Knowledge Catalog + SPIFFE Zero-Trust Identity | `bridge/knowledge_catalog/`, `bridge/identity.py` | Enterprise | — | 6-hop lineage graph, asymmetric `RS256`/`ES256` SPIFFE JWT-SVIDs, and OBO least-privilege intersection |
+| ENT‑6 | Agent Gym Continuous Learning & Programmable Trust | `bridge/agent_gym/`, `bridge/calibration.py` | Enterprise | 5 | Two-Sided Oversight (`RSR >= 0.50`), 3-Tier evaluation gate, Programmable Trust ladder, and `SKILL.md` compilation |
 | ENT‑7 | Gemini platform Agent Registry + Agent Gateway | `bridge/agent_gym/registry_gateway.py` | Enterprise | 8,9 | 4 Registry component types (`urn:agent`, `urn:mcp`, `urn:endpoint`, `urn:skill`), `CLIENT_TO_AGENT` Model Armor/DLP, and `AGENT_TO_ANYWHERE` CEL |
 | ENT‑8 | OpenTelemetry `gen_ai.*` + BigQuery 3-Tier SQL Trace Eval | `bridge/telemetry/`, `terraform/modules/telemetry/` (`v_trace_sql_evaluation`) | Enterprise | — | 22 pipeline steps traced to Cloud Trace v2 + BigQuery `otel_spans`; 5 `Rule 0` SQL gates (`$0`), selective `AI.GENERATE_TABLE`, and Rogan-Gladen debiasing |
 
 ---
 
 ## See also
-- [`TODO.md`](../TODO.md) — the phased build order over these features
-- [`roadmap.md`](roadmap.md) — high-level milestone view
+- [`roadmap.md`](roadmap.md) — milestones, phased build order, and live status
 - [repo layout](../design/architecture.md) · [CUJ catalog](../spec/cujs.md) · [the Bridge](../design/bridge.md)

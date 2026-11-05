@@ -5,7 +5,7 @@
 # criterion). The google/google-beta providers are pinned to major 6 (the pin the
 # GCP port adapters are written against; matched across every child module).
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.9"
 
   required_providers {
     google = {

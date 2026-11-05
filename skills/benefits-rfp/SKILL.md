@@ -1,7 +1,7 @@
 ---
 name: benefits-rfp
 description: Run a group-benefits RFP collection — invite N carriers across product lines, chase every carrier to a due date, and report which quotes are in and which are still waiting. Use when a broker's agent needs to know "which documents are ready, which are waiting on a carrier". An emergent Collect over the carrier distribution list x product lines; the agent owns the requirements and the completeness decision.
-license: Proprietary. LICENSE.txt has complete terms
+license: Apache-2.0
 metadata:
   bridge-kind: process
   bridge-pattern: collect

@@ -185,7 +185,7 @@ run "agent_engine_a2a_envs_when_deployed" {
     vpc_network           = "projects/test-project/global/networks/bridge-vpc"
     egress_subnet         = "projects/test-project/regions/us-central1/subnetworks/bridge-vpc-internal"
     port_mode             = "gcp"
-    agent_engine_id       = "projects/test-project/locations/us-central1/reasoningEngines/5963861295097708544"
+    agent_engine_id       = "projects/test-project/locations/us-central1/reasoningEngines/1000000000000000000"
     agent_engine_remote   = "1"
     agent_engine_a2a      = "1"
   }
@@ -193,7 +193,7 @@ run "agent_engine_a2a_envs_when_deployed" {
   assert {
     condition = length([
       for e in google_cloud_run_v2_service.bridge.template[0].containers[0].env
-      : e if e.name == "BRIDGE_AGENT_ENGINE_ID" && e.value == "projects/test-project/locations/us-central1/reasoningEngines/5963861295097708544"
+      : e if e.name == "BRIDGE_AGENT_ENGINE_ID" && e.value == "projects/test-project/locations/us-central1/reasoningEngines/1000000000000000000"
     ]) == 1
     error_message = "agent_engine_id must inject BRIDGE_AGENT_ENGINE_ID as a plain env"
   }

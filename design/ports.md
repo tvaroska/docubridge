@@ -15,11 +15,11 @@ The ports are **[Ring 2](../spec/standards.md)** — the standardization priorit
 
 | Port (`bridge/ports/`) | Local adapter | GCP adapter |
 |---|---|---|
-| **Sessions** (`sessions`) | ADK `DatabaseSessionService` on async sqlite (in-memory when no DSN) | ADK `VertexAiSessionService` on Gemini platform Agent Engine when `BRIDGE_AGENT_ENGINE_ID` is set (or `DatabaseSessionService` on Cloud SQL Postgres when unset) |
+| **Sessions** (`sessions`) | ADK `DatabaseSessionService` on async sqlite (in-memory when no DSN) | ADK `VertexAiSessionService` on Agent Engine when `BRIDGE_AGENT_ENGINE_ID` is set (or `DatabaseSessionService` on Cloud SQL Postgres when unset) |
 | **Task store** (`task_store`) | local embedded store | a managed relational store, adoptable as the platform's managed task store via a one-adapter swap |
 | **Exchange store** (`exchange_store`) | local embedded store | a managed relational store |
 | **Skill registry** (`skill_registry`) | directory of [Agent Skills](skills.md) folders | GCP Skill Registry (same [Agent Skills format](skills.md)) |
-| **Memory bank** (`memory_bank`) | ADK `InMemoryMemoryService` (or `SqliteMemoryService` when `BRIDGE_MEMORY_DB_PATH` is set) | ADK `VertexAiMemoryBankService` on Gemini platform Agent Engine (`BRIDGE_AGENT_ENGINE_ID`) |
+| **Memory bank** (`memory_bank`) | ADK `InMemoryMemoryService` (or `SqliteMemoryService` when `BRIDGE_MEMORY_DB_PATH` is set) | ADK `VertexAiMemoryBankService` on Agent Engine (`BRIDGE_AGENT_ENGINE_ID`) |
 | **Scheduler/Timer** (`scheduler`) | in-process, virtual clock | Cloud Tasks |
 | **A2A client (outbound)** (`a2a_client`) | injected fake transport | authenticated transport with Agent Identity |
 | **Extraction** (`extraction`) | fixture extractor (deterministic) | Gemini *or* Gemini + Document AI pre-pass — engine-selectable |

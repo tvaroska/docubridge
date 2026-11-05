@@ -1,7 +1,7 @@
 # A2A Document Bridge
 
 Collecting documents across institutions is slow, messy, and human-paced.
-**A2A Document Bridge** manages that process end-to-end so a calling service agent
+**DocuBridge (A2A Document Bridge)** manages that process end-to-end so a calling service agent
 never touches raw document chasing, OCR variance, or cross-document conflicts — it
 asks once over canonical Agent-to-Agent (A2A) protocol and receives structured,
 page-anchored, audit-locked facts ready to act on.
@@ -27,9 +27,9 @@ It serves two purposes in one codebase:
 | Pillar | Capabilities Demonstrated in Document Bridge | Key Modules |
 |---|---|---|
 | **1. BUILD** | Single-turn & resumable ADK `LlmAgent`s (`google-adk`), `SKILL.md` runtime skill registry, A2A v0.3 JSON-RPC + SSE edge, A2UI v0.9 declarative surfaces, cross-framework ADK ↔ LangGraph interop | `bridge/agent.py`, `bridge/edge/`, `skills/`, `agents/` |
-| **2. GOVERN** | Gemini platform **Agent Registry** (`urn:agent`, `urn:mcp`, `urn:endpoint`, `urn:skill` + content-addressed `SkillRevisionRecord`), **Agent Gateway** (`CLIENT_TO_AGENT` Model Armor + Cloud DLP, `AGENT_TO_ANYWHERE` IAM v3 CEL), and **SPIFFE JWT-SVID + Human OBO** least-privilege intersection (`Agent ∩ User`) | `bridge/identity.py`, `bridge/agent_gym/registry_gateway.py`, `bridge/knowledge_catalog.py` |
-| **3. SCALE** | **6-Zone Enterprise Data Architecture**: Edge PII redaction, 7-year WORM Cloud Storage Audit Vault (`if_generation_match=0`), deterministic `Decimal` Consolidation Engine, bi-temporal SQL Operational Store (`learned_as_of` × `effective_on`), Role-Based Views, and watermarked BigQuery Open Iceberg sync | `bridge/vault.py`, `bridge/operational_store.py`, `bridge/sql_runtime.py`, `terraform/` |
-| **4. OPTIMIZE** | **Agent Gym** continuous learning ("Example of One" SME feedback → 3-Tier evaluation gate → `SKILL.md` compilation → Programmable Trust dial), Two-Sided Oversight (`RSR` anti-rubber-stamping), and **BigQuery `Rule 0` SQL Trace Evaluation** (`v_trace_sql_evaluation` + `AI.GENERATE_TABLE` + Rogan-Gladen debiasing) | `bridge/agent_gym/`, `bridge/telemetry.py`, `terraform/modules/telemetry/` |
+| **2. GOVERN** | Gemini platform **Agent Registry** (`urn:agent`, `urn:mcp`, `urn:endpoint`, `urn:skill` + content-addressed `SkillRevisionRecord`), **Agent Gateway** (`CLIENT_TO_AGENT` Model Armor + Cloud DLP, `AGENT_TO_ANYWHERE` IAM v3 CEL), and **SPIFFE JWT-SVID + Human OBO** least-privilege intersection (`Agent ∩ User`) | `bridge/identity.py`, `bridge/agent_gym/registry_gateway.py`, `bridge/knowledge_catalog/` |
+| **3. SCALE** | **6-Zone Enterprise Data Architecture**: Edge PII redaction, 7-year WORM Cloud Storage Audit Vault (`if_generation_match=0`), deterministic `Decimal` Consolidation Engine, bi-temporal SQL Operational Store (`learned_as_of` × `effective_on`), Role-Based Views, and watermarked BigQuery Open Iceberg sync | `bridge/vault.py`, `bridge/operational_store/`, `bridge/sql_runtime.py`, `terraform/` |
+| **4. OPTIMIZE** | **Agent Gym** continuous learning ("Example of One" SME feedback → 3-Tier evaluation gate → `SKILL.md` compilation → Programmable Trust dial), Two-Sided Oversight (`RSR` anti-rubber-stamping), and **BigQuery `Rule 0` SQL Trace Evaluation** (`v_trace_sql_evaluation` + `AI.GENERATE_TABLE` + Rogan-Gladen debiasing) | `bridge/agent_gym/`, `bridge/telemetry/`, `terraform/modules/telemetry/` |
 
 ```mermaid
 flowchart LR
@@ -111,6 +111,17 @@ Behind the enterprise console, the reusable Bridge core mediates four canonical 
    `bridge-hitl: park` pauses through the resumable `document_bridge` `LlmAgent` with pinned
    disposition gate inputs (`bridge/gatepin.py`).
 
+## Reuse this over A2A
+
+Downstream showcases do not fork this repo. They call DocuBridge as a deployed A2A agent:
+discover it at `/.well-known/agent-card.json`, send a `CollectRequest` over JSON-RPC, and
+receive page-anchored, audit-locked facts back. What a downstream team brings is small:
+a doctype or process skill folder under `skills/` (`SKILL.md` + `assets/`), an OKF
+doctype bundle under `catalog/doctypes/` (entity scope, contrastive field descriptions,
+ontology edges), and a scenario the Bridge mediates. The Bridge core does not change; it
+hot-loads the skills and resolves the bundle through the Zone 6 Knowledge Catalog.
+Contribution conventions and the verification ladder are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Run All Local Surfaces
 
 Credential-free. Every port uses its local adapter; extraction uses the deterministic
@@ -165,10 +176,9 @@ terraform -chdir=terraform init -backend=false && terraform -chdir=terraform tes
 ```
 spec/       THE WHAT — requirements (CUJs, standards, demos). Forkable, status-free, protected.
 design/     THE HOW — architecture, ports, zones, patterns, agent-gym, harness-evolve. Status-free.
-TODO.md     live status and sequencing (the only place status lives)
-DECISIONS.md architectural decision records (ADR-01 through ADR-12) & milestone history
+DECISIONS.md architectural decision records (ADR-01 through ADR-13) & milestone history
 BANKING.md  5-scene Enterprise Showcase architecture & walkthrough (Banking, Mortgage, Insurance)
-docs/       feature catalog, demo click-path, roadmap, local-dev, upstream ADK issues
+docs/       feature catalog, demo click-path, roadmap (the only place status lives), local-dev, upstream ADK issues
 wiki/evals/ the eval corpus (Address + Benefits oracles) — a runtime fixture
 contract/   shared Pydantic wire types — the ONLY package both bridge/ and agents/ import
 bridge/     the reusable core — NEVER imports agents/
@@ -189,7 +199,7 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 |---|---|
 | [BANKING.md](BANKING.md) | 5-scene Enterprise Showcase (Banking, Mortgage & Insurance), 6-Zone Data Architecture, Agent Gym & BigQuery SQL Eval |
 | [docs/demo-click-path.md](docs/demo-click-path.md) | 5-minute live demo click-path, Agent Registry & Gateway walkthrough, and BigQuery SQL evaluation guide |
-| [DECISIONS.md](DECISIONS.md) | Executive Architecture Decision Records (ADR-01 through ADR-12) |
+| [DECISIONS.md](DECISIONS.md) | Executive Architecture Decision Records (ADR-01 through ADR-13) |
 | [design/bridge.md](design/bridge.md) | The mediation product in one page |
 | [design/agent-gym.md](design/agent-gym.md) | Agent Gym continuous learning, Day-2 payoff, Two-Sided Oversight (`RSR`) & Programmable Trust |
 | [design/harness-evolve.md](design/harness-evolve.md) | Agent Gym × Harness Evolve (`SKILL.md` compilation) & multi-tier Document AI uptraining |
@@ -198,6 +208,7 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 | [design/architecture.md](design/architecture.md) | As-built repository and module map |
 | [docs/features.md](docs/features.md) | Feature catalog across all phases and sprints |
 | [CLAUDE.md](CLAUDE.md) | Engineering conventions and operational lessons learned |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution conventions, invariants, and the local verification ladder |
 
 ## Core Glossary
 

@@ -1,7 +1,7 @@
 ---
 name: utility-bill
 description: A utility bill (electricity, water, gas) from a service provider. Use as proof of address. Extracts and canonicalizes the issuer/company, account-holder name, service address, and statement date; validates the bill is recent and shows an address.
-license: Proprietary. LICENSE.txt has complete terms
+license: Apache-2.0
 metadata:
   bridge-kind: doctype
   bridge-tags: "doctype address proof-of-address"

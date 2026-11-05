@@ -28,9 +28,29 @@ docubridge/
 │   ├── extraction/  extraction engine (fixture, gemini with Agent Gym hints, docai OCR pre-pass)
 │   ├── email_ingress/  email intake + correlation
 │   ├── demos/       fenced demo-host glue (seeding) — the core never imports it
+│   ├── adk/         ADK integration core (experimental-surface register)
+│   ├── refinery/    Schema Refinery: OKF loader, taxonomy assay, 3-Tier gate, ontology revisions
+│   ├── agent.py             the root `document_bridge` LlmAgent on stock ADK
+│   ├── collect.py           classified-ledger projection + the one-turn collect path
+│   ├── classification.py    issuer canonicalization + label-space check (sense A)
+│   ├── signals.py           four-signal disposition model behind one SignalProvider
+│   ├── disposition.py       pure deterministic disposition gate
+│   ├── gatepin.py           gate inversion — pinned gate inputs held at the agent
+│   ├── calibration.py       threshold corridor + autorater / HITL calibration math
+│   ├── policy.py            disposition-policy loader (process skill `disposition:` block)
+│   ├── doctypes.py          the one reader of a doctype skill's `schema.json`
+│   ├── satisfaction.py / satisfaction_llm.py  advisory set-satisfaction proposal (rule / model)
+│   ├── patha.py / pathb.py  Path-A validate-only + Path-B extraction graph
+│   ├── offscript.py         off-script intent routing tools
+│   ├── program.py / normalize.py / standard.py / comparison.py / negotiate.py  Benefits fan-out, normalize, gap-flag, compare, negotiate
+│   ├── rfp.py               emergent RFP collection process
+│   ├── followup.py / sla.py / scheduler.py  chase ladder, SLA engine, virtual-clock scheduler
+│   ├── outbound.py / netguard.py  outbound A2A client + default-deny egress guard
+│   ├── exchange_store.py    materialized Exchange records behind the exchange_store port
+│   ├── sql_runtime.py       shared per-DSN async SQLAlchemy runtime for all SQL stores
 │   ├── vault.py             Zone 2/3 PII redaction & WORM Cloud Storage Audit Vault
 │   ├── operational_store/   Zone 3/4 bi-temporal Operational Store, Decimal consolidation & Iceberg CDC
-│   ├── knowledge_catalog.py Zone 6 Knowledge Catalog, 6-hop lineage, glossary & asset map
+│   ├── knowledge_catalog/   Zone 6 Knowledge Catalog, 6-hop lineage, glossary & asset map
 │   ├── identity.py          SPIFFE JWT-SVID verification, OBO compound identity & tenant isolation
 │   ├── a2ui_inbox/          Zone 5 A2UI v0.9 Action Inbox, SQL store, SSE deltas & RFC 6902 audit trail
 │   ├── agent_gym/           Zone 6 Agent Gym package (models, engine, sql_store, registry_gateway)
@@ -58,10 +78,10 @@ docubridge/
 ├── design/          THE HOW — design docs (this dir); the design source of truth (status-free)
 ├── docs/            implementation-facing docs (features.md, roadmap.md, upstream-adk-issues.md)
 ├── wiki/evals/      the eval corpus (spec corpus — a runtime fixture, referenced by code + tests)
-└── TODO.md          tasks + live status
+└── catalog/doctypes/ OKF doctype bundles (entity scope, contrastive fields, ontology edges)
 ```
 
-**Design vs. planning.** `design/` is the design source of truth (status-free), and `spec/` holds forkable requirements. Sequencing lives outside them: `docs/features.md` (the feature catalog), `docs/roadmap.md` (milestones), and `TODO.md` (the phased plan + live status). These reference `design/`; it does not depend on them.
+**Design vs. planning.** `design/` is the design source of truth (status-free), and `spec/` holds forkable requirements. Sequencing lives outside them: `docs/features.md` (the feature catalog) and `docs/roadmap.md` (milestones + live status; an ephemeral root `TODO.md` may be created during an active sprint). These reference `design/`; it does not depend on them.
 
 **The load-bearing invariant:** `bridge/` **never imports** `agents/` ([shared contract types](adk.md)). The core is a reusable artifact; the agents consume it. Both may import `contract/` (the shared third package) — that is the only permitted cross-link. Parity of logic that must agree across the two (canonicalization, disposition, `is_satisfied`) is held by the **shared port suite + an isolation-guard test**, never by import.
 

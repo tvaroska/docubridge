@@ -23,12 +23,20 @@ TF_DIR="${REPO_ROOT}/terraform"
 # 1. Preflight — required inputs (all non-secret except DB_PASSWORD, from env). #
 # --------------------------------------------------------------------------- #
 : "${PROJECT_ID:?set PROJECT_ID}"
-case "${PROJECT_ID}" in
-  btvaroska|sites-470716|data-305316|coding007|coding008|agents-469418|core-380514)
-    echo "ERROR: Refusing to deploy demo stack into protected Core project '${PROJECT_ID}'. Specify a dedicated Demos or Experiments project." >&2
+# Operator-supplied deny-list of shared/Core project ids (comma-separated). Never
+# committed; also handed to Terraform as TF_VAR_blocked_project_ids.
+: "${BLOCKED_PROJECT_IDS:=}"
+BLOCKED_PROJECT_IDS="${BLOCKED_PROJECT_IDS// /}"
+IFS=',' read -r -a blocked_ids <<< "${BLOCKED_PROJECT_IDS}"
+for blocked in "${blocked_ids[@]}"; do
+  if [[ -n "${blocked}" && "${PROJECT_ID}" == "${blocked}" ]]; then
+    echo "ERROR: Refusing to deploy demo stack into blocked project '${PROJECT_ID}' (BLOCKED_PROJECT_IDS). Specify a dedicated Demos or Experiments project." >&2
     exit 1
-    ;;
-esac
+  fi
+done
+if [[ -n "${BLOCKED_PROJECT_IDS}" ]]; then
+  export TF_VAR_blocked_project_ids="[\"${BLOCKED_PROJECT_IDS//,/\",\"}\"]"
+fi
 export CLOUDSDK_CORE_PROJECT="${PROJECT_ID}"
 : "${REGION:=us-central1}"
 : "${DB_PASSWORD:?set DB_PASSWORD (never committed; only ever piped to Secret Manager)}"

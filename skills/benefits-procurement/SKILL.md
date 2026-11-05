@@ -1,7 +1,7 @@
 ---
 name: benefits-procurement
 description: Source and compare group-benefits quotes from N carriers over a program. Use when a broker's agent needs one normalized, apples-to-apples comparison across carriers. A Negotiate exchange over a program; the agent owns the bind decision (sense B). Carries a prose satisfaction description and program-standard rules the comparison flags against.
-license: Proprietary. LICENSE.txt has complete terms
+license: Apache-2.0
 metadata:
   bridge-kind: process
   bridge-pattern: negotiate

@@ -1,7 +1,7 @@
 ---
 name: commercial-loan-underwriting
 description: Collect and validate commercial real estate loan, residential TRID mortgage closing, and commercial property insurance packages. A bounded Collect over trid-closing-disclosure, cre-credit-agreement, mai-appraisal, and commercial-property-quote with human-in-the-loop review parking and SLA follow-up.
-license: Proprietary. LICENSE.txt has complete terms
+license: Apache-2.0
 metadata:
   bridge-kind: process
   bridge-pattern: collect

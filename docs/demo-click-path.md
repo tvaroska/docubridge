@@ -17,7 +17,7 @@
    - **Agent Registry + Skill Registry (`agentregistry.googleapis.com`):** Tracks `Agents`, `MCP Servers`, `Endpoints`, `Skills & Revisions`, and `Bindings`.
    - **`AGENT_TO_ANYWHERE` Egress Gateway:** Enforces Agent Registry membership, rejects URN misuse (`HTTP 404`), and evaluates IAM v3 Unified Access Policy (`iap.googleapis.com/resources.egressViaIAP`) CEL rules where `DENY` overrides `ALLOW`.
 3. **SCALE (Agent Engine Runtime + Bi-Temporal Store + A2UI):**
-   - Split topology between Cloud Run (`docubridge-showcase-bridge` & `docubridge-showcase-bridge-rfp-board`, `min_instances = 1`) as the HTTP/SSE/A2UI/REST edge and Agent Engine (`ReasoningEngine` `5963861295097708544`) hosting ADK `Sessions`, `Memory Bank`, and `BridgeA2aAgentEngine`.
+   - Split topology between Cloud Run (`docubridge-showcase-bridge` & `docubridge-showcase-bridge-rfp-board`, `min_instances = 1`) as the HTTP/SSE/A2UI/REST edge and Agent Engine (`ReasoningEngine`, `BRIDGE_AGENT_ENGINE_ID`) hosting ADK `Sessions`, `Memory Bank`, and `BridgeA2aAgentEngine`.
    - Append-only bi-temporal Operational Store (`recorded_at` vs. `effective_from`) + 7-year write-once Cloud Storage Audit Vault.
 4. **OPTIMIZE (Agent Observability + 3-Tier Eval + Agent Gym):**
    - OpenTelemetry `gen_ai.*` spans exported to Cloud Trace v2 and BigQuery (`docubridge-showcase.docubridge_telemetry.otel_spans`) with FinOps traffic attribution (`production_inference`, `conflict_escalation`, `agent_gym_eval`).
@@ -58,16 +58,16 @@
 1. Click **`🔭 5. Trace & BQ X-Ray`**.
 2. Show the **Multi-Model FinOps Split Cards** (`gemini-3.8-flash` workhorse vs. `gemini-4-argon` reasoning/eval) and the **Live W3C OpenTelemetry Waterfall** streaming to Cloud Trace and BigQuery (`docubridge-showcase.docubridge_telemetry.otel_spans`).
 3. Click **`🧮 Run BQ SQL Trace Eval`** in the header and walk through the **BigQuery SQL Trace Evaluation (`v_trace_sql_evaluation` + `AI.GENERATE_TABLE`)** panel:
-   - **5-Gate Deterministic SQL Trajectory Scorecard (`Rule 0`)**: Evaluates 100% of traces in SQL at **`$0` LLM token cost** (`Gate 1: PII & WORM Lock Before Extract`, `Gate 2: SPIFFE JWT-SVID Verified`, `Gate 3: Decimal Math & Bi-Temporal Ledger`, `Gate 4: Two-Sided Oversight RSR >= 0.80`, `Gate 5: FinOps Model Right-Sizing`).
+   - **5-Gate Deterministic SQL Trajectory Scorecard (`Rule 0`)**: Evaluates 100% of traces in SQL at **`$0` LLM token cost** (`Gate 1: PII & WORM Lock Before Extract`, `Gate 2: SPIFFE JWT-SVID Verified`, `Gate 3: Decimal Math & Bi-Temporal Ledger`, `Gate 4: Two-Sided Oversight RSR >= 0.50`, `Gate 5: FinOps Model Right-Sizing`).
    - **3-Tab Interactive BigQuery Standard SQL Query Inspector**: Click through **`1. Rule 0 Trajectory SQL`** (`v_trace_sql_evaluation` pre-filtering `needs_llm_judge_sampling`), **`2. AI.GENERATE_TABLE Judge`** (invoking `gemini-4-argon` only on anomalous/escalated/canary traces for `95%` judge token savings), and **`3. Rogan-Gladen & SME SQL`** (joining SME annotations to compute bias-corrected pass rate $\hat{\theta} = 99.1\%$).
 4. Click **`↺ Reset Demo`** in the top-right header to restore a clean baseline.
 
 ---
 
-## 3. Insurance & Schema Evolution Showcase (`documents002` — `feat/schema-refinery`)
+## 3. Insurance & Schema Evolution Showcase (insurance-first deployment, `BRIDGE_DEFAULT_DEMO_DOMAIN=insurance`)
 
-- **Insurance & Schema Evolution Live Demo Console (`documents002`):** `https://documents002-bridge-rfp-board-816370755208.us-central1.run.app/demo` (defaults directly to **`🛡️ Insurance — Commercial Property · terrepower-coastal-2027`** via `BRIDGE_DEFAULT_DEMO_DOMAIN=insurance`)
-- **A2A Edge Agent Card (`documents002`):** `https://documents002-bridge-816370755208.us-central1.run.app/.well-known/agent-card.json`
+- **Insurance & Schema Evolution Live Demo Console (a second deployment of the same stack):** `https://<service>-rfp-board-<PROJECT_NUMBER>.<region>.run.app/demo` (defaults directly to **`🛡️ Insurance — Commercial Property · terrepower-coastal-2027`** via `BRIDGE_DEFAULT_DEMO_DOMAIN=insurance`)
+- **A2A Edge Agent Card (insurance-first deployment):** `https://<service>-<PROJECT_NUMBER>.<region>.run.app/.well-known/agent-card.json`
 
 ### 4-Beat Live Schema Evolution & Bi-Temporal Ontology Graph Walkthrough (Scene 1 `#schema-evolution-stage` + Scene 4 `#refinery-card`)
 At the top of `#schema-evolution-stage`, use the 2-button **SCENARIO** switcher to toggle between:
@@ -79,7 +79,7 @@ At the top of `#schema-evolution-stage`, use the 2-button **SCENARIO** switcher 
   5. **Beat 4 — Click `4. Verify Day-2 Payoff (Next HDHP Renewal · 134ms)`:** Next employer renewal (`BENEFITS-NORTHSTAR-DAY2` — `NorthStar Precision Systems`, `"Plan: HDHP · Employer Account Seed: $1,500.00"` + `$118,000.00` 2-page addendum) extracts **`"HSA: $1,500.00" ✓`** in `134 ms` with `0` quarantine parks and `0` escalation tokens.
 - **`🏭 Commercial Property · $100K Coastal Wind Endorsement`** (`terrepower-coastal-2027` → `PLACEMENT-HARBORVIEW-DAY2`):
 1. **Beat 0 — Baseline Ontology (`ont-rev-v1-1-baseline`, 7 Doctypes):**
-   - Open `https://documents002-bridge-rfp-board-816370755208.us-central1.run.app/demo`. Notice the **Live Schema Evolution & Bi-Temporal Ontology Graph (`terrepower-coastal-2027` → `PLACEMENT-HARBORVIEW-DAY2`)** stage directly below the Carrier Broker Collaboration Engine in Scene 1.
+   - Open `https://<service>-rfp-board-<PROJECT_NUMBER>.<region>.run.app/demo` (or append `?domain=insurance` to the banking console URL above). Notice the **Live Schema Evolution & Bi-Temporal Ontology Graph (`terrepower-coastal-2027` → `PLACEMENT-HARBORVIEW-DAY2`)** stage directly below the Carrier Broker Collaboration Engine in Scene 1.
    - Initially, 7 baseline OKF doctype bundles are active (`ont-rev-v1-1-baseline`, `v1.1.0`), and all 3 baseline TerrePower documents (`$142.5M` TIV, `$418,500.00` Lead Quote, `$50,000.00` base wind deductible) are reconciled.
 2. **Beat 1 — Click `1. Upload 1-Page Wind Endorsement (Expose Sparsity)`:**
    - Chubb underwriter uploads `Chubb_Wind_Deductible_Endorsement_ScheduleB.pdf` (`$100,000.00` coastal windstorm deductible).

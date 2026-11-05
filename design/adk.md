@@ -12,7 +12,7 @@ tags: [bridge, adk]
 
 # Running on Google ADK — as standard as possible
 
-> The Bridge is the flagship showcase of the **Gemini Enterprise Agent Platform**. So it runs on **Google ADK**, and it uses ADK **the standard way**: every runtime concern maps to a native ADK construct, and we hand-roll nothing the platform already provides. Using the platform natively *is* the demonstration.
+> The Bridge is the flagship showcase of the **Gemini platform**. So it runs on **Google ADK**, and it uses ADK **the standard way**: every runtime concern maps to a native ADK construct, and we hand-roll nothing the platform already provides. Using the platform natively *is* the demonstration.
 
 ## The principle
 

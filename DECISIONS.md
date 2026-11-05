@@ -1,12 +1,12 @@
 # Architecture Decision Records (ADR)
 
-This document captures the foundational architectural decisions and milestone records (`S0-arch-*`, `P7-*`, and `ADR-01` through `ADR-12`) that shape **DocuBridge**, an enterprise Agent-to-Agent (A2A) document collection, verification, consolidation, and governance reference architecture built on Google ADK (`google-adk >= 2.11.0, < 3`), the A2A wire protocol (`a2a-sdk`), and the **Gemini platform** (`gemini-3.8-flash` runtime workhorse and `gemini-4-argon` teacher/judge/escalation model).
+This document captures the foundational architectural decisions and milestone records (`S0-arch-*`, `P7-*`, and `ADR-01` through `ADR-13`) that shape **DocuBridge**, an enterprise Agent-to-Agent (A2A) document collection, verification, consolidation, and governance reference architecture built on Google ADK (`google-adk >= 2.11.0, < 3`), the A2A wire protocol (`a2a-sdk`), and the **Gemini platform** (`gemini-3.8-flash` runtime workhorse and `gemini-4-argon` teacher/judge/escalation model).
 
 ---
 
 ## ADR-01: Hexagonal Ports & Adapters Across All 13 Boundaries (`local` vs. `gcp`) (`S0-arch-13`, `P7-2`–`P7-5`)
 
-- **Context:** Enterprise document workflows require managed cloud durability and zero-trust security in production (Cloud Run v2, Gemini platform Agent Engine, Cloud SQL for PostgreSQL 16 / AlloyDB, Cloud Storage WORM, Document AI, and Cloud Tasks), while local development and CI require fast, credential-free execution.
+- **Context:** Enterprise document workflows require managed cloud durability and zero-trust security in production (Cloud Run v2, Agent Engine, Cloud SQL for PostgreSQL 16 / AlloyDB, Cloud Storage WORM, Document AI, and Cloud Tasks), while local development and CI require fast, credential-free execution.
 - **Decision:** Factor all 13 external infrastructure boundaries behind explicit Hexagonal **Ports & Adapters** in `bridge/ports/`: the 9 core boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`) plus the 4 Zone 3–6 Enterprise Data Architecture stores (`audit_vault`, `operational_store`, `action_inbox`, `agent_gym`). Each port provides a deterministic `local` adapter (`bridge/ports/local/`) and a production `gcp` adapter (`bridge/ports/gcp/`) resolved via `BRIDGE_PORT_<NAME>` / `BRIDGE_PORT_MODE` that fails fast with an actionable `RuntimeError` if required environment variables (`DATABASE_URL`, `BRIDGE_SKILLS_BUCKET`, `BRIDGE_VAULT_BUCKET`) are missing.
 - **Consequence:** Every scenario in `tests/` runs against `local` adapters in milliseconds and against `gcp` adapters via `@pytest.mark.port(...)` without code changes, and hybrid local+cloud debugging can flip any individual boundary (`BRIDGE_PORT_EXTRACTION=gcp`, `BRIDGE_PORT_OPERATIONAL_STORE=local`).
 
@@ -52,7 +52,7 @@ This document captures the foundational architectural decisions and milestone re
 - **Context:** Regulated banking, mortgage, and insurance workflows require tamper-proof binary retention alongside bi-temporal relational fact history that never overwrites prior values.
 - **Decision:** Pair two durable stores on every accepted submission:
   1. **Cloud Storage WORM Audit Vault (`bridge/vault.py`):** Scrub edge PII (`redact_personal_data`) and lock raw artifacts in Cloud Storage (`GcpAuditVaultStore`, `BRIDGE_VAULT_BUCKET`) with SHA-256 content hashes and 7-year retention metadata (`RetentionPolicy.SEVEN_YEARS`).
-  2. **Bi-Temporal SQL Operational Store (`bridge/operational_store.py`):** Persist append-only `ConsolidatedFact` rows (`field_path`, `field_value`, `numeric_value`, `currency`, `source_priority`, `recorded_at`, `effective_from`, `version`, `source_anchor_json`, `vault_uri`, `skill_revision_id`) in Cloud SQL for PostgreSQL 16 / AlloyDB (`SqlOperationalStore`) using exact `Decimal` math, composite index `ix_operational_facts_bitemporal`, and watermarked BigQuery Open Iceberg CDC export (`BIGQUERY_ICEBERG_DDL`).
+  2. **Bi-Temporal SQL Operational Store (`bridge/operational_store/`):** Persist append-only `ConsolidatedFact` rows (`field_path`, `field_value`, `numeric_value`, `currency`, `source_priority`, `recorded_at`, `effective_from`, `version`, `source_anchor_json`, `vault_uri`, `skill_revision_id`) in Cloud SQL for PostgreSQL 16 / AlloyDB (`SqlOperationalStore`) using exact `Decimal` math, composite index `ix_operational_facts_bitemporal`, and watermarked BigQuery Open Iceberg CDC export (`BIGQUERY_ICEBERG_DDL`).
 - **Consequence:** Any balance, fee, or deductible can be queried both *as known at time $T_1$* (`recorded_at`) and *as effective on date $T_2$* (`effective_from`) with zero floating-point drift.
 
 ---
@@ -60,7 +60,7 @@ This document captures the foundational architectural decisions and milestone re
 ## ADR-07: Zone 6 Knowledge Catalog & 6-Hop W3C PROV-O Lineage
 
 - **Context:** Auditors and data stewards need to trace any reported figure back through its consolidation rule, extraction model, skill revision, and WORM vault object.
-- **Decision:** Maintain a Zone 6 `KnowledgeCatalog` (`bridge/knowledge_catalog.py`) governing business glossary terms, asset locations across all 6 zones, SPIFFE workload registrations, and stateless 6-hop End-to-End Lineage (`LineageTrace`: `VaultObject` → `ExtractionRun` → `QuarantineGate` → `ConsolidationRule` → `OperationalFact` → `A2UISurface`) hydrated automatically from `OperationalStore` on cache miss.
+- **Decision:** Maintain a Zone 6 `KnowledgeCatalog` (`bridge/knowledge_catalog/`) governing business glossary terms, asset locations across all 6 zones, SPIFFE workload registrations, and stateless 6-hop End-to-End Lineage (`LineageTrace`: `VaultObject` → `ExtractionRun` → `QuarantineGate` → `ConsolidationRule` → `OperationalFact` → `A2UISurface`) hydrated automatically from `OperationalStore` on cache miss.
 - **Consequence:** Lineage queries succeed across stateless Cloud Run replicas even after cold starts.
 
 ---
@@ -76,7 +76,7 @@ This document captures the foundational architectural decisions and milestone re
 ## ADR-09: Declarative A2UI v0.9 Surfaces & Security-Zone-Isolated Action Inbox
 
 - **Context:** Borderline extractions and high-value overrides (`addendum`, `closing-disclosure`, `endorsement`) must park cleanly for human review and stream zero-flicker progress updates to both internal and external channels.
-- **Decision:** Implement A2UI v0.9 surface rendering and the Action Inbox (`bridge/a2ui_inbox.py`, `SqlActionInboxStore`) with strict widget-catalog isolation between internal (`gemini_app` → `enterprise_inbox_catalog.json`) and external (`custom_web` → `portal_customer_catalog.json`) channels, native ADK `ToolContext.request_confirmation` pause/resume, the 4+1 governance verbs (`accept`, `edit_and_approve`, `respond`, `reject`, `escalate`), and immutable RFC 6902 JSON Patch audit records (`InboxAuditRecord`).
+- **Decision:** Implement A2UI v0.9 surface rendering and the Action Inbox (`bridge/a2ui_inbox/`, `SqlActionInboxStore`) with strict widget-catalog isolation between internal (`gemini_app` → `enterprise_inbox_catalog.json`) and external (`custom_web` → `portal_customer_catalog.json`) channels, native ADK `ToolContext.request_confirmation` pause/resume, the 4+1 governance verbs (`accept`, `edit_and_approve`, `respond`, `reject`, `escalate`), and immutable RFC 6902 JSON Patch audit records (`InboxAuditRecord`).
 - **Consequence:** Human reviewers inspect side-by-side PDF bounding-box proofs and resolve exceptions with a tamper-evident RFC 6902 diff trail.
 
 ---
@@ -106,13 +106,16 @@ This document captures the foundational architectural decisions and milestone re
 ## ADR-12: 22-Step OpenTelemetry `gen_ai.*` Tracing & BigQuery `Rule 0` SQL Evaluation
 
 - **Context:** Running an LLM judge over 100% of production traces is prohibitively expensive and subject to autorater sensitivity/specificity bias ($q_0, q_1 < 1$).
-- **Decision:** Emit W3C-correlated OpenTelemetry spans (`bridge/telemetry.py`) with `BatchSpanProcessor` to Cloud Trace v2 and BigQuery (`otel_spans`), and evaluate traces in three layers (`terraform/modules/telemetry/main.tf`, `GET /v1/telemetry/sql-eval`):
+- **Decision:** Emit W3C-correlated OpenTelemetry spans (`bridge/telemetry/`) with `BatchSpanProcessor` to Cloud Trace v2 and BigQuery (`otel_spans`), and evaluate traces in three layers (`terraform/modules/telemetry/main.tf`, `GET /v1/telemetry/sql-eval`):
   1. **Layer 1 (`v_trace_sql_evaluation`):** Check 5 deterministic `Rule 0` trajectory & governance gates in BigQuery Standard SQL at `\$0` LLM token cost across 100% of traces.
   2. **Layer 2 (`AI.GENERATE_TABLE` with `gemini-4-argon`):** Trigger LLM-as-a-Judge in SQL only on traces where `needs_llm_judge_sampling = TRUE` (~5% of traffic, cutting judge token spend by ~95%).
   3. **Layer 3 (Rogan-Gladen Debiasing):** Correct raw autorater pass rates ($p_{\text{obs}}$) against gold SME calibration labels in SQL via $\hat{\theta} = \text{clip}((p_{\text{obs}} + q_0 - 1) / (q_1 + q_0 - 1), 0, 1)$.
 - **Consequence:** Full-population compliance verification runs at SQL speed and zero token cost, while `gemini-4-argon` evaluation is reserved for anomalies and mathematically debiased.
 
+---
+
 ## ADR-13: Schema Refinery, OKF Doctype Bundles & Bi-Temporal Ontology Graph (`P8-1`–`P8-4`)
+
+- **Context:** Overloaded monolithic document schemas (e.g., forcing 1-page Schedule B endorsements or fee addenda into full multi-page quotes/disclosures) create bimodal field sparsity ($J(A,B) \le 0.10$) and equal-priority consolidation ties (`Prio 20 == Prio 20`). Bi-temporal ontology revisions (`effective_from` / `effective_to` + `[:SPLIT_FROM]` lineage) allow the taxonomy to split and evolve safely without breaking historical audit reproducibility or violating the `bridge/` ↔ `contract/` ↔ `agents/` isolation firewall.
 - **Decision:** Package every document type as a declarative Open Knowledge Format (`catalog/doctypes/*.okf.md`) bundle carrying top-level entity scope, contrastive field triples (`what_it_is`, `where_to_read`, `distinguish_from`), and typed ontology edges (`[:SUPERSEDES]`, `[:FEEDS_METRIC]`, `[:SPLIT_FROM]`, `[:MERGED_INTO]`). Drive Zone 3 (`bridge/operational_store/consolidation_rules.py`) priority resolution and metric rollups directly from the active `OntologyRevision` graph in Zone 6 (`KnowledgeCatalog`), and gate all ontology promotions (`SchemaRefineryEngine`) behind a 3-Tier Counterfactual Assay enforcing $\text{NFR} = 0.0\%$, Krippendorff's $\alpha \ge 0.80$, and Gwet's $\text{AC}_2 \ge 0.80$.
-- **Why:** Overloaded monolithic document schemas (e.g., forcing 1-page Schedule B endorsements or fee addenda into full multi-page quotes/disclosures) create bimodal field sparsity ($J(A,B) \le 0.10$) and equal-priority consolidation ties (`Prio 20 == Prio 20`). Bi-temporal ontology revisions (`effective_from` / `effective_to` + `[:SPLIT_FROM]` lineage) allow the taxonomy to split and evolve safely without breaking historical audit reproducibility or violating the `bridge/` ↔ `contract/` ↔ `agents/` isolation firewall.
-- **Consequence:** New document subtypes (`wind-deductible-endorsement`, `fee-schedule-addendum`) are discovered from production sparsity clusters, verified with zero negative flips before promotion, and deployed on isolated GCP showcase project `documents002` (`BRIDGE_DEFAULT_DEMO_DOMAIN=insurance`) while keeping `main` (`documents001`) frozen.
+- **Consequence:** New document subtypes (`wind-deductible-endorsement`, `fee-schedule-addendum`) are discovered from production sparsity clusters, verified with zero negative flips before promotion, and deployed on an isolated insurance-first showcase project (`BRIDGE_DEFAULT_DEMO_DOMAIN=insurance`) while the primary banking showcase deployment stays frozen.

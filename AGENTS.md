@@ -77,7 +77,7 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
 - **T1 (every `/implement` — gates the commit):**
   - Lint: `uv run ruff check .` (must pass with 0 errors).
   - Unit & Enterprise Suite: `uv run pytest` (including `tests/test_enterprise_data_architecture.py`, `tests/test_isolation_guard.py`, `tests/test_service_wiring_guard.py`, `tests/test_gemini_extraction.py`).
-  - Terraform Plan-Time Tests: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (42 assertions across 13 `.tftest.hcl` files, credential-free).
+  - Terraform Plan-Time Tests: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (45 `run` blocks / 183 `assert` blocks across 13 `.tftest.hcl` files, credential-free).
 - **T2 (every `/implement` — gates flipping `- [x]`):** exercise the artifact against the task's own acceptance criteria. Files existing / build green is NOT done.
 - **T3 (phase-close via `/replan` + on-demand via `/verify`):** CUJ simulation against the eval corpus. The Address eval corpus (`wiki/evals/address/`) is the oracle (`expected.json` + `timeline.json`).
 
@@ -97,7 +97,7 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
    - `contract.enums.Disposition` only defines `accepted`, `rejected`, and `pending` (there is no `Disposition.parked`). Endpoints accepting `status="parked"` (`IngestSubmissionRequest`) must map `"parked"` to `Disposition.pending` (`Gate.hitl_review`), and Day-2 Agent Gym auto-promotion upgrades `Disposition.pending` → `Disposition.accepted` (`Gate.auto_approve`).
 4. **End-to-End Agent Gym Day-2 Payoff Wiring:**
    - Promoted `EXTRACTION_HINT` rules in `AgentGymEngine` (`bridge/agent_gym/`) are wired in two places: (a) `GeminiExtractor._catalog()` / `build_extraction_prompt(schemas, extraction_hints=...)` (`bridge/extraction/gemini.py`) dynamically rebuilds the extraction prompt when promoted rule IDs change, and (b) `ingest_accepted_submission()` (`bridge/user_interaction/surfaces.py`) applies matching hints to `key_fields`, auto-promotes `Disposition.pending` → `Disposition.accepted`, and records `docubridge.applied_extraction_hints` on the OpenTelemetry span.
-5. **Gemini platform Agent Engine (`BridgeA2aAgentEngine`) Gotchas:**
+5. **Agent Engine (`BridgeA2aAgentEngine`) Gotchas:**
    - `vertexai.preview.reasoning_engines.A2aAgent` in `google-cloud-aiplatform==1.165.1` targets `a2a-sdk 0.3.x` and rejects `capabilities.streaming=True`; `BridgeA2aAgentEngine` (`bridge/edge/agent_engine_a2a.py`) implements `OperationRegistrable` + `Cloneable` directly on `a2a-sdk==1.1.2` and strips C-extension protobuf descriptors in `__getstate__`/`clone()` for `cloudpickle`.
    - `resolve_a2a_engine()` must explicitly `import vertexai.agent_engines` (not just `import vertexai`).
 6. **Cloud Build `uv.lock` Index & Headless Chrome DevTools Proxy Bypass:**
@@ -113,6 +113,6 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
 
 ## 5. Single-Branch Workflow (`main`) & Explicit Demo Project Isolation
 
-All capabilities (6-Zone Enterprise Data Architecture, Collaborative Loan Consolidation + live multimodal PDF `/ebc`, and Phase 8 Schema Refinery `P8-1`–`P8-4`) are unified on **`main`**. When deploying to GCP, always specify an explicit `Demos` or `Experiments` project (`./scripts/deploy.sh` with `PROJECT_ID=<id>`) — deploying into `Core` projects (`btvaroska`, `sites-470716`, `data-305316`, `coding007`, `coding008`, `agents-469418`, `core-380514`) is hard-blocked by `deploy.sh` and `terraform/variables.tf`.
+All capabilities (6-Zone Enterprise Data Architecture, Collaborative Loan Consolidation + live multimodal PDF `/ebc`, and Phase 8 Schema Refinery `P8-1`–`P8-4`) are unified on **`main`**. When deploying to GCP, always specify an explicit `Demos` or `Experiments` project (`./scripts/deploy.sh` with `PROJECT_ID=<id>`) — the operator's shared/Core project ids are hard-blocked by `deploy.sh` and `terraform/variables.tf` through an operator-supplied deny-list: export `BLOCKED_PROJECT_IDS=<id1>,<id2>` (comma-separated; see `.env.example`) and `deploy.sh` refuses a matching `PROJECT_ID` and forwards the list as `TF_VAR_blocked_project_ids` to the `project_id` validation. Never commit real project ids to the list.
 
 

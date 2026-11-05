@@ -4,7 +4,7 @@
 
 variable "project_id" {
   type        = string
-  description = "GCP project id the substrate is provisioned into (must be an explicit Demos or Experiments project, never a Core project)."
+  description = "GCP project id the substrate is provisioned into (must be an explicit Demos or Experiments project, never a project listed in blocked_project_ids)."
 
   validation {
     condition     = length(trimspace(var.project_id)) > 0
@@ -12,17 +12,18 @@ variable "project_id" {
   }
 
   validation {
-    condition = !contains([
-      "btvaroska",
-      "sites-470716",
-      "data-305316",
-      "coding007",
-      "coding008",
-      "agents-469418",
-      "core-380514",
-    ], trimspace(var.project_id))
-    error_message = "project_id must be a dedicated Demos or Experiments project — never deploy demos into Core projects (btvaroska, sites-470716, data-305316, coding007, coding008, agents-469418, core-380514)."
+    condition     = !contains(var.blocked_project_ids, trimspace(var.project_id))
+    error_message = "project_id is listed in blocked_project_ids — deploy the demo stack only into a dedicated Demos or Experiments project."
   }
+}
+
+# Operator-supplied deny-list (deploy.sh passes BLOCKED_PROJECT_IDS as
+# TF_VAR_blocked_project_ids). Kept out of the repo so no real project ids are
+# committed; cross-variable validation needs Terraform >= 1.9.
+variable "blocked_project_ids" {
+  type        = list(string)
+  description = "Project ids the demo stack must never be deployed into (shared/Core projects). Empty by default."
+  default     = []
 }
 
 variable "region" {

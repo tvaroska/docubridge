@@ -1,7 +1,7 @@
 ---
 name: address-proof
 description: Collect proof of address for a party. Use when a servicer's agent needs address verification. A bounded Collect over candidate doctypes gov-id and utility-bill; the agent owns the completeness decision. Carries a prose satisfaction description (never a formal rule) the Bridge best-efforts an advisory assessment from.
-license: Proprietary. LICENSE.txt has complete terms
+license: Apache-2.0
 metadata:
   bridge-kind: process
   bridge-pattern: collect

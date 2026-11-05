@@ -1,6 +1,6 @@
 # Contributing to A2A Document Bridge (`docubridge`)
 
-Thank you for contributing to **A2A Document Bridge**. This project is both a reference architecture for the **Gemini Enterprise Agent Platform** on Google Cloud and a reusable A2A document mediation core.
+Thank you for contributing to **A2A Document Bridge**. This project is both a reference architecture for the **Gemini platform** on Google Cloud and a reusable A2A document mediation core.
 
 ## Core Architectural Invariants
 

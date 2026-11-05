@@ -14,7 +14,7 @@ tags: [bridge]
 
 **The interface as built.** `Port.memory_bank` / `MemoryBankPort` declares `build_memory_service(db_path: str | None = None) -> BaseMemoryService` and is wired into `LlmLeg` (`bridge/edge/llm_leg.py`):
 - **Local (`LocalMemoryBank`)**: returns ADK `InMemoryMemoryService()` by default, or `SqliteMemoryService(db_path=...)` when `db_path` or `BRIDGE_MEMORY_DB_PATH` is set.
-- **GCP (`GcpMemoryBank`)**: returns ADK `VertexAiMemoryBankService(project=..., location=..., agent_engine_id=...)` backed by Gemini platform Agent Engine (`BRIDGE_AGENT_ENGINE_ID`), refusing loudly if `BRIDGE_AGENT_ENGINE_ID` is unset.
+- **GCP (`GcpMemoryBank`)**: returns ADK `VertexAiMemoryBankService(project=..., location=..., agent_engine_id=...)` backed by Agent Engine (`BRIDGE_AGENT_ENGINE_ID`), refusing loudly if `BRIDGE_AGENT_ENGINE_ID` is unset.
 
 Higher-level domain consumers (disposition pre-arming, extraction hints, outbound channel defaults) remain advisory-only and are not wired into the deterministic disposition gate (`Outbound` still uses `Nudge.channel = "email"` and default chase copy).
 
