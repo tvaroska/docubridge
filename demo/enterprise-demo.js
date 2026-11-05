@@ -8,6 +8,17 @@
   // Scenario manifests (GET /v1/demo/scenarios) are the only source of client /
   // program / entity-id copy; nothing below names a scenario.
   window.SCENARIOS = [];
+  // Tier 3 perturbation stability is measured from real extraction runs only; an
+  // offline assay reports it as not evaluated rather than showing a constant.
+  window.formatPerturbationStability = function(rep) {
+    const r = rep || {};
+    if (!r.perturbation_evaluated || r.perturbation_krippendorff_alpha == null) {
+      return "Perturbation stability: not evaluated (no live extractor)";
+    }
+    const alpha = Number(r.perturbation_krippendorff_alpha).toFixed(2);
+    const ac2 = r.workhorse_teacher_ac2 == null ? "n/a" : Number(r.workhorse_teacher_ac2).toFixed(2);
+    return `Perturbation stability α = ${alpha} · AC2 = ${ac2} (${r.perturbation_items || 0} doc×field items × ${r.perturbation_permutations || 0} permutations)`;
+  };
   window.scenarioForDomain = function(domain) {
     const matches = window.SCENARIOS.filter(s => s.domain === domain);
     return matches.find(s => s.seeded) || matches[0] || null;
@@ -2206,8 +2217,7 @@
     if (rgBadge && sqlEval.statistical_calibration) {
       const sc = sqlEval.statistical_calibration;
       const thetaPct = (Number(sc.rogan_gladen_debiased_pass_rate || 0.991) * 100).toFixed(1);
-      const alpha = Number(sc.krippendorff_alpha || 0.91).toFixed(2);
-      rgBadge.textContent = `Rogan-Gladen θ̂: ${thetaPct}% (α = ${alpha})`;
+      rgBadge.textContent = `Rogan-Gladen θ̂: ${thetaPct}%`;
     }
     const gatesTbody = document.getElementById("bq-sql-gates-tbody");
     if (gatesTbody && Array.isArray(sqlEval.gates) && sqlEval.gates.length > 0) {
@@ -2368,13 +2378,13 @@
           <div class="mono" style="font-size:11.5px;line-height:1.5;background:#ffffff;border:1px solid #a7f3d0;border-radius:6px;padding:8px 10px;">
             <div>Tier 1 (Rule 0): DAG acyclic=${rep.dag_acyclic} · Decimal formulas=${rep.decimal_formulas_valid} · Paired removal=${rep.paired_removal_intact}</div>
             <div>Tier 2 (Replay): ${rep.replayed_deal_count || 3} deals replayed · NFR = ${((rep.negative_flip_rate || 0) * 100).toFixed(1)}% · False quarantines resolved: -${rep.quarantine_reduction_delta || 9}</div>
-            <div>Tier 3 (Calibration): Krippendorff α = ${rep.perturbation_krippendorff_alpha} · Gwet AC2 = ${rep.workhorse_teacher_ac2} · Rogan-Gladen θ̂ = ${((rep.rogan_gladen_pass_rate || 0.96) * 100).toFixed(1)}%</div>
+            <div>Tier 3 (Calibration): ${window.formatPerturbationStability(rep)} · Rogan-Gladen θ̂ = ${((rep.rogan_gladen_pass_rate || 0.96) * 100).toFixed(1)}%</div>
           </div>
         `;
       }
       window.setCaption(
         "STAGE 4 · SCHEMA REFINERY BIMODAL SPARSITY & 3-TIER ASSAY PASSED",
-        `Detected bimodal Jaccard similarity J(A,B) = ${rep.bimodal_jaccard_similarity} <= 0.10 on ${prop.target_entity_id}; synthesized '${prop.new_entity_id}' with NFR = 0.0% and α = ${rep.perturbation_krippendorff_alpha}.`,
+        `Detected bimodal Jaccard similarity J(A,B) = ${rep.bimodal_jaccard_similarity} <= 0.10 on ${prop.target_entity_id}; synthesized '${prop.new_entity_id}' with NFR = 0.0%; ${window.formatPerturbationStability(rep)}.`,
         "POST /v1/refinery/assay -> 3-Tier Counterfactual & Calibration Gate"
       );
     } catch (_) {}
@@ -2495,8 +2505,6 @@
       detail: "Watching AlloyDB operational facts and BigQuery otel_spans for bimodal null clusters (Jaccard J(A,B) <= 0.10) and doctype priority collisions.",
       jaccard_similarity: 0.0667,
       nfr: 0.0,
-      krippendorff_alpha: 0.94,
-      gwets_ac2: 0.93,
       rogan_gladen_pass_rate: 0.988
     },
     proposal: null,
@@ -2758,7 +2766,7 @@
               ${soc ? `<div style="margin-bottom:4px;"><strong>Socratic Challenge Confirmed:</strong> <span class="mono" style="color:#6d28d9;">${soc.step2_system_question}</span> → <strong>${soc.step3_broad_rule}</strong></div>` : ""}
               <div><strong>Contrastive distinguish_from:</strong> ${after.distinguish_from || "Separates 1-page endorsements from base quotes."}</div>
               <div class="mono" style="margin-top:4px;font-size:11px;color:#047857;">
-                NFR = ${((rep.negative_flip_rate || 0) * 100).toFixed(1)}% (0% Backsliding) · Krippendorff α = ${rep.perturbation_krippendorff_alpha || 0.94} · Gwet AC2 = ${rep.workhorse_teacher_ac2 || 0.93} · Rogan-Gladen θ̂ = 98.8%
+                NFR = ${((rep.negative_flip_rate || 0) * 100).toFixed(1)}% (0% Backsliding) · ${window.formatPerturbationStability(rep)} · Rogan-Gladen θ̂ = ${((rep.rogan_gladen_pass_rate || 0.988) * 100).toFixed(1)}%
               </div>
             </div>
           </div>

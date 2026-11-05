@@ -7,8 +7,8 @@ Implements:
 - Chronic absent_from_document field cardinality detector
 - Contrastive description refinement compiler
 - 3-Tier Refinery Assay Gate (DAG acyclicity + Decimal integrity + paired-removal +
-  FA=0 corridor, historical deal counterfactual replay NFR=0.0%, and Krippendorff's
-  alpha / Gwet's AC2 / Rogan-Gladen calibration alignment)
+  FA=0 corridor, historical deal counterfactual replay NFR=0.0%, and extraction
+  perturbation stability measured from real runs — or reported as not evaluated)
 """
 
 from __future__ import annotations
@@ -17,12 +17,11 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from bridge.calibration import (
     CALIBRATION_HUMAN_LABELS,
     CALIBRATION_JUDGE_LABELS,
-    gwets_ac2,
-    krippendorff_alpha,
     negative_flip_rate,
     rogan_gladen_debiased_pass_rate,
 )
@@ -33,6 +32,10 @@ from bridge.operational_store.consolidation_rules import (
 )
 from bridge.refinery.benefits_assay import build_benefits_hdhp_hsa_fsa_proposal
 from bridge.refinery.okf_loader import compute_ontology_hash
+from bridge.refinery.perturbation import (
+    compute_perturbation_stability,
+    not_evaluated,
+)
 from contract.enums import Disposition, Gate
 from contract.refinery import (
     ENTITY_BENEFITS_QUOTE,
@@ -845,8 +848,16 @@ def build_candidate_revision(
 def evaluate_ontology_proposal(
     proposal: RefineryProposal,
     baseline_revision: OntologyRevision,
+    *,
+    extractor: Any = None,
+    sample_documents: Sequence[str] = (),
 ) -> tuple[RefineryAssayReport, OntologyRevision]:
-    """Run the 3-Tier Refinery Assay Gate on a candidate ``RefineryProposal``."""
+    """Run the 3-Tier Refinery Assay Gate on a candidate ``RefineryProposal``.
+
+    Tier 3 perturbation stability runs only when ``extractor`` and
+    ``sample_documents`` are supplied; otherwise the report says so and the gate
+    does not pretend to have measured it.
+    """
     candidate_rev = build_candidate_revision(baseline_revision, proposal)
 
     # Tier 1: Deterministic Graph & Schema Invariants (Rule 0)
@@ -919,20 +930,10 @@ def evaluate_ontology_proposal(
     nfr = negative_flip_rate(old_verdicts, new_verdicts)
 
     # Tier 3: Perturbation Stability & Calibration Alignment
-    perturbation_matrix: tuple[tuple[float, float, float], ...] = (
-        *([(1.0, 1.0, 1.0)] * 28),
-        (1.0, 1.0, 0.0),
-        *([(0.0, 0.0, 0.0)] * 11),
-    )
-    alpha = round(
-        krippendorff_alpha(
-            perturbation_matrix, metric="nominal", scale_values=(0.0, 1.0)
-        ),
-        4,
-    )
-    ac2 = round(
-        gwets_ac2(perturbation_matrix, scale_values=(0.0, 1.0), metric="nominal"),
-        4,
+    stability = (
+        compute_perturbation_stability(extractor, sample_documents)
+        if extractor is not None and sample_documents
+        else not_evaluated("no live extractor")
     )
     rg = rogan_gladen_debiased_pass_rate(
         judge_pass_count=38,
@@ -949,8 +950,7 @@ def evaluate_ontology_proposal(
         and paired_ok
         and corridor_ok
         and nfr == 0.0
-        and alpha >= 0.80
-        and ac2 >= 0.80
+        and (stability.passes if stability.evaluated else True)
     )
     report = RefineryAssayReport(
         report_id=f"assay-{uuid.uuid4().hex[:8]}",
@@ -966,8 +966,11 @@ def evaluate_ontology_proposal(
         conflicts_resolved_delta=1 if passed else 0,
         quarantine_reduction_delta=9 if passed else 0,
         replayed_deals=tuple(replayed_ids),
-        perturbation_krippendorff_alpha=alpha,
-        workhorse_teacher_ac2=ac2,
+        perturbation_evaluated=stability.evaluated,
+        perturbation_items=stability.n_items,
+        perturbation_permutations=stability.n_permutations,
+        perturbation_krippendorff_alpha=stability.alpha,
+        workhorse_teacher_ac2=stability.ac2,
         rogan_gladen_pass_rate=round(rg.debiased_pass_rate, 4),
         bimodal_jaccard_similarity=j_sim,
         bimodal_jaccard_distance=j_dist,
@@ -976,7 +979,7 @@ def evaluate_ontology_proposal(
             f"3-Tier Assay {'PASSED' if passed else 'FAILED'}: "
             f"DAG acyclic={dag_ok}, Decimal formulas={formulas_ok}, "
             f"paired removal={paired_ok}, NFR={nfr:.1%}, "
-            f"Krippendorff alpha={alpha:.2f}, Gwet AC2={ac2:.2f}, "
+            f"{stability.describe()}, "
             f"Rogan-Gladen pass rate={rg.debiased_pass_rate:.1%}."
         ),
     )

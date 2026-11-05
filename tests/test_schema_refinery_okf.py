@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from bridge.calibration import krippendorff_alpha
+from collections.abc import Sequence
+
 from bridge.doctypes import (
     doctype_description,
     doctype_fields,
     doctype_schemas,
 )
+from bridge.extraction.fixture import FixtureExtractor, _normalize_key
 from bridge.extraction.gemini_schema import (
     build_extraction_prompt,
     build_response_schema,
@@ -15,10 +17,13 @@ from bridge.extraction.gemini_schema import (
 from bridge.refinery import (
     BASELINE_REVISION_ID,
     build_baseline_ontology_revision,
+    build_catalog_permutations,
+    compute_perturbation_stability,
     load_okf_entity_specs,
     parse_okf_entity_markdown,
     render_okf_markdown,
 )
+from contract.extraction import ExtractionResult
 
 
 def test_okf_doctype_bundles_load_all_seven_canonical_entities() -> None:
@@ -102,32 +107,92 @@ def test_doctype_schemas_and_response_schema_have_100_percent_contrastive_descri
         )
 
 
+class _PermutationAwareFixtureExtractor:
+    """Corpus-backed extractor that honours ``catalog_order`` and records it."""
+
+    def __init__(self) -> None:
+        self._inner = FixtureExtractor()
+        self.seen_orders: list[tuple[str, ...]] = []
+
+    async def extract(
+        self, artifact_name: str, *, catalog_order: Sequence[str] | None = None
+    ) -> ExtractionResult:
+        self.seen_orders.append(tuple(catalog_order or ()))
+        return await self._inner.extract(artifact_name)
+
+
+class _FlipOnceExtractor(_PermutationAwareFixtureExtractor):
+    """Same corpus, but one document's field flips under the reversed catalog."""
+
+    def __init__(self, *, document: str, field: str) -> None:
+        super().__init__()
+        self._document = document
+        self._field = field
+
+    async def extract(
+        self, artifact_name: str, *, catalog_order: Sequence[str] | None = None
+    ) -> ExtractionResult:
+        result = await super().extract(artifact_name, catalog_order=catalog_order)
+        order = tuple(catalog_order or ())
+        if _normalize_key(artifact_name) != self._document or order != tuple(
+            reversed(sorted(order))
+        ):
+            return result
+        key_fields = {**result.fields.key_fields, self._field: " Perturbed "}
+        return result.model_copy(
+            update={
+                "fields": result.fields.model_copy(update={"key_fields": key_fields})
+            }
+        )
+
+
+_CORPUS_DOCS = ("gov-id-clean", "bill-powerco-clean", "bill-aquautil-clean")
+
+
 def test_catalog_order_and_layout_perturbation_stability_exceeds_alpha_threshold() -> (
     None
 ):
-    """Contrastive descriptions maintain Krippendorff's alpha >= 0.80 across layout permutations."""
+    """Alpha is measured over real permutation runs: identical outputs → 1.0, a flip → < 1.0."""
     schemas = doctype_schemas()
     reversed_schemas = {k: schemas[k] for k in reversed(list(schemas.keys()))}
-    # Both forward and reverse input dicts produce identical deterministic prompt & schema
+    # Default ordering is deterministic regardless of the input dict order ...
     assert build_extraction_prompt(schemas) == build_extraction_prompt(reversed_schemas)
     assert build_response_schema(schemas) == build_response_schema(reversed_schemas)
+    # ... and an explicit catalog_order genuinely changes what the model is shown.
+    orders = build_catalog_permutations(sorted(schemas), permutations=3)
+    assert len({tuple(o) for o in orders}) == 3
+    prompts = {build_extraction_prompt(schemas, catalog_order=o) for o in orders}
+    assert len(prompts) == 3
 
-    perturbation_ratings = [
-        (1.0, 1.0, 1.0),
-        (1.0, 1.0, 1.0),
-        (1.0, 1.0, 1.0),
-        (0.0, 0.0, 0.0),
-        (1.0, 1.0, 1.0),
-        (0.0, 0.0, 0.0),
-        (1.0, 1.0, 0.0),
-        (1.0, 1.0, 1.0),
-        (0.0, 0.0, 0.0),
-        (1.0, 1.0, 1.0),
-    ]
-    alpha = krippendorff_alpha(
-        perturbation_ratings, metric="nominal", scale_values=(0.0, 1.0)
+    stable = _PermutationAwareFixtureExtractor()
+    result = compute_perturbation_stability(
+        stable, _CORPUS_DOCS, permutations=3, doctypes=sorted(schemas)
     )
-    assert alpha >= 0.80
+    assert result.evaluated is True
+    assert result.n_permutations == 3
+    assert result.n_documents == len(_CORPUS_DOCS)
+    assert result.n_items >= len(_CORPUS_DOCS) * 2
+    assert result.alpha == 1.0
+    assert result.ac2 == 1.0
+    assert result.disagreements == ()
+    assert result.passes is True
+    assert len(stable.seen_orders) == len(_CORPUS_DOCS) * 3
+    assert len(set(stable.seen_orders)) == 3
+
+    flipped = _FlipOnceExtractor(document="gov-id-clean", field="expiry")
+    unstable = compute_perturbation_stability(
+        flipped, _CORPUS_DOCS, permutations=3, doctypes=sorted(schemas)
+    )
+    assert unstable.evaluated is True
+    assert unstable.alpha is not None and unstable.alpha < 1.0
+    assert unstable.ac2 is not None and unstable.ac2 < 1.0
+    assert [(d.document, d.field) for d in unstable.disagreements] == [
+        ("gov-id-clean", "key_fields.expiry")
+    ]
+    assert "perturbed" in unstable.disagreements[0].values
+
+    assert compute_perturbation_stability(None, _CORPUS_DOCS).evaluated is False
+    assert compute_perturbation_stability(stable, ()).evaluated is False
 
     baseline_rev = build_baseline_ontology_revision()
     assert baseline_rev.revision_id == BASELINE_REVISION_ID

@@ -177,13 +177,18 @@ class RefineryAssayReport(BaseModel):
     conflicts_resolved_delta: int = 0
     quarantine_reduction_delta: int = 0
     replayed_deals: tuple[str, ...] = ()
-    # Tier 3: Perturbation Stability & Calibration Alignment
-    perturbation_krippendorff_alpha: float = Field(default=0.92, ge=-1.0, le=1.0)
-    workhorse_teacher_ac2: float = Field(default=0.91, ge=-1.0, le=1.0)
+    # Tier 3: Perturbation Stability & Calibration Alignment. Alpha / AC2 are
+    # measured over real extraction runs (raters = catalog permutations, items =
+    # document x field) and are None whenever no live extractor evaluated them.
+    perturbation_evaluated: bool = False
+    perturbation_items: int = Field(default=0, ge=0)
+    perturbation_permutations: int = Field(default=0, ge=0)
+    perturbation_krippendorff_alpha: float | None = Field(default=None, ge=-1.0, le=1.0)
+    workhorse_teacher_ac2: float | None = Field(default=None, ge=-1.0, le=1.0)
     rogan_gladen_pass_rate: float = Field(default=0.96, ge=0.0, le=1.0)
     bimodal_jaccard_similarity: float = Field(default=0.0, ge=0.0, le=1.0)
     bimodal_jaccard_distance: float = Field(default=1.0, ge=0.0, le=1.0)
-    passed: bool = True
+    passed: bool = False
     summary: str = ""
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

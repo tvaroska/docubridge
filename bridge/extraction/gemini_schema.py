@@ -136,6 +136,22 @@ class _Truncated(Exception):
         self.label = label
 
 
+def _ordered_doctypes(
+    schemas: dict[str, dict], catalog_order: Sequence[str] | None
+) -> list[str]:
+    """Catalog iteration order: sorted by default, or ``catalog_order`` first.
+
+    The default is sorted so the prompt and response schema are byte-stable across
+    registry dict ordering; an explicit ``catalog_order`` exists only so the
+    perturbation-stability assay can present the same catalog in a different order.
+    """
+    if catalog_order is None:
+        return sorted(schemas)
+    ordered = [dt for dt in catalog_order if dt in schemas]
+    seen = set(ordered)
+    return [*ordered, *sorted(dt for dt in schemas if dt not in seen)]
+
+
 def build_extraction_prompt(
     schemas: dict[str, dict],
     *,
@@ -144,6 +160,7 @@ def build_extraction_prompt(
     candidate_doctypes: Sequence[str] | None = None,
     context_set: str | None = None,
     revision: Any | None = None,
+    catalog_order: Sequence[str] | None = None,
 ) -> str:
     """``PROMPT_HEADER`` + the installed-doctype (or target-scoped) field catalog + ``PROMPT_FOOTER``."""
     active_schemas = (
@@ -185,7 +202,7 @@ def build_extraction_prompt(
         return f"{PROMPT_HEADER}{hints_section}\n\n{PROMPT_FOOTER}"
 
     lines = ["Installed document types and the fields each declares:"]
-    for doctype in sorted(active_schemas):
+    for doctype in _ordered_doctypes(active_schemas, catalog_order):
         schema = active_schemas[doctype]
         label = doctype
         if declares_issuer(schema):
@@ -220,6 +237,7 @@ def build_response_schema(
     candidate_doctypes: Sequence[str] | None = None,
     context_set: str | None = None,
     revision: Any | None = None,
+    catalog_order: Sequence[str] | None = None,
 ) -> dict | None:
     """The pinned structured-output schema, or ``None`` when no doctype declares fields."""
     active_schemas = (
@@ -233,8 +251,9 @@ def build_response_schema(
         if (target_doctype or candidate_doctypes or context_set)
         else schemas
     )
+    ordered = _ordered_doctypes(active_schemas, catalog_order)
     union: dict[str, str] = {}
-    for doctype in sorted(active_schemas):
+    for doctype in ordered:
         for name, desc in doctype_fields(active_schemas[doctype]).items():
             labelled = f"{doctype}: {desc}" if desc else doctype
             if name in union:
@@ -249,7 +268,7 @@ def build_response_schema(
         for name, desc in union.items()
     }
     enums: dict[str, list | None] = {}
-    for doctype in sorted(active_schemas):
+    for doctype in ordered:
         for name, spec in key_field_properties(active_schemas[doctype]).items():
             enum = spec.get("enum") if isinstance(spec, dict) else None
             enum = (
@@ -264,13 +283,13 @@ def build_response_schema(
     confidences = {
         name: {"type": "number", "nullable": True} for name in [*union, "issuer"]
     }
-    tables = _tables_union(active_schemas)
-    installed = ", ".join(sorted(active_schemas))
+    tables = _tables_union(active_schemas, catalog_order=ordered)
+    installed = ", ".join(ordered)
     entity_notes = [
         f"{dt} ({doctype_description(active_schemas[dt])})"
         if doctype_description(active_schemas[dt])
         else dt
-        for dt in sorted(active_schemas)
+        for dt in ordered
     ]
     doctype_desc = (
         f"the document type you observe; installed types: {installed}. "
@@ -343,11 +362,13 @@ def build_response_schema(
     }
 
 
-def _tables_union(schemas: dict[str, dict]) -> dict:
+def _tables_union(
+    schemas: dict[str, dict], *, catalog_order: Sequence[str] | None = None
+) -> dict:
     """The pinned ``fields.tables`` properties: every installed doctype's tables."""
     union: dict[str, dict[str, dict]] = {}
     descriptions: dict[str, str] = {}
-    for doctype in sorted(schemas):
+    for doctype in _ordered_doctypes(schemas, catalog_order):
         for table, columns in table_properties(schemas[doctype]).items():
             desc = str(table_spec(schemas[doctype], table).get("description", "") or "")
             labelled = f"{doctype}: {desc}" if desc else doctype

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Sequence
 from typing import Any
 
 from bridge.knowledge_catalog import KnowledgeCatalog, knowledge_catalog_from_env
@@ -33,6 +33,8 @@ class SqlSchemaRefineryEngine(InMemorySchemaRefineryEngine):
         dsn: str,
         *,
         knowledge_catalog: KnowledgeCatalog | None = None,
+        extractor: Any = None,
+        sample_documents: Sequence[str] = (),
     ) -> None:
         cleaned = (dsn or "").strip()
         if not cleaned:
@@ -44,7 +46,11 @@ class SqlSchemaRefineryEngine(InMemorySchemaRefineryEngine):
                 "SqlSchemaRefineryEngine refuses an in-memory SQLite DSN; use "
                 "InMemorySchemaRefineryEngine or a file/Postgres DSN"
             )
-        super().__init__(knowledge_catalog=knowledge_catalog)
+        super().__init__(
+            knowledge_catalog=knowledge_catalog,
+            extractor=extractor,
+            sample_documents=sample_documents,
+        )
         self.dsn = cleaned
         self._init_lock = threading.Lock()
         self._runtime: Any = None

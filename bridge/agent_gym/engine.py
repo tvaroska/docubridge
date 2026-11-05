@@ -33,7 +33,7 @@ from bridge.agent_gym.models import (
     generate_synthetic_stress_suite,
 )
 from bridge.agent_gym.registry_gateway import RegistryGatewayMixin
-from bridge.calibration import compute_rair_rsr, krippendorff_alpha
+from bridge.calibration import compute_rair_rsr
 from bridge.disposition import (
     DEFAULT_THRESHOLDS,
     CorridorPoint,
@@ -673,15 +673,6 @@ class AgentGymEngine(SkillCompilerMixin, RegistryGatewayMixin, abc.ABC):
 
             # Tier 2: Independent Autorater Judge (gemini-4-argon grading gemini-3.8-flash outputs)
             tier2_autorater_score = candidate_score if math_firewall_intact else 0.0
-            irr_matrix = [
-                [1.0 if c.candidate_passed else 0.0, 1.0] for c in stress_cases
-            ]
-            irr_alpha = round(
-                krippendorff_alpha(
-                    irr_matrix, metric="ordinal", scale_values=[0.0, 1.0]
-                ),
-                4,
-            )
 
             passed_gate = (
                 delta > 0
@@ -739,7 +730,6 @@ class AgentGymEngine(SkillCompilerMixin, RegistryGatewayMixin, abc.ABC):
             span.set_attribute(
                 "docubridge.tier2_autorater_score", tier2_autorater_score
             )
-            span.set_attribute("docubridge.krippendorff_alpha", irr_alpha)
             span.set_attribute(
                 "docubridge.tier3_corridor_fa_zero", tier3_corridor_fa_zero
             )

@@ -9,9 +9,6 @@ from typing import Any
 from bridge.calibration import (
     CALIBRATION_HUMAN_LABELS,
     CALIBRATION_JUDGE_LABELS,
-    CALIBRATION_SME_RATER_MATRIX,
-    gwets_ac2,
-    krippendorff_alpha,
     rogan_gladen_debiased_pass_rate,
 )
 from bridge.telemetry.exporters import (
@@ -483,24 +480,14 @@ def _build_sql_trace_evaluation(
     )
     token_savings_pct = round(max(0.0, 100.0 - min(judge_sampling_pct, 25.0)), 1)
 
-    # Genuine Rogan-Gladen / PPI bias-corrected pass rate estimator & SME IRR (no artificial clamping)
+    # Rogan-Gladen / PPI bias-corrected pass rate estimator (no artificial clamping).
+    # Reviewer inter-rater reliability is owned by the agent-evals project and is
+    # not synthesized here.
     rg_result = rogan_gladen_debiased_pass_rate(
         judge_pass_count=all_rule0_pass if total_traces else 99,
         n_unlabeled=denom if total_traces else 100,
         calibration_human_labels=CALIBRATION_HUMAN_LABELS,
         calibration_judge_labels=CALIBRATION_JUDGE_LABELS,
-    )
-    sme_alpha = round(
-        krippendorff_alpha(
-            CALIBRATION_SME_RATER_MATRIX, metric="ordinal", scale_values=(0.0, 1.0)
-        ),
-        4,
-    )
-    sme_ac2 = round(
-        gwets_ac2(
-            CALIBRATION_SME_RATER_MATRIX, scale_values=(0.0, 1.0), metric="ordinal"
-        ),
-        4,
     )
 
     spans_fqn = f"{bq_proj}.{bq_ds}.{bq_tbl}"
@@ -559,7 +546,7 @@ def _build_sql_trace_evaluation(
         ),
         "rogan_gladen_sme_alignment_sql": (
             f"-- Tier 3: SME Calibration Join & Rogan-Gladen / PPI Bias-Corrected Pass Rate (SR 11-7 / OCC 2026-13)\n"
-            f"-- Joins SQL + Judge scores with blind SME annotations (Krippendorff's Alpha >= 0.80)\n"
+            f"-- Joins SQL + Judge scores with blind SME annotations; reviewer IRR is reported by the agent-evals project\n"
             f"WITH calibration AS (\n"
             f"  SELECT\n"
             f"    AVG(IF(rule0_sql_all_passed, 1.0, 0.0)) AS p_judge,\n"
@@ -662,8 +649,6 @@ def _build_sql_trace_evaluation(
             "rogan_gladen_debiased_pass_rate": round(rg_result.debiased_pass_rate, 4),
             "ci_95_lower": round(rg_result.ci_95_lower, 4),
             "ci_95_upper": round(rg_result.ci_95_upper, 4),
-            "krippendorff_alpha": sme_alpha,
-            "gwets_ac2": sme_ac2,
         },
         "gates": gates_summary,
         "traces": per_trace_evals,

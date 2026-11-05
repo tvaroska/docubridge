@@ -24,6 +24,7 @@ from bridge.refinery.onboarding import (
     SampleDocumentExample,
     build_onboarding_proposal,
 )
+from bridge.refinery.perturbation import resolve_perturbation_inputs
 from contract.refinery import (
     OntologyEdge,
     OntologyRevision,
@@ -129,10 +130,14 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
         self,
         *,
         knowledge_catalog: KnowledgeCatalog | None = None,
+        extractor: Any = None,
+        sample_documents: Sequence[str] = (),
     ) -> None:
         self._catalog = knowledge_catalog or knowledge_catalog_from_env()
         self._proposals: dict[str, RefineryProposal] = {}
         self._reports: dict[str, RefineryAssayReport] = {}
+        self._extractor = extractor
+        self._sample_documents = tuple(sample_documents)
 
     def _save_revision(
         self,
@@ -196,7 +201,15 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
     ) -> tuple[RefineryProposal, RefineryAssayReport, OntologyRevision]:
         """Evaluate a custom proposal through the 3-Tier Assay Gate and persist both."""
         baseline = self.get_active_revision()
-        report, candidate_rev = evaluate_ontology_proposal(proposal, baseline)
+        extractor, documents = resolve_perturbation_inputs(
+            self._extractor, self._sample_documents
+        )
+        report, candidate_rev = evaluate_ontology_proposal(
+            proposal,
+            baseline,
+            extractor=extractor,
+            sample_documents=documents,
+        )
         new_status = (
             RefineryProposalStatus.ASSAY_PASSED
             if report.passed

@@ -66,8 +66,7 @@ GATE_CORPORA: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 # Canonical blind SME calibration set (200 positive + 50 negative paired human/autorater
-# labels and 3-rater SME panel matrix) used for Rogan-Gladen / PPI bias correction and
-# Krippendorff's alpha / Gwet's AC2 inter-rater reliability verification.
+# labels) used for Rogan-Gladen / PPI bias correction.
 CALIBRATION_HUMAN_LABELS: tuple[int, ...] = (
     *([1] * 197),
     *([1] * 3),
@@ -79,13 +78,6 @@ CALIBRATION_JUDGE_LABELS: tuple[int, ...] = (
     *([0] * 3),
     *([0] * 48),
     *([1] * 2),
-)
-CALIBRATION_SME_RATER_MATRIX: tuple[tuple[float, float, float], ...] = (
-    *([(1.0, 1.0, 1.0)] * 42),
-    (1.0, 1.0, 0.0),
-    (1.0, 0.0, 1.0),
-    *([(0.0, 0.0, 0.0)] * 15),
-    (0.0, 0.0, 1.0),
 )
 
 

@@ -274,6 +274,7 @@ class GeminiExtractor:
         candidate_doctypes: Sequence[str] | None = None,
         context_set: str | None = None,
         revision: Any | None = None,
+        catalog_order: Sequence[str] | None = None,
     ) -> tuple[str, dict | None]:
         """Prompt + pinned response schema — rebuilt only when the catalog changed.
 
@@ -283,6 +284,7 @@ class GeminiExtractor:
         the first extract must reach the next prompt and response schema (CUJ-9). When
         ``target_doctype``, ``candidate_doctypes``, or ``context_set`` is active, slices
         the ontology to the target doctype(s) + shared spine + 1-hop neighborhood.
+        A ``catalog_order`` (perturbation-stability assay) bypasses the cache.
         """
         schemas = (
             self._schemas_fixed
@@ -330,8 +332,17 @@ class GeminiExtractor:
                     candidate_doctypes=eff_candidates,
                     context_set=eff_context,
                     revision=revision,
+                    catalog_order=catalog_order,
                 ),
-                build_response_schema(scoped),
+                build_response_schema(scoped, catalog_order=catalog_order),
+            )
+
+        if catalog_order is not None:
+            return (
+                build_extraction_prompt(
+                    schemas, extraction_hints=hints, catalog_order=catalog_order
+                ),
+                build_response_schema(schemas, catalog_order=catalog_order),
             )
 
         hint_ids = tuple(getattr(h, "rule_id", str(h)) for h in hints)
@@ -410,6 +421,7 @@ class GeminiExtractor:
         candidate_doctypes: Sequence[str] | None = None,
         context_set: str | None = None,
         revision: Any | None = None,
+        catalog_order: Sequence[str] | None = None,
     ) -> ExtractionResult:
         """Extract normalized fields + disposition signals via a Gemini call.
 
@@ -454,6 +466,7 @@ class GeminiExtractor:
             candidate_doctypes=candidate_doctypes,
             context_set=context_set,
             revision=revision,
+            catalog_order=catalog_order,
         )
         # The catalog is built first on purpose: a registry/authoring error must
         # surface before any artifact fetch is issued.

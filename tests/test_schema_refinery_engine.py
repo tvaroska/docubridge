@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from bridge.a2ui_inbox import InMemoryActionInboxStore
+from bridge.extraction.fixture import FixtureExtractor
 from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
 from bridge.operational_store import (
     InMemoryOperationalStore,
@@ -33,6 +35,7 @@ from bridge.refinery import (
     verify_supersedes_dag_acyclic,
 )
 from bridge.user_interaction import build_user_interaction_app, seed_demo_scenarios
+from contract.extraction import ExtractionResult
 
 
 def test_p8_2_graph_driven_consolidation_and_canonical_deal_rollups() -> None:
@@ -125,8 +128,14 @@ def test_p8_3_schema_refinery_engine_and_bitemporal_ontology_versioning(
         assert ins_report.decimal_formulas_valid is True
         assert ins_report.paired_removal_intact is True
         assert ins_report.negative_flip_rate == 0.0
-        assert ins_report.perturbation_krippendorff_alpha >= 0.80
-        assert ins_report.workhorse_teacher_ac2 >= 0.80
+        # Offline: no live extractor, so perturbation stability is honestly absent.
+        assert ins_report.perturbation_evaluated is False
+        assert ins_report.perturbation_krippendorff_alpha is None
+        assert ins_report.workhorse_teacher_ac2 is None
+        assert ins_report.perturbation_items == 0
+        assert "perturbation stability: not evaluated (no live extractor)" in (
+            ins_report.summary
+        )
         assert ins_report.bimodal_jaccard_similarity <= 0.10
         assert ins_report.bimodal_jaccard_distance > 0.50
 
@@ -171,6 +180,45 @@ def test_p8_3_schema_refinery_engine_and_bitemporal_ontology_versioning(
         engine.reset()
         if hasattr(engine, "close"):
             engine.close()
+
+
+class _StableCorpusExtractor:
+    """Deterministic extractor: the corpus answer regardless of catalog order."""
+
+    def __init__(self) -> None:
+        self._inner = FixtureExtractor()
+        self.calls = 0
+
+    async def extract(
+        self, artifact_name: str, *, catalog_order: Sequence[str] | None = None
+    ) -> ExtractionResult:
+        assert catalog_order, "the assay must present a catalog permutation"
+        self.calls += 1
+        return await self._inner.extract(artifact_name)
+
+
+def test_p8_3_assay_tier3_evaluates_perturbation_stability_with_injected_extractor() -> (
+    None
+):
+    """With an injected extractor Tier 3 is measured from real runs and gates passed."""
+    catalog = InMemoryKnowledgeCatalog()
+    catalog.reset_ontology_revisions()
+    extractor = _StableCorpusExtractor()
+    docs = ("gov-id-clean", "bill-powerco-clean")
+    engine = InMemorySchemaRefineryEngine(
+        knowledge_catalog=catalog, extractor=extractor, sample_documents=docs
+    )
+    _, report, _ = engine.run_taxonomy_assay(domain="insurance")
+    assert report.perturbation_evaluated is True
+    assert report.perturbation_permutations == 3
+    assert report.perturbation_items >= len(docs) * 2
+    assert extractor.calls == len(docs) * 3
+    assert report.perturbation_krippendorff_alpha is not None
+    assert report.perturbation_krippendorff_alpha >= 0.80
+    assert report.workhorse_teacher_ac2 is not None
+    assert report.workhorse_teacher_ac2 >= 0.80
+    assert report.passed is True
+    assert "perturbation stability: alpha=1.00" in report.summary
 
 
 def test_p8_3_auxiliary_detectors_and_dag_cycle_guard() -> None:
@@ -228,6 +276,9 @@ def test_p8_4_refinery_fastapi_routes_and_insurance_first_demo_mode(
     proposal_id = assay_payload["proposal"]["proposal_id"]
     assert assay_payload["assay_report"]["passed"] is True
     assert assay_payload["assay_report"]["negative_flip_rate"] == 0.0
+    assert assay_payload["assay_report"]["perturbation_evaluated"] is False
+    assert assay_payload["assay_report"]["perturbation_krippendorff_alpha"] is None
+    assert assay_payload["assay_report"]["workhorse_teacher_ac2"] is None
 
     # Promote proposal via API
     r_promote = client.post(
