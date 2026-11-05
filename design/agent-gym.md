@@ -8,7 +8,7 @@ tags: [bridge, agent-gym, hitl, governance]
 
 > Continuous learning from single-example expert fixes ("Example of One") and graduated autonomy across the 6-zone Enterprise Data Architecture (`bridge/agent_gym/`, `bridge/a2ui_inbox/`, `bridge/user_interaction/`, `bridge/knowledge_catalog.py`). The Gym is the learning loop for **layer 2** of the [knowledge model](knowledge-model.md): it tunes how the Bridge collects and behaves — hints, aliases, precedence, presentation, trust — and leaves what a document *is* to the [Schema Refinery](schema-refinery.md) and whether a set is *complete* to the calling agent.
 
-Which layer each learning loop changes:
+Agent Gym is the skills half of **Calibration** (Schema Refinery is the ontology half). Which layer each engine changes:
 
 | Loop | Layer | What it writes | Never touches |
 |---|---|---|---|
@@ -23,7 +23,7 @@ Which layer each learning loop changes:
    - **Tribal Knowledge Distiller:** Converts a single expert fix into a versioned `TribalKnowledgeRule` (`extraction_hint`, `entity_alias`, `consolidation_priority`, or `presentation_preference`) without touching deterministic financial math code.
    - **Synthetic Stress Testing (`generate_synthetic_stress_suite`):** Synthesizes and deterministically executes 4 corner-case perturbations per rule (`carrier_layout_shift`, `legal_entity_suffix_variant`, `distinct_syndicate_guard`, `model_upgrade_parity`) via `_execute_rule_on_case`.
    - **Quality Report Card Gate (`evaluate_candidate_rule`):** Enforces positive target-slice gain, zero historical regression, and an intact deterministic `Decimal` math firewall (`_FORBIDDEN_MATH_TOKENS`) before promoting a rule.
-3. **Production Layer Application & Day-2 Continuous Learning Payoff:** Applies promoted rules across:
+3. **Production Layer Application & Day-2 Calibration Payoff:** Applies promoted rules across:
    - **Stage 1 Extraction (`get_extraction_hints` → `GeminiExtractor` & `ingest_accepted_submission`):** Promoted `EXTRACTION_HINT` rules are dynamically injected into `build_extraction_prompt(schemas, extraction_hints=...)` (`bridge/extraction/gemini.py`) whenever the promoted rule set changes, and are deterministically applied in `ingest_accepted_submission()` (`bridge/user_interaction/surfaces.py`) to map overridden fields (`canonical_target`), automatically promoting parked/pending Day-2 submissions (`Disposition.pending` → `Disposition.accepted` with `Gate.auto_approve`) and recording `docubridge.applied_extraction_hints` on the OpenTelemetry span.
    - **Stage 2 Consolidation (`normalize_entity_or_issuer`):** Normalizes legal entity suffixes (e.g., `"Meridian Logistics Holdings Ltd."` → `"Meridian Logistics"`, `"Campala Ltd."` → `"Campala"`) while preserving distinct syndicates/SPVs (`distinct_entities`).
    - **Stage 3 A2UI Presentation (`get_presentation_preferences`):** Customizes governed A2UI v0.9 surface layouts per role and domain.

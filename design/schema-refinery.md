@@ -36,7 +36,7 @@ The declarative half — `process` = ADK skill, `doctype` = catalog entity autho
 
 ## 3. Schema Refinery: Evaluating & Evolving Entity Types, Descriptions, and Edges
 
-**Schema Refinery** (`bridge/refinery/`) extends the continuous-learning loop beyond prompt hints to evaluate and evolve the ontology across **three levels**:
+**Schema Refinery** (`bridge/refinery/`) is the ontology half of **Calibration** and extends it beyond prompt hints to evaluate and evolve the ontology across **three levels**:
 1. **Level 1 — Entity & Field Descriptions** (Semantic Disambiguation)
 2. **Level 2 — Graph Edges & Consolidation Rules** (Precedence, Aliases, Metric Mappings)
 3. **Level 3 — Entity Taxonomy & Granularity** (Splitting, Merging, or Adding Entity Types)

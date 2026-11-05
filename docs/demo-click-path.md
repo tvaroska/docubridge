@@ -21,7 +21,7 @@
    - Append-only bi-temporal Operational Store (`recorded_at` vs. `effective_from`) + 7-year write-once Cloud Storage Audit Vault.
 4. **OPTIMIZE (Agent Observability + 3-Tier Eval + Agent Gym):**
    - OpenTelemetry `gen_ai.*` spans exported to Cloud Trace v2 and BigQuery (`docubridge-showcase.docubridge_telemetry.otel_spans`) with FinOps traffic attribution (`production_inference`, `conflict_escalation`, `agent_gym_eval`).
-   - Closed-loop Agent Gym with Two-Sided Oversight (`RSR >= 0.50`), 3-Tier Evaluation Gate, `SKILL.md` revision compilation (`v1.0.0 -> v1.1.0`), 1-click rollback, and Process-Instance Skill Lineage.
+   - Calibration (closed-loop Agent Gym) with Two-Sided Oversight (`RSR >= 0.50`), 3-Tier Evaluation Gate, `SKILL.md` revision compilation (`v1.0.0 -> v1.1.0`), 1-click rollback, and Process-Instance Skill Lineage.
 
 ---
 

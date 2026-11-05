@@ -11,7 +11,7 @@ down:
 tags: [bridge, knowledge, ontology, skills, learning]
 ---
 
-# Knowledge model — what things are, how we collect them, how it learns
+# Knowledge model — what things are, how we collect them, how Calibration improves both
 
 > Three layers carry everything the Bridge knows about documents. Keeping them apart is what lets a doctype be added without code, a process be tuned without touching the doctype, and a learning loop change exactly one layer at a time.
 

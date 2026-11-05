@@ -12,7 +12,7 @@ It serves two purposes in one codebase:
    combining Google ADK (`google-adk>=2.11.0`), A2A (`a2a-sdk`), A2UI v0.9, Agent Registry &
    Agent Gateway (`CLIENT_TO_AGENT` + `AGENT_TO_ANYWHERE` + IAM v3 CEL), SPIFFE JWT-SVID +
    Human OBO compound identity, OpenTelemetry `gen_ai.*` observability, BigQuery `Rule 0` SQL
-   trace evaluation, and **Agent Gym** continuous learning (`gemini-3.8-flash` runtime workhorse
+   trace evaluation, and **Calibration** — the learning capability spanning Schema Refinery and Agent Gym — (`gemini-3.8-flash` runtime workhorse
    paired with `gemini-4-argon` as teacher, judge, and conflict-escalation model).
 2. **Reusable A2A Mediation Core** — a strictly isolated mediation engine (`bridge/` never
    imports `agents/`) following Hexagonal **Ports & Adapters** (`bridge/ports/`) where all 13
@@ -29,7 +29,7 @@ It serves two purposes in one codebase:
 | **1. BUILD** | Single-turn & resumable ADK `LlmAgent`s (`google-adk`), `SKILL.md` runtime skill registry, A2A v0.3 JSON-RPC + SSE edge, A2UI v0.9 declarative surfaces, cross-framework ADK ↔ LangGraph interop | `bridge/agent.py`, `bridge/edge/`, `skills/`, `agents/` |
 | **2. GOVERN** | Gemini platform **Agent Registry** (`urn:agent`, `urn:mcp`, `urn:endpoint`, `urn:skill` + content-addressed `SkillRevisionRecord`), **Agent Gateway** (`CLIENT_TO_AGENT` Model Armor + Cloud DLP, `AGENT_TO_ANYWHERE` IAM v3 CEL), and **SPIFFE JWT-SVID + Human OBO** least-privilege intersection (`Agent ∩ User`) | `bridge/identity.py`, `bridge/agent_gym/registry_gateway.py`, `bridge/knowledge_catalog/` |
 | **3. SCALE** | **6-Zone Enterprise Data Architecture**: Edge PII redaction, 7-year WORM Cloud Storage Audit Vault (`if_generation_match=0`), deterministic `Decimal` Consolidation Engine, bi-temporal SQL Operational Store (`learned_as_of` × `effective_on`), Role-Based Views, and watermarked BigQuery Open Iceberg sync | `bridge/vault.py`, `bridge/operational_store/`, `bridge/sql_runtime.py`, `terraform/` |
-| **4. OPTIMIZE** | **Agent Gym** continuous learning ("Example of One" SME feedback → 3-Tier evaluation gate → `SKILL.md` compilation → Programmable Trust dial), Two-Sided Oversight (`RSR` anti-rubber-stamping), and **BigQuery `Rule 0` SQL Trace Evaluation** (`v_trace_sql_evaluation` + `AI.GENERATE_TABLE` + Rogan-Gladen debiasing) | `bridge/agent_gym/`, `bridge/telemetry/`, `terraform/modules/telemetry/` |
+| **4. OPTIMIZE** | **Calibration** — Schema Refinery evolves the ontology, Agent Gym evolves the skills ("Example of One" SME feedback → 3-Tier evaluation gate → `SKILL.md` compilation → Programmable Trust dial), Two-Sided Oversight (`RSR` anti-rubber-stamping), and **BigQuery `Rule 0` SQL Trace Evaluation** (`v_trace_sql_evaluation` + `AI.GENERATE_TABLE` + Rogan-Gladen debiasing) | `bridge/agent_gym/`, `bridge/telemetry/`, `terraform/modules/telemetry/` |
 
 ```mermaid
 flowchart LR
@@ -81,7 +81,7 @@ Open **http://localhost:8003/demo** (or `/console`) to explore all three seeded 
   1. **Scene 1 · Dual-Path Intake & 7-Year WORM Audit Vault** (`POST /v1/intake/ingest`)
   2. **Scene 2 · Bi-Temporal Operational Store & Role-Based Views** (`GET /v1/a2ui/gemini_app/{entity_id}`, `GET /v1/bigquery/sync`) with click-to-source PDF polygon proof modal
   3. **Scene 3 · 6-Hop Lineage, SPIFFE Zero-Trust & 6-Tab Agent Registry / Gateway Explorer** (`GET /v1/registry/catalog`, `POST /v1/gateway/evaluate-route`)
-  4. **Scene 4 · Agent Gym Continuous Learning & Day-2 Payoff** (`POST /v1/gym/signals/from-quarantine`, `POST /v1/gym/rules/{rule_id}/evaluate`, `POST /v1/gym/compile-skill`)
+  4. **Scene 4 · Calibration (Agent Gym) & Day-2 Payoff** (`POST /v1/gym/signals/from-quarantine`, `POST /v1/gym/rules/{rule_id}/evaluate`, `POST /v1/gym/compile-skill`)
   5. **Scene 5 · OpenTelemetry `gen_ai.*` Waterfall & BigQuery `Rule 0` SQL Trace Evaluation** (`GET /v1/telemetry/analytics`, `POST /v1/telemetry/sql-eval/run`)
 
 Full walkthrough script: [BANKING.md](BANKING.md) and [docs/demo-click-path.md](docs/demo-click-path.md).
@@ -218,6 +218,7 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 - **Exchange** — one A2A context: a durable multi-turn interaction about a *set* of documents.
 - **Sense A / Sense B** — the Bridge judges one document against declared rules (A). The calling agent decides whether the set is complete or which quote to bind (B).
 - **Port & Adapter (`Port`)** — a managed-service boundary (`bridge/ports/`) with a local adapter and a GCP adapter; the same `@pytest.mark.port` tests run against both (`BRIDGE_PORT_MODE=local|gcp`). Parity is terminal-outcome, not ledger-identical.
+- **Calibration** — the learning capability: Schema Refinery evolves the ontology, Agent Gym evolves the skills; both promote only through the statistical gates in `bridge/calibration.py`.
 - **Skill vs eval** — a skill (`skills/`) is how the Bridge behaves; an eval (`wiki/evals/`) is how we verify it behaved.
 - **Ontology vs skill** — a bundle in `catalog/doctypes/` says what a document *is*; a skill in `skills/` says how the Bridge *collects* it and how it behaves.
 

@@ -4,7 +4,7 @@ up: "knowledge-model.md"
 tags: [bridge, agent-gym, harness-evolve, extraction, docai, optimization]
 ---
 
-# Agent Gym × Harness Evolve — Continual Learning & Multi-Tier Extraction Evolution
+# Agent Gym × Harness Evolve — Calibration at Scale & Multi-Tier Extraction Evolution
 
 > **Canonical Methodology Source:** General Agent Gym, Harness Evolve (`arXiv:2609.00829`), and Harness² (`arXiv:2610.14224`, 8 editable harness surfaces `c1..c8` and Cheapest-Lever Gate) patterns are maintained in `agent-evals` (`docs/playbooks/two-sided-hitl-and-continual-learning.md`). This document specifies the DocuBridge-specific implementation (`bridge/agent_gym/`, `bridge/extraction/gemini.py`, `skills/<doctype>/`).
 >
