@@ -65,9 +65,10 @@ Nothing below makes sense without the **two-decision split** — it is *the* inv
 | Decision | Sense | Who owns it | Mechanism | Model may mint it? |
 |---|---|---|---|---|
 | Is *this document* valid / accepted? | **A — disposition** | the **Bridge** | `run_disposition_gate` (deterministic, per doc) | **never** |
-| Is the *requirement set* complete ("done")? | **B — completeness** | the **app** (address agent) | `is_satisfied` (deterministic, over the ledger) | **never** |
+| Does the set on hand satisfy the *declared strategy*? | **A′ — sufficiency verdict** (ADR-14; built by `P9-4`) | the **Bridge** — a verdict with evidence, from `skills/<process>/assets/strategy.yaml` plus request-level requirements | deterministic strategy evaluation over the ledger; `sufficiency = {satisfied, strategy_revision, evidence[], outstanding[]}` on every turn | **never** |
+| Is the *requirement set* complete ("done")? May an item be *waived*? | **B — completeness** | the **app** (address agent) — accepts the verdict or overrides it; alone sets `waived` | `is_satisfied` (deterministic, over the ledger and the verdict) | **never** |
 
-"LLM routes, code decides" applies to **both** — the model may *route* (call the gate, chase the next proof) but can never *mint* an acceptance or a "done". Keep A and B distinct: **the app never rejects a document, and the Bridge never declares the set complete.**
+"LLM routes, code decides" applies to **all three** — the model may *route* (call the gate, chase the next proof) but can never *mint* an acceptance, a sufficiency verdict, or a "done". Keep them distinct: **the app never rejects a document, the Bridge never declares the set complete, and the Bridge never waives.** Until `P9-4` lands, the A′ row is realised as today's advisory proposal (above) and the strategy lives in app code; the ownership is decided, the mechanism is in progress.
 
 Identifiers ([aggregate-model](aggregate-model.md)): **`context_id`** = the exchange (durable, 1:1 with the casefile) · **`task_id`** = one leg/document collection · **`message_id`** = one turn. Keeping context = keeping the `context_id` alive.
 

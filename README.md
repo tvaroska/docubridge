@@ -177,7 +177,7 @@ terraform -chdir=terraform init -backend=false && terraform -chdir=terraform tes
 ```
 spec/       THE WHAT — requirements (CUJs, standards, demos). Forkable, status-free, protected.
 design/     THE HOW — architecture, ports, zones, patterns, agent-gym, harness-evolve. Status-free.
-DECISIONS.md architectural decision records (ADR-01 through ADR-13) & milestone history
+DECISIONS.md architectural decision records (ADR-01 through ADR-14) & milestone history
 BANKING.md  5-scene Enterprise Showcase architecture & walkthrough (Banking, Mortgage, Insurance)
 docs/       feature catalog, demo click-path, roadmap (the only place status lives), local-dev, upstream ADK issues
 wiki/evals/ the eval corpus (Address + Benefits oracles) — a runtime fixture
@@ -200,7 +200,7 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 |---|---|
 | [BANKING.md](BANKING.md) | 5-scene Enterprise Showcase (Banking, Mortgage & Insurance), 6-Zone Data Architecture, Agent Gym & BigQuery SQL Eval |
 | [docs/demo-click-path.md](docs/demo-click-path.md) | 5-minute live demo click-path, Agent Registry & Gateway walkthrough, and BigQuery SQL evaluation guide |
-| [DECISIONS.md](DECISIONS.md) | Executive Architecture Decision Records (ADR-01 through ADR-13) |
+| [DECISIONS.md](DECISIONS.md) | Executive Architecture Decision Records (ADR-01 through ADR-14) |
 | [design/bridge.md](design/bridge.md) | The mediation product in one page — the root of the design tree |
 | [design/model.md](design/model.md) | What the Bridge is: exchange / task / session / party, the closed pattern set, disposition, artifacts, outbound |
 | [design/edges.md](design/edges.md) | How you talk to it: the A2A edge and consumer, the service-agent shape, the human edge, email intake, RFP views |
