@@ -16,9 +16,12 @@ from pydantic import ValidationError
 
 from contract.scenario import ScenarioManifest
 
-SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "scenarios"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+SCENARIOS_DIR = _REPO_ROOT / "scenarios"
 SCENARIOS_DIR_ENV = "BRIDGE_SCENARIOS_DIR"
 MANIFEST_FILENAME = "scenario.yaml"
+DEMO_STATIC_DIR = _REPO_ROOT / "demo"
+DEMO_STATIC_DIR_ENV = "BRIDGE_DEMO_STATIC_DIR"
 
 
 class ScenarioLoadError(ValueError):
@@ -29,6 +32,17 @@ def scenarios_root(scenarios_dir: Path | None = None) -> Path:
     if scenarios_dir is not None:
         return scenarios_dir
     return Path(os.environ.get(SCENARIOS_DIR_ENV, "").strip() or SCENARIOS_DIR)
+
+
+def demo_static_root(static_dir: Path | None = None) -> Path:
+    """Folder the `/demo*` and `/ebc*` console assets are served from.
+
+    A downstream showcase ships its own console files and points
+    `BRIDGE_DEMO_STATIC_DIR` at them; the repo `demo/` folder is only the default.
+    """
+    if static_dir is not None:
+        return static_dir
+    return Path(os.environ.get(DEMO_STATIC_DIR_ENV, "").strip() or DEMO_STATIC_DIR)
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -87,10 +101,13 @@ def discover_manifests(
 
 
 __all__ = [
+    "DEMO_STATIC_DIR",
+    "DEMO_STATIC_DIR_ENV",
     "MANIFEST_FILENAME",
     "SCENARIOS_DIR",
     "SCENARIOS_DIR_ENV",
     "ScenarioLoadError",
+    "demo_static_root",
     "discover_manifests",
     "load_manifest",
     "scenarios_root",

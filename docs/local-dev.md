@@ -147,6 +147,9 @@ uv run python -m bridge.email_ingress drain --url http://127.0.0.1:8010/ops
 reads, with defaults and which ones the deployed runtime injects. Nothing loads it
 automatically — copy what you need into a gitignored `.env` or export it.
 Shared local defaults for the run scripts live in `scripts/_dev-env.sh`.
+The content roots a downstream showcase swaps (`BRIDGE_SKILLS_DIR`,
+`BRIDGE_OKF_DOCTYPES_DIR`, `BRIDGE_SCENARIOS_DIR`, `BRIDGE_DEMO_STATIC_DIR`,
+`BRIDGE_DEFAULT_DEMO_DOMAIN`) are described in [`consume-over-a2a.md`](consume-over-a2a.md).
 
 ## Deployed path
 

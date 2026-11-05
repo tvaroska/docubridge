@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -14,6 +13,7 @@ from bridge.agent_gym import AgentGymEngine
 from bridge.identity import authorize_entity_access
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.operational_store import OperationalStore
+from bridge.showcase.loader import demo_static_root
 from bridge.user_interaction.auth import (
     AuthenticationRequiredError,
     resolve_compound_identity,
@@ -123,13 +123,11 @@ def register_intake_and_demo_routes(
         domain: str | None = None,
     ) -> HTMLResponse:
         """Serve the 5-scene interactive Enterprise Showcase HTML console (/demo and /console)."""
-        demo_path = (
-            Path(__file__).resolve().parents[2] / "demo" / "enterprise-demo.html"
-        )
+        demo_path = demo_static_root() / "enterprise-demo.html"
         if not demo_path.is_file():
             raise HTTPException(
                 status_code=404,
-                detail="Interactive console (demo/enterprise-demo.html) not found.",
+                detail="Interactive console (enterprise-demo.html) not found.",
             )
         html_text = demo_path.read_text(encoding="utf-8")
         chosen_domain = (
@@ -150,11 +148,10 @@ def register_intake_and_demo_routes(
     @router.get("/demo/enterprise-demo.css")
     def get_interactive_enterprise_console_css() -> Response:
         """Serve the modular stylesheet for the Enterprise Showcase console."""
-        css_path = Path(__file__).resolve().parents[2] / "demo" / "enterprise-demo.css"
+        css_path = demo_static_root() / "enterprise-demo.css"
         if not css_path.is_file():
             raise HTTPException(
-                status_code=404,
-                detail="Stylesheet (demo/enterprise-demo.css) not found.",
+                status_code=404, detail="Stylesheet (enterprise-demo.css) not found."
             )
         return Response(
             content=css_path.read_text(encoding="utf-8"),
@@ -164,11 +161,10 @@ def register_intake_and_demo_routes(
     @router.get("/demo/enterprise-demo.js")
     def get_interactive_enterprise_console_js() -> Response:
         """Serve the modular JavaScript controller for the Enterprise Showcase console."""
-        js_path = Path(__file__).resolve().parents[2] / "demo" / "enterprise-demo.js"
+        js_path = demo_static_root() / "enterprise-demo.js"
         if not js_path.is_file():
             raise HTTPException(
-                status_code=404,
-                detail="Script (demo/enterprise-demo.js) not found.",
+                status_code=404, detail="Script (enterprise-demo.js) not found."
             )
         return Response(
             content=js_path.read_text(encoding="utf-8"),

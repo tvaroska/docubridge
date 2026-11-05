@@ -16,6 +16,8 @@ Every pull request must preserve the following invariants (enforced automaticall
    - Every stateful store factory in `bridge/` must resolve its durable GCP/SQL adapter first and refuse silent in-memory fallback when `BRIDGE_PORT_MODE=gcp`.
 4. **Protected Specification (`spec/`):**
    - Do not modify files under `spec/` during feature implementation; propose specification changes in `DECISIONS.md`.
+5. **Downstream showcases consume over A2A, never by import (`examples/`):**
+   - Anything under `examples/` imports only `a2a`, `contract/` and the stdlib — never `bridge/` or `agents/` (also enforced by `tests/test_isolation_guard.py`). The contract they rely on is [`docs/consume-over-a2a.md`](docs/consume-over-a2a.md).
 
 ## Local Verification Ladder
 

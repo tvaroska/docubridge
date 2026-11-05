@@ -121,6 +121,7 @@ doctype bundle under `catalog/doctypes/` (entity scope, contrastive field descri
 ontology edges), and a scenario the Bridge mediates. The Bridge core does not change; it
 hot-loads the skills and resolves the bundle through the Zone 6 Knowledge Catalog.
 Contribution conventions and the verification ladder are in [CONTRIBUTING.md](CONTRIBUTING.md).
+The exact contract a downstream showcase relies on (folders, env knobs, Agent Card fields, wire types, a minimal consumer) is [docs/consume-over-a2a.md](docs/consume-over-a2a.md).
 
 ## Run All Local Surfaces
 
@@ -209,6 +210,7 @@ scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 | [docs/features.md](docs/features.md) | Feature catalog across all phases and sprints |
 | [CLAUDE.md](CLAUDE.md) | Engineering conventions and operational lessons learned |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution conventions, invariants, and the local verification ladder |
+| [docs/consume-over-a2a.md](docs/consume-over-a2a.md) | Consuming DocuBridge from a downstream showcase over A2A: supplied folders, env knobs, Agent Card, wire types, example consumer |
 
 ## Core Glossary
 

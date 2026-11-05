@@ -23,6 +23,7 @@ from bridge.showcase.live_extraction import (
     is_live_gemini_configured,
     process_uploaded_pdfs,
 )
+from bridge.showcase.loader import demo_static_root
 from bridge.showcase.pdf_assets import build_pdf_zip, pdf_metadata
 from bridge.user_interaction.schemas import (
     AdvanceConsolidationCollabRequest,
@@ -33,7 +34,6 @@ from bridge.user_interaction.schemas import (
 from contract.scenario import AdvanceScenarioRequest, ScenarioStageKind
 
 _SAFE_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
-_DEMO_DIR = Path(__file__).resolve().parents[2] / "demo"
 
 
 def _not_found(scenario_id: str) -> HTTPException:
@@ -379,24 +379,24 @@ def _register_legacy_aliases(router: APIRouter, engine: ScenarioEngine) -> None:
     @router.get("/ebc", response_class=HTMLResponse)
     def get_ebc_live_console_html() -> HTMLResponse:
         """Serve the split-screen live console for the default consolidation scenario."""
-        html_path = _DEMO_DIR / "ebc-live.html"
+        html_path = demo_static_root() / "ebc-live.html"
         if not html_path.is_file():
             raise HTTPException(status_code=404, detail="Live console not found.")
         return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
 
     @router.get("/ebc/ebc-live.css")
     def get_ebc_live_console_css() -> Response:
-        return _static(_DEMO_DIR / "ebc-live.css", "text/css; charset=utf-8")
+        return _static(demo_static_root() / "ebc-live.css", "text/css; charset=utf-8")
 
     @router.get("/ebc/ebc-live.js")
     def get_ebc_live_console_js() -> Response:
         return _static(
-            _DEMO_DIR / "ebc-live.js", "application/javascript; charset=utf-8"
+            demo_static_root() / "ebc-live.js", "application/javascript; charset=utf-8"
         )
 
     @router.get("/ebc/favicon.svg")
     def get_ebc_live_favicon_svg() -> Response:
-        return _static(_DEMO_DIR / "ebc-favicon.svg", "image/svg+xml")
+        return _static(demo_static_root() / "ebc-favicon.svg", "image/svg+xml")
 
 
 __all__ = ["register_scenario_routes"]

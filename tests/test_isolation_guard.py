@@ -14,6 +14,8 @@ Two directions are load-bearing:
 import ast
 from pathlib import Path
 
+import pytest
+
 
 def _imports_package(py_path: Path, package: str) -> list[str]:
     """Parse a Python file and return absolute imports of ``package``.
@@ -190,6 +192,19 @@ def test_guard_detects_reverse_violation(tmp_path):
     near_miss.write_text("import bridgehead\n")
     assert _imports_package(near_miss, "bridge") == [], (
         "Should not flag 'bridgehead' (not 'bridge' or 'bridge.*')"
+    )
+
+
+@pytest.mark.parametrize("forbidden", ["bridge", "agents"])
+def test_examples_never_import_bridge_or_agents(forbidden):
+    """``examples/`` are external consumers: wire + ``contract/`` only (P9-3)."""
+    assert (Path(__file__).resolve().parents[1] / "examples").is_dir()
+    offenders = _scan("examples", forbidden)
+
+    assert not offenders, (
+        f"examples/ must never import {forbidden}/ — a downstream consumer talks to the "
+        f"Bridge over A2A + contract/ only. Found {len(offenders)} violation(s):\n"
+        + "\n".join(f"  {file}: imports {name}" for file, name in offenders)
     )
 
 
