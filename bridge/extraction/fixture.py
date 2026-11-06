@@ -5,9 +5,11 @@ avoiding import cycles.
 """
 
 import json
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
+from bridge.extraction.derivations import apply_result_derivations
 from contract.extraction import ExtractionResult
 
 # Default corpus path (from bridge/extraction/fixture.py: parents[0]=extraction, [1]=bridge, [2]=repo root)
@@ -72,11 +74,25 @@ class FixtureExtractor:
         """
         self._corpus_path = str(corpus_path)
 
-    async def extract(self, artifact_name: str) -> ExtractionResult:
+    async def extract(
+        self,
+        artifact_name: str,
+        *,
+        target_doctype: str | None = None,
+        candidate_doctypes: Sequence[str] | None = None,
+        requested_fields: Sequence[str] | None = None,
+        context_set: str | None = None,
+        ontology_revision: str | None = None,
+    ) -> ExtractionResult:
         """Extract fields and signals for a document artifact.
 
         Args:
             artifact_name: The artifact filename or path.
+            target_doctype: Optional single expected doctype hint.
+            candidate_doctypes: Optional candidate doctype hints.
+            requested_fields: Optional explicit field subset to extract.
+            context_set: Optional domain context set name.
+            ontology_revision: Optional ontology revision ID to pin.
 
         Returns:
             The extraction result for the document.
@@ -84,6 +100,7 @@ class FixtureExtractor:
         Raises:
             KeyError: If the artifact is not found in the corpus.
         """
+        _ = (target_doctype, candidate_doctypes, context_set)
         key = _normalize_key(artifact_name)
         corpus = _load_corpus(self._corpus_path)
 
@@ -94,4 +111,11 @@ class FixtureExtractor:
                 f"known ids: {known_ids}"
             )
 
-        return corpus[key]
+        base_result = corpus[key]
+        if requested_fields is not None or ontology_revision is not None:
+            return apply_result_derivations(
+                base_result,
+                requested_fields=requested_fields,
+                ontology_revision_id=ontology_revision,
+            )
+        return base_result

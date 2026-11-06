@@ -1,4 +1,4 @@
-"""Hexagonal Ports & Adapters across all 13 managed-service boundaries.
+"""Hexagonal Ports & Adapters across all 14 managed-service boundaries.
 
 Exposes the Hexagonal Architecture `Port`, `PortMode` (`AdapterMode`), `PortABC`,
 `*Port` protocols, `resolve_port_mode` (`resolve_mode`), and `get_port_adapter`
@@ -28,6 +28,7 @@ from .protocols import (
     EmailIngressPort,
     ExchangeStorePort,
     ExtractionPort,
+    KnowledgeCatalogPort,
     MemoryBankPort,
     OperationalStorePort,
     PortABC,
@@ -57,6 +58,7 @@ __all__ = [
     "EmailIngressPort",
     "ExchangeStorePort",
     "ExtractionPort",
+    "KnowledgeCatalogPort",
     "MemoryBankPort",
     "OperationalStorePort",
     "Port",

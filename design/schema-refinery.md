@@ -30,7 +30,7 @@ Because a flat `skills/<doctype>/` folder can only describe one document type in
 
 ## 2. The ontology layer the Refinery evolves
 
-The declarative half — `process` = ADK skill, `doctype` = catalog entity authored in OKF v0.2 under `catalog/doctypes/`, parsed by `bridge/refinery/okf_loader.py` into `contract/refinery.py` types, rendered into the generated `assets/schema.json`, and consumed by extraction, Path-A validation and consolidation — is specified in [ontology](ontology.md). The Refinery below reads and writes that layer only: it never edits a process skill's policy ([skills](skills.md)) and never decides completeness ([knowledge model](knowledge-model.md)).
+The declarative half — `process` = ADK skill, `doctype` = catalog entity authored in OKF v0.2 under `catalog/doctypes/`, parsed by `bridge/refinery/okf_loader.py` into `contract/refinery.py` types, rendered into the generated `assets/schema.json`, and consumed by extraction, Path-A validation and consolidation — is specified in [ontology](ontology.md). The Refinery below reads and writes that layer only (`Port.knowledge_catalog` / `SqlKnowledgeCatalog`): it never edits a process skill's policy ([skills](skills.md)) and never learns or mutates which documents are required, acceptable substitutes, or waivable ([knowledge model](knowledge-model.md), `ADR-15`).
 
 ---
 

@@ -60,7 +60,9 @@ BIGQUERY_ICEBERG_DDL: str = (
     "  recorded_at TIMESTAMP NOT NULL,\n"
     "  effective_from TIMESTAMP NOT NULL,\n"
     "  vault_uri STRING,\n"
-    "  page_number INT64\n"
+    "  page_number INT64,\n"
+    "  ontology_revision_id STRING,\n"
+    "  consolidation_edge_id STRING\n"
     ")\n"
     "WITH CONNECTION `us.lakehouse-connection`\n"
     "OPTIONS (file_format = 'PARQUET', table_format = 'ICEBERG');"
@@ -89,6 +91,8 @@ def build_bigquery_sync_batch(
             effective_from=f.effective_from,
             vault_uri=f.vault_uri,
             page_number=f.source_anchor.page_number if f.source_anchor else 1,
+            ontology_revision_id=f.ontology_revision_id,
+            consolidation_edge_id=f.consolidation_edge_id,
         )
         for f in facts
     ]

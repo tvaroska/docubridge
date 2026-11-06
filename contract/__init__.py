@@ -8,8 +8,10 @@ from contract.enums import (
     ReviewReason,
 )
 from contract.extraction import (
+    ExtractedRecord,
     ExtractionFields,
     ExtractionResult,
+    FieldDerivation,
     FieldReview,
     GovIdKeyFields,
     SourceAnchor,
@@ -56,8 +58,10 @@ __all__ = [
     "EdgeRelation",
     "ExchangeTurn",
     # Extraction
+    "ExtractedRecord",
     "ExtractionFields",
     "ExtractionResult",
+    "FieldDerivation",
     "FieldReview",
     "Gate",
     "GovIdKeyFields",

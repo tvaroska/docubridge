@@ -673,7 +673,7 @@ stage:
               field_path: payoff_waiver_status
               before_value: require_external_payoff_letter
               after_value: waived_via_bank_statement_paid_in_full_wire
-              expert_memo: "When a prior-year debt schedule lists an equipment loan (e.g., EquipLease #8841), inspect the recent 90-day Operating Bank Statement for an outgoing wire matching the creditor + loan number with memo 'FINAL PAYOFF' / 'PAID IN FULL'. If verified with a page/bbox anchor, auto-waive the separate payoff letter; never auto-waive recurring monthly installment debits."
+              expert_memo: "When a prior-year debt schedule lists an equipment loan (e.g., EquipLease #8841), extract any outgoing wire on the recent 90-day Operating Bank Statement matching the creditor + loan number with memo 'FINAL PAYOFF' / 'PAID IN FULL', derive remaining_liability_balance='$0.00' (superseding the prior-year balance), and emit payoff_waiver_status='waived_via_bank_statement_paid_in_full_wire' so Agent 2 can waive the checklist item; never treat recurring monthly installment debits as payoff settlements."
               actor_principal: ${principal.senior_underwriter}
               actor_role: underwriter
               agent_spiffe_id: ${agent.underwriter}
@@ -743,13 +743,13 @@ stage:
             set:
               agent1_bridge_status.skill_revision: ${skill_name}@${skill_version} (${skill_revision_id})
               agent1_bridge_status.headline: Hot-Reloaded ${skill_name}@${skill_version} -> Day-2 Deal Auto-Approved in 142 ms
-              agent1_bridge_status.detail: Agent 1 (`${model.workhorse}`) now spots cross-document 'PAID IN FULL' payoff wires on Day-2 deals (`${entity:day2}`) with 0 human touchpoints and 0 `${model.reasoning}` escalation tokens.
+              agent1_bridge_status.detail: Agent 1 (`${model.workhorse}`) now extracts cross-document 'PAID IN FULL' payoff wire facts and derives `remaining_liability_balance = $0.00` on Day-2 deals (`${entity:day2}`) with 0 human touchpoints and 0 `${model.reasoning}` escalation tokens so Agent 2 waives the checklist requirement automatically.
               agent2_policy_status.headline: Agent Gym Promoted Rule ${rule_id} (4/4 Stress Cases) & Compiled Skill v${skill_version}
-              agent2_policy_status.detail: Verified 4/4 synthetic stress cases (including Negative Guardrail blocking waivers on monthly P&I installments). Day-2 borrower ${display.day2_borrower} cleared zero-touch.
+              agent2_policy_status.detail: Verified 4/4 synthetic stress cases (including Negative Guardrail blocking payoff extraction on monthly P&I installments). Day-2 borrower ${display.day2_borrower} cleared zero-touch by Agent 2.
               borrower_banner:
                 tone: success
                 headline: Day-2 Continual Learning Active · Next Borrower Auto-Cleared in 142 ms!
-                message: Agent Gym distilled your Underwriter's waiver into `${skill_name}@${skill_version}` (4/4 stress tests passed). When Day-2 borrower ${display.day2_borrower} uploaded a bank statement with a 'PAID IN FULL' wire, Document Bridge waived the payoff letter automatically in 142 ms.
+                message: Agent Gym distilled your Underwriter's correction into `${skill_name}@${skill_version}` (4/4 stress tests passed). When Day-2 borrower ${display.day2_borrower} uploaded a bank statement with a 'PAID IN FULL' wire, Document Bridge extracted the zero-balance settlement fact in 142 ms and Agent 2 waived the payoff letter automatically.
                 agent_note: Zero human touchpoints · Zero gemini-4-argon escalation tokens · Full WORM & bi-temporal lineage.
 
   live_extraction:
@@ -769,7 +769,7 @@ stage:
       loan_accounts: ["#9914"]
     prompts:
       extract: Extract commercial loan underwriting facts, Note 6 existing liabilities schedule (if present), and any outgoing FINAL PAYOFF / PAID IN FULL wire settlements (if present) from this PDF.
-      skill_clause_active: " ACTIVE SKILL consolidation-payoff@1.1.0: If an outgoing bank wire shows memo 'FINAL PAYOFF' or 'PAID IN FULL' matching a loan number, set auto_waive_payoff_letter=true."
+      skill_clause_active: " ACTIVE SKILL consolidation-payoff@1.1.0: If an outgoing bank wire shows memo 'FINAL PAYOFF' or 'PAID IN FULL' matching a loan number, extract the settlement wire fact and set auto_waive_payoff_letter=true for Agent 2."
       skill_clause_inactive: " Set auto_waive_payoff_letter=false under baseline v1.0.0."
     policy_summary:
       prompt: "In 2 crisp sentences for a bank underwriter, explain why extracting Meridian Logistics Center LLC's Note 6 Debt Schedule ($1.20M First National #FNB-4402, $350K EquipLease #8841, $250K internal on-us LOC #LOC-9012) expands the checklist from 3 to 6 items while auto-waiving the on-us LOC at 69.23% LTV and 1.44x DSCR."

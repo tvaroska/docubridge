@@ -9,6 +9,7 @@ from ..protocols import (
     ActionInboxPort,
     AgentGymPort,
     AuditVaultPort,
+    KnowledgeCatalogPort,
     OperationalStorePort,
 )
 from .stores import require_async_driver
@@ -136,3 +137,38 @@ class LocalAgentGym(AgentGymPort):
         if gym_sql._DEFAULT_GYM_ENGINE is None:
             gym_sql._DEFAULT_GYM_ENGINE = InMemoryAgentGymEngine()
         return gym_sql._DEFAULT_GYM_ENGINE
+
+
+class LocalKnowledgeCatalog(KnowledgeCatalogPort):
+    """Local `knowledge_catalog` adapter (Zone 6): in-memory or SQLite-backed Knowledge Catalog & TBox Ontology Graph."""
+
+    def build_knowledge_catalog(self, db_url: str | None = None) -> Any:
+        """Construct an in-memory or SQL-backed KnowledgeCatalog for local execution."""
+        import bridge.knowledge_catalog.sql_store as cat_sql
+        from bridge.knowledge_catalog.catalog import InMemoryKnowledgeCatalog
+        from bridge.knowledge_catalog.sql_store import (
+            _SQL_CATALOG_CACHE,
+            _SQL_CATALOG_LOCK,
+            CATALOG_DB_ENV,
+            SqlKnowledgeCatalog,
+        )
+
+        dsn = (
+            db_url
+            or os.environ.get(CATALOG_DB_ENV, "").strip()
+            or os.environ.get("BRIDGE_REFINERY_DB_URL", "").strip()
+            or os.environ.get("BRIDGE_OPERATIONAL_DB_URL", "").strip()
+            or os.environ.get("DATABASE_URL", "").strip()
+        )
+        if dsn:
+            require_async_driver(dsn)
+            with _SQL_CATALOG_LOCK:
+                cached = _SQL_CATALOG_CACHE.get(dsn)
+                if cached is None or cached._closed:
+                    cached = SqlKnowledgeCatalog(dsn)
+                    _SQL_CATALOG_CACHE[dsn] = cached
+            return cached
+
+        if cat_sql._DEFAULT_CATALOG is None:
+            cat_sql._DEFAULT_CATALOG = InMemoryKnowledgeCatalog()
+        return cat_sql._DEFAULT_CATALOG

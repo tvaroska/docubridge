@@ -380,6 +380,51 @@ resource "google_bigquery_table" "operational_facts_iceberg" {
     { name = "skill_version", type = "STRING", mode = "NULLABLE", description = "Skill semantic version" },
     { name = "skill_revision_id", type = "STRING", mode = "NULLABLE", description = "Immutable content-addressed skill revision ID" },
     { name = "skill_urn", type = "STRING", mode = "NULLABLE", description = "Agent Registry skill URN" },
-    { name = "process_skill_revision_id", type = "STRING", mode = "NULLABLE", description = "Process-instance skill revision ID" }
+    { name = "process_skill_revision_id", type = "STRING", mode = "NULLABLE", description = "Process-instance skill revision ID" },
+    { name = "ontology_revision_id", type = "STRING", mode = "NULLABLE", description = "TBox OntologyRevision ID pinned during extraction and consolidation" },
+    { name = "consolidation_edge_id", type = "STRING", mode = "NULLABLE", description = "Typed OntologyEdge ID that governed cross-document precedence" }
+  ])
+}
+
+resource "google_bigquery_table" "ontology_revisions" {
+  count = var.enable_telemetry_bq ? 1 : 0
+
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.lakehouse[0].dataset_id
+  table_id            = "bq_ontology_revisions"
+  description         = "TBox ontology revision history synced from Port.knowledge_catalog (catalog_ontology_revisions)."
+  deletion_protection = var.deletion_protection
+  labels              = var.labels
+
+  schema = jsonencode([
+    { name = "revision_id", type = "STRING", mode = "REQUIRED", description = "Immutable SHA-256 content-addressed ontology revision ID" },
+    { name = "version", type = "STRING", mode = "REQUIRED", description = "Semantic ontology version" },
+    { name = "status", type = "STRING", mode = "REQUIRED", description = "Lifecycle status (CANDIDATE, ACTIVE, SUPERSEDED)" },
+    { name = "created_at", type = "TIMESTAMP", mode = "REQUIRED", description = "Revision creation timestamp (UTC)" },
+    { name = "promoted_at", type = "TIMESTAMP", mode = "NULLABLE", description = "Revision promotion timestamp (UTC)" },
+    { name = "parent_revision_id", type = "STRING", mode = "NULLABLE", description = "Parent ontology revision ID" }
+  ])
+}
+
+resource "google_bigquery_table" "ontology_edges" {
+  count = var.enable_telemetry_bq ? 1 : 0
+
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.lakehouse[0].dataset_id
+  table_id            = "bq_ontology_edges"
+  description         = "TBox typed ontology edges ([:SUPERSEDES], [:REQUIRES_CORROBORATION], [:GOVERNS_FIELD]) synced from Port.knowledge_catalog."
+  deletion_protection = var.deletion_protection
+  labels              = var.labels
+
+  clustering = ["revision_id", "relation", "source_doctype"]
+
+  schema = jsonencode([
+    { name = "revision_id", type = "STRING", mode = "REQUIRED", description = "Owning OntologyRevision ID" },
+    { name = "edge_id", type = "STRING", mode = "REQUIRED", description = "Unique ontology edge identifier" },
+    { name = "source_doctype", type = "STRING", mode = "REQUIRED", description = "Source doctype or entity node" },
+    { name = "relation", type = "STRING", mode = "REQUIRED", description = "Typed edge relation (SUPERSEDES, REQUIRES_CORROBORATION, GOVERNS_FIELD)" },
+    { name = "target_node", type = "STRING", mode = "REQUIRED", description = "Target doctype or field_path" },
+    { name = "priority_boost", type = "INT64", mode = "REQUIRED", description = "Deterministic priority boost applied during consolidation" },
+    { name = "rationale", type = "STRING", mode = "NULLABLE", description = "Contrastive extraction or precedence rationale" }
   ])
 }

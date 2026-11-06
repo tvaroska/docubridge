@@ -26,11 +26,31 @@ from bridge.knowledge_catalog.models import (
     LineageTrace,
     QualityRule,
 )
+from bridge.knowledge_catalog.sql_store import (
+     _DEFAULT_CATALOG,
+    _SQL_CATALOG_CACHE,
+    _SQL_CATALOG_LOCK,
+    CATALOG_ASSETS_TABLE_NAME,
+    CATALOG_DB_ENV,
+    CATALOG_EDGES_TABLE_NAME,
+    CATALOG_LINEAGE_TABLE_NAME,
+    CATALOG_REVISIONS_TABLE_NAME,
+    SqlKnowledgeCatalog,
+    build_sql_or_memory_catalog,
+)
 
 __all__ = [
+    "CATALOG_ASSETS_TABLE_NAME",
+    "CATALOG_DB_ENV",
+    "CATALOG_EDGES_TABLE_NAME",
+    "CATALOG_LINEAGE_TABLE_NAME",
+    "CATALOG_REVISIONS_TABLE_NAME",
     "DEFAULT_ACCESS_POLICIES",
     "DEFAULT_GLOSSARY_TERMS",
     "DEFAULT_SYSTEM_ASSETS",
+    "_DEFAULT_CATALOG",
+    "_SQL_CATALOG_CACHE",
+    "_SQL_CATALOG_LOCK",
     "AccessDecision",
     "AccessPolicy",
     "AgentSemanticContext",
@@ -45,7 +65,9 @@ __all__ = [
     "LineageNode",
     "LineageTrace",
     "QualityRule",
+    "SqlKnowledgeCatalog",
     "_normalize_field_lookup_key",
     "authorize_access",
+    "build_sql_or_memory_catalog",
     "knowledge_catalog_from_env",
 ]

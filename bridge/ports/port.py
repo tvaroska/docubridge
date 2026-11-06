@@ -9,7 +9,7 @@ from enum import Enum
 
 
 class Port(str, Enum):
-    """The 13 hexagonal ports — every boundary that swaps between local and GCP."""
+    """The 14 hexagonal ports — every boundary that swaps between local and GCP."""
 
     # Core runtime & orchestration ports (Ring 2)
     sessions = "sessions"
@@ -27,6 +27,7 @@ class Port(str, Enum):
     operational_store = "operational_store"
     action_inbox = "action_inbox"
     agent_gym = "agent_gym"
+    knowledge_catalog = "knowledge_catalog"
 
 
 class PortMode(str, Enum):

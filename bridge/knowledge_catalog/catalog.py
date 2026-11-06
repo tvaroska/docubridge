@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Literal, Protocol, runtime_checkable
 
 from bridge.identity import (
@@ -792,11 +791,23 @@ class InMemoryKnowledgeCatalog:
 
 
 def knowledge_catalog_from_env(
-    *, operational_store: OperationalStore | None = None
+    *,
+    operational_store: OperationalStore | None = None,
+    db_url: str | None = None,
 ) -> KnowledgeCatalog:
-    """Resolve the Zone 6 KnowledgeCatalog from environment configuration."""
-    store = operational_store or operational_store_from_env()
-    backend = os.environ.get("BRIDGE_KNOWLEDGE_CATALOG_BACKEND", "").strip().lower()
-    if backend == "dataplex":
-        return InMemoryKnowledgeCatalog(operational_store=store)
-    return InMemoryKnowledgeCatalog(operational_store=store)
+    """Resolve the Zone 6 KnowledgeCatalog via ``Port.knowledge_catalog`` or DSN config."""
+    from bridge.ports import Port, get_port_adapter, resolve_port_mode
+
+    adapter = get_port_adapter(
+        Port.knowledge_catalog, resolve_port_mode(Port.knowledge_catalog)
+    )
+    catalog = adapter.build_knowledge_catalog(db_url=db_url)
+    store = operational_store
+    if store is None:
+        try:
+            store = operational_store_from_env()
+        except RuntimeError:
+            store = None
+    if store is not None and hasattr(catalog, "bind_operational_store"):
+        catalog.bind_operational_store(store)
+    return catalog

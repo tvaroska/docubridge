@@ -9,6 +9,7 @@ from ..protocols import (
     ActionInboxPort,
     AgentGymPort,
     AuditVaultPort,
+    KnowledgeCatalogPort,
     OperationalStorePort,
 )
 from .common import DATABASE_URL_ENV, _require_async_store_driver
@@ -151,4 +152,42 @@ class GcpAgentGym(AgentGymPort):
             if cached is None:
                 cached = SqlAgentGymEngine(dsn)
                 _SQL_GYM_CACHE[dsn] = cached
+        return cached
+
+
+class GcpKnowledgeCatalog(KnowledgeCatalogPort):
+    """GCP `knowledge_catalog` adapter (Zone 6) — Cloud SQL / AlloyDB Knowledge Catalog & TBox Ontology Graph."""
+
+    def __init__(self, db_url: str | None = None) -> None:
+        self._db_url = db_url
+
+    def build_knowledge_catalog(self, db_url: str | None = None) -> Any:
+        """Construct a durable :class:`SqlKnowledgeCatalog` (refuses in-memory fallback)."""
+        from bridge.knowledge_catalog.sql_store import (
+            _SQL_CATALOG_CACHE,
+            _SQL_CATALOG_LOCK,
+            CATALOG_DB_ENV,
+            SqlKnowledgeCatalog,
+        )
+
+        dsn = (
+            db_url
+            or self._db_url
+            or os.environ.get(CATALOG_DB_ENV, "").strip()
+            or os.environ.get("BRIDGE_REFINERY_DB_URL", "").strip()
+            or os.environ.get("BRIDGE_OPERATIONAL_DB_URL", "").strip()
+            or os.environ.get(DATABASE_URL_ENV, "").strip()
+        )
+        if not dsn:
+            raise RuntimeError(
+                "GCP port mode requires DATABASE_URL, BRIDGE_OPERATIONAL_DB_URL, or "
+                "BRIDGE_CATALOG_DB_URL for KnowledgeCatalog; refusing an in-memory "
+                "fallback (the session-affinity trap)."
+            )
+        _require_async_store_driver(dsn)
+        with _SQL_CATALOG_LOCK:
+            cached = _SQL_CATALOG_CACHE.get(dsn)
+            if cached is None or cached._closed:
+                cached = SqlKnowledgeCatalog(dsn)
+                _SQL_CATALOG_CACHE[dsn] = cached
         return cached

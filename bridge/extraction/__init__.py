@@ -16,6 +16,7 @@ from .containers import (
     parse_html_reply_advisories,
     unpack_submission_container,
 )
+from .derivations import apply_field_derivations, apply_result_derivations
 from .docai import DocAIPrepass
 from .fixture import DEFAULT_CORPUS, FixtureExtractor
 from .gemini import GeminiExtractor, artifact_resolver
@@ -47,6 +48,8 @@ __all__ = [
     "ResolvedDocument",
     "UnpackedArtifact",
     "apply_advisories_to_requirements",
+    "apply_field_derivations",
+    "apply_result_derivations",
     "artifact_resolver",
     "detect_issuer_mismatch",
     "expand_bundled_extractions",

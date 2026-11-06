@@ -27,6 +27,7 @@ from .enterprise import (
     GcpActionInbox,
     GcpAgentGym,
     GcpAuditVault,
+    GcpKnowledgeCatalog,
     GcpOperationalStore,
 )
 from .services import (
@@ -71,6 +72,7 @@ GCP_ADAPTERS: dict[Port, type[PortABC]] = {
     Port.operational_store: GcpOperationalStore,
     Port.action_inbox: GcpActionInbox,
     Port.agent_gym: GcpAgentGym,
+    Port.knowledge_catalog: GcpKnowledgeCatalog,
 }
 
 __all__ = [
@@ -96,6 +98,7 @@ __all__ = [
     "GcpEmailIngress",
     "GcpExchangeStore",
     "GcpExtraction",
+    "GcpKnowledgeCatalog",
     "GcpMemoryBank",
     "GcpOperationalStore",
     "GcpScheduler",

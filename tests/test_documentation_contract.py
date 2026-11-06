@@ -27,7 +27,7 @@ from bridge.agent_gym.models import DEFAULT_TRUST_POLICIES
 from bridge.agent_gym.sql_store import SqlAgentGymEngine
 from bridge.dashboard.server import build_dashboard_app
 from bridge.exchange_store import SqlExchangeStore
-from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
+from bridge.knowledge_catalog import InMemoryKnowledgeCatalog, SqlKnowledgeCatalog
 from bridge.operational_store import (
     ConsolidatedFact,
     InMemoryOperationalStore,
@@ -230,12 +230,13 @@ def test_decisions_md_and_env_example_match_architecture() -> None:
 
 
 def test_four_sql_stores_share_one_dsn_runtime_and_engine(tmp_path: Path) -> None:
-    """All 4 SQL stores on one DSN share 1 thread, 1 event loop, and 1 AsyncEngine."""
+    """All 5 SQL stores on one DSN share 1 thread, 1 event loop, and 1 AsyncEngine."""
     dsn = f"sqlite+aiosqlite:///{tmp_path}/shared_runtime.db"
     ex = SqlExchangeStore(dsn)
     op = SqlOperationalStore(dsn)
     gym = SqlAgentGymEngine(dsn)
     inbox = SqlActionInboxStore(dsn)
+    cat = SqlKnowledgeCatalog(dsn)
 
     try:
         ex.put("rfp", "r-1", context_id="ctx-1", doc={"ok": True}, expected_version=0)
@@ -266,19 +267,35 @@ def test_four_sql_stores_share_one_dsn_runtime_and_engine(tmp_path: Path) -> Non
             title="Verify Fee Override",
             hint="Check Page 9 addendum",
         )
+        assert cat.get_active_ontology_revision().revision_id == "ont-rev-v1-1-baseline"
 
         rt = get_active_dsn_runtime(dsn)
         assert rt is not None
-        assert rt.refcount == 4
-        assert ex._engine is op._engine is gym._engine is inbox._engine is rt.engine
-        assert ex._thread is op._thread is gym._thread is inbox._thread is rt.thread
+        assert rt.refcount == 5
+        assert (
+            ex._engine
+            is op._engine
+            is gym._engine
+            is inbox._engine
+            is cat._engine
+            is rt.engine
+        )
+        assert (
+            ex._thread
+            is op._thread
+            is gym._thread
+            is inbox._thread
+            is cat._thread
+            is rt.thread
+        )
         shared_thread = rt.thread
         assert shared_thread.is_alive()
 
-        # Closing 3 of the 4 stores keeps the runtime alive for the remaining store.
+        # Closing 4 of the 5 stores keeps the runtime alive for the remaining store.
         ex.close()
         op.close()
         gym.close()
+        cat.close()
         assert rt.refcount == 1
         assert shared_thread.is_alive()
         assert inbox.get_item(created_item.item_id) is not None
@@ -292,6 +309,7 @@ def test_four_sql_stores_share_one_dsn_runtime_and_engine(tmp_path: Path) -> Non
         op.close()
         gym.close()
         inbox.close()
+        cat.close()
 
 
 def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:

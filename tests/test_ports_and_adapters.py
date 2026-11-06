@@ -19,6 +19,16 @@ from bridge.agent_gym import (
     SqlAgentGymEngine,
     agent_gym_from_env,
 )
+from bridge.extraction.derivations import (
+    apply_field_derivations,
+    apply_result_derivations,
+)
+from bridge.knowledge_catalog import (
+    InMemoryKnowledgeCatalog,
+    KnowledgeCatalog,
+    SqlKnowledgeCatalog,
+    knowledge_catalog_from_env,
+)
 from bridge.operational_store import (
     ConsolidatedFact,
     InMemoryOperationalStore,
@@ -34,6 +44,7 @@ from bridge.ports import (
     AdapterMode,
     AgentGymPort,
     AuditVaultPort,
+    KnowledgeCatalogPort,
     OperationalStorePort,
     Port,
     PortABC,
@@ -47,12 +58,14 @@ from bridge.ports.gcp import (
     GcpActionInbox,
     GcpAgentGym,
     GcpAuditVault,
+    GcpKnowledgeCatalog,
     GcpOperationalStore,
 )
 from bridge.ports.local import (
     LocalActionInbox,
     LocalAgentGym,
     LocalAuditVault,
+    LocalKnowledgeCatalog,
     LocalOperationalStore,
 )
 from bridge.sql_runtime import (
@@ -69,8 +82,8 @@ from bridge.vault import (
 )
 
 
-def test_ports_package_unifies_all_thirteen_boundaries():
-    """Verify `bridge.ports` defines all 13 managed-service boundaries and `bridge/seams` is removed."""
+def test_ports_package_unifies_all_fourteen_boundaries():
+    """Verify `bridge.ports` defines all 14 managed-service boundaries and `bridge/seams` is removed."""
     repo_root = Path(__file__).resolve().parents[1]
     assert not (repo_root / "bridge" / "seams").exists()
 
@@ -88,9 +101,10 @@ def test_ports_package_unifies_all_thirteen_boundaries():
         "operational_store",
         "action_inbox",
         "agent_gym",
+        "knowledge_catalog",
     }
     assert expected == PORT_NAMES
-    assert len(Port) == 13
+    assert len(Port) == 14
     assert AdapterMode is PortMode
 
     for port in Port:
@@ -393,3 +407,140 @@ async def test_collect_executor_and_build_a2a_app_enterprise_store_binding():
     assert len(turn.status.entries) == 1
     assert vault.get_record("ctx-edge-ent-1", "doc-ent-1", 1) is not None
     assert len(op_store.list_facts("PARTY-ENT-001")) > 0
+
+
+@pytest.mark.port("knowledge_catalog")
+def test_knowledge_catalog_port_local_gcp_and_cross_replica_read_after_write(
+    monkeypatch, tmp_path
+):
+    """Verify `Port.knowledge_catalog` local/GCP adapters and cross-replica TBox graph persistence (`SqlKnowledgeCatalog`)."""
+    local_adapter = get_port_adapter(Port.knowledge_catalog, PortMode.local)
+    gcp_adapter = get_port_adapter(Port.knowledge_catalog, PortMode.gcp)
+    assert isinstance(local_adapter, KnowledgeCatalogPort)
+    assert isinstance(local_adapter, LocalKnowledgeCatalog)
+    assert isinstance(gcp_adapter, KnowledgeCatalogPort)
+    assert isinstance(gcp_adapter, GcpKnowledgeCatalog)
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("BRIDGE_OPERATIONAL_DB_URL", raising=False)
+    monkeypatch.delenv("BRIDGE_CATALOG_DB_URL", raising=False)
+    monkeypatch.setenv("BRIDGE_PORT_MODE", "local")
+    in_mem = knowledge_catalog_from_env()
+    assert isinstance(in_mem, KnowledgeCatalog)
+    assert isinstance(in_mem, InMemoryKnowledgeCatalog)
+
+    # GCP mode refuses in-memory fallback without a DSN
+    monkeypatch.setenv("BRIDGE_PORT_MODE", "gcp")
+    with pytest.raises(RuntimeError, match="session-affinity trap"):
+        knowledge_catalog_from_env()
+
+    dsn = f"sqlite+aiosqlite:///{tmp_path / 'catalog_port.sqlite'}"
+    monkeypatch.setenv("BRIDGE_CATALOG_DB_URL", dsn)
+    replica_a = knowledge_catalog_from_env()
+    replica_b = SqlKnowledgeCatalog(dsn)
+    try:
+        assert isinstance(replica_a, SqlKnowledgeCatalog)
+        baseline = replica_a.get_active_ontology_revision()
+        assert baseline.revision_id == "ont-rev-v1-1-baseline"
+        promoted = baseline.model_copy(
+            update={
+                "revision_id": "ont-rev-v1-2-port-test",
+                "version": "1.2.0",
+                "parent_revision_id": baseline.revision_id,
+            }
+        )
+        replica_a.register_ontology_revision(promoted)
+
+        # Second independent replica handle sees the promoted revision and edges immediately
+        active_on_b = replica_b.get_active_ontology_revision()
+        assert active_on_b.revision_id == "ont-rev-v1-2-port-test"
+        assert active_on_b.version == "1.2.0"
+        assert len(active_on_b.edges) == len(baseline.edges)
+    finally:
+        replica_a.close()
+        replica_b.close()
+
+
+@pytest.mark.asyncio
+async def test_widened_extraction_port_and_stage_b_derivations():
+    """Verify `ExtractionPort` scope kwargs, `ExtractedRecord`, and Stage-B `FieldDerivation` receipts."""
+    from contract.extraction import (
+        ExtractedRecord,
+        ExtractionFields,
+        ExtractionResult,
+        SourceAnchor,
+    )
+
+    # 1. Stage-B Coinsurance Polarity Inversion (100% - 20% Member -> 80% Employer)
+    fields = ExtractionFields(
+        doctype="benefits-quote",
+        issuer="Carrier Alpha",
+        key_fields={
+            "member_coinsurance_pct": "20%",
+            "deductible": "$500",
+        },
+        records=[
+            ExtractedRecord(
+                entity_id="plan-option-1-in-network",
+                entity_type="medical-plan-tier",
+                page_range=(1, 2),
+                key_fields={"member_coinsurance_pct": "20%", "deductible": "$500"},
+                source_anchors={
+                    "member_coinsurance_pct": SourceAnchor(
+                        page_number=2,
+                        bounding_box=(0.12, 0.30, 0.45, 0.36),
+                        snippet="Member Pays 20% after deductible",
+                    )
+                },
+            )
+        ],
+    )
+    derived_fields, _ = apply_field_derivations(fields)
+    assert derived_fields.key_fields["employer_coinsurance_pct"] == "80%"
+    deriv = derived_fields.derivations["employer_coinsurance_pct"]
+    assert deriv.polarity == "MEMBER_PAYS"
+    assert deriv.raw_value == "20%"
+    assert deriv.normalized_value == "80%"
+    assert deriv.derivation_rule == "coinsurance-polarity-inversion"
+    assert deriv.receipt_id.startswith("rcpt-")
+    assert derived_fields.records[0].entity_id == "plan-option-1-in-network"
+    assert derived_fields.records[0].key_fields["employer_coinsurance_pct"] == "80%"
+    assert (
+        derived_fields.records[0]
+        .derivations["employer_coinsurance_pct"]
+        .derivation_rule
+        == "coinsurance-polarity-inversion"
+    )
+
+    # 2. Stage-B Paid-in-Full Wire -> Remaining Liability Balance ($0.00)
+    wire_result = ExtractionResult(
+        fields=ExtractionFields(
+            doctype="consolidation-payoff",
+            issuer="EquipLease Financial Corp",
+            key_fields={
+                "wire_reference": "FINAL PAYOFF - LOAN #8841 - PAID IN FULL",
+            },
+        ),
+        overall_confidence=0.98,
+        legible=True,
+    )
+    final_wire = apply_result_derivations(
+        wire_result, ontology_revision_id="ont-rev-v1-2-consol"
+    )
+    assert final_wire.fields.key_fields["remaining_liability_balance"] == "$0.00"
+    assert (
+        final_wire.fields.derivations["remaining_liability_balance"].derivation_rule
+        == "paid-in-full-wire-zero-balance"
+    )
+    assert final_wire.ontology_revision_id == "ont-rev-v1-2-consol"
+
+    # 3. FixtureExtractor / LocalExtraction supports requested_fields and ontology_revision
+    local_ext = get_port_adapter(Port.extraction, PortMode.local)
+    scoped_res = await local_ext.extract(
+        "gov-id-clean",
+        target_doctype="gov-id",
+        requested_fields=["name"],
+        ontology_revision="ont-rev-v1-1-baseline",
+    )
+    assert list(scoped_res.fields.key_fields.keys()) == ["name"]
+    assert scoped_res.ontology_revision_id == "ont-rev-v1-1-baseline"

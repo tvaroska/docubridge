@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from bridge.agent_gym import AgentGymEngine, agent_gym_from_env
+from bridge.extraction.derivations import apply_field_derivations
 from bridge.identity import (
     UserPrincipal,
     authorize_entity_access,
@@ -495,28 +496,31 @@ def ingest_accepted_submission(
                     }
                 )
 
-        # Apply promoted Stage 1 Agent Gym EXTRACTION_HINT rules on matching (issuer, doctype)
-        applied_hint_ids: list[str] = []
+        # Apply promoted Stage 1 Agent Gym EXTRACTION_HINT rules & Stage-B deterministic
+        # derivations via bridge.extraction.derivations.apply_field_derivations
         hints = gym.get_extraction_hints(
             issuer=normalized_entry.issuer or "*",
             doctype=normalized_entry.doctype,
         )
-        if hints:
-            updated_fields = dict(normalized_entry.key_fields)
-            for hint in hints:
-                if hint.field_path and hint.canonical_target:
-                    current_val = updated_fields.get(hint.field_path)
-                    if current_val != hint.canonical_target:
-                        updated_fields[hint.field_path] = hint.canonical_target
-                        applied_hint_ids.append(hint.rule_id)
-                    elif hint.rule_id not in applied_hint_ids:
-                        applied_hint_ids.append(hint.rule_id)
-            if applied_hint_ids:
-                update_payload: dict[str, Any] = {"key_fields": updated_fields}
-                if normalized_entry.disposition == Disposition.pending:
-                    update_payload["disposition"] = Disposition.accepted
-                    update_payload["gate"] = Gate.auto_approve
-                normalized_entry = normalized_entry.model_copy(update=update_payload)
+        derived_fields, applied_rules = apply_field_derivations(
+            ExtractionFields(
+                doctype=normalized_entry.doctype,
+                issuer=normalized_entry.issuer,
+                key_fields=dict(normalized_entry.key_fields),
+                tables=dict(normalized_entry.tables),
+                source_anchors=dict(normalized_entry.source_anchors),
+            ),
+            active_hints=hints,
+        )
+        applied_hint_ids = list(applied_rules)
+        if derived_fields.key_fields != normalized_entry.key_fields or applied_hint_ids:
+            update_payload: dict[str, Any] = {
+                "key_fields": dict(derived_fields.key_fields)
+            }
+            if applied_hint_ids and normalized_entry.disposition == Disposition.pending:
+                update_payload["disposition"] = Disposition.accepted
+                update_payload["gate"] = Gate.auto_approve
+            normalized_entry = normalized_entry.model_copy(update=update_payload)
         span.set_attribute(
             "docubridge.applied_extraction_hints", ",".join(applied_hint_ids)
         )

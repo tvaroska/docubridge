@@ -158,6 +158,7 @@ def build_extraction_prompt(
     extraction_hints: Sequence[Any] = (),
     target_doctype: str | None = None,
     candidate_doctypes: Sequence[str] | None = None,
+    requested_fields: Sequence[str] | None = None,
     context_set: str | None = None,
     revision: Any | None = None,
     catalog_order: Sequence[str] | None = None,
@@ -174,6 +175,7 @@ def build_extraction_prompt(
         if (target_doctype or candidate_doctypes or context_set)
         else schemas
     )
+    req_set = {str(f).strip() for f in requested_fields if str(f).strip()} if requested_fields else None
     scoped_hints = list(extraction_hints)
     if (target_doctype or candidate_doctypes or context_set) and scoped_hints:
         allowed_dtypes = {"*", "", *active_schemas.keys()}
@@ -210,6 +212,8 @@ def build_extraction_prompt(
             label = f"{doctype} [top-level issuer: {note}]"
         entity_desc = doctype_description(schema)
         fields = doctype_fields(schema)
+        if req_set:
+            fields = {k: v for k, v in fields.items() if k in req_set}
         tables = doctype_tables(schema)
         if not fields and not tables:
             lines.append(f"- {label}: (no declared fields)")
@@ -235,6 +239,7 @@ def build_response_schema(
     *,
     target_doctype: str | None = None,
     candidate_doctypes: Sequence[str] | None = None,
+    requested_fields: Sequence[str] | None = None,
     context_set: str | None = None,
     revision: Any | None = None,
     catalog_order: Sequence[str] | None = None,
@@ -251,10 +256,13 @@ def build_response_schema(
         if (target_doctype or candidate_doctypes or context_set)
         else schemas
     )
+    req_set = {str(f).strip() for f in requested_fields if str(f).strip()} if requested_fields else None
     ordered = _ordered_doctypes(active_schemas, catalog_order)
     union: dict[str, str] = {}
     for doctype in ordered:
         for name, desc in doctype_fields(active_schemas[doctype]).items():
+            if req_set and name not in req_set:
+                continue
             labelled = f"{doctype}: {desc}" if desc else doctype
             if name in union:
                 union[name] = f"{union[name]} | {labelled}"

@@ -109,6 +109,7 @@ from bridge.extraction.chunking import (
     pdf_page_count,
     plan_windows,
 )
+from bridge.extraction.derivations import apply_result_derivations
 from bridge.extraction.docai import build_ocr_context
 from bridge.extraction.gemini_schema import (
     CHUNK_CONCURRENCY_ENV,
@@ -272,8 +273,10 @@ class GeminiExtractor:
         *,
         target_doctype: str | None = None,
         candidate_doctypes: Sequence[str] | None = None,
+        requested_fields: Sequence[str] | None = None,
         context_set: str | None = None,
         revision: Any | None = None,
+        ontology_revision: str | None = None,
         catalog_order: Sequence[str] | None = None,
     ) -> tuple[str, dict | None]:
         """Prompt + pinned response schema — rebuilt only when the catalog changed.
@@ -301,10 +304,10 @@ class GeminiExtractor:
         )
         eff_context = context_set if context_set is not None else self._context_set
 
-        pinned_rev = "ont-rev-v1-1-baseline"
+        pinned_rev = ontology_revision or "ont-rev-v1-1-baseline"
         if revision is not None and getattr(revision, "revision_id", None):
             pinned_rev = str(revision.revision_id)
-        else:
+        elif not ontology_revision:
             for spec in schemas.values():
                 if isinstance(spec, dict) and spec.get("x_okf_revision_id"):
                     pinned_rev = str(spec["x_okf_revision_id"])
@@ -316,13 +319,23 @@ class GeminiExtractor:
             else []
         )
 
-        if eff_target or eff_candidates or eff_context or revision is not None:
-            scoped = slice_ontology_for_extraction(
-                target_doctype=eff_target,
-                candidate_doctypes=eff_candidates,
-                revision=revision,
-                context_set=eff_context,
-                schemas=schemas,
+        if (
+            eff_target
+            or eff_candidates
+            or eff_context
+            or revision is not None
+            or requested_fields
+        ):
+            scoped = (
+                slice_ontology_for_extraction(
+                    target_doctype=eff_target,
+                    candidate_doctypes=eff_candidates,
+                    revision=revision,
+                    context_set=eff_context,
+                    schemas=schemas,
+                )
+                if (eff_target or eff_candidates or eff_context or revision is not None)
+                else schemas
             )
             return (
                 build_extraction_prompt(
@@ -330,11 +343,16 @@ class GeminiExtractor:
                     extraction_hints=hints,
                     target_doctype=eff_target,
                     candidate_doctypes=eff_candidates,
+                    requested_fields=requested_fields,
                     context_set=eff_context,
                     revision=revision,
                     catalog_order=catalog_order,
                 ),
-                build_response_schema(scoped, catalog_order=catalog_order),
+                build_response_schema(
+                    scoped,
+                    requested_fields=requested_fields,
+                    catalog_order=catalog_order,
+                ),
             )
 
         if catalog_order is not None:
@@ -413,14 +431,48 @@ class GeminiExtractor:
             data=resolved.data, mime_type=resolved.mime_type
         )
 
+    def _finalize_result(
+        self,
+        result: ExtractionResult,
+        *,
+        requested_fields: Sequence[str] | None = None,
+        ontology_revision: str | None = None,
+        revision: Any | None = None,
+    ) -> ExtractionResult:
+        """Apply Stage-B deterministic derivations and matching Agent Gym hints."""
+        active_hints: list[Any] = []
+        if self._agent_gym is not None and hasattr(
+            self._agent_gym, "get_extraction_hints"
+        ):
+            try:
+                active_hints = list(
+                    self._agent_gym.get_extraction_hints(
+                        doctype=result.fields.doctype,
+                        issuer=result.fields.issuer or "*",
+                    )
+                )
+            except TypeError:
+                active_hints = list(self._agent_gym.get_extraction_hints())
+        rev_id = ontology_revision or (
+            self.last_pinned_ontology_revision_id if revision is not None else None
+        )
+        return apply_result_derivations(
+            result,
+            active_hints=active_hints,
+            requested_fields=requested_fields,
+            ontology_revision_id=rev_id,
+        )
+
     async def extract(
         self,
         artifact_name: str,
         *,
         target_doctype: str | None = None,
         candidate_doctypes: Sequence[str] | None = None,
+        requested_fields: Sequence[str] | None = None,
         context_set: str | None = None,
         revision: Any | None = None,
+        ontology_revision: str | None = None,
         catalog_order: Sequence[str] | None = None,
     ) -> ExtractionResult:
         """Extract normalized fields + disposition signals via a Gemini call.
@@ -464,8 +516,10 @@ class GeminiExtractor:
         prompt, response_schema = self._catalog(
             target_doctype=target_doctype,
             candidate_doctypes=candidate_doctypes,
+            requested_fields=requested_fields,
             context_set=context_set,
             revision=revision,
+            ontology_revision=ontology_revision,
             catalog_order=catalog_order,
         )
         # The catalog is built first on purpose: a registry/authoring error must
@@ -502,13 +556,25 @@ class GeminiExtractor:
                 len(windows),
                 self._chunk_pages,
             )
-            return await self._extract_windows(
+            win_result = await self._extract_windows(
                 client, base, config, windows, total=pages, label=artifact_name
+            )
+            return self._finalize_result(
+                win_result,
+                requested_fields=requested_fields,
+                ontology_revision=ontology_revision,
+                revision=revision,
             )
 
         try:
-            return await self._generate_validated(
+            single_result = await self._generate_validated(
                 client, base, config, label=artifact_name
+            )
+            return self._finalize_result(
+                single_result,
+                requested_fields=requested_fields,
+                ontology_revision=ontology_revision,
+                revision=revision,
             )
         except _Truncated:
             pass
@@ -535,13 +601,19 @@ class GeminiExtractor:
             self._max_output_tokens,
             pages,
         )
-        return await self._extract_windows(
+        bisected_result = await self._extract_windows(
             client,
             base,
             config,
             list(bisect_window(1, pages)),
             total=pages,
             label=artifact_name,
+        )
+        return self._finalize_result(
+            bisected_result,
+            requested_fields=requested_fields,
+            ontology_revision=ontology_revision,
+            revision=revision,
         )
 
     async def _call(self, client: Any, contents: list, config: dict) -> Any:

@@ -6,14 +6,14 @@ tags: [bridge, agent-gym, hitl, governance]
 
 # Agent Gym & Programmable Trust
 
-> Continuous learning from single-example expert fixes ("Example of One") and graduated autonomy across the 6-zone Enterprise Data Architecture (`bridge/agent_gym/`, `bridge/a2ui_inbox/`, `bridge/user_interaction/`, `bridge/knowledge_catalog.py`). The Gym is the learning loop for **layer 2** of the [knowledge model](knowledge-model.md): it tunes how the Bridge collects and behaves — hints, aliases, precedence, presentation, trust — and leaves what a document *is* to the [Schema Refinery](schema-refinery.md) and whether a set is *complete* to the calling agent.
+> Continuous learning from single-example expert fixes ("Example of One") and graduated autonomy across the 6-zone Enterprise Data Architecture (`bridge/agent_gym/`, `bridge/a2ui_inbox/`, `bridge/user_interaction/`, `bridge/knowledge_catalog/`). The Gym is the fact-extraction and behaviour half of Calibration in the [knowledge model](knowledge-model.md): it tunes how the Bridge extracts, normalizes, derives, and reconciles facts from documents — hints, aliases, Stage-B deterministic derivations (`FieldDerivation`), precedence, presentation, trust — while leaving entity taxonomy to the [Schema Refinery](schema-refinery.md) and leaving document-collection requirements, substitutes, and waivers strictly to the calling agent (`ADR-15`).
 
 Agent Gym is the skills half of **Calibration** (Schema Refinery is the ontology half). Which layer each engine changes:
 
 | Loop | Layer | What it writes | Never touches |
 |---|---|---|---|
-| **Agent Gym** (this note) | 2 — skills / behaviour | `TribalKnowledgeRule`s (`EXTRACTION_HINT`, `ENTITY_ALIAS`, `CONSOLIDATION_PRIORITY`, `PRESENTATION_PREFERENCE`), `ProgrammableTrustPolicy` dials, and — via [`compile_rules_to_skill`](harness-evolve.md) — a new `SkillRevision` of a doctype skill's `SKILL.md` | field names, types, `required`, enums (layer 1); the sense-B decision (layer 3); the deterministic `Decimal` math |
-| **Schema Refinery** | 1 — ontology | `OntologyRevision`s: contrastive descriptions, edges, entity splits / merges, field cardinality | process policy, trust dials, completeness |
+| **Agent Gym** (this note) | 1 & 2 — fact extraction & behaviour | `TribalKnowledgeRule`s (`EXTRACTION_HINT`, `ENTITY_ALIAS`, `CONSOLIDATION_PRIORITY`, `PRESENTATION_PREFERENCE`), Stage-B `FieldDerivation` triggers, `ProgrammableTrustPolicy` dials, and — via [`compile_rules_to_skill`](harness-evolve.md) — a new `SkillRevision` of a doctype skill's `SKILL.md` | field names, types, `required`, enums (layer 1); collection sufficiency (`strategy.yaml`), waivers, or the sense-B decision (layer 3, `ADR-15`); the deterministic `Decimal` math |
+| **Schema Refinery** | 1 — ontology | `OntologyRevision`s in `Port.knowledge_catalog`: contrastive descriptions, edges (`[:SUPERSEDES]`, `[:REQUIRES_CORROBORATION]`), entity splits / merges, field cardinality | process policy, trust dials, collection sufficiency, waivers |
 | **Two-sided oversight** (§2) | 3 — measured, not learned | `oversight_rsr_score`, spot-check sampling, reviewer calibration signals | the Bridge learns nothing from it directly; it gates what the other two loops may promote |
 
 ## 1. As-Built Architecture (5 Pillars)

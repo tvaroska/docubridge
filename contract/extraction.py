@@ -84,6 +84,47 @@ class SourceAnchor(BaseModel):
         return self
 
 
+class FieldDerivation(BaseModel):
+    """Deterministic Stage-B derivation provenance for an extracted field (`Rule 0`).
+
+    When the LLM transcribes raw strings and polarity in Stage A and pure-Python code
+    computes or normalizes the canonical value in Stage B, the derivation receipt lives
+    here on ``ExtractionFields.derivations`` (rather than in ``field_reviews``, which is
+    reserved for unverified engine-inferred values that require human review).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    raw_value: str
+    polarity: str = "CONTRACTUAL_EXACT"
+    normalized_value: str
+    derivation_rule: str
+    derived_from: list[str] = Field(default_factory=list)
+    parameters: dict[str, str] = Field(default_factory=dict)
+    receipt_id: str | None = None
+
+
+class ExtractedRecord(BaseModel):
+    """One entity record (`1 -> N` fan-out) extracted from a composite or multi-group document."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    entity_type: str
+    record_key: str = Field(
+        validation_alias=AliasChoices("record_key", "entity_id"),
+    )
+    label: str = ""
+    page_range: tuple[int, int] | None = None
+    key_fields: dict[str, str] = Field(default_factory=dict)
+    source_anchors: dict[str, SourceAnchor] = Field(default_factory=dict)
+    derivations: dict[str, FieldDerivation] = Field(default_factory=dict)
+
+    @property
+    def entity_id(self) -> str:
+        """Alias for ``record_key`` used by entity-decomposed callers."""
+        return self.record_key
+
+
 class ExtractionFields(BaseModel):
     """Wire shape for extraction.fields carried in ExtractionResult."""
 
@@ -99,6 +140,10 @@ class ExtractionFields(BaseModel):
     tables: dict[str, list[dict[str, str]]] = {}
     # Source-page and bounding-box anchors keyed by field name or dotted path.
     source_anchors: dict[str, SourceAnchor] = {}
+    # 1 -> N decomposed entity/subgroup records (P8-6 / P9-4).
+    records: list[ExtractedRecord] = []
+    # Deterministic Stage-B field derivations and receipts (`Rule 0`).
+    derivations: dict[str, FieldDerivation] = {}
 
 
 class FieldReview(BaseModel):
@@ -142,6 +187,9 @@ class ExtractionResult(BaseModel):
         validation_alias=AliasChoices("flagged_fields", "fields_requiring_review"),
     )
     field_reviews: list[FieldReview] = []
+    # Snapshot lineage stamped by ExtractionPort (ontology revision + promoted rule IDs).
+    ontology_revision_id: str | None = None
+    applied_rule_ids: list[str] = []
 
     @model_validator(mode="before")
     @classmethod

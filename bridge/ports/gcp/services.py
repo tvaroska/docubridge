@@ -520,9 +520,25 @@ class GcpExtraction(ExtractionPort):
             f"unknown extraction engine {name!r}: expected fixture|gemini|docai"
         )
 
-    async def extract(self, artifact_name: str) -> Any:
+    async def extract(
+        self,
+        artifact_name: str,
+        *,
+        target_doctype: str | None = None,
+        candidate_doctypes: Any = None,
+        requested_fields: Any = None,
+        context_set: str | None = None,
+        ontology_revision: str | None = None,
+    ) -> Any:
         """Run structured document extraction via Document AI and Gemini schema mapping."""
-        return await self._resolve_engine().extract(artifact_name)
+        return await self._resolve_engine().extract(
+            artifact_name,
+            target_doctype=target_doctype,
+            candidate_doctypes=candidate_doctypes,
+            requested_fields=requested_fields,
+            context_set=context_set,
+            ontology_revision=ontology_revision,
+        )
 
 
 # ---------------------------------------------------------------------------

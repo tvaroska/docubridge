@@ -12,8 +12,8 @@ from bridge.ports import (
 )
 
 
-def test_port_enum_is_the_thirteen_names():
-    """The Port enum contains all 13 managed-service boundaries (9 core + 4 Zone 3–6 stores)."""
+def test_port_enum_is_the_fourteen_names():
+    """The Port enum contains all 14 managed-service boundaries (9 core + 5 Zone 3–6 stores)."""
     expected_names = {
         "sessions",
         "task_store",
@@ -28,9 +28,10 @@ def test_port_enum_is_the_thirteen_names():
         "operational_store",
         "action_inbox",
         "agent_gym",
+        "knowledge_catalog",
     }
     assert {s.value for s in Port} == expected_names
-    assert len(Port) == 13
+    assert len(Port) == 14
 
 
 def test_env_var_mapping():
@@ -89,7 +90,7 @@ def test_resolve_mode_invalid_value_raises(monkeypatch):
 
 def test_local_adapters_instantiate_and_are_typed():
     """Local adapters instantiate and carry their port identity."""
-    assert len(LOCAL_ADAPTERS) == 13
+    assert len(LOCAL_ADAPTERS) == 14
     for port in Port:
         assert port in LOCAL_ADAPTERS
 
@@ -100,11 +101,11 @@ def test_local_adapters_instantiate_and_are_typed():
 
 
 def test_all_gcp_adapters_instantiate_and_are_typed():
-    """All 13 ports have registered GCP adapters."""
+    """All 14 ports have registered GCP adapters."""
     from bridge.ports import GCP_ADAPTERS
     from bridge.ports.gcp import GcpMemoryBank
 
-    assert len(GCP_ADAPTERS) == 13
+    assert len(GCP_ADAPTERS) == 14
     for port in Port:
         instance = get_adapter(port, PortMode.gcp)
         assert instance.port is port

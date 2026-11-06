@@ -121,6 +121,8 @@ class ConsolidatedFact(BaseModel):
             skill_urn=self.skill_urn,
             process_skill_revision_id=self.process_skill_revision_id,
             compiled_rule_ids=self.compiled_rule_ids,
+            ontology_revision_id=self.ontology_revision_id,
+            consolidation_edge_id=self.consolidation_edge_id,
         )
 
 
@@ -265,6 +267,8 @@ class BigQuerySyncRecord(BaseModel):
     effective_from: datetime
     vault_uri: str | None = None
     page_number: int = 1
+    ontology_revision_id: str = "ont-rev-v1-1-baseline"
+    consolidation_edge_id: str | None = None
 
 
 class BigQuerySyncBatch(BaseModel):

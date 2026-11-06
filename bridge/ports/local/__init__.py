@@ -8,6 +8,7 @@ from .enterprise import (
     LocalActionInbox,
     LocalAgentGym,
     LocalAuditVault,
+    LocalKnowledgeCatalog,
     LocalOperationalStore,
 )
 from .services import (
@@ -43,6 +44,7 @@ LOCAL_ADAPTERS: dict[Port, type[PortABC]] = {
     Port.operational_store: LocalOperationalStore,
     Port.action_inbox: LocalActionInbox,
     Port.agent_gym: LocalAgentGym,
+    Port.knowledge_catalog: LocalKnowledgeCatalog,
 }
 
 __all__ = [
@@ -58,6 +60,7 @@ __all__ = [
     "LocalEmailIngress",
     "LocalExchangeStore",
     "LocalExtraction",
+    "LocalKnowledgeCatalog",
     "LocalMemoryBank",
     "LocalOperationalStore",
     "LocalScheduler",

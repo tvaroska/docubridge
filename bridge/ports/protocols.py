@@ -1,6 +1,7 @@
-"""Port ABCs (Hexagonal Ports & Adapters) across all 13 managed-service boundaries."""
+"""Port ABCs (Hexagonal Ports & Adapters) across all 14 managed-service boundaries."""
 
 import abc
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, ClassVar
 
 from .port import Port
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     from bridge.agent_gym import AgentGymEngine
     from bridge.edge.skills import SkillMeta
     from bridge.exchange_store import ExchangeStore
+    from bridge.knowledge_catalog import KnowledgeCatalog
     from bridge.operational_store import OperationalStore
     from bridge.outbound import A2AClient
     from bridge.scheduler import Scheduler
@@ -166,13 +168,22 @@ class A2AClientPort(PortABC):
 
 
 class ExtractionPort(PortABC):
-    """Extraction (Gemini / Document AI)."""
+    """Extraction (Gemini / Document AI): Stage-A LLM transcription + Stage-B deterministic derivation."""
 
     port = Port.extraction
 
     @abc.abstractmethod
-    async def extract(self, artifact_name: str) -> "ExtractionResult":
-        """Extract normalized fields + disposition signals for a document artifact."""
+    async def extract(
+        self,
+        artifact_name: str,
+        *,
+        target_doctype: str | None = None,
+        candidate_doctypes: Sequence[str] | None = None,
+        requested_fields: Sequence[str] | None = None,
+        context_set: str | None = None,
+        ontology_revision: str | None = None,
+    ) -> "ExtractionResult":
+        """Extract normalized fields, deterministic derivations, and disposition signals for a document artifact."""
 
 
 # --------------------------------------------------------------------------- #
@@ -344,4 +355,23 @@ class AgentGymPort(PortABC):
     @abc.abstractmethod
     def build_agent_gym(self, db_url: str | None = None) -> "AgentGymEngine":
         """Return an :class:`AgentGymEngine` (refuses in-memory fallback on GCP)."""
+        raise NotImplementedError
+
+
+class KnowledgeCatalogPort(PortABC):
+    """Zone 6 Knowledge Catalog & TBox Ontology Graph port.
+
+    Local = :class:`bridge.knowledge_catalog.InMemoryKnowledgeCatalog` (or SQLite
+    :class:`bridge.knowledge_catalog.SqlKnowledgeCatalog` when a DSN is configured);
+    GCP = :class:`bridge.knowledge_catalog.SqlKnowledgeCatalog` over Cloud SQL / AlloyDB
+    PostgreSQL (refusing in-memory fallback).
+    """
+
+    port = Port.knowledge_catalog
+
+    @abc.abstractmethod
+    def build_knowledge_catalog(
+        self, db_url: str | None = None
+    ) -> "KnowledgeCatalog":
+        """Return a :class:`KnowledgeCatalog` (refuses in-memory fallback on GCP)."""
         raise NotImplementedError
