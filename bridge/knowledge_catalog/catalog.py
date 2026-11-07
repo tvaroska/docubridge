@@ -48,9 +48,26 @@ _ACTIVE_ONTOLOGY_REVISION: OntologyRevision | None = None
 def _ensure_shared_ontology() -> tuple[list[OntologyRevision], OntologyRevision]:
     """Ensure the shared baseline OntologyRevision is loaded from OKF bundles."""
     global _ACTIVE_ONTOLOGY_REVISION
-    if _ACTIVE_ONTOLOGY_REVISION is None or not _SHARED_ONTOLOGY_REVISIONS:
-        from bridge.refinery.okf_loader import build_baseline_ontology_revision
+    from bridge.refinery.okf_loader import (
+        BASELINE_REVISION_ID,
+        EMPTY_REVISION_ID,
+        build_baseline_ontology_revision,
+        is_empty_catalog_mode,
+    )
 
+    expected_initial_id = (
+        EMPTY_REVISION_ID if is_empty_catalog_mode() else BASELINE_REVISION_ID
+    )
+    if (
+        _ACTIVE_ONTOLOGY_REVISION is None
+        or not _SHARED_ONTOLOGY_REVISIONS
+        or (
+            len(_SHARED_ONTOLOGY_REVISIONS) == 1
+            and _SHARED_ONTOLOGY_REVISIONS[0].revision_id
+            in (BASELINE_REVISION_ID, EMPTY_REVISION_ID)
+            and _SHARED_ONTOLOGY_REVISIONS[0].revision_id != expected_initial_id
+        )
+    ):
         baseline = build_baseline_ontology_revision()
         _SHARED_ONTOLOGY_REVISIONS.clear()
         _SHARED_ONTOLOGY_REVISIONS.append(baseline)

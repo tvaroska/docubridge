@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 import cloudpickle
@@ -39,9 +40,6 @@ from starlette.authentication import (
 )
 from starlette.requests import HTTPConnection
 
-from agents.address.driver import run_collection
-from agents.address.gate import is_satisfied
-from agents.address.wire import DocRef
 from bridge.collect import Collector
 from bridge.edge import (
     AGENT_ENGINE_A2A_ENV,
@@ -50,11 +48,13 @@ from bridge.edge import (
     EdgeMode,
     agent_engine_app,
     build_a2a_app,
+    encode_collect_request,
     is_agent_engine_a2a_enabled,
     resolve_a2a_engine,
 )
 from bridge.edge.llm_leg import LlmLeg
 from bridge.edge.wire import (
+    KIND_EXCHANGE_TURN,
     KIND_HUMAN_REVIEW_RESOLUTION,
     META_CONTRACT_VERSION,
     META_KIND,
@@ -64,12 +64,94 @@ from bridge.extraction.fixture import FixtureExtractor
 from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.sla import SKILLS_DIR
 from contract.enums import Disposition, Gate
-from contract.wire import HumanReviewResolution
+from contract.wire import (
+    CollectionStatus,
+    CollectRequest,
+    ExchangeTurn,
+    HumanReviewResolution,
+)
 from tests._scripted_llm import Reply, ScriptedLlm, ToolCall
-from tests.address._corpus import corpus_records
+from tests.corpus_and_skills._corpus import corpus_records
 
 BASE = "http://localhost"
 CARD_URL = BASE + AGENT_CARD_WELL_KNOWN_PATH
+
+
+@dataclass(frozen=True)
+class DocRef:
+    doc_id: str
+    uri: str
+    mime_type: str = "image/svg+xml"
+
+
+def is_satisfied(status: CollectionStatus) -> bool:
+    accepted = [e for e in status.entries if e.disposition is Disposition.accepted]
+    if any(e.doctype == "gov-id" for e in accepted):
+        return True
+    issuers = {e.issuer for e in accepted if e.doctype == "utility-bill" and e.issuer}
+    return len(issuers) >= 2
+
+
+async def run_collection(
+    card_url: str,
+    *,
+    httpx_client: httpx.AsyncClient,
+    session_service: Any = None,
+    session_id: str = "s1",
+    scenario: str | None = None,
+    documents: list[DocRef] | None = None,
+) -> ExchangeTurn:
+    from a2a.client import ClientConfig, ClientFactory
+    from a2a.types import (
+        GetTaskRequest,
+        Message,
+        Part,
+        Role,
+        SendMessageRequest,
+    )
+    from a2a.utils.constants import TransportProtocol
+    from google.protobuf import struct_pb2
+    from google.protobuf.json_format import MessageToDict, ParseDict
+
+    del session_service
+    cfg = ClientConfig(
+        httpx_client=httpx_client,
+        streaming=True,
+        supported_protocol_bindings=[TransportProtocol.JSONRPC.value],
+    )
+    client = await ClientFactory(cfg).create_from_url(card_url.rsplit("/.well-known", 1)[0] + "/")
+    parts = encode_collect_request(
+        CollectRequest(
+            process="address-proof",
+            context_id=session_id,
+            message=f"scenario:{scenario}" if scenario else None,
+        )
+    )
+    for d in documents or []:
+        parts.append(
+            Part(
+                url=d.uri,
+                media_type=d.mime_type,
+                filename=d.doc_id,
+                metadata=ParseDict({"doc_id": d.doc_id}, struct_pb2.Struct()),
+            )
+        )
+    msg = Message(role=Role.ROLE_USER, message_id=uuid.uuid4().hex, parts=parts)
+    task_id = None
+    async for ev in client.send_message(SendMessageRequest(message=msg)):
+        if ev.HasField("task"):
+            task_id = ev.task.id
+        elif ev.HasField("status_update"):
+            task_id = ev.status_update.task_id
+    assert task_id is not None
+    task = await client.get_task(GetTaskRequest(id=task_id))
+    for art in task.artifacts:
+        for p in art.parts:
+            if p.HasField("data"):
+                meta = MessageToDict(p.metadata) if p.HasField("metadata") else {}
+                if meta.get(META_KIND) == KIND_EXCHANGE_TURN:
+                    return ExchangeTurn.model_validate(MessageToDict(p.data))
+    raise AssertionError("No ExchangeTurn artifact returned")
 
 
 def _doc(doc_id: str) -> DocRef:

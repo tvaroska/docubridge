@@ -16,7 +16,7 @@ from bridge.extraction.fixture import FixtureExtractor
 from contract.enums import Disposition, Gate
 from contract.extraction import ExtractionResult
 from contract.wire import CollectRequest
-from tests.address._corpus import (
+from tests.corpus_and_skills._corpus import (
     CANDIDATE_DOCTYPES,
     PARTY,
     SYNTHETIC_IDENTITY,

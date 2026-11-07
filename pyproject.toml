@@ -84,8 +84,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-# The four workspace packages both bridge/ and agents/ import, plus the test root.
-known-first-party = ["contract", "bridge", "agents", "skills", "tests"]
+# First-party packages in docubridge core, plus the test root.
+known-first-party = ["contract", "bridge", "skills", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
 # Package re-exports: names imported for the public surface, not used in-module.
@@ -110,7 +110,7 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["bridge", "contract", "agents"]
+source = ["bridge", "contract"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
@@ -119,7 +119,7 @@ show_missing = true
 skip_covered = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["contract", "bridge", "agents"]
+packages = ["contract", "bridge"]
 
 [tool.uv]
 package = false

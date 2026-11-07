@@ -150,7 +150,18 @@ def _coerce_paired(
         return item
     payload = dict(item)
     payload.setdefault("sample_id", f"sample-{idx}")
-    if "target_record" in payload and isinstance(payload["target_record"], Mapping):
+    if "target_record" not in payload:
+        reserved = {"sample_id", "target_schema_name", "target_record"}
+        extra_record = {
+            str(k): str(v)
+            for k, v in list(payload.items())
+            if k not in reserved and v is not None
+        }
+        for k in list(payload.keys()):
+            if k not in reserved:
+                payload.pop(k)
+        payload["target_record"] = extra_record
+    elif isinstance(payload["target_record"], Mapping):
         payload["target_record"] = {
             str(k): str(v) for k, v in payload["target_record"].items() if v is not None
         }

@@ -18,7 +18,7 @@ The Address evaluation corpus (`wiki/evals/address/`) serves as both the determi
 
 ### Cross-Language Testing
 
-Portal sample parity is checked from Python (`tests/address/test_corpus.py::test_portal_samples_resolve_to_corpus`) rather than vitest because T1 (the commit gate) runs `uv run pytest`. The test regex-reads the TypeScript const and fails if the pattern is not found or yields an empty list, ensuring test failures are loud rather than vacuous.
+Portal sample parity is checked from Python (`tests/corpus_and_skills/test_corpus.py::test_portal_samples_resolve_to_corpus`) rather than vitest because T1 (the commit gate) runs `uv run pytest`. The test regex-reads the TypeScript const and fails if the pattern is not found or yields an empty list, ensuring test failures are loud rather than vacuous.
 
 This establishes a pattern for frontend-to-backend parity checks that run in the T1 gate: Python tests can read and validate frontend source files when necessary to enforce cross-cutting invariants.
 

@@ -128,6 +128,14 @@ run "port_envs_when_deployed" {
     ]) == 1
     error_message = "extraction_engine = gemini must inject BRIDGE_EXTRACTION_ENGINE=gemini"
   }
+
+  assert {
+    condition = length([
+      for e in google_cloud_run_v2_service.bridge.template[0].containers[0].env
+      : e if e.name == "GOOGLE_CLOUD_LOCATION" && e.value == "global"
+    ]) == 1
+    error_message = "port_mode = gcp must default GOOGLE_CLOUD_LOCATION=global for gemini-3.8-flash / gemini-4-argon"
+  }
 }
 
 # The docai engine: extraction_engine = "docai" + the client's processor by resource

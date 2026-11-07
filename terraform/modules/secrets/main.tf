@@ -1,12 +1,12 @@
-# secrets — the Secret Manager CONTAINER for the DB DSN + the runtime's read grant.
+# secrets — the Secret Manager containers + optional single-apply versions for the DB DSN
+# and SPIFFE SVID signing key, plus the runtime's least-privilege read grants.
 #
-# CRITICAL — No secrets in HCL (CRITICAL.md, P7-2 plan §6). This module creates
-# the secret CONTAINER only. There is deliberately NO
-# `google_secret_manager_secret_version` here: the version carries the actual DSN
-# value (which embeds the DB credential), so it is injected OUT-OF-BAND by the
-# deploy step (P7-9) — never a plaintext DSN in any .tf/.tfvars. The runtime reads
-# the latest version as the DATABASE_URL secret env (the runtime module's dynamic
-# env block), and connects over private IP (DECISIONS.md 2026-08-24).
+# When `manage_db_url_version = true` (set automatically by the root module when
+# `db_password` is provided via TF_VAR_db_password), Terraform composes the private-IP
+# Cloud SQL DSN and creates `google_secret_manager_secret_version.db_url` before
+# `module.runtime` provisions Cloud Run — enabling a single `terraform apply` with no
+# out-of-band secret seeding phase. When `manage_db_url_version = false` (default plan),
+# only the secret container + IAM binding are planned.
 
 resource "google_secret_manager_secret" "db_url" {
   project   = var.project_id
@@ -16,6 +16,13 @@ resource "google_secret_manager_secret" "db_url" {
   replication {
     auto {}
   }
+}
+
+resource "google_secret_manager_secret_version" "db_url" {
+  count = var.manage_db_url_version ? 1 : 0
+
+  secret      = google_secret_manager_secret.db_url.id
+  secret_data = var.db_dsn
 }
 
 # Least-privilege: secretAccessor on THIS secret only, to the bridge-runtime SA.
@@ -84,9 +91,7 @@ resource "google_secret_manager_secret_iam_member" "email_token_accessor" {
   member    = var.service_account_member
 }
 
-# SPIFFE JWT-SVID signing key/secret container (Zone 6 Identity Governance).
-# As with db_url, only the container + per-secret secretAccessor grant are
-# created in HCL; the key material is added out-of-band at deploy time.
+# SPIFFE JWT-SVID signing key/secret (Zone 6 Identity Governance).
 resource "google_secret_manager_secret" "spiffe_svid" {
   project   = var.project_id
   secret_id = var.spiffe_svid_secret_id
@@ -95,6 +100,13 @@ resource "google_secret_manager_secret" "spiffe_svid" {
   replication {
     auto {}
   }
+}
+
+resource "google_secret_manager_secret_version" "spiffe_svid" {
+  count = var.manage_spiffe_svid_version ? 1 : 0
+
+  secret      = google_secret_manager_secret.spiffe_svid.id
+  secret_data = var.spiffe_svid_secret_data
 }
 
 resource "google_secret_manager_secret_iam_member" "spiffe_svid_accessor" {

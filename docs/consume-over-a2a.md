@@ -19,6 +19,8 @@ makes that work. The conformance test is
 A process skill with none of its candidate doctypes installed is not advertised; a
 malformed skill folder is skipped, never fatal.
 
+> **Starting from an empty DocuBridge deployment?** By default, Terraform deploys DocuBridge with `seed_skills = false` and `BRIDGE_EMPTY_CATALOG_ON_START=1` (`ont-rev-v0-empty`). Follow [`docs/onboarding-use-case.md`](onboarding-use-case.md) to induce doctype schemas from sample documents (`scripts/create-schema-from-docs.py`) and onboard a use-case agent (`scripts/onboard-use-case.py` or `POST /v1/refinery/onboard-use-case`).
+
 ## Per-deployment knobs
 
 All are listed with defaults in [`.env.example`](../.env.example); none is required for

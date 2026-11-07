@@ -8,7 +8,12 @@ from fastapi import APIRouter, HTTPException, Query
 
 from bridge.a2ui_inbox import ActionInboxStore
 from bridge.knowledge_catalog import KnowledgeCatalog
-from bridge.refinery import SchemaRefineryEngine, schema_refinery_from_env
+from bridge.refinery import (
+    SchemaRefineryEngine,
+    UseCaseOnboardingManifest,
+    onboard_use_case,
+    schema_refinery_from_env,
+)
 from bridge.user_interaction.schemas import (
     OnboardDoctypeRequest,
     PromoteRefineryProposalRequest,
@@ -82,6 +87,20 @@ def register_refinery_routes(
                 aliases=body.aliases,
             )
         except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return result.model_dump(mode="json")
+
+    @router.post("/v1/refinery/onboard-use-case")
+    def post_refinery_onboard_use_case(
+        body: UseCaseOnboardingManifest,
+    ) -> dict[str, Any]:
+        """Onboard a complete use-case agent (all its doctypes + process skill) onto DocuBridge."""
+        try:
+            result = onboard_use_case(
+                body,
+                refinery=refinery,
+            )
+        except (ValueError, FileNotFoundError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return result.model_dump(mode="json")
 

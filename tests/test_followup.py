@@ -11,7 +11,7 @@ from bridge.scheduler import VirtualClock
 from bridge.sla import load_sla_policy
 from contract.enums import LifecycleStatus
 from contract.wire import CollectionStatus, ExchangeTurn
-from tests.address._corpus import load_timeline
+from tests.corpus_and_skills._corpus import load_timeline
 
 
 def test_arm_schedules_only_the_first_step():

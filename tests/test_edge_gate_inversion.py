@@ -48,7 +48,7 @@ from bridge.signals import Signals, dispose_signals, signals_from_result
 from contract.enums import Disposition, Gate
 from contract.wire import CollectRequest, ExchangeTurn, LedgerEntry
 from tests._scripted_llm import Reply, ScriptedLlm, ToolCall
-from tests.address._corpus import (
+from tests.corpus_and_skills._corpus import (
     CANDIDATE_DOCTYPES,
     PARTY,
     build_extraction_table,

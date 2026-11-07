@@ -45,10 +45,26 @@ from contract.refinery import (
 
 DEFAULT_OKF_DOCTYPES_DIR = Path(__file__).resolve().parents[2] / "catalog" / "doctypes"
 OKF_DOCTYPES_DIR_ENV = "BRIDGE_OKF_DOCTYPES_DIR"
+EMPTY_CATALOG_ENV = "BRIDGE_EMPTY_CATALOG_ON_START"
 OKF_BUNDLE_SUFFIX = ".okf.md"
 BASELINE_REVISION_ID = "ont-rev-v1-1-baseline"
 BASELINE_VERSION = "1.1.0"
+EMPTY_REVISION_ID = "ont-rev-v0-empty"
+EMPTY_VERSION = "0.0.0"
 _BASELINE_TIMESTAMP = datetime(2026, 10, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def is_empty_catalog_mode(catalog_dir: Path | None = None) -> bool:
+    """Return True when the catalog should start empty (zero pre-seeded doctypes)."""
+    if catalog_dir is not None:
+        return False
+    if os.environ.get(OKF_DOCTYPES_DIR_ENV, "").strip():
+        return False
+    return os.environ.get(EMPTY_CATALOG_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 @dataclass(frozen=True)
@@ -277,6 +293,8 @@ def load_okf_doctype_bundles(
     catalog_dir: Path | None = None,
 ) -> dict[str, OkfDoctypeBundle]:
     """Load all ``*.okf.md`` bundles (spec + schema extras) keyed by entity id."""
+    if is_empty_catalog_mode(catalog_dir):
+        return {}
     target_dir = resolve_okf_doctypes_dir(catalog_dir)
     if not target_dir.is_dir():
         return {}
@@ -316,11 +334,34 @@ def compute_ontology_hash(
     return hashlib.sha256(encoded).hexdigest()
 
 
+def build_empty_ontology_revision() -> OntologyRevision:
+    """Construct an empty initial ``OntologyRevision`` (0 doctype entities, 0 edges)."""
+    digest = compute_ontology_hash({}, ())
+    return OntologyRevision(
+        revision_id=EMPTY_REVISION_ID,
+        version=EMPTY_VERSION,
+        parent_revision_id=None,
+        state=OntologyRevisionState.ACTIVE,
+        content_sha256=digest,
+        summary="Empty initial ontology graph (awaiting use-case agent onboarding)",
+        entities={},
+        edges=(),
+        promoted_proposal_ids=(),
+        effective_from=_BASELINE_TIMESTAMP,
+        effective_to=None,
+        recorded_at=_BASELINE_TIMESTAMP,
+    )
+
+
 def build_baseline_ontology_revision(
     catalog_dir: Path | None = None,
 ) -> OntologyRevision:
     """Construct the baseline active ``OntologyRevision`` from ``catalog/doctypes/*.okf.md``."""
+    if is_empty_catalog_mode(catalog_dir):
+        return build_empty_ontology_revision()
     entities = load_okf_entity_specs(catalog_dir)
+    if not entities:
+        return build_empty_ontology_revision()
     all_edges: list[OntologyEdge] = []
     seen_edge_ids: set[str] = set()
     for entity_id in sorted(entities.keys()):

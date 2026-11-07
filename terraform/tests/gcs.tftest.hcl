@@ -88,4 +88,9 @@ run "buckets_are_private_versioned_retained_and_scoped" {
     condition     = google_storage_bucket_iam_member.artifacts_object_admin.member == var.service_account_member
     error_message = "the objectAdmin grant must be to the passed bridge-runtime SA member"
   }
+
+  assert {
+    condition     = length(keys(google_storage_bucket_object.skill_files)) == 0
+    error_message = "skills bucket must start empty by default (seed_skills = false) until use-case agents onboard"
+  }
 }

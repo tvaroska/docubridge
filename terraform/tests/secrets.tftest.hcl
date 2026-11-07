@@ -36,13 +36,14 @@ run "dsn_secret_container_and_accessor" {
     error_message = "the accessor grant must be to the passed bridge-runtime SA member"
   }
 
-  # No secret VERSION resource — the DSN value never rides HCL (CRITICAL guard).
-  # The version is created out-of-band at deploy (P7-9). This assertion is
-  # structural: the module declares no google_secret_manager_secret_version, so no
-  # plan action for that resource type exists in the module's outputs surface.
   assert {
     condition     = google_secret_manager_secret.db_url.secret_id != ""
-    error_message = "secret container must exist (its version/value is deploy-injected, not in HCL)"
+    error_message = "secret container must exist"
+  }
+
+  assert {
+    condition     = length(google_secret_manager_secret_version.db_url) == 0 && length(google_secret_manager_secret_version.spiffe_svid) == 0
+    error_message = "default credential-free plan must create no secret versions unless manage_*_version = true"
   }
 
   assert {
@@ -53,5 +54,32 @@ run "dsn_secret_container_and_accessor" {
   assert {
     condition     = google_secret_manager_secret_iam_member.spiffe_svid_accessor.role == "roles/secretmanager.secretAccessor"
     error_message = "runtime must be granted roles/secretmanager.secretAccessor on the SPIFFE SVID secret"
+  }
+}
+
+run "single_apply_secret_versions_when_managed" {
+  command = plan
+
+  module {
+    source = "./modules/secrets"
+  }
+
+  variables {
+    project_id                 = "test-project"
+    service_account_member     = "serviceAccount:bridge-runtime@test-project.iam.gserviceaccount.com"
+    manage_db_url_version      = true
+    db_dsn                     = "postgresql+asyncpg://bridge:secret@10.20.0.5:5432/bridge"
+    manage_spiffe_svid_version = true
+    spiffe_svid_secret_data    = "spiffe-svid-hmac-secret"
+  }
+
+  assert {
+    condition     = length(google_secret_manager_secret_version.db_url) == 1
+    error_message = "manage_db_url_version = true must plan the DATABASE_URL secret version for single-pass apply"
+  }
+
+  assert {
+    condition     = length(google_secret_manager_secret_version.spiffe_svid) == 1
+    error_message = "manage_spiffe_svid_version = true must plan the SPIFFE SVID secret version for single-pass apply"
   }
 }

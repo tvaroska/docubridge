@@ -304,31 +304,3 @@ def test_local_memory_bank_in_memory_and_sqlite(monkeypatch, tmp_path):
     assert isinstance(
         local_mb.build_memory_service(db_path=db_file), SqliteMemoryService
     )
-
-
-def test_address_durable_session_service_supports_agent_engine(monkeypatch):
-    """agents.address.app.build_durable_session_service routes to VertexAiSessionService
-    when BRIDGE_AGENT_ENGINE_ID is configured."""
-    from agents.address.app import build_durable_session_service
-
-    monkeypatch.setenv(
-        BRIDGE_AGENT_ENGINE_ID_ENV,
-        "projects/addr-proj/locations/us-central1/reasoningEngines/addr-ae",
-    )
-    captured: dict[str, str | None] = {}
-
-    def _fake_vertex(*, project, location, agent_engine_id):
-        captured.update(
-            project=project, location=location, agent_engine_id=agent_engine_id
-        )
-        return "addr-vertex-session"
-
-    assert (
-        build_durable_session_service(vertex_factory=_fake_vertex)
-        == "addr-vertex-session"
-    )
-    assert captured == {
-        "project": "addr-proj",
-        "location": "us-central1",
-        "agent_engine_id": "addr-ae",
-    }

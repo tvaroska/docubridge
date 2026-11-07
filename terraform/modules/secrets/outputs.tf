@@ -1,6 +1,10 @@
 output "secret_id" {
   description = "The DSN secret id — the runtime references this for the DATABASE_URL secret env."
   value       = google_secret_manager_secret.db_url.secret_id
+  depends_on = [
+    google_secret_manager_secret_iam_member.runtime_accessor,
+    google_secret_manager_secret_version.db_url,
+  ]
 }
 
 output "secret_name" {
@@ -26,4 +30,8 @@ output "email_token_secret_id" {
 output "spiffe_svid_secret_id" {
   description = "The SPIFFE JWT-SVID signing key secret id (injected as BRIDGE_SPIFFE_SVID_SECRET)."
   value       = google_secret_manager_secret.spiffe_svid.secret_id
+  depends_on = [
+    google_secret_manager_secret_iam_member.spiffe_svid_accessor,
+    google_secret_manager_secret_version.spiffe_svid,
+  ]
 }

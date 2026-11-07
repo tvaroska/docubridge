@@ -110,3 +110,9 @@ variable "agent_registry_service_agent_member" {
   }
 }
 
+variable "seed_skills" {
+  type        = bool
+  description = "Upload repository skills/ files into the Skill Registry bucket during apply (default false so DocuBridge deploys empty until use-case agents onboard)."
+  default     = false
+}
+

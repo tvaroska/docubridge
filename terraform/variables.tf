@@ -82,9 +82,40 @@ variable "db_user" {
 
 variable "db_password" {
   type        = string
-  description = "SQL user password — supplied at deploy via -var (never committed to HCL/tfvars); the same value is composed into the DATABASE_URL secret out-of-band. Prefer IAM auth in prod."
+  description = "SQL user password — supplied at deploy via TF_VAR_db_password / -var (never committed to HCL/tfvars); when non-empty, Terraform composes the private-IP DATABASE_URL secret version directly in a single apply."
   sensitive   = true
   default     = ""
+}
+
+variable "spiffe_svid_secret_data" {
+  type        = string
+  description = "Optional signing key material for BRIDGE_SPIFFE_SVID_SECRET. When empty and db_password is set, Terraform derives a deterministic project-scoped HMAC secret in a single apply."
+  sensitive   = true
+  default     = ""
+}
+
+variable "seed_skills" {
+  type        = bool
+  description = "Upload repository skills/ files into the Skill Registry GCS bucket during terraform apply (default false so DocuBridge starts empty on its own)."
+  default     = false
+}
+
+variable "empty_catalog_on_start" {
+  type        = bool
+  description = "Start Zone 6 Knowledge Catalog with an empty ontology revision (BRIDGE_EMPTY_CATALOG_ON_START=1) so use-case agents onboard their own doctypes from sample documents."
+  default     = true
+}
+
+variable "vertex_location" {
+  type        = string
+  description = "Gemini platform / Vertex AI location injected as GOOGLE_CLOUD_LOCATION and BRIDGE_VERTEX_LOCATION when port_mode = gcp."
+  default     = "global"
+}
+
+variable "invoker_iam_disabled" {
+  type        = bool
+  description = "Disable Cloud Run IAM invoker checks (--no-invoker-iam-check) on runtime and RFP board services for demo/Argolis projects where Domain-Restricted Sharing blocks allUsers."
+  default     = false
 }
 
 variable "deletion_protection" {

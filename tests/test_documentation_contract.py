@@ -474,7 +474,7 @@ def test_enterprise_demo_console_assets_and_api_contract() -> None:
 
 def test_zero_stale_firestore_or_broken_claude_plan_references() -> None:
     """No ``Firestore`` strings in Python packages, no ``.claude/`` in docs, and ANN enforced."""
-    for pkg in ("bridge", "contract", "agents"):
+    for pkg in ("bridge", "contract"):
         for py_path in (REPO_ROOT / pkg).rglob("*.py"):
             content = py_path.read_text(encoding="utf-8")
             assert "Firestore" not in content, (
@@ -801,7 +801,7 @@ async def test_fsi_a2a_multi_document_consolidation_and_6_zone_promotion() -> No
 
 def test_zero_stale_seam_model_or_vertex_branding_drift() -> None:
     """Zero residual ``BRIDGE_SEAM``, ``gemini-2.5-flash``, or ``Vertex AI Agent Engine`` strings in code/docs."""
-    for pkg in ("bridge", "contract", "agents"):
+    for pkg in ("bridge", "contract"):
         for py_path in (REPO_ROOT / pkg).rglob("*.py"):
             if "__pycache__" in py_path.parts:
                 continue

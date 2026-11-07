@@ -7,13 +7,13 @@
 resource "google_bigquery_dataset" "telemetry" {
   count = var.enable_telemetry_bq ? 1 : 0
 
-  project                     = var.project_id
-  dataset_id                  = var.dataset_id
-  friendly_name               = "DocuBridge OpenTelemetry Trace Analytics"
-  description                 = "Partitioned OpenTelemetry trace spans and SQL latency/waterfall views across all 6 Enterprise Data Architecture zones and Agent Gym."
-  location                    = var.region
-  delete_contents_on_destroy  = !var.deletion_protection
-  labels                      = var.labels
+  project                    = var.project_id
+  dataset_id                 = var.dataset_id
+  friendly_name              = "DocuBridge OpenTelemetry Trace Analytics"
+  description                = "Partitioned OpenTelemetry trace spans and SQL latency/waterfall views across all 6 Enterprise Data Architecture zones and Agent Gym."
+  location                   = var.region
+  delete_contents_on_destroy = !var.deletion_protection
+  labels                     = var.labels
 }
 
 resource "google_bigquery_dataset_iam_member" "runtime_data_editor" {

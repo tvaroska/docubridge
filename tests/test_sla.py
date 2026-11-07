@@ -12,7 +12,7 @@ import pytest
 from bridge.scheduler import VirtualClock
 from bridge.sla import LADDER_STEPS, load_sla_policy
 from contract.enums import LifecycleStatus
-from tests.address._corpus import load_timeline
+from tests.corpus_and_skills._corpus import load_timeline
 
 
 class TestLoadSlaPolicy:

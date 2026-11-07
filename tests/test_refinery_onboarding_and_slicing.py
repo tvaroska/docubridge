@@ -20,6 +20,8 @@ from bridge.extraction.gemini_schema import (
 )
 from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
 from bridge.refinery import (
+    EMPTY_CATALOG_ENV,
+    EMPTY_REVISION_ID,
     ENTITY_COMMERCIAL_PROPERTY_QUOTE,
     ENTITY_CRE_CREDIT_AGREEMENT,
     ENTITY_FEE_SCHEDULE_ADDENDUM,
@@ -28,8 +30,13 @@ from bridge.refinery import (
     OntologyRevisionState,
     RefineryProposalStatus,
     SqlSchemaRefineryEngine,
+    build_baseline_ontology_revision,
+    create_schema_from_documents,
     detect_out_of_ontology_escape_cluster,
+    load_manifest_file,
+    onboard_use_case,
     parse_okf_entity_markdown,
+    schema_refinery_from_env,
 )
 from contract.enums import Disposition, Gate
 
@@ -425,3 +432,193 @@ async def test_p8_6_target_scoped_slicing_reduces_footprint_and_preserves_escape
         assert escape_prop.target_entity_id == "environmental-indemnity"
     finally:
         refinery.reset()
+
+
+def test_empty_docubridge_boot_and_create_schema_from_documents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verifies DocuBridge starts empty under BRIDGE_EMPTY_CATALOG_ON_START=1 and induces schemas from sample files."""
+    from bridge.edge.card import build_agent_card
+
+    empty_skills = tmp_path / "skills"
+    empty_skills.mkdir(parents=True, exist_ok=True)
+    out_dir = tmp_path / "generated"
+
+    monkeypatch.setenv(EMPTY_CATALOG_ENV, "1")
+    monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(empty_skills))
+    schema_refinery_from_env().reset()
+
+    try:
+        # 1. Empty boot: zero doctype bundles, ont-rev-v0-empty, and zero skills on the Agent Card
+        rev = build_baseline_ontology_revision()
+        assert rev.revision_id == EMPTY_REVISION_ID
+        assert rev.entities == {}
+        assert doctype_schemas() == {}
+        card = build_agent_card()
+        assert card.skills == []
+
+        # 2. Induce a doctype schema from sample SVG documents on disk
+        repo_root = Path(__file__).resolve().parent.parent
+        pkg = create_schema_from_documents(
+            entity_id="utility-bill",
+            sample_files=[
+                repo_root / "wiki" / "evals" / "address" / "images" / "bill-powerco-clean.svg",
+                repo_root / "wiki" / "evals" / "address" / "images" / "bill-aquautil-clean.svg",
+            ],
+            paired_target_examples=[
+                {
+                    "holder_name": "JANE M. DOE",
+                    "service_address": "742 EVERGREEN TERRACE, SPRINGFIELD",
+                    "issuer": "Northstar Electric Co.",
+                    "statement_date": "2026-02-18",
+                }
+            ],
+            spine_entity_id="spine.party",
+            domain="kyc",
+            auto_promote=True,
+            install_skill=True,
+            write_dir=out_dir,
+        )
+        assert pkg.onboarding_result.assay_report.passed is True
+        assert pkg.installed_in_registry is True
+        assert (out_dir / "catalog" / "doctypes" / "utility-bill.okf.md").is_file()
+        assert (out_dir / "skills" / "utility-bill" / "SKILL.md").is_file()
+        assert (out_dir / "skills" / "utility-bill" / "assets" / "schema.json").is_file()
+        assert (out_dir / "skills" / "utility-bill" / "assets" / "validation.yaml").is_file()
+
+        # Doctype is now live in doctype_schemas() and KnowledgeCatalog
+        live_schemas = doctype_schemas()
+        assert "utility-bill" in live_schemas
+        assert "service_address" in live_schemas["utility-bill"]["properties"]["key_fields"]["properties"]
+    finally:
+        monkeypatch.delenv(EMPTY_CATALOG_ENV, raising=False)
+        monkeypatch.delenv("BRIDGE_SKILLS_DIR", raising=False)
+        schema_refinery_from_env().reset()
+
+
+def test_onboard_use_case_manifest_and_http_endpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Onboards the address and benefits use-case manifests onto an empty DocuBridge instance."""
+    import yaml
+
+    from bridge.edge.card import build_agent_card
+
+    empty_skills = tmp_path / "skills"
+    empty_skills.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv(EMPTY_CATALOG_ENV, "1")
+    monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(empty_skills))
+    schema_refinery_from_env().reset()
+
+    try:
+        assert build_agent_card().skills == []
+        repo_root = Path(__file__).resolve().parent.parent
+
+        # 1. Onboard Address Proof use-case via load_manifest_file + onboard_use_case
+        addr_manifest_path = tmp_path / "address-manifest.yaml"
+        addr_manifest_path.write_text(
+            yaml.safe_dump(
+                {
+                    "process_name": "address-proof",
+                    "process_description": "Collect proof of residential address.",
+                    "pattern": "collect",
+                    "satisfaction": "Accept one unexpired gov-id OR two utility bills from distinct issuers.",
+                    "doctypes": [
+                        {
+                            "entity_id": "gov-id",
+                            "spine_entity_id": "spine.party",
+                            "domain": "kyc",
+                            "sample_files": [
+                                str(
+                                    repo_root
+                                    / "wiki"
+                                    / "evals"
+                                    / "address"
+                                    / "images"
+                                    / "gov-id-clean.svg"
+                                )
+                            ],
+                        },
+                        {
+                            "entity_id": "utility-bill",
+                            "spine_entity_id": "spine.party",
+                            "domain": "kyc",
+                            "sample_files": [
+                                str(
+                                    repo_root
+                                    / "wiki"
+                                    / "evals"
+                                    / "address"
+                                    / "images"
+                                    / "bill-powerco-clean.svg"
+                                )
+                            ],
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        addr_manifest, addr_base = load_manifest_file(addr_manifest_path)
+        addr_res = onboard_use_case(addr_manifest, base_dir=addr_base)
+        assert addr_res.process_name == "address-proof"
+        assert set(addr_res.installed_doctypes) == {"gov-id", "utility-bill"}
+        assert "address-proof" in addr_res.agent_card_skill_ids
+
+        # 2. Onboard Benefits Procurement use-case via POST /v1/refinery/onboard-use-case
+        ben_payload = {
+            "process_name": "benefits-procurement",
+            "process_description": "Collect carrier quotes and negotiate rates.",
+            "pattern": "negotiate",
+            "doctypes": [
+                {
+                    "entity_id": "benefits-quote",
+                    "spine_entity_id": "spine.quote",
+                    "domain": "benefits",
+                    "samples": [
+                        {
+                            "sample_id": "ben-q1",
+                            "extracted_fields": {
+                                "Carrier": "SunLife Benefits",
+                                "Coverage Line": "AD&D",
+                                "Volume Rate": "0.025",
+                            },
+                        }
+                    ],
+                    "tables": {
+                        "rates": {"type": "array", "items": {"type": "object"}},
+                        "design": {"type": "array", "items": {"type": "object"}},
+                    },
+                }
+            ],
+        }
+        app = build_dashboard_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/refinery/onboard-use-case",
+            json=ben_payload,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["process_name"] == "benefits-procurement"
+        assert body["installed_doctypes"] == ["benefits-quote"]
+        assert set(body["agent_card_skill_ids"]) == {
+            "address-proof",
+            "benefits-procurement",
+        }
+
+        # Verify tables.rates and tables.design were preserved in benefits-quote schema.json
+        live_schemas = doctype_schemas()
+        assert "rates" in live_schemas["benefits-quote"]["properties"]["tables"]["properties"]
+        assert "design" in live_schemas["benefits-quote"]["properties"]["tables"]["properties"]
+
+        # Verify Agent Card now advertises both onboarded use-case processes
+        card = build_agent_card()
+        assert {s.id for s in card.skills} == {"address-proof", "benefits-procurement"}
+    finally:
+        monkeypatch.delenv(EMPTY_CATALOG_ENV, raising=False)
+        monkeypatch.delenv("BRIDGE_SKILLS_DIR", raising=False)
+        schema_refinery_from_env().reset()

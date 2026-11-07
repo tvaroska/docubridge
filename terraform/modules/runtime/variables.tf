@@ -341,6 +341,24 @@ variable "default_demo_domain" {
   default     = ""
 }
 
+variable "vertex_location" {
+  type        = string
+  description = "Gemini platform / Vertex AI location injected as GOOGLE_CLOUD_LOCATION and BRIDGE_VERTEX_LOCATION when port_mode = gcp (defaults to global for gemini-3.8-flash and gemini-4-argon)."
+  default     = "global"
+}
+
+variable "invoker_iam_disabled" {
+  type        = bool
+  description = "Disable Cloud Run IAM invoker checks (--no-invoker-iam-check) on runtime and RFP board services for demo/Argolis projects where Domain-Restricted Sharing blocks allUsers."
+  default     = false
+}
+
+variable "empty_catalog_on_start" {
+  type        = bool
+  description = "Start Zone 6 Knowledge Catalog with an empty ontology revision (BRIDGE_EMPTY_CATALOG_ON_START=1) until use-case agents onboard."
+  default     = false
+}
+
 variable "deletion_protection" {
   type        = bool
   description = "Guard the service against deletion (true in prod; dev/tests may disable)."

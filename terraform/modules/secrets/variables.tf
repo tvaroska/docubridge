@@ -66,3 +66,29 @@ variable "spiffe_svid_secret_id" {
   description = "Secret Manager secret id for the SPIFFE JWT-SVID signing key/secret (injected as BRIDGE_SPIFFE_SVID_SECRET)."
   default     = "bridge-spiffe-svid-secret"
 }
+
+variable "manage_db_url_version" {
+  type        = bool
+  description = "Create the Secret Manager secret version for DATABASE_URL directly in Terraform when true (single-pass apply)."
+  default     = false
+}
+
+variable "db_dsn" {
+  type        = string
+  description = "Composed PostgreSQL asyncpg DSN stored in the DATABASE_URL secret version when manage_db_url_version = true."
+  sensitive   = true
+  default     = ""
+}
+
+variable "manage_spiffe_svid_version" {
+  type        = bool
+  description = "Create the Secret Manager secret version for BRIDGE_SPIFFE_SVID_SECRET directly in Terraform when true (single-pass apply)."
+  default     = false
+}
+
+variable "spiffe_svid_secret_data" {
+  type        = string
+  description = "Signing key material stored in the BRIDGE_SPIFFE_SVID_SECRET secret version when manage_spiffe_svid_version = true."
+  sensitive   = true
+  default     = ""
+}

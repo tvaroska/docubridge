@@ -103,16 +103,20 @@ module "database" {
   labels               = var.labels
 }
 
-# secrets — the Secret Manager container for the DB DSN + the runtime's read grant
-# (P7-2). The DSN VALUE (which embeds the DB credential) is injected out-of-band at
-# deploy (P7-9); this module creates only the container + a secretAccessor binding
-# to the bridge-runtime SA. No plaintext DSN in HCL (CRITICAL.md).
+# secrets — the Secret Manager containers + single-apply secret versions for the DB DSN
+# and SPIFFE SVID signing key, plus the runtime's least-privilege read grants (P7-2).
+# When db_password is supplied (TF_VAR_db_password), Terraform composes the private-IP
+# Cloud SQL DSN and creates the secret versions before module.runtime starts Cloud Run.
 module "secrets" {
   source = "./modules/secrets"
 
-  project_id             = var.project_id
-  service_account_member = module.iam.bridge_runtime_member
-  labels                 = var.labels
+  project_id                 = var.project_id
+  service_account_member     = module.iam.bridge_runtime_member
+  labels                     = var.labels
+  manage_db_url_version      = nonsensitive(var.db_password != "")
+  db_dsn                     = nonsensitive(var.db_password != "") ? "postgresql+asyncpg://${module.database.db_user}:${urlencode(var.db_password)}@${module.database.private_ip_address}:5432/${module.database.database_name}" : ""
+  manage_spiffe_svid_version = nonsensitive(var.db_password != "" || var.spiffe_svid_secret_data != "")
+  spiffe_svid_secret_data    = nonsensitive(var.spiffe_svid_secret_data != "") ? var.spiffe_svid_secret_data : (nonsensitive(var.db_password != "") ? sha256("${var.project_id}:${var.service_name}:${var.db_password}:spiffe-svid") : "")
   # Email intake (S0-arch-13): three gated CONTAINERS (no versions) — the Graph client
   # secret + clientState read by the webhook SA only, the token key by the runtime only.
   enable_email_ingress = var.enable_email_ingress
@@ -132,6 +136,7 @@ module "gcs" {
   location               = var.region
   service_account_member = module.iam.bridge_runtime_member
   retention_days         = var.artifact_retention_days
+  seed_skills            = var.seed_skills
   labels                 = var.labels
   # Email intake (S0-arch-13): the gated landing bucket — webhook objectCreator only,
   # runtime objectViewer + objectCreator, lifecycle Delete after email_retention_days.
@@ -200,10 +205,10 @@ module "runtime" {
   followup_callback_url = var.followup_callback_url
   # The Gateway-authorized public URL as the BRIDGE_PUBLIC_URL plain env (P7-5) —
   # the served Agent Card advertises this origin so a consumer's RemoteA2aAgent
-  # passes the adk >=2.7 same-origin card validation (DECISIONS.md P7-5). The LB URL
-  # may not be known at plan time (like followup_callback_url), so it is injected
-  # out-of-band at deploy (P7-9) via var.public_url; default "" = no env at plan time.
-  public_url = var.public_url
+  # passes the adk >=2.7 same-origin card validation (DECISIONS.md P7-5). When
+  # enable_gateway = true and ssl_domains is non-empty, default to https://<ssl_domains[0]>/
+  # so a single terraform apply wires the gateway origin with no second phase.
+  public_url = var.public_url != "" ? var.public_url : (var.enable_gateway && length(var.ssl_domains) > 0 ? "https://${var.ssl_domains[0]}/" : "")
   # Email intake (S0-arch-13, design/email-intake.md): the processor envs (bucket,
   # mailbox, token-key secret_key_ref — on the RFP board service) + the gated
   # webhook-only service and its allUsers invoker (a deliberate trust-boundary
@@ -231,14 +236,17 @@ module "runtime" {
   # S0-arch-19: with enable_rfp_board the A2A runtime also gets BRIDGE_RFP_PROCESS (it
   # OPENS RFPs onto the shared store); the board service gets the a2a_client gcp env
   # (BRIDGE_RUNTIME_SA_EMAIL + BRIDGE_GATEWAY_HOST) for its chase route.
-  gateway_host         = var.gateway_host
+  gateway_host         = var.gateway_host != "" ? var.gateway_host : (var.enable_gateway && length(var.ssl_domains) > 0 ? "https://${var.ssl_domains[0]}/" : "")
   email_drain_schedule = var.email_drain_schedule
   # The port master switch + extraction engine (P7-9/P7-6) — plain envs routing every
   # port through its Gcp adapter (BRIDGE_PORT_MODE=gcp) and selecting the Gemini
   # extraction engine (BRIDGE_EXTRACTION_ENGINE=gemini). Default "" = no env at plan
   # time / P7-1 default (keeps runtime tests green); set at deploy (P7-9).
-  port_mode         = var.port_mode
-  extraction_engine = var.extraction_engine
+  port_mode              = var.port_mode
+  extraction_engine      = var.extraction_engine
+  vertex_location        = var.vertex_location
+  invoker_iam_disabled   = var.invoker_iam_disabled
+  empty_catalog_on_start = var.empty_catalog_on_start && !var.seed_skills
   # The client's Document AI processor for the docai engine (BRIDGE_DOCAI_PROCESSOR
   # plain env); default "" = no env.
   docai_processor     = var.docai_processor

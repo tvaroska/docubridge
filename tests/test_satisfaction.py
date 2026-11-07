@@ -32,7 +32,6 @@ from google.protobuf import struct_pb2
 from google.protobuf.json_format import MessageToDict, ParseDict
 from pydantic import Field
 
-from agents.address.gate import is_satisfied
 from bridge.collect import Collector, project_outstanding
 from bridge.edge import CollectExecutor, build_a2a_app, encode_collect_request
 from bridge.edge.llm_leg import LlmLeg
@@ -52,6 +51,7 @@ from bridge.satisfaction import (
 from bridge.satisfaction_llm import ASSESSOR_INSTRUCTION, LlmSatisfactionAssessor
 from contract.enums import Disposition, Gate, RequirementStatus
 from contract.wire import (
+    CollectionStatus,
     CollectRequest,
     ExchangeTurn,
     LedgerEntry,
@@ -59,6 +59,15 @@ from contract.wire import (
     RequirementsList,
 )
 from tests._scripted_llm import ScriptedLlm
+
+
+def is_satisfied(status: CollectionStatus) -> bool:
+    """Sense-B completeness check for address-proof."""
+    accepted = [e for e in status.entries if e.disposition is Disposition.accepted]
+    if any(e.doctype == "gov-id" for e in accepted):
+        return True
+    issuers = {e.issuer for e in accepted if e.doctype == "utility-bill" and e.issuer}
+    return len(issuers) >= 2
 
 BASE = "http://test"
 URL = "http://test/"

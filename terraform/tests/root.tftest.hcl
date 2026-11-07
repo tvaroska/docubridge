@@ -106,3 +106,28 @@ run "root_allows_project_outside_block_list" {
     error_message = "a project outside blocked_project_ids must plan normally"
   }
 }
+
+run "root_single_apply_wires_secrets_skills_and_gateway_origin" {
+  command = plan
+
+  variables {
+    project_id       = "test-project"
+    region           = "us-central1"
+    db_password      = "test-db-password"
+    enable_gateway   = true
+    ssl_domains      = ["bridge.example.com"]
+    port_mode        = "gcp"
+    enable_rfp_board = true
+    rfp_process      = "benefits-rfp"
+  }
+
+  assert {
+    condition     = output.gateway_url == "https://bridge.example.com/"
+    error_message = "single-pass root plan must resolve gateway_url from ssl_domains[0]"
+  }
+
+  assert {
+    condition     = output.db_secret_id == "bridge-database-url" && output.spiffe_svid_secret_id == "bridge-spiffe-svid-secret"
+    error_message = "single-pass root plan must wire both secret containers and versions"
+  }
+}

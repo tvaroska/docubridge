@@ -14,7 +14,7 @@ SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
 
 
 def parse_skill_md(md_path: Path) -> dict:
-    """Split leading `---\n...\n---` YAML frontmatter from the Markdown body.
+    """Split leading `---\\n...\\n---` YAML frontmatter from the Markdown body.
 
     Returns {"frontmatter": <dict>, "body": <str>}.
     """

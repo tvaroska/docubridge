@@ -235,3 +235,46 @@ class OntologyRevision(BaseModel):
     effective_from: datetime = Field(default_factory=lambda: datetime.now(UTC))
     effective_to: datetime | None = None
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class DoctypeOnboardingItem(BaseModel):
+    """One doctype specification inside a use-case onboarding manifest."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entity_id: str
+    description: str = ""
+    samples: list[dict[str, Any]] = Field(default_factory=list)
+    sample_files: list[str] = Field(default_factory=list)
+    paired_target_examples: list[dict[str, Any]] = Field(default_factory=list)
+    okf_markdown: str | None = None
+    spine_entity_id: str | None = None
+    context_set: str = "enterprise-document-intake"
+    domain: str = "general"
+    source_priority: int = 20
+    supersedes_spine: bool = True
+    aliases: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    field_enums: dict[str, list[str]] = Field(default_factory=dict)
+    tables: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    notes: str = ""
+
+
+class UseCaseOnboardingManifest(BaseModel):
+    """Declarative manifest for onboarding a use-case agent onto DocuBridge."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    process_name: str
+    process_description: str
+    pattern: Literal["collect", "request", "negotiate", "deliver"] = "collect"
+    hitl: Literal["park", "report"] = "report"
+    satisfaction: str = ""
+    tags: list[str] = Field(default_factory=list)
+    policy: dict[str, Any] = Field(default_factory=dict)
+    context_set: str = "enterprise-document-intake"
+    domain: str = "general"
+    doctypes: list[DoctypeOnboardingItem] = Field(default_factory=list)
+    auto_promote: bool = True
+    install_skills: bool = True

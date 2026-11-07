@@ -129,7 +129,6 @@ def test_guarded_push_config_store_is_idempotent():
 # S0-sec-3 — serve() helpers bind to loopback by default                      #
 # --------------------------------------------------------------------------- #
 def test_serve_helpers_default_to_loopback():
-    from agents.console.server import serve as console_serve
     from bridge.dashboard.server import serve as dashboard_serve
     from bridge.edge.mock import serve_mock
     from bridge.edge.server import serve as edge_serve
@@ -142,7 +141,6 @@ def test_serve_helpers_default_to_loopback():
         portal_serve,
         dashboard_serve,
         timewarp_serve,
-        console_serve,
     ):
         default = inspect.signature(fn).parameters["host"].default
         assert default == "127.0.0.1", f"{fn.__module__}.{fn.__name__} host={default!r}"

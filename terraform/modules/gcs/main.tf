@@ -26,6 +26,19 @@ resource "google_storage_bucket" "skills" {
   }
 }
 
+locals {
+  skills_root = "${path.module}/../../../skills"
+  skill_files = var.seed_skills ? fileset(local.skills_root, "**") : toset([])
+}
+
+resource "google_storage_bucket_object" "skill_files" {
+  for_each = local.skill_files
+
+  name   = each.value
+  bucket = google_storage_bucket.skills.name
+  source = "${local.skills_root}/${each.value}"
+}
+
 # Artifacts bucket — ART-1 versioning (a resubmission is a new version) + ART-3
 # retention (the post-exchange lifecycle Delete rule).
 resource "google_storage_bucket" "artifacts" {

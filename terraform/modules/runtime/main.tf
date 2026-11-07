@@ -57,38 +57,41 @@ locals {
   # the board's operator chase route (POST /rfps/{id}/chase) sends through it, and
   # 503s without both (S0-arch-19).
   board_plain_env = {
-    BRIDGE_RFP_PROCESS          = var.rfp_process
-    BRIDGE_RUNTIME_SA_EMAIL     = var.runtime_sa_email
-    BRIDGE_GATEWAY_HOST         = var.gateway_host
-    BRIDGE_PORT_MODE            = var.port_mode
-    BRIDGE_ARTIFACT_BUCKET      = var.artifacts_bucket
-    BRIDGE_VAULT_BUCKET         = var.vault_bucket
-    BRIDGE_SKILLS_BUCKET        = var.skills_bucket
-    BRIDGE_EXTRACTION_ENGINE    = var.extraction_engine
-    BRIDGE_DOCAI_PROCESSOR      = var.docai_processor
+    BRIDGE_RFP_PROCESS                         = var.rfp_process
+    BRIDGE_RUNTIME_SA_EMAIL                    = var.runtime_sa_email
+    BRIDGE_GATEWAY_HOST                        = var.gateway_host
+    BRIDGE_PORT_MODE                           = var.port_mode
+    BRIDGE_ARTIFACT_BUCKET                     = var.artifacts_bucket
+    BRIDGE_VAULT_BUCKET                        = var.vault_bucket
+    BRIDGE_SKILLS_BUCKET                       = var.skills_bucket
+    BRIDGE_EXTRACTION_ENGINE                   = var.extraction_engine
+    BRIDGE_DOCAI_PROCESSOR                     = var.docai_processor
     BRIDGE_AGENT_ENGINE_ID                     = var.agent_engine_id
     BRIDGE_AGENT_ENGINE_REMOTE                 = var.agent_engine_remote
     BRIDGE_TELEMETRY_BQ_TABLE                  = var.telemetry_bq_table
     BRIDGE_DEFAULT_DEMO_DOMAIN                 = var.default_demo_domain
+    BRIDGE_EMPTY_CATALOG_ON_START              = var.empty_catalog_on_start ? "1" : ""
     GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY = var.agent_engine_id != "" ? "true" : ""
     BRIDGE_MODEL                               = var.agent_engine_id != "" ? "gemini-3.8-flash" : ""
     BRIDGE_REASONING_MODEL                     = var.agent_engine_id != "" ? "gemini-4-argon" : ""
-    GOOGLE_GENAI_USE_VERTEXAI   = var.port_mode == "gcp" ? "TRUE" : ""
-    GOOGLE_CLOUD_PROJECT        = var.port_mode == "gcp" ? var.project_id : ""
-    GOOGLE_CLOUD_LOCATION       = var.port_mode == "gcp" ? var.region : ""
-    BRIDGE_PUBLIC_URL           = local.effective_public_url
-    BRIDGE_EMAIL_BUCKET         = var.email_bucket
-    BRIDGE_EMAIL_MAILBOX        = var.email_mailbox
-    BRIDGE_EMAIL_DRAIN_INTERVAL = "0"
+    GOOGLE_GENAI_USE_VERTEXAI                  = var.port_mode == "gcp" ? "TRUE" : ""
+    GOOGLE_CLOUD_PROJECT                       = var.port_mode == "gcp" ? var.project_id : ""
+    GOOGLE_CLOUD_LOCATION                      = var.port_mode == "gcp" ? var.vertex_location : ""
+    BRIDGE_VERTEX_LOCATION                     = var.port_mode == "gcp" ? var.vertex_location : ""
+    BRIDGE_PUBLIC_URL                          = local.effective_public_url
+    BRIDGE_EMAIL_BUCKET                        = var.email_bucket
+    BRIDGE_EMAIL_MAILBOX                       = var.email_mailbox
+    BRIDGE_EMAIL_DRAIN_INTERVAL                = "0"
   }
 }
 
 resource "google_cloud_run_v2_service" "bridge" {
-  project  = var.project_id
-  name     = var.service_name
-  location = var.region
-  ingress  = local.ingress
-  labels   = var.labels
+  project              = var.project_id
+  name                 = var.service_name
+  location             = var.region
+  ingress              = local.ingress
+  invoker_iam_disabled = var.invoker_iam_disabled
+  labels               = var.labels
 
   deletion_protection = var.deletion_protection
 
@@ -233,7 +236,15 @@ resource "google_cloud_run_v2_service" "bridge" {
         for_each = var.port_mode == "gcp" ? [1] : []
         content {
           name  = "GOOGLE_CLOUD_LOCATION"
-          value = var.region
+          value = var.vertex_location
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.port_mode == "gcp" ? [1] : []
+        content {
+          name  = "BRIDGE_VERTEX_LOCATION"
+          value = var.vertex_location
         }
       }
 
@@ -325,6 +336,14 @@ resource "google_cloud_run_v2_service" "bridge" {
         content {
           name  = "BRIDGE_DEFAULT_DEMO_DOMAIN"
           value = var.default_demo_domain
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.empty_catalog_on_start ? [1] : []
+        content {
+          name  = "BRIDGE_EMPTY_CATALOG_ON_START"
+          value = "1"
         }
       }
 
@@ -488,11 +507,12 @@ resource "google_cloud_run_v2_service_iam_member" "email_webhook_public" {
 resource "google_cloud_run_v2_service" "rfp_board" {
   count = var.enable_rfp_board ? 1 : 0
 
-  project  = var.project_id
-  name     = local.board_service_name
-  location = var.region
-  ingress  = var.rfp_board_ingress
-  labels   = var.labels
+  project              = var.project_id
+  name                 = local.board_service_name
+  location             = var.region
+  ingress              = var.rfp_board_ingress
+  invoker_iam_disabled = var.invoker_iam_disabled
+  labels               = var.labels
 
   deletion_protection = var.deletion_protection
 

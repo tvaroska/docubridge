@@ -10,9 +10,9 @@ commit. `spec/` is protected — propose changes, never edit it during `/impleme
 | `contract/` | Shared Pydantic wire types — the ONLY package both `bridge/` and `agents/` import. A change ripples across every consumer. |
 | `bridge/` | The reusable Bridge CORE. Load-bearing invariant: **never imports `agents/`** (isolation-guard test enforces it). |
 | `terraform/` | Infrastructure-as-code. Provisioning/IAM/trust-boundary changes. |
-| `scripts/deploy.sh` | Live GCP apply: image build + two-phase Terraform apply against a real project (needs live auth). A mistake mutates real infrastructure. |
+| `scripts/deploy.sh` | Live GCP apply: image build + single-pass Terraform apply against a real project (needs live auth). A mistake mutates real infrastructure. |
 | `scripts/parity.sh` | The deployed-path gate; runs against live GCP resources. |
-| `skills/` | Runtime policy the Bridge loads. Thresholds, SLA ladders, satisfaction and standard rules change verdicts without a code change. Skill frontmatter is asserted by tests (`tests/address/test_skills.py`, `tests/test_benefits_skills.py`). |
+| `skills/` | Runtime policy the Bridge loads. Thresholds, SLA ladders, satisfaction and standard rules change verdicts without a code change. Skill frontmatter is asserted by tests (`tests/corpus_and_skills/test_skills.py`, `tests/test_benefits_skills.py`). |
 | `catalog/doctypes/` | OKF doctype bundles (`*.okf.md`). Entity scope, contrastive field descriptions, and ontology edges drive consolidation priority and the extraction schema (ADR-13); an edit changes which fact wins and what Gemini is asked to extract. |
 | `bridge/agent_gym/` | Promotion gates (3-Tier evaluation, Two-Sided Oversight `RSR`, Programmable Trust ladder). Promoted rules rewrite extraction prompts and flip `pending` → `accepted` dispositions. |
 | `bridge/refinery/` | Schema Refinery promotion gate (3-Tier Counterfactual Assay, `NFR = 0.0%`). A promoted ontology revision changes doctype splits, priorities, and historical lineage. |

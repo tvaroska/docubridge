@@ -4,15 +4,28 @@ P3-3: Tests that authored skill folders match corpus, contract models, and code
 constants so they cannot drift.
 """
 
-from agents.address.gate import DOCTYPE_GOV_ID, DOCTYPE_UTILITY_BILL, is_satisfied
 from bridge.classification import canonicalize_issuer
 from bridge.disposition import DEFAULT_THRESHOLDS
 from bridge.edge.skills import loaded_skills
 from contract.enums import Disposition
 from contract.extraction import GovIdKeyFields, UtilityBillKeyFields
 from contract.wire import CollectionStatus, LedgerEntry, RequirementsList
-from tests.address._corpus import corpus_records, load_timeline
-from tests.address._skills import load_skill
+from tests.corpus_and_skills._corpus import corpus_records, load_timeline
+from tests.corpus_and_skills._skills import load_skill
+
+DOCTYPE_GOV_ID = "gov-id"
+DOCTYPE_UTILITY_BILL = "utility-bill"
+
+
+def is_satisfied(status: CollectionStatus) -> bool:
+    """Sense-B satisfaction rule for address-proof (1 accepted gov-id OR >=2 distinct utility-bill issuers)."""
+    accepted = [e for e in status.entries if e.disposition is Disposition.accepted]
+    if any(e.doctype == DOCTYPE_GOV_ID for e in accepted):
+        return True
+    issuers = {
+        e.issuer for e in accepted if e.doctype == DOCTYPE_UTILITY_BILL and e.issuer
+    }
+    return len(issuers) >= 2
 
 
 class TestWellFormedness:
