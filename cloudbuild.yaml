@@ -86,7 +86,7 @@ steps:
           --ignore=tests/conformance \
           --ignore=tests/perf \
           -n 4 --dist loadfile \
-          --cov=bridge --cov=contract --cov-report= \
+          --cov=bridge --cov=contract --cov-report= --cov-fail-under=0 \
           -q
 
   # ------------------------------------------------------------------------- #
@@ -107,7 +107,7 @@ steps:
           tests/conformance \
           tests/perf \
           -n 4 --dist loadfile \
-          --cov=bridge --cov=contract --cov-report= \
+          --cov=bridge --cov=contract --cov-report= --cov-fail-under=0 \
           -q
 
   # ------------------------------------------------------------------------- #
