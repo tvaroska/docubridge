@@ -83,16 +83,19 @@ gcloud services enable \
 
 if [[ "${ENABLE_TELEMETRY_BQ}" == "true" ]]; then
   echo "==> Configuring Cloud Observability default storage location (us) and _Trace linked dataset (obs_traces)"
-  gcloud observability project-settings update \
+  gcloud observability settings update \
     --location=global \
+    --update-mask=default_storage_location \
     --default-storage-location=us \
     --project="${PROJECT_ID}" || true
-  gcloud observability buckets links describe obs_traces \
+  gcloud observability buckets datasets links describe obs_traces \
     --bucket=_Trace \
+    --dataset=Spans \
     --location=us \
     --project="${PROJECT_ID}" >/dev/null 2>&1 ||
-    gcloud observability buckets links create obs_traces \
+    gcloud observability buckets datasets links create obs_traces \
       --bucket=_Trace \
+      --dataset=Spans \
       --location=us \
       --project="${PROJECT_ID}" || true
 fi
