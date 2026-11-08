@@ -303,7 +303,9 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         if stored_outcome:
             resume_outcome(stored_outcome, owner="a2a-edge")
         else:
-            active_outcome = current_outcome_id() or start_outcome(owner="a2a-edge")
+            active_outcome = current_outcome_id() or start_outcome(
+                outcome_id=f"out_{cid}", owner="a2a-edge"
+            )
             self._task_outcomes[cid] = active_outcome
         message = context.message
         route, scope = await self._route_for(message, context.current_task)
@@ -621,7 +623,11 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         status_message = status_message_for(turn)
         if state == TaskState.TASK_STATE_COMPLETED:
             cid = context.context_id or context.task_id or "a2a-task"
-            outcome_id = self._task_outcomes.pop(cid, None) or current_outcome_id()
+            outcome_id = (
+                self._task_outcomes.pop(cid, None)
+                or current_outcome_id()
+                or f"out_{cid}"
+            )
             has_accepted = any(
                 e.disposition is Disposition.accepted for e in turn.status.entries
             )
@@ -635,6 +641,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
                 outcome_status,
                 subject=turn.context_id,
                 outcome_id=outcome_id,
+                owner="a2a-edge",
             )
             await updater.complete(message=status_message)
         else:
@@ -648,11 +655,14 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         # (the SDK handler enforces both).
         """Cancel an in-flight A2A collection task and emit a cancellation event."""
         cid = context.context_id or context.task_id or "a2a-task"
-        outcome_id = self._task_outcomes.pop(cid, None) or current_outcome_id()
+        outcome_id = (
+            self._task_outcomes.pop(cid, None) or current_outcome_id() or f"out_{cid}"
+        )
         close_outcome(
             "abandoned",
             subject=context.context_id,
             outcome_id=outcome_id,
+            owner="a2a-edge",
         )
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
