@@ -18,6 +18,7 @@ spec/
 scripts/
 *.md
 !skills/**/SKILL.md
+!catalog/**/*.md
 .python-version
 .ruff_cache/
 .pytest_cache/
