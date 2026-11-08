@@ -123,6 +123,7 @@ fi
 # --------------------------------------------------------------------------- #
 # 3. Single-pass Terraform init + apply.                                       #
 # --------------------------------------------------------------------------- #
+export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
 terraform -chdir="${TF_DIR}" init -input=false
 
 TF_VARS=(
