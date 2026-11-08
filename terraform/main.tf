@@ -160,6 +160,7 @@ module "tasks" {
 
   project_id = var.project_id
   region     = var.region
+  queue_name = var.tasks_queue_name
   labels     = var.labels
 }
 

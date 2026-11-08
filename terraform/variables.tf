@@ -162,6 +162,12 @@ variable "followup_callback_url" {
   default     = ""
 }
 
+variable "tasks_queue_name" {
+  type        = string
+  description = "Cloud Tasks queue name for the follow-up ladder (default bridge-followups; override when redeploying within Cloud Tasks' 7-day queue-name tombstone window)."
+  default     = "bridge-followups"
+}
+
 # Gateway ingress scoping (P7-5) — the per-party identities granted
 # roles/run.invoker on the runtime ("a party can address only its own leg",
 # design/zones.md) and the managed-cert domains for the external HTTPS LB. Both

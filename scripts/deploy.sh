@@ -46,6 +46,7 @@ export TF_VAR_db_password="${DB_PASSWORD}"
 : "${AR_REPO:=bridge}"                      # Artifact Registry repo for the image
 : "${PARTY_INVOKER_MEMBERS:=}"              # comma-separated run.invoker members (P7-5)
 : "${CALLBACK_PATH:=/followups}"            # Cloud Tasks follow-up callback route
+: "${TASKS_QUEUE_NAME:=bridge-followups}"   # Cloud Tasks queue name (override if tombstoned)
 : "${ENABLE_RFP_BOARD:=true}"               # Deploy Internal RFP Board + 6-Zone Showcase Console
 : "${RFP_PROCESS:=benefits-rfp}"            # Default RFP board process skill
 : "${RFP_BOARD_INGRESS:=INGRESS_TRAFFIC_ALL}"
@@ -108,6 +109,7 @@ TF_VARS=(
   -var "enable_audit_vault=${ENABLE_AUDIT_VAULT}"
   -var "enable_telemetry_bq=${ENABLE_TELEMETRY_BQ}"
   -var "deletion_protection=false"
+  -var "tasks_queue_name=${TASKS_QUEUE_NAME}"
   -var "port_mode=gcp"
   -var "extraction_engine=gemini"
 )
