@@ -78,7 +78,7 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
 - **T1 (every `/implement` — gates the commit):**
   - Lint: `uv run ruff check .` (must pass with 0 errors).
   - Unit & Enterprise Suite: `uv run pytest` (including `tests/test_enterprise_data_architecture.py`, `tests/test_isolation_guard.py`, `tests/test_service_wiring_guard.py`, `tests/test_gemini_extraction.py`).
-  - Terraform Plan-Time Tests: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (45 `run` blocks / 183 `assert` blocks across 13 `.tftest.hcl` files, credential-free).
+  - Terraform Plan-Time Tests: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (46 `run` blocks across 13 `.tftest.hcl` files, credential-free).
 - **T2 (every `/implement` — gates flipping `- [x]`):** exercise the artifact against the task's own acceptance criteria. Files existing / build green is NOT done.
 - **T3 (phase-close via `/replan` + on-demand via `/verify`):** CUJ simulation against the eval corpus. The Address eval corpus (`wiki/evals/address/`) is the oracle (`expected.json` + `timeline.json`).
 
@@ -104,9 +104,11 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
 6. **Cloud Build `uv.lock` Index & Headless Chrome DevTools Proxy Bypass:**
    - When regenerating `uv.lock` before `gcloud builds submit`, always run `uv lock --default-index https://pypi.org/simple` so remote Cloud Build workers resolve packages from `https://files.pythonhosted.org` rather than a local workstation mirror.
    - In `demo/record_gcp_demo.py`, always pass `--no-proxy-server` to headless Chrome and `trust_env=False` to `httpx.AsyncClient(trust_env=False)` when polling `http://127.0.0.1:<port>/json`, otherwise proxy environment variables intercept localhost DevTools connections.
-7. **Cloud Run Warm Instances & Terraform Auth:**
-   - Both `docubridge-showcase-bridge` and `docubridge-showcase-bridge-rfp-board` are configured with `min_instances = 1` (`terraform/modules/runtime/main.tf`) to prevent cold starts during live demos.
-   - When running `terraform` outside GCE metadata environments, either export `GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` or update Cloud Run services via `gcloud run services update`.
+7. **Per-App Cloud Run Services, Observability Links & Terraform Auth (M1):**
+   - Runtime deploys 3 per-app Cloud Run services (`bridge-kyc`, `bridge-rfp`, `bridge-meridian`, replacing retired `bridge` / `bridge-rfp-board`) registered in App Hub (`kyc-address-verification`, `benefits-rfp-procurement`, `meridian-loan-consolidation`). `bridge-meridian` requires `BRIDGE_RFP_PROCESS` set in `meridian_plain_env` because it boots through `serve_rfp_board_container()`.
+   - BigLake external tables with a `connection_id` (`google_bigquery_table.completions`) require `schema = jsonencode(...)` on the top-level resource rather than inside `external_data_configuration` (which BigQuery rejects with `HTTP 400`).
+   - Cloud Observability auto-creates `locations/us/buckets/_Trace` only after the first OTLP span is ingested into `telemetry.googleapis.com`; create the `obs_traces` linked dataset (`gcloud observability buckets datasets links create`) after initial trace traffic.
+   - Refresh `export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"` immediately before `terraform apply` (not at the start of `scripts/deploy.sh`), because `gcloud builds submit` can take 10–15 minutes and expire an earlier token.
 8. **Offline `uv.lock` Version Sync, `git rm` `__pycache__` Cleanup & `KnowledgeCatalog` Protocol:**
    - Whenever `project.version` in `pyproject.toml` is bumped, also update `version = "..."` on the `[[package]] name = "docubridge"` entry in `uv.lock`; otherwise `uv run` detects a lockfile mismatch and attempts to re-resolve dependencies over the network (failing in offline sandboxes).
    - Running `git rm -rf <pkg>` removes tracked `.py` files but leaves untracked `__pycache__/` directories on disk, causing `Path("<pkg>").exists()` checks to remain `True` until `rm -rf <pkg>` is also executed.
