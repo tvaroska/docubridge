@@ -31,6 +31,8 @@ resource "google_service_networking_connection" "psa" {
   network                 = var.vpc_network
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.psa_range.name]
+  deletion_policy         = "ABANDON"
+  update_on_creation_fail = true
 }
 
 resource "google_sql_database_instance" "bridge" {
