@@ -5,26 +5,26 @@ variable "project_id" {
 
 variable "region" {
   type        = string
-  description = "BigQuery dataset location (e.g. us-central1)."
+  description = "Regional location for App Hub applications and lakehouse dataset (e.g. us-central1)."
   default     = "us-central1"
 }
 
 variable "enable_telemetry_bq" {
   type        = bool
-  description = "Whether to provision the BigQuery OpenTelemetry trace analytics dataset, partitioned span table, SQL views, and Cloud Logging sink."
+  description = "Whether to provision native Cloud Observability linked datasets, GenAI payload GCS bucket + BigLake external table, App Hub applications, and the Zone 4 lakehouse dataset."
   default     = false
-}
-
-variable "dataset_id" {
-  type        = string
-  description = "BigQuery dataset id for OpenTelemetry trace analytics."
-  default     = "docubridge_telemetry"
 }
 
 variable "lakehouse_dataset_id" {
   type        = string
   description = "BigQuery dataset id for the Zone 4 Iceberg operational facts lakehouse."
   default     = "docubridge_lakehouse"
+}
+
+variable "payload_retention_days" {
+  type        = number
+  description = "Retention TTL (days) for GenAI completion payload JSONL objects in Cloud Storage."
+  default     = 90
 }
 
 variable "service_account_member" {

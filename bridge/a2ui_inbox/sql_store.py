@@ -266,6 +266,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         channel: DeliveryChannel,
         agent_spiffe_id: str | None = None,
         principal_max_approval_amount: float | None = None,
+        close_outcome_on_resolve: bool = True,
     ) -> dict[str, Any]:
         """Resolve a SQL-backed action inbox item and persist both the item and audit record."""
         self._load_item_sql(item_id)
@@ -278,6 +279,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
             channel=channel,
             agent_spiffe_id=agent_spiffe_id,
             principal_max_approval_amount=principal_max_approval_amount,
+            close_outcome_on_resolve=close_outcome_on_resolve,
         )
         updated_item = self._items.get(item_id)
         if updated_item is not None:

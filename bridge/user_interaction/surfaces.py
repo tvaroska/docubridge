@@ -437,6 +437,10 @@ def ingest_accepted_submission(
     agent_gym: AgentGymEngine | None = None,
     recorded_at: datetime | None = None,
     effective_from: datetime | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    thinking_tokens: int | None = None,
+    source_mode: str = "PDF_PATH_B_FLASH",
 ) -> EnterpriseIngestionResult:
     """Promote an accepted entry through Vault (WORM), Operational Store, and Catalog."""
     with trace_step(
@@ -444,9 +448,13 @@ def ingest_accepted_submission(
         {
             "docubridge.zone": "2_3_6_enterprise_ingestion",
             "docubridge.entity_id": entity_id,
+            "entity_id": entity_id,
             "docubridge.context_id": context_id,
             "docubridge.doc_id": entry.doc_id,
             "docubridge.doctype": entry.doctype,
+            "skill_id": entry.doctype,
+            "source_mode": source_mode,
+            "docubridge.source_mode": source_mode,
             "docubridge.version": version,
             "docubridge.agent_spiffe_id": "spiffe://agents.docubridge.io/internal/extraction-agent",
         },
@@ -556,47 +564,50 @@ def ingest_accepted_submission(
             effective_from=effective_from,
         )
 
-        # Emit workhorse extraction span (`gemini-3.8-flash`) with OTel gen_ai.* attributes
-        estimated_input_tokens = max(
-            640,
-            1100
-            + len(raw_document_bytes) * 4
-            + len(normalized_entry.key_fields) * 45
-            + len(applied_hint_ids) * 60,
-        )
-        estimated_output_tokens = max(
-            180,
-            180
-            + len(normalized_entry.key_fields) * 28
-            + len(normalized_entry.source_anchors) * 35,
-        )
-        with trace_step(
-            "docubridge.extract.call_llm",
-            {
-                "docubridge.zone": "2_extraction_quarantine",
-                "docubridge.entity_id": entity_id,
-                "docubridge.doc_id": entry.doc_id,
-                "docubridge.doctype": entry.doctype,
-                "docubridge.skill.version": active_doc_skill.version,
-                "docubridge.skill.revision_id": active_doc_skill.revision_id,
-                "docubridge.skill.urn": active_doc_skill.skill_urn,
-                "docubridge.process_skill.name": process_skill_name,
-                "docubridge.process_skill.revision_id": active_proc_skill.revision_id,
-                "gen_ai.system": "gemini_platform",
-                "gen_ai.operation.name": "call_llm",
-                "gen_ai.agent.name": "extraction_agent",
-                "gen_ai.request.model": "gemini-3.8-flash",
-                "docubridge.finops.traffic_type": "production_inference",
-                "gen_ai.usage.input_tokens": estimated_input_tokens,
-                "gen_ai.usage.output_tokens": estimated_output_tokens,
-                "docubridge.day2_distilled_execution": bool(applied_hint_ids),
-            },
-        ):
+        # Emit workhorse extraction span (`gemini-3.8-flash`) with OTel gen_ai.* attributes.
+        # Token counts are recorded only when real model usage is supplied (no character-division
+        # or byte-length estimates).
+        llm_span_attrs: dict[str, Any] = {
+            "docubridge.zone": "2_extraction_quarantine",
+            "docubridge.entity_id": entity_id,
+            "entity_id": entity_id,
+            "docubridge.context_id": context_id,
+            "docubridge.doc_id": entry.doc_id,
+            "docubridge.doctype": entry.doctype,
+            "skill_id": entry.doctype,
+            "skill_version": active_doc_skill.version,
+            "source_mode": source_mode,
+            "docubridge.source_mode": source_mode,
+            "docubridge.skill.version": active_doc_skill.version,
+            "docubridge.skill.revision_id": active_doc_skill.revision_id,
+            "docubridge.skill.urn": active_doc_skill.skill_urn,
+            "docubridge.process_skill.name": process_skill_name,
+            "docubridge.process_skill.revision_id": active_proc_skill.revision_id,
+            "gen_ai.system": "gemini_platform",
+            "gen_ai.operation.name": "call_llm",
+            "gen_ai.agent.name": "extraction_agent",
+            "gen_ai.request.model": "gemini-3.8-flash",
+            "gen_ai.response.model": "gemini-3.8-flash",
+            "docubridge.finops.traffic_type": "production_inference",
+            "finops.traffic_type": "production_inference",
+            "docubridge.day2_distilled_execution": bool(applied_hint_ids),
+        }
+        if input_tokens is not None:
+            llm_span_attrs["gen_ai.usage.input_tokens"] = int(input_tokens)
+        if output_tokens is not None:
+            llm_span_attrs["gen_ai.usage.output_tokens"] = int(output_tokens)
+        if thinking_tokens is not None:
+            llm_span_attrs["gen_ai.usage.reasoning.output_tokens"] = int(
+                thinking_tokens
+            )
+            llm_span_attrs["docubridge.thinking_tokens"] = int(thinking_tokens)
+        with trace_step("docubridge.extract.call_llm", llm_span_attrs):
             pass
 
         promoted_entry, vault_record = promote_accepted_to_vault(
             vault,
             context_id=context_id,
+            entity_id=entity_id,
             entry=normalized_entry,
             data=raw_document_bytes,
             filename=filename,
@@ -623,15 +634,21 @@ def ingest_accepted_submission(
                 {
                     "docubridge.zone": "3_operational_store",
                     "docubridge.entity_id": entity_id,
+                    "entity_id": entity_id,
+                    "docubridge.context_id": context_id,
                     "docubridge.doc_id": entry.doc_id,
+                    "skill_id": entry.doctype,
+                    "skill_version": active_doc_skill.version,
+                    "source_mode": "PDF_PATH_B_ARGON",
+                    "docubridge.source_mode": "PDF_PATH_B_ARGON",
                     "docubridge.conflict_count": len(conflicts),
                     "gen_ai.system": "gemini_platform",
                     "gen_ai.operation.name": "call_llm",
                     "gen_ai.agent.name": "conflict_adjudicator",
                     "gen_ai.request.model": "gemini-4-argon",
+                    "gen_ai.response.model": "gemini-4-argon",
                     "docubridge.finops.traffic_type": "conflict_escalation",
-                    "gen_ai.usage.input_tokens": 2150,
-                    "gen_ai.usage.output_tokens": 480,
+                    "finops.traffic_type": "conflict_escalation",
                 },
             ):
                 pass

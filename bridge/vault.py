@@ -495,6 +495,7 @@ def promote_accepted_to_vault(
     vault: AuditVaultStore,
     *,
     context_id: str,
+    entity_id: str | None = None,
     entry: LedgerEntry,
     data: bytes,
     filename: str | None = None,
@@ -517,6 +518,9 @@ def promote_accepted_to_vault(
             f"only accepted entries can be promoted to the Audit Vault; "
             f"entry {entry.doc_id!r} has disposition={entry.disposition.value!r}"
         )
+    resolved_entity_id = (
+        entity_id.strip() if entity_id and entity_id.strip() else context_id
+    )
     resolved_name = (
         filename
         or (entry.artifact.name if entry.artifact and entry.artifact.name else None)
@@ -538,7 +542,9 @@ def promote_accepted_to_vault(
         "docubridge.intake.redact_pii",
         {
             "docubridge.zone": "2_intake_validation",
-            "docubridge.entity_id": context_id,
+            "docubridge.entity_id": resolved_entity_id,
+            "entity_id": resolved_entity_id,
+            "docubridge.context_id": context_id,
             "docubridge.doc_id": entry.doc_id,
             "docubridge.doctype": entry.doctype,
         },
@@ -547,7 +553,9 @@ def promote_accepted_to_vault(
     with trace_step(
         "docubridge.vault.lock_worm_artifact",
         {
-            "docubridge.entity_id": context_id,
+            "docubridge.entity_id": resolved_entity_id,
+            "entity_id": resolved_entity_id,
+            "docubridge.context_id": context_id,
             "docubridge.doc_id": entry.doc_id,
             "docubridge.doctype": entry.doctype,
             "docubridge.version": version,

@@ -59,6 +59,10 @@ SPIFFE_PUBLIC_KEY_PEM_ENV = "BRIDGE_SPIFFE_PUBLIC_KEY_PEM"
 USER_JWT_SECRET_ENV = "BRIDGE_USER_JWT_SECRET"
 DEFAULT_DEV_SVID_SECRET = "docubridge-spiffe-svid-signing-key-v1"
 SvidAlgorithmLiteral = Literal["HS256", "RS256", "ES256"]
+ALLOWED_SVID_ALGORITHMS: frozenset[str] = frozenset({"HS256", "RS256", "ES256"})
+EXTERNAL_COUNTERPARTY_TRUST_DOMAINS: frozenset[str] = frozenset(
+    {"agents.fnb.example", "external.docubridge.io"}
+)
 
 SPIFFE_SVID_HEADER = "x-bridge-spiffe-svid"
 SPIFFE_ID_HEADER = "x-bridge-spiffe-id"
@@ -203,6 +207,15 @@ DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
             "v_underwriter_exposure",
         ),
         allow_vault_promotion=True,
+    ),
+    "spiffe://agents.fnb.example/external/fnb-payoff-agent": SpiffeAgentPolicy(
+        spiffe_id="spiffe://agents.fnb.example/external/fnb-payoff-agent",
+        display_name="FNB External Counterparty Payoff Agent",
+        security_zone="external",
+        allowed_channels=("custom_web",),
+        allowed_roles=("client", "carrier"),
+        allowed_views=("v_broker_placement",),
+        allow_vault_promotion=False,
     ),
 }
 
@@ -464,6 +477,9 @@ def verify_jwt_svid(
     expected_audience: str | None = "docubridge",
     secret: str | None = None,
     public_key_pem: str | None = None,
+    expected_alg: SvidAlgorithmLiteral | None = None,
+    allowed_algorithms: frozenset[str] = ALLOWED_SVID_ALGORITHMS,
+    allowed_trust_domains: frozenset[str] | None = None,
     now_epoch: int | None = None,
 ) -> dict[str, Any]:
     """Cryptographically verify a SPIFFE JWT-SVID (`HS256`, `RS256`, or `ES256`) and return its claims."""
@@ -488,8 +504,25 @@ def verify_jwt_svid(
             raise SpiffeAuthenticationError("Invalid JWT-SVID JSON header.") from exc
 
         alg = header.get("alg")
-        if alg not in ("HS256", "RS256", "ES256"):
+        if (
+            not isinstance(alg, str)
+            or alg.lower() == "none"
+            or alg not in allowed_algorithms
+            or alg not in ALLOWED_SVID_ALGORITHMS
+        ):
             raise SpiffeAuthenticationError(f"Unsupported JWT-SVID algorithm '{alg}'.")
+        if expected_alg is not None and alg != expected_alg:
+            raise SpiffeAuthenticationError(
+                f"JWT-SVID algorithm '{alg}' does not match expected '{expected_alg}'."
+            )
+        if public_key_pem is not None and secret is None and alg == "HS256":
+            raise SpiffeAuthenticationError(
+                "Algorithm confusion blocked: refusing HS256 when public_key_pem is configured."
+            )
+        if secret is not None and public_key_pem is None and alg in ("RS256", "ES256"):
+            raise SpiffeAuthenticationError(
+                f"Algorithm confusion blocked: refusing {alg} when only HMAC secret is configured."
+            )
 
         signing_input = f"{h_b64}.{p_b64}".encode("ascii")
         actual_sig = _b64url_decode(s_b64)
@@ -505,7 +538,7 @@ def verify_jwt_svid(
             _verify_asymmetric_jws(
                 signing_input,
                 actual_sig,
-                algorithm=alg,
+                algorithm=alg,  # type: ignore[arg-type]
                 public_key_pem=resolved_pub,
             )
         else:
@@ -536,7 +569,23 @@ def verify_jwt_svid(
             or os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
             or DEFAULT_SPIFFE_TRUST_DOMAIN
         )
-        if parsed_id.trust_domain != trust_domain:
+        if allowed_trust_domains is not None:
+            domain_ok = parsed_id.trust_domain in allowed_trust_domains
+        elif (
+            expected_trust_domain is None
+            and not os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
+            and parsed_id.trust_domain in EXTERNAL_COUNTERPARTY_TRUST_DOMAINS
+        ):
+            if not parsed_id.path.startswith("external/"):
+                raise ShadowAgentError(
+                    f"External counterparty trust domain '{parsed_id.trust_domain}' "
+                    f"may only assert external/* SPIFFE paths (got '{parsed_id.path}')."
+                )
+            domain_ok = True
+        else:
+            domain_ok = parsed_id.trust_domain == trust_domain
+
+        if not domain_ok:
             raise ShadowAgentError(
                 f"Untrusted SPIFFE trust domain '{parsed_id.trust_domain}' "
                 f"(expected '{trust_domain}')."
@@ -624,7 +673,13 @@ def authorize_spiffe_agent(
             or os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
             or DEFAULT_SPIFFE_TRUST_DOMAIN
         )
-        if parsed.trust_domain != trust_domain:
+        is_allowed_external = (
+            expected_trust_domain is None
+            and not os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
+            and parsed.trust_domain in EXTERNAL_COUNTERPARTY_TRUST_DOMAINS
+            and parsed.path.startswith("external/")
+        )
+        if parsed.trust_domain != trust_domain and not is_allowed_external:
             raise ShadowAgentError(
                 f"SPIFFE ID '{spiffe_id}' belongs to untrusted domain '{parsed.trust_domain}' "
                 f"(expected '{trust_domain}')."
@@ -736,13 +791,104 @@ def parse_decimal_header(raw: str | None) -> Decimal | None:
         ) from exc
 
 
+def mint_user_token(
+    subject: str,
+    role: CatalogRoleLiteral,
+    *,
+    tenant_id: str | None = None,
+    allowed_entities: tuple[str, ...] = (),
+    carrier_slug: str | None = None,
+    max_approval_amount: Decimal | str | None = None,
+    ttl_seconds: int = 3600,
+    secret: str | None = None,
+    now_epoch: int | None = None,
+) -> str:
+    """Mint a signed HS256 user JWT token for `X-Bridge-User-Token`."""
+    now = int(now_epoch if now_epoch is not None else time.time())
+    header = {"alg": "HS256", "typ": "JWT"}
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "role": role,
+        "iat": now,
+        "exp": now + ttl_seconds,
+    }
+    if tenant_id:
+        payload["tenant_id"] = tenant_id
+    if allowed_entities:
+        payload["allowed_entities"] = list(allowed_entities)
+    if carrier_slug:
+        payload["carrier_slug"] = carrier_slug
+    if max_approval_amount is not None:
+        payload["max_approval_amount"] = str(max_approval_amount)
+    h_b64 = _b64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    p_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signing_input = f"{h_b64}.{p_b64}".encode("ascii")
+    signing_secret = (
+        (secret and secret.strip())
+        or os.environ.get(USER_JWT_SECRET_ENV, "").strip()
+        or _resolve_svid_signing_secret()
+    )
+    sig = hmac.new(
+        signing_secret.encode("utf-8"), signing_input, hashlib.sha256
+    ).digest()
+    return f"{h_b64}.{p_b64}.{_b64url_encode(sig)}"
+
+
+def verify_user_token(
+    token: str,
+    *,
+    secret: str | None = None,
+    now_epoch: int | None = None,
+) -> dict[str, Any]:
+    """Verify a signed HS256 user JWT token from `X-Bridge-User-Token`."""
+    raw = token.strip()
+    if raw.lower().startswith("bearer "):
+        raw = raw[7:].strip()
+    parts = raw.split(".")
+    if len(parts) != 3:
+        raise SpiffeAuthenticationError("Malformed user JWT: expected 3 segments.")
+    h_b64, p_b64, s_b64 = parts
+    try:
+        header = json.loads(_b64url_decode(h_b64).decode("utf-8"))
+    except Exception as exc:
+        raise SpiffeAuthenticationError("Invalid user JWT header.") from exc
+    alg = header.get("alg")
+    if alg != "HS256":
+        raise SpiffeAuthenticationError(
+            f"Unsupported user JWT algorithm '{alg}' (expected 'HS256')."
+        )
+    signing_input = f"{h_b64}.{p_b64}".encode("ascii")
+    actual_sig = _b64url_decode(s_b64)
+    signing_secret = (
+        (secret and secret.strip())
+        or os.environ.get(USER_JWT_SECRET_ENV, "").strip()
+        or _resolve_svid_signing_secret()
+    )
+    expected_sig = hmac.new(
+        signing_secret.encode("utf-8"), signing_input, hashlib.sha256
+    ).digest()
+    if not hmac.compare_digest(expected_sig, actual_sig):
+        raise SpiffeAuthenticationError("Invalid user JWT signature.")
+    try:
+        claims = json.loads(_b64url_decode(p_b64).decode("utf-8"))
+    except Exception as exc:
+        raise SpiffeAuthenticationError("Invalid user JWT payload.") from exc
+    now = int(now_epoch if now_epoch is not None else time.time())
+    exp = claims.get("exp")
+    if not isinstance(exp, int) or now > exp + 30:
+        raise SpiffeAuthenticationError("User JWT has expired.")
+    return dict(claims)
+
+
 __all__ = [
     "ALLOWED_ENTITIES_HEADER",
+    "ALLOWED_SVID_ALGORITHMS",
     "CARRIER_SLUG_HEADER",
     "DEFAULT_DEV_SVID_SECRET",
     "DEFAULT_ROLE_APPROVAL_LIMITS",
     "DEFAULT_SPIFFE_AGENT_POLICIES",
     "DEFAULT_SPIFFE_TRUST_DOMAIN",
+    "EXTERNAL_COUNTERPARTY_TRUST_DOMAINS",
     "MAX_APPROVAL_HEADER",
     "SPIFFE_ID_HEADER",
     "SPIFFE_PRIVATE_KEY_PEM_ENV",
@@ -767,7 +913,9 @@ __all__ = [
     "filter_quotes_for_principal",
     "generate_ephemeral_svid_keypair",
     "mint_jwt_svid",
+    "mint_user_token",
     "parse_decimal_header",
     "verify_google_oidc_token",
     "verify_jwt_svid",
+    "verify_user_token",
 ]

@@ -1,31 +1,31 @@
-output "dataset_id" {
-  description = "BigQuery dataset id for OpenTelemetry trace analytics (\"\" when disabled)."
-  value       = var.enable_telemetry_bq ? google_bigquery_dataset.telemetry[0].dataset_id : ""
+output "obs_traces_dataset_id" {
+  description = "Linked BigQuery dataset id for Cloud Observability _Trace bucket (_AllSpans) (\"\" when disabled)."
+  value       = var.enable_telemetry_bq ? "obs_traces" : ""
 }
 
-output "spans_table_fqn" {
-  description = "Fully qualified BigQuery table (project.dataset.table) injected as BRIDGE_TELEMETRY_BQ_TABLE (\"\" when disabled)."
-  value       = var.enable_telemetry_bq ? "${var.project_id}.${google_bigquery_dataset.telemetry[0].dataset_id}.${google_bigquery_table.otel_spans[0].table_id}" : ""
+output "obs_logs_dataset_id" {
+  description = "Linked BigQuery dataset id for Cloud Logging _Default analytics (_AllLogs) (\"\" when disabled)."
+  value       = var.enable_telemetry_bq ? google_logging_linked_dataset.obs_logs[0].link_id : ""
 }
 
-output "step_latency_view_fqn" {
-  description = "Fully qualified BigQuery view for step p50/p95/p99 latency analytics (\"\" when disabled)."
-  value       = var.enable_telemetry_bq ? "${var.project_id}.${google_bigquery_dataset.telemetry[0].dataset_id}.${google_bigquery_table.v_step_latency_analytics[0].table_id}" : ""
+output "genai_payloads_bucket_name" {
+  description = "Cloud Storage bucket name for GenAI completion hook JSONL payloads (\"\" when disabled)."
+  value       = var.enable_telemetry_bq ? google_storage_bucket.genai_payloads[0].name : ""
 }
 
-output "trace_waterfall_view_fqn" {
-  description = "Fully qualified BigQuery view for chronological trace waterfall (\"\" when disabled)."
-  value       = var.enable_telemetry_bq ? "${var.project_id}.${google_bigquery_dataset.telemetry[0].dataset_id}.${google_bigquery_table.v_trace_waterfall[0].table_id}" : ""
+output "genai_payloads_upload_base_path" {
+  description = "gs:// base URI injected as OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH (\"\" when disabled)."
+  value       = var.enable_telemetry_bq ? "gs://${google_storage_bucket.genai_payloads[0].name}/" : ""
 }
 
-output "entity_summary_view_fqn" {
-  description = "Fully qualified BigQuery view for per-entity pipeline trace summary (\"\" when disabled)."
-  value       = var.enable_telemetry_bq ? "${var.project_id}.${google_bigquery_dataset.telemetry[0].dataset_id}.${google_bigquery_table.v_entity_pipeline_summary[0].table_id}" : ""
+output "completions_table_fqn" {
+  description = "Fully qualified BigLake external table (project.agent_eval.completions) over GenAI payload JSONL files (\"\" when disabled)."
+  value       = var.enable_telemetry_bq ? "${var.project_id}.${google_bigquery_dataset.agent_eval[0].dataset_id}.${google_bigquery_table.completions[0].table_id}" : ""
 }
 
-output "trace_sql_evaluation_view_fqn" {
-  description = "Fully qualified BigQuery view for Rule 0 deterministic SQL trajectory evaluation and selective AI.GENERATE_TABLE sampling (\"\" when disabled)."
-  value       = var.enable_telemetry_bq ? "${var.project_id}.${google_bigquery_dataset.telemetry[0].dataset_id}.${google_bigquery_table.v_trace_sql_evaluation[0].table_id}" : ""
+output "apphub_application_ids" {
+  description = "Provisioned App Hub application IDs ([] when disabled)."
+  value       = var.enable_telemetry_bq ? sort([for k, v in google_apphub_application.apps : v.application_id]) : []
 }
 
 output "lakehouse_dataset_id" {

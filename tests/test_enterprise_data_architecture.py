@@ -662,10 +662,22 @@ def test_best_practice_p0_a2ui_principal_auth_and_role_spoofing_protection() -> 
     resp_unauth = client.get("/v1/a2ui/gemini_app/ent-auth-1?role=broker")
     assert resp_unauth.status_code == 401
 
-    # 2. Authenticated external client attempting to spoof ?role=broker -> 403
+    # 1b. Raw unverified X-Bridge-Role / X-Bridge-Principal headers are rejected when require_auth=True -> 401
+    resp_raw_spoof = client.get(
+        "/v1/a2ui/gemini_app/ent-auth-1",
+        headers={
+            "X-Bridge-Role": "broker",
+            "X-Bridge-Principal": "spoofed@docubridge.io",
+        },
+    )
+    assert resp_raw_spoof.status_code == 401
+
+    # 2. Authenticated external client (via IAP) attempting to spoof ?role=broker -> 403
     resp_spoof = client.get(
         "/v1/a2ui/gemini_app/ent-auth-1?role=broker",
-        headers={"X-Bridge-Role": "client"},
+        headers={
+            "X-Goog-Authenticated-User-Email": "accounts.google.com:client@external.example"
+        },
     )
     assert resp_spoof.status_code == 403
 
@@ -2393,19 +2405,15 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
     assert analytics_resp.status_code == 200
     analytics_data = analytics_resp.json()
     assert analytics_data["total_spans_analyzed"] > 10
-    assert analytics_data["bigquery_target"]["dataset_id"] == "docubridge_telemetry"
+    assert analytics_data["bigquery_target"]["dataset_id"] == "agent_eval"
     assert analytics_data["bigquery_target"]["table_id"] == "otel_spans"
     assert len(analytics_data["step_latency"]) >= 15
     assert len(analytics_data["trace_waterfall"]) >= 10
     assert len(analytics_data["entity_pipeline_summary"]) >= 1
 
-    bq_row = CloudTraceV2SpanExporter._to_bigquery_row(trace_spans[0])
-    assert (
-        bq_row["insertId"]
-        == f"{trace_spans[0]['trace_id']}:{trace_spans[0]['span_id']}"
-    )
-    assert bq_row["json"]["trace_id"] == custom_trace_id
-    assert "attributes_json" in bq_row["json"]
+    otlp_exporter = CloudTraceV2SpanExporter(project_id="test-project")
+    assert otlp_exporter._endpoint == "https://telemetry.googleapis.com/v1/traces"
+    assert trace_spans[0]["trace_id"] == custom_trace_id
 
 
 def test_mortgage_underwriting_day2_payoff_and_telemetry_xray() -> None:
@@ -2685,6 +2693,16 @@ def test_multimodel_split_otel_genai_and_3tier_harness_evolve() -> None:
     assert "SKILL.md" in compiled["skill_uri"]
 
     # 6. Verify OpenTelemetry gen_ai.* attributes and FinOps Multi-Model Split in /v1/telemetry/analytics
+    ingest_accepted_submission(
+        _make_accepted_entry(doc_id="doc-explicit-tokens-1"),
+        entity_id="LOAN-MERIDIAN-001",
+        context_id="ctx-explicit-tokens-1",
+        operational_store=op_store,
+        knowledge_catalog=catalog,
+        agent_gym=gym,
+        input_tokens=1420,
+        output_tokens=310,
+    )
     analytics_resp = client.get("/v1/telemetry/analytics?limit=500")
     assert analytics_resp.status_code == 200
     analytics = analytics_resp.json()
@@ -2710,7 +2728,7 @@ def test_multimodel_split_otel_genai_and_3tier_harness_evolve() -> None:
     assert "name" in first_wf
     assert "gen_ai_model" in first_wf
 
-    # 7. Verify BigQuery SQL Trace Evaluation (`v_trace_sql_evaluation` + `AI.GENERATE_TABLE`)
+    # 7. Verify BigQuery SQL Trace Evaluation (`v_step1_trace_eval` + `AI.GENERATE_TABLE`)
     assert "trace_sql_evaluation" in analytics
     assert "trace_sql_evaluation" in analytics["bigquery_target"]["views"]
     sql_eval = analytics["trace_sql_evaluation"]
@@ -2727,7 +2745,7 @@ def test_multimodel_split_otel_genai_and_3tier_harness_evolve() -> None:
 
     sql_eval_resp = client.post("/v1/telemetry/sql-eval/run")
     assert sql_eval_resp.status_code == 200
-    assert sql_eval_resp.json()["view_fqn"].endswith("v_trace_sql_evaluation")
+    assert sql_eval_resp.json()["view_fqn"].endswith("v_step1_trace_eval")
     assert client.get("/v1/telemetry/sql-eval").status_code == 200
 
 
@@ -3613,3 +3631,176 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> 
         "collab-overwatch-box",
     ):
         assert f'id="{expected_id}"' in demo_html
+
+
+def test_m1_native_otlp_outcome_attribution_and_step7_security_hardening() -> None:
+    """Verify M1 native OTLP telemetry, EVAL-P11 outcome attribution, vault entity_id,
+    and Step 7 JWT alg pinning + auth hardening."""
+    from bridge.a2ui_inbox import InMemoryActionInboxStore
+    from bridge.agent_gym import InMemoryAgentGymEngine
+    from bridge.identity import (
+        ShadowAgentError,
+        SpiffeAuthenticationError,
+        authorize_spiffe_agent,
+        generate_ephemeral_svid_keypair,
+        mint_jwt_svid,
+        mint_user_token,
+        verify_jwt_svid,
+    )
+    from bridge.telemetry import (
+        close_outcome,
+        format_outgoing_trace_headers,
+        get_telemetry_ring_buffer,
+        resume_outcome,
+        sanitize_inbound_headers,
+        start_outcome,
+        strip_outcome_baggage_headers,
+        trace_step,
+    )
+
+    ring = get_telemetry_ring_buffer()
+    ring.clear()
+
+    # 1. EVAL-P11 outcome lifecycle & BaggageSpanProcessor stamping
+    oid = start_outcome(owner="bridge-meridian")
+    assert oid.startswith("out_")
+    with trace_step(
+        "docubridge.extraction.gemini_extract",
+        {
+            "docubridge.entity_id": "LOAN-MERIDIAN-CONSOL-2026",
+            "docubridge.source_mode": "PATH_B_MULTIMODAL",
+            "docubridge.skill_id": "consolidation-payoff",
+            "docubridge.skill_version": "1.1.0",
+            "docubridge.finops.traffic_type": "production_inference",
+        },
+    ):
+        out_headers = format_outgoing_trace_headers(is_external=False)
+        ext_headers = format_outgoing_trace_headers(is_external=True)
+
+    assert f"outcome.id={oid}" in out_headers.get("baggage", "")
+    assert "outcome." not in ext_headers.get("baggage", "")
+
+    sanitized = sanitize_inbound_headers(
+        {"baggage": "outcome.id=out_spoofed123,tenant=acme"},
+        allow_outcome_resume=False,
+    )
+    assert "outcome.id" not in sanitized.get("baggage", "")
+    assert "tenant=acme" in sanitized.get("baggage", "")
+
+    stripped = strip_outcome_baggage_headers(
+        {"baggage": f"outcome.id={oid},outcome.owner=bridge-meridian,foo=bar"}
+    )
+    assert stripped.get("baggage") == "foo=bar"
+
+    resume_outcome(oid, owner="bridge-meridian")
+    close_outcome(
+        "succeeded",
+        subject="LOAN-MERIDIAN-CONSOL-2026",
+        outcome_id=oid,
+        owner="bridge-meridian",
+    )
+
+    spans = ring.get_spans(limit=50)
+    closed_spans = [s for s in spans if s["name"] == "outcome.closed"]
+    assert len(closed_spans) == 1
+    assert closed_spans[0]["attributes"]["outcome.id"] == oid
+    assert closed_spans[0]["attributes"]["outcome.status"] == "succeeded"
+    assert (
+        closed_spans[0]["attributes"]["outcome.subject"] == "LOAN-MERIDIAN-CONSOL-2026"
+    )
+    assert closed_spans[0]["duration_ms"] == 0.0
+
+    extract_spans = [
+        s for s in spans if s["name"] == "docubridge.extraction.gemini_extract"
+    ]
+    assert len(extract_spans) == 1
+    ext_attrs = extract_spans[0]["attributes"]
+    assert ext_attrs["outcome.id"] == oid
+    assert ext_attrs["outcome.owner"] == "bridge-meridian"
+    assert ext_attrs["entity_id"] == "LOAN-MERIDIAN-CONSOL-2026"
+    assert ext_attrs["source_mode"] == "PATH_B_MULTIMODAL"
+    assert ext_attrs["skill_id"] == "consolidation-payoff"
+    assert ext_attrs["skill_version"] == "1.1.0"
+    assert ext_attrs["finops.traffic_type"] == "production_inference"
+
+    # 2. Vault entity_id vs context_id separation
+    vault = InMemoryAuditVaultStore()
+    ring.clear()
+    promote_accepted_to_vault(
+        vault,
+        context_id="ctx-conversation-stable",
+        entity_id="LOAN-MERIDIAN-CONSOL-2026",
+        entry=_make_accepted_entry(doc_id="doc-vault-m1"),
+        data=b"%PDF-1.7 m1 test",
+        filename="m1.pdf",
+    )
+    vault_spans = [
+        s
+        for s in ring.get_spans(limit=20)
+        if s["name"] == "docubridge.vault.lock_worm_artifact"
+    ]
+    assert len(vault_spans) == 1
+    assert (
+        vault_spans[0]["attributes"]["docubridge.entity_id"]
+        == "LOAN-MERIDIAN-CONSOL-2026"
+    )
+    assert (
+        vault_spans[0]["attributes"]["docubridge.context_id"]
+        == "ctx-conversation-stable"
+    )
+
+    # 3. Step 7: JWT alg pinning, RS256->HS256 confusion defense, fnb-payoff-agent trust domain, and signed user token
+    _priv_pem, pub_pem = generate_ephemeral_svid_keypair("RS256")
+    confused_token = mint_jwt_svid(
+        "spiffe://agents.docubridge.io/internal/credit-officer-agent",
+        secret=pub_pem,
+        algorithm="HS256",
+    )
+    with pytest.raises(SpiffeAuthenticationError, match="Algorithm confusion"):
+        verify_jwt_svid(confused_token, public_key_pem=pub_pem)
+
+    fnb_svid = mint_jwt_svid("spiffe://agents.fnb.example/external/fnb-payoff-agent")
+    fnb_claims = verify_jwt_svid(fnb_svid)
+    assert fnb_claims["sub"] == "spiffe://agents.fnb.example/external/fnb-payoff-agent"
+    fnb_pol = authorize_spiffe_agent(
+        "spiffe://agents.fnb.example/external/fnb-payoff-agent",
+        channel="custom_web",
+        role="client",
+        target_view="v_broker_placement",
+    )
+    assert fnb_pol.security_zone == "external"
+
+    with pytest.raises(ShadowAgentError):
+        mint_internal_on_ext = mint_jwt_svid(
+            "spiffe://agents.fnb.example/internal/broker-agent"
+        )
+        verify_jwt_svid(mint_internal_on_ext)
+
+    store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=store)
+    inbox = InMemoryActionInboxStore()
+    gym = InMemoryAgentGymEngine()
+    store.ingest_entry(
+        _make_accepted_entry(doc_id="doc-u-1"),
+        entity_id="LOAN-MERIDIAN-001",
+        context_id="ctx-u-1",
+    )
+    app = build_user_interaction_app(
+        operational_store=store,
+        knowledge_catalog=catalog,
+        inbox_store=inbox,
+        agent_gym=gym,
+        require_auth=True,
+    )
+    client = TestClient(app)
+    user_jwt = mint_user_token(
+        "usr:underwriter@docubridge.io",
+        "underwriter",
+        allowed_entities=("LOAN-MERIDIAN-001",),
+    )
+    ok_user_resp = client.get(
+        "/v1/a2ui/gemini_app/LOAN-MERIDIAN-001",
+        headers={"X-Bridge-User-Token": f"Bearer {user_jwt}"},
+    )
+    assert ok_user_resp.status_code == 200
+    assert ok_user_resp.headers.get("x-outcome-id") == oid

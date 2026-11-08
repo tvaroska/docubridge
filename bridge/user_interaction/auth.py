@@ -17,12 +17,14 @@ from bridge.identity import (
     SPIFFE_REQUIRE_SVID_ENV,
     SPIFFE_SVID_HEADER,
     TENANT_ID_HEADER,
+    USER_TOKEN_HEADER,
     CompoundIdentity,
     SpiffeAuthenticationError,
     SpiffeId,
     UserPrincipal,
     parse_decimal_header,
     verify_jwt_svid,
+    verify_user_token,
 )
 from bridge.knowledge_catalog import AccessDecision, CatalogRole, DeliveryChannel
 
@@ -103,6 +105,18 @@ def encode_a2ui_envelope(envelope: A2uiDeliveryEnvelope) -> dict[str, Any]:
     return envelope.model_dump(mode="json")
 
 
+def _is_auth_enforced(require_auth: bool) -> bool:
+    """Return True when cryptographically verified authentication is required."""
+    if require_auth:
+        return True
+    if os.environ.get(A2UI_REQUIRE_AUTH_ENV, "").strip() == "1":
+        return True
+    return bool(
+        os.environ.get("K_SERVICE", "").strip()
+        and os.environ.get("BRIDGE_PORT_MODE", "").strip().lower() == "gcp"
+    )
+
+
 def resolve_caller_role(
     request: Request,
     *,
@@ -113,17 +127,17 @@ def resolve_caller_role(
 ) -> CatalogRole:
     """Resolve and verify the caller's ``CatalogRole`` from authenticated identity.
 
-    1. When an authenticated principal is present (via ``request.scope["user"]``,
-       Cloud Run IAP ``X-Goog-Authenticated-User-Email``, ``X-Bridge-Principal``, or
-       ``X-Bridge-Role``), its bound role is authoritative; a conflicting ``query_role``
-       is rejected with ``PermissionError`` (HTTP 403).
-    2. When ``require_auth`` (or ``BRIDGE_A2UI_REQUIRE_AUTH=1``) is enabled, any
-       unauthenticated request is rejected with ``AuthenticationRequiredError`` (HTTP 401).
-    3. In local/dev mode (``require_auth=False``), falls back to ``query_role``.
+    1. When ``require_auth`` (or ``BRIDGE_A2UI_REQUIRE_AUTH=1``, or ``K_SERVICE`` on GCP)
+       is enabled, raw unverified ``X-Bridge-Principal`` and ``X-Bridge-Role`` headers
+       are NOT trusted; only ``request.scope["user"]``, Cloud Run IAP
+       ``X-Goog-Authenticated-User-Email`` / ``x-goog-iap-jwt-assertion``, or a signed
+       ``X-Bridge-User-Token`` / ``X-Bridge-Spiffe-Svid`` is accepted.
+    2. When an authenticated principal is present, its bound role is authoritative; a
+       conflicting ``query_role`` is rejected with ``PermissionError`` (HTTP 403).
+    3. In local/dev mode (``require_auth=False``), falls back to ``X-Bridge-*`` headers
+       or ``query_role``.
     """
-    enforce_auth = require_auth or (
-        os.environ.get(A2UI_REQUIRE_AUTH_ENV, "").strip() == "1"
-    )
+    enforce_auth = _is_auth_enforced(require_auth)
     user = request.scope.get("user")
     is_scope_authed = bool(
         user is not None and getattr(user, "is_authenticated", False)
@@ -134,21 +148,46 @@ def resolve_caller_role(
         if ":" in iap_email_raw
         else iap_email_raw
     )
-    header_principal = request.headers.get("x-bridge-principal", "").strip()
-    header_role = request.headers.get("x-bridge-role", "").strip().lower()
+    user_token_header = request.headers.get(USER_TOKEN_HEADER, "").strip()
+    user_token_claims: dict[str, Any] = {}
+    if user_token_header:
+        try:
+            user_token_claims = verify_user_token(user_token_header)
+        except SpiffeAuthenticationError as exc:
+            raise AuthenticationRequiredError(str(exc)) from exc
+
+    header_principal = (
+        "" if enforce_auth else request.headers.get("x-bridge-principal", "").strip()
+    )
+    header_role = (
+        ""
+        if enforce_auth
+        else request.headers.get("x-bridge-role", "").strip().lower()
+    )
+
+    token_sub = str(user_token_claims.get("sub") or "").strip()
+    token_role_raw = str(user_token_claims.get("role") or "").strip().lower()
+    token_role: CatalogRole | None = (
+        cast(CatalogRole, token_role_raw) if token_role_raw in _VALID_ROLES else None
+    )
 
     principal_name = (
         (getattr(user, "display_name", None) or getattr(user, "username", None) or "")
         if is_scope_authed
-        else (iap_email or header_principal)
+        else (token_sub or iap_email or header_principal)
     )
     has_auth_identity = bool(
-        is_scope_authed or iap_email or header_principal or header_role
+        is_scope_authed
+        or token_sub
+        or token_role
+        or iap_email
+        or header_principal
+        or header_role
     )
 
-    verified_role: CatalogRole | None = None
+    verified_role: CatalogRole | None = token_role
     if has_auth_identity:
-        if principal_roles:
+        if verified_role is None and principal_roles:
             if principal_name in principal_roles:
                 verified_role = principal_roles[principal_name]
             elif iap_email_raw and iap_email_raw in principal_roles:
@@ -212,16 +251,25 @@ def resolve_compound_identity(
     require_svid: bool = False,
 ) -> CompoundIdentity:
     """Resolve and verify both the Human Principal (`sub`) and SPIFFE Agent (`act`)."""
+    enforce_auth = _is_auth_enforced(require_auth)
     enforce_svid = require_svid or (
         os.environ.get(SPIFFE_REQUIRE_SVID_ENV, "").strip() == "1"
     )
     svid_header = request.headers.get(SPIFFE_SVID_HEADER, "").strip()
     spiffe_id_header = request.headers.get(SPIFFE_ID_HEADER, "").strip()
+    user_token_header = request.headers.get(USER_TOKEN_HEADER, "").strip()
 
     agent_spiffe_id: str | None = None
     svid_verified = False
     obo_claims: dict[str, Any] = {}
+    user_token_claims: dict[str, Any] = {}
     audience: str | None = None
+
+    if user_token_header:
+        try:
+            user_token_claims = verify_user_token(user_token_header)
+        except SpiffeAuthenticationError as exc:
+            raise AuthenticationRequiredError(str(exc)) from exc
 
     if svid_header:
         try:
@@ -239,10 +287,10 @@ def resolve_compound_identity(
         if isinstance(claims.get("obo"), dict):
             obo_claims = dict(claims["obo"])
     elif spiffe_id_header:
-        if enforce_svid:
+        if enforce_svid or enforce_auth:
             raise AuthenticationRequiredError(
                 "Cryptographically signed SPIFFE JWT-SVID header 'X-Bridge-Spiffe-Svid' "
-                "is required (BRIDGE_SPIFFE_REQUIRE_SVID=1)."
+                "is required when auth is enforced."
             )
         try:
             parsed = SpiffeId.parse(spiffe_id_header)
@@ -255,7 +303,7 @@ def resolve_compound_identity(
             "(BRIDGE_SPIFFE_REQUIRE_SVID=1)."
         )
 
-    obo_role_raw = obo_claims.get("role")
+    obo_role_raw = obo_claims.get("role") or user_token_claims.get("role")
     obo_role: CatalogRole | None = (
         cast(CatalogRole, obo_role_raw)
         if isinstance(obo_role_raw, str) and obo_role_raw in _VALID_ROLES
@@ -280,39 +328,69 @@ def resolve_compound_identity(
     )
 
     iap_email = request.headers.get("x-goog-authenticated-user-email", "").strip()
-    header_principal = request.headers.get("x-bridge-principal", "").strip()
+    header_principal = (
+        "" if enforce_auth else request.headers.get("x-bridge-principal", "").strip()
+    )
     subject = (
-        str(obo_claims.get("sub") or "")
+        str(obo_claims.get("sub") or user_token_claims.get("sub") or "")
         or iap_email
         or header_principal
         or f"role:{resolved_role}"
     )
 
     tenant_id = (
-        str(obo_claims.get("tenant_id") or "")
-        or request.headers.get(TENANT_ID_HEADER, "").strip()
+        str(obo_claims.get("tenant_id") or user_token_claims.get("tenant_id") or "")
+        or (
+            ""
+            if enforce_auth
+            else request.headers.get(TENANT_ID_HEADER, "").strip()
+        )
         or None
     )
-    raw_entities_header = request.headers.get(ALLOWED_ENTITIES_HEADER, "").strip()
+    raw_entities_header = (
+        ""
+        if enforce_auth
+        else request.headers.get(ALLOWED_ENTITIES_HEADER, "").strip()
+    )
     header_entities = tuple(
         e.strip() for e in raw_entities_header.split(",") if e.strip()
     )
     obo_entities = (
         tuple(str(e) for e in obo_claims["allowed_entities"])
         if isinstance(obo_claims.get("allowed_entities"), list)
-        else ()
+        else (
+            tuple(str(e) for e in user_token_claims["allowed_entities"])
+            if isinstance(user_token_claims.get("allowed_entities"), list)
+            else ()
+        )
     )
     allowed_entities = obo_entities or header_entities
 
     carrier_slug = (
-        str(obo_claims.get("carrier_slug") or "")
-        or request.headers.get(CARRIER_SLUG_HEADER, "").strip()
+        str(
+            obo_claims.get("carrier_slug")
+            or user_token_claims.get("carrier_slug")
+            or ""
+        )
+        or (
+            ""
+            if enforce_auth
+            else request.headers.get(CARRIER_SLUG_HEADER, "").strip()
+        )
         or None
     )
     max_approval_raw = (
         str(obo_claims["max_approval_amount"])
         if "max_approval_amount" in obo_claims
-        else request.headers.get(MAX_APPROVAL_HEADER, "").strip()
+        else (
+            str(user_token_claims["max_approval_amount"])
+            if "max_approval_amount" in user_token_claims
+            else (
+                ""
+                if enforce_auth
+                else request.headers.get(MAX_APPROVAL_HEADER, "").strip()
+            )
+        )
     )
     try:
         max_approval = parse_decimal_header(max_approval_raw)
@@ -321,7 +399,7 @@ def resolve_compound_identity(
 
     via: Literal["jwt", "iap", "header", "query_dev"] = (
         "jwt"
-        if svid_verified and obo_claims
+        if (svid_verified and obo_claims) or user_token_claims
         else ("iap" if iap_email else ("header" if header_principal else "query_dev"))
     )
     user_principal = UserPrincipal(

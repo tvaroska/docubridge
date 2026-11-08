@@ -41,13 +41,38 @@ output "docai_grant" {
 }
 
 output "runtime_service_name" {
-  description = "The Cloud Run runtime service name."
+  description = "The primary KYC Cloud Run runtime service name (bridge-kyc)."
   value       = module.runtime.service_name
 }
 
 output "runtime_service_uri" {
-  description = "The Cloud Run runtime service URI."
+  description = "The primary KYC Cloud Run runtime service URI (bridge-kyc)."
   value       = module.runtime.service_uri
+}
+
+output "kyc_service_name" {
+  description = "The KYC Address Verification Cloud Run service name (bridge-kyc)."
+  value       = module.runtime.kyc_service_name
+}
+
+output "kyc_service_uri" {
+  description = "The KYC Address Verification Cloud Run service URI (bridge-kyc)."
+  value       = module.runtime.kyc_service_uri
+}
+
+output "rfp_service_name" {
+  description = "The Benefits RFP Procurement Cloud Run service name (bridge-rfp; \"\" when disabled)."
+  value       = module.runtime.rfp_service_name
+}
+
+output "meridian_service_name" {
+  description = "The Meridian Loan Consolidation Cloud Run service name (bridge-meridian)."
+  value       = module.runtime.meridian_service_name
+}
+
+output "meridian_service_uri" {
+  description = "The Meridian Loan Consolidation Cloud Run service URI (bridge-meridian)."
+  value       = module.runtime.meridian_service_uri
 }
 
 output "runtime_ingress" {
@@ -194,34 +219,29 @@ output "email_drain_job" {
   value       = module.runtime.email_drain_job
 }
 
-output "telemetry_bq_dataset_id" {
-  description = "BigQuery dataset id for OpenTelemetry trace analytics (\"\" when disabled)."
-  value       = module.telemetry.dataset_id
+output "telemetry_obs_traces_dataset_id" {
+  description = "Linked BigQuery dataset id for Cloud Observability _Trace bucket (_AllSpans) (\"\" when disabled)."
+  value       = module.telemetry.obs_traces_dataset_id
 }
 
-output "telemetry_bq_spans_table" {
-  description = "Fully qualified BigQuery table (project.dataset.otel_spans) for OpenTelemetry trace spans (\"\" when disabled)."
-  value       = module.telemetry.spans_table_fqn
+output "telemetry_obs_logs_dataset_id" {
+  description = "Linked BigQuery dataset id for Cloud Logging _Default analytics (_AllLogs) (\"\" when disabled)."
+  value       = module.telemetry.obs_logs_dataset_id
 }
 
-output "telemetry_bq_step_latency_view" {
-  description = "Fully qualified BigQuery view for step p50/p95/p99 latency analytics (\"\" when disabled)."
-  value       = module.telemetry.step_latency_view_fqn
+output "telemetry_genai_payloads_bucket_name" {
+  description = "Cloud Storage bucket name for GenAI completion hook JSONL payloads (\"\" when disabled)."
+  value       = module.telemetry.genai_payloads_bucket_name
 }
 
-output "telemetry_bq_trace_waterfall_view" {
-  description = "Fully qualified BigQuery view for chronological trace waterfall (\"\" when disabled)."
-  value       = module.telemetry.trace_waterfall_view_fqn
+output "telemetry_completions_table_fqn" {
+  description = "Fully qualified BigLake external table (project.docubridge_lakehouse.completions) over GenAI payload JSONL files (\"\" when disabled)."
+  value       = module.telemetry.completions_table_fqn
 }
 
-output "telemetry_bq_entity_summary_view" {
-  description = "Fully qualified BigQuery view for per-entity pipeline trace summary (\"\" when disabled)."
-  value       = module.telemetry.entity_summary_view_fqn
-}
-
-output "telemetry_bq_trace_sql_evaluation_view" {
-  description = "Fully qualified BigQuery view for Rule 0 deterministic SQL trajectory evaluation and selective AI.GENERATE_TABLE sampling (\"\" when disabled)."
-  value       = module.telemetry.trace_sql_evaluation_view_fqn
+output "telemetry_apphub_application_ids" {
+  description = "Provisioned App Hub application IDs ([] when disabled)."
+  value       = module.telemetry.apphub_application_ids
 }
 
 output "telemetry_lakehouse_dataset_id" {

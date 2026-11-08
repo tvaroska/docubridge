@@ -26,8 +26,8 @@ locals {
   # accepted (local/dev default). Production sets enable_gateway = true.
   ingress = var.enable_gateway ? "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER" : "INGRESS_TRAFFIC_ALL"
 
-  # The plan-time-knowable deterministic Cloud Run URL for this service.
-  default_service_url = "https://${var.service_name}-${data.google_project.this.number}.${var.region}.run.app"
+  # The plan-time-knowable deterministic Cloud Run URL for the KYC edge service.
+  default_service_url = "https://${var.kyc_service_name}-${data.google_project.this.number}.${var.region}.run.app"
 
   # Public URL the served Agent Card advertises. Explicit override wins (the
   # gateway/domain URL); else, when the gateway does NOT front the service, the
@@ -41,53 +41,86 @@ locals {
   # wired (no queue → no callback env, matching the P7-1 default).
   effective_callback_url = var.followup_callback_url != "" ? var.followup_callback_url : (var.tasks_queue_path != "" ? "${local.default_service_url}/followups" : "")
 
-  # The RFP board service (S0-arch-17) and its deterministic run.app URL — the Cloud
-  # Scheduler target + OIDC audience. Plan-time-known (the same trick as
-  # default_service_url); the resource's own .uri is unknown at plan time.
-  board_service_name = "${var.service_name}-rfp-board"
+  # The per-app RFP service (bridge-rfp, App Hub: benefits-rfp-procurement) and its
+  # deterministic run.app URL — the Cloud Scheduler target + OIDC audience.
+  board_service_name = var.rfp_service_name
   board_service_url  = "https://${local.board_service_name}-${data.google_project.this.number}.${var.region}.run.app"
 
-  # The board service's PLAIN envs (names / identifiers / modes — no secrets), each
-  # dropped when empty. BRIDGE_PUBLIC_URL is the A2A edge's URL on purpose: the
-  # processor's artifact refs point at the edge's /artifacts fetch route (shared
-  # artifacts bucket). BRIDGE_EMAIL_DRAIN_INTERVAL = 0: Cloud Run (request-based CPU)
-  # starves a background loop between requests, so the drain runs inside the
-  # Scheduler's request instead. BRIDGE_RUNTIME_SA_EMAIL + BRIDGE_GATEWAY_HOST are the
-  # a2a_client gcp adapter's config (the OIDC token SA + the Gateway-authorized host):
-  # the board's operator chase route (POST /rfps/{id}/chase) sends through it, and
-  # 503s without both (S0-arch-19).
+  # The per-app Meridian service (bridge-meridian, App Hub: meridian-loan-consolidation).
+  meridian_service_name = var.meridian_service_name
+  meridian_service_url  = "https://${local.meridian_service_name}-${data.google_project.this.number}.${var.region}.run.app"
+  genai_upload_base     = "gs://${var.project_id}-genai-payloads/"
+
   board_plain_env = {
-    BRIDGE_RFP_PROCESS                         = var.rfp_process
-    BRIDGE_RUNTIME_SA_EMAIL                    = var.runtime_sa_email
-    BRIDGE_GATEWAY_HOST                        = var.gateway_host
-    BRIDGE_PORT_MODE                           = var.port_mode
-    BRIDGE_ARTIFACT_BUCKET                     = var.artifacts_bucket
-    BRIDGE_VAULT_BUCKET                        = var.vault_bucket
-    BRIDGE_SKILLS_BUCKET                       = var.skills_bucket
-    BRIDGE_EXTRACTION_ENGINE                   = var.extraction_engine
-    BRIDGE_DOCAI_PROCESSOR                     = var.docai_processor
-    BRIDGE_AGENT_ENGINE_ID                     = var.agent_engine_id
-    BRIDGE_AGENT_ENGINE_REMOTE                 = var.agent_engine_remote
-    BRIDGE_TELEMETRY_BQ_TABLE                  = var.telemetry_bq_table
-    BRIDGE_DEFAULT_DEMO_DOMAIN                 = var.default_demo_domain
-    BRIDGE_EMPTY_CATALOG_ON_START              = var.empty_catalog_on_start ? "1" : ""
-    GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY = var.agent_engine_id != "" ? "true" : ""
-    BRIDGE_MODEL                               = var.agent_engine_id != "" ? "gemini-3.8-flash" : ""
-    BRIDGE_REASONING_MODEL                     = var.agent_engine_id != "" ? "gemini-4-argon" : ""
-    GOOGLE_GENAI_USE_VERTEXAI                  = var.port_mode == "gcp" ? "TRUE" : ""
-    GOOGLE_CLOUD_PROJECT                       = var.port_mode == "gcp" ? var.project_id : ""
-    GOOGLE_CLOUD_LOCATION                      = var.port_mode == "gcp" ? var.vertex_location : ""
-    BRIDGE_VERTEX_LOCATION                     = var.port_mode == "gcp" ? var.vertex_location : ""
-    BRIDGE_PUBLIC_URL                          = local.effective_public_url
-    BRIDGE_EMAIL_BUCKET                        = var.email_bucket
-    BRIDGE_EMAIL_MAILBOX                       = var.email_mailbox
-    BRIDGE_EMAIL_DRAIN_INTERVAL                = "0"
+    BRIDGE_RFP_PROCESS                                 = var.rfp_process
+    BRIDGE_RUNTIME_SA_EMAIL                            = var.runtime_sa_email
+    BRIDGE_GATEWAY_HOST                                = var.gateway_host
+    BRIDGE_PORT_MODE                                   = var.port_mode
+    BRIDGE_ARTIFACT_BUCKET                             = var.artifacts_bucket
+    BRIDGE_VAULT_BUCKET                                = var.vault_bucket
+    BRIDGE_SKILLS_BUCKET                               = var.skills_bucket
+    BRIDGE_EXTRACTION_ENGINE                           = var.extraction_engine
+    BRIDGE_DOCAI_PROCESSOR                             = var.docai_processor
+    BRIDGE_AGENT_ENGINE_ID                             = var.agent_engine_id
+    BRIDGE_AGENT_ENGINE_REMOTE                         = var.agent_engine_remote
+    BRIDGE_DEFAULT_DEMO_DOMAIN                         = var.default_demo_domain
+    BRIDGE_EMPTY_CATALOG_ON_START                      = var.empty_catalog_on_start ? "1" : ""
+    GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY         = var.agent_engine_id != "" ? "true" : ""
+    BRIDGE_MODEL                                       = var.agent_engine_id != "" ? "gemini-3.8-flash" : ""
+    BRIDGE_REASONING_MODEL                             = var.agent_engine_id != "" ? "gemini-4-argon" : ""
+    GOOGLE_GENAI_USE_VERTEXAI                          = var.port_mode == "gcp" ? "TRUE" : ""
+    GOOGLE_CLOUD_PROJECT                               = var.port_mode == "gcp" ? var.project_id : ""
+    GOOGLE_CLOUD_LOCATION                              = var.port_mode == "gcp" ? var.vertex_location : ""
+    BRIDGE_VERTEX_LOCATION                             = var.port_mode == "gcp" ? var.vertex_location : ""
+    BRIDGE_PUBLIC_URL                                  = local.effective_public_url
+    BRIDGE_EMAIL_BUCKET                                = var.email_bucket
+    BRIDGE_EMAIL_MAILBOX                               = var.email_mailbox
+    BRIDGE_EMAIL_DRAIN_INTERVAL                        = "0"
+    OTEL_SERVICE_NAME                                  = local.board_service_name
+    OTEL_EXPORTER_OTLP_ENDPOINT                        = "https://telemetry.googleapis.com"
+    OTEL_RESOURCE_ATTRIBUTES                           = "gcp.project_id=${var.project_id},service.name=${local.board_service_name},apphub.application.id=benefits-rfp-procurement"
+    OTEL_SEMCONV_STABILITY_OPT_IN                      = "gen_ai_latest_experimental"
+    OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT = "EVENT_ONLY"
+    OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK         = "upload"
+    OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH        = local.genai_upload_base
+    BRIDGE_APPHUB_APPLICATION_ID                       = "benefits-rfp-procurement"
+  }
+
+  meridian_plain_env = {
+    BRIDGE_RUNTIME_SA_EMAIL                            = var.runtime_sa_email
+    BRIDGE_GATEWAY_HOST                                = var.gateway_host
+    BRIDGE_PORT_MODE                                   = var.port_mode
+    BRIDGE_ARTIFACT_BUCKET                             = var.artifacts_bucket
+    BRIDGE_VAULT_BUCKET                                = var.vault_bucket
+    BRIDGE_SKILLS_BUCKET                               = var.skills_bucket
+    BRIDGE_EXTRACTION_ENGINE                           = var.extraction_engine
+    BRIDGE_DOCAI_PROCESSOR                             = var.docai_processor
+    BRIDGE_AGENT_ENGINE_ID                             = var.agent_engine_id
+    BRIDGE_AGENT_ENGINE_REMOTE                         = var.agent_engine_remote
+    BRIDGE_DEFAULT_DEMO_DOMAIN                         = var.default_demo_domain != "" ? var.default_demo_domain : "banking"
+    BRIDGE_EMPTY_CATALOG_ON_START                      = var.empty_catalog_on_start ? "1" : ""
+    GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY         = var.agent_engine_id != "" ? "true" : ""
+    BRIDGE_MODEL                                       = var.agent_engine_id != "" ? "gemini-3.8-flash" : ""
+    BRIDGE_REASONING_MODEL                             = var.agent_engine_id != "" ? "gemini-4-argon" : ""
+    GOOGLE_GENAI_USE_VERTEXAI                          = var.port_mode == "gcp" ? "TRUE" : ""
+    GOOGLE_CLOUD_PROJECT                               = var.port_mode == "gcp" ? var.project_id : ""
+    GOOGLE_CLOUD_LOCATION                              = var.port_mode == "gcp" ? var.vertex_location : ""
+    BRIDGE_VERTEX_LOCATION                             = var.port_mode == "gcp" ? var.vertex_location : ""
+    BRIDGE_PUBLIC_URL                                  = local.meridian_service_url
+    OTEL_SERVICE_NAME                                  = local.meridian_service_name
+    OTEL_EXPORTER_OTLP_ENDPOINT                        = "https://telemetry.googleapis.com"
+    OTEL_RESOURCE_ATTRIBUTES                           = "gcp.project_id=${var.project_id},service.name=${local.meridian_service_name},apphub.application.id=meridian-loan-consolidation"
+    OTEL_SEMCONV_STABILITY_OPT_IN                      = "gen_ai_latest_experimental"
+    OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT = "EVENT_ONLY"
+    OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK         = "upload"
+    OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH        = local.genai_upload_base
+    BRIDGE_APPHUB_APPLICATION_ID                       = "meridian-loan-consolidation"
   }
 }
 
 resource "google_cloud_run_v2_service" "bridge" {
   project              = var.project_id
-  name                 = var.service_name
+  name                 = var.kyc_service_name
   location             = var.region
   ingress              = local.ingress
   invoker_iam_disabled = var.invoker_iam_disabled
@@ -323,12 +356,37 @@ resource "google_cloud_run_v2_service" "bridge" {
         }
       }
 
-      dynamic "env" {
-        for_each = var.telemetry_bq_table != "" ? [1] : []
-        content {
-          name  = "BRIDGE_TELEMETRY_BQ_TABLE"
-          value = var.telemetry_bq_table
-        }
+      env {
+        name  = "OTEL_SERVICE_NAME"
+        value = var.kyc_service_name
+      }
+      env {
+        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        value = "https://telemetry.googleapis.com"
+      }
+      env {
+        name  = "OTEL_RESOURCE_ATTRIBUTES"
+        value = "gcp.project_id=${var.project_id},service.name=${var.kyc_service_name},apphub.application.id=kyc-address-verification"
+      }
+      env {
+        name  = "OTEL_SEMCONV_STABILITY_OPT_IN"
+        value = "gen_ai_latest_experimental"
+      }
+      env {
+        name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+        value = "EVENT_ONLY"
+      }
+      env {
+        name  = "OTEL_INSTRUMENTATION_GENAI_COMPLETION_HOOK"
+        value = "upload"
+      }
+      env {
+        name  = "OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH"
+        value = local.genai_upload_base
+      }
+      env {
+        name  = "BRIDGE_APPHUB_APPLICATION_ID"
+        value = "kyc-address-verification"
       }
 
       dynamic "env" {
@@ -646,4 +704,81 @@ resource "google_cloud_scheduler_job" "email_drain" {
   }
 
   depends_on = [google_cloud_run_v2_service_iam_member.rfp_board_invoker]
+}
+
+# ---------------------------------------------------------------------------
+# Meridian Loan Consolidation service (`bridge-meridian`, App Hub application:
+# `meridian-loan-consolidation`) — serves `/ebc`, `/demo`, `/console`, and A2UI
+# surfaces from the same container image, registered in its own App Hub application.
+# ---------------------------------------------------------------------------
+resource "google_cloud_run_v2_service" "bridge_meridian" {
+  project              = var.project_id
+  name                 = local.meridian_service_name
+  location             = var.region
+  ingress              = local.ingress
+  invoker_iam_disabled = var.invoker_iam_disabled
+  labels               = var.labels
+
+  deletion_protection = var.deletion_protection
+
+  template {
+    service_account = var.service_account_email
+
+    scaling {
+      min_instance_count = var.min_instances
+    }
+
+    containers {
+      image   = var.container_image
+      command = ["python"]
+      args    = ["-c", "from bridge.dashboard.board_host import serve_rfp_board_container; serve_rfp_board_container()"]
+
+      resources {
+        cpu_idle = var.cpu_idle
+      }
+
+      dynamic "env" {
+        for_each = { for k, v in local.meridian_plain_env : k => v if v != "" }
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.db_url_secret_id != "" ? [1] : []
+        content {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = var.db_url_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.spiffe_svid_secret_id != "" ? [1] : []
+        content {
+          name = "BRIDGE_SPIFFE_SVID_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = var.spiffe_svid_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+    }
+
+    vpc_access {
+      egress = "PRIVATE_RANGES_ONLY"
+
+      network_interfaces {
+        network    = var.vpc_network
+        subnetwork = var.egress_subnet
+      }
+    }
+  }
 }

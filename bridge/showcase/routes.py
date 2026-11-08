@@ -308,6 +308,12 @@ def _register_legacy_aliases(router: APIRouter, engine: ScenarioEngine) -> None:
         """Seed baseline bi-temporal facts and lineage for every scenario with a `seed` block."""
         return engine.seed_all()
 
+    @router.post("/v1/demo/reset")
+    def reset_demo_scenarios_endpoint() -> dict[str, Any]:
+        """Reset all live showcase scenarios and close any open outcomes as abandoned."""
+        engine.reset_all()
+        return {"status": "reset"}
+
     @router.get("/v1/demo/consolidation-collab/state")
     def get_consolidation_collab_state_endpoint() -> dict[str, Any]:
         """Current beat state of the default consolidation scenario (legacy alias)."""

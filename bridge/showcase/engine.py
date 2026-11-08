@@ -15,6 +15,12 @@ from bridge.showcase.context import OperationContext
 from bridge.showcase.loader import discover_manifests
 from bridge.showcase.operations import VIEW_BUILDERS, resolve_operation
 from bridge.showcase.pdf_assets import RenderedPdf, render_pdf_asset
+from bridge.telemetry import (
+    close_outcome,
+    resume_outcome,
+    start_outcome,
+    without_outcome_baggage,
+)
 from bridge.user_interaction.surfaces import ingest_accepted_submission
 from bridge.vault import AuditVaultStore
 from contract.enums import Disposition, Gate
@@ -168,14 +174,44 @@ class ScenarioEngine:
             payload=payload,
         )
 
+    def _close_open_outcome_if_any(
+        self, ctx: OperationContext | None, status: str = "abandoned"
+    ) -> None:
+        if ctx is None:
+            return
+        outcome_id = ctx.state.get("outcome_id")
+        if outcome_id and not ctx.state.get("_outcome_closed"):
+            close_outcome(
+                status,
+                subject=ctx.entity_id,
+                owner="meridian-loan-consolidation",
+                outcome_id=str(outcome_id),
+            )
+            ctx.state["_outcome_closed"] = True
+            from opentelemetry import context as otel_context
+
+            otel_context.attach(without_outcome_baggage())
+
+    def _ensure_outcome_active(self, ctx: OperationContext) -> str:
+        owner = "meridian-loan-consolidation"
+        existing = ctx.state.get("outcome_id")
+        if existing:
+            return resume_outcome(str(existing), owner=owner)
+        minted = start_outcome(owner=owner)
+        ctx.state["outcome_id"] = minted
+        return minted
+
     def reset(self, scenario_id: str) -> ScenarioState:
         manifest = self.get(scenario_id)
         self._claim_refinery(manifest)
-        self._contexts.pop(scenario_id, None)
+        old_ctx = self._contexts.pop(scenario_id, None)
+        self._close_open_outcome_if_any(old_ctx, status="abandoned")
         self._custom_pdfs.pop(scenario_id, None)
         return self.state(scenario_id)
 
     def reset_all(self) -> None:
+        for old_ctx in list(self._contexts.values()):
+            self._close_open_outcome_if_any(old_ctx, status="abandoned")
         self._contexts.clear()
         self._custom_pdfs.clear()
         if self.refinery is not None:
@@ -185,6 +221,7 @@ class ScenarioEngine:
     def run_beat(self, scenario_id: str, beat: int) -> None:
         """Execute one beat's operations against the live state (no ordering checks)."""
         ctx = self._ctx(scenario_id)
+        self._ensure_outcome_active(ctx)
         stage = ctx.manifest.stage
         if stage is None:
             raise ValueError(f"scenario {scenario_id!r} has no stage")
@@ -194,6 +231,8 @@ class ScenarioEngine:
         for op in target.operations:
             resolve_operation(op.name)(ctx, op.params)
         ctx.state["beat"] = max(int(ctx.state.get("beat", 0)), beat)
+        if ctx.state.get("done") and not ctx.state.get("_outcome_closed"):
+            self._close_open_outcome_if_any(ctx, status="succeeded")
 
     def advance(self, scenario_id: str, to_beat: int) -> ScenarioBeatResult:
         manifest = self.get(scenario_id)
@@ -206,9 +245,11 @@ class ScenarioEngine:
         ctx = self._ctx(scenario_id)
         current = int(ctx.state.get("beat", 0))
         if to_beat < current:
-            self._contexts.pop(scenario_id, None)
+            old_ctx = self._contexts.pop(scenario_id, None)
+            self._close_open_outcome_if_any(old_ctx, status="abandoned")
             ctx = self._ctx(scenario_id)
             current = 0
+        self._ensure_outcome_active(ctx)
         executed: list[int] = []
         for beat in range(current + 1, to_beat + 1):
             self.run_beat(scenario_id, beat)

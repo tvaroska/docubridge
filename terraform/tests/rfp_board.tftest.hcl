@@ -89,8 +89,8 @@ run "runtime_enabled_board_internal_runtime_sa_scheduler_drain" {
   }
 
   assert {
-    condition     = google_cloud_run_v2_service.rfp_board[0].name == "bridge-runtime-rfp-board"
-    error_message = "the board service must be <service_name>-rfp-board"
+    condition     = google_cloud_run_v2_service.rfp_board[0].name == "bridge-rfp"
+    error_message = "the board service must be bridge-rfp"
   }
   assert {
     condition     = google_cloud_run_v2_service.rfp_board[0].template[0].service_account == var.runtime_email
@@ -177,7 +177,7 @@ run "runtime_enabled_board_internal_runtime_sa_scheduler_drain" {
   assert {
     condition = (google_cloud_scheduler_job.email_drain[0].http_target[0].http_method == "POST"
       && endswith(google_cloud_scheduler_job.email_drain[0].http_target[0].uri, "/email/drain")
-      && startswith(google_cloud_scheduler_job.email_drain[0].http_target[0].uri, "https://bridge-runtime-rfp-board-")
+      && startswith(google_cloud_scheduler_job.email_drain[0].http_target[0].uri, "https://bridge-rfp-")
     && strcontains(google_cloud_scheduler_job.email_drain[0].http_target[0].uri, ".us-central1.run.app/"))
     error_message = "the Scheduler must POST /email/drain on the board's deterministic run.app URL"
   }

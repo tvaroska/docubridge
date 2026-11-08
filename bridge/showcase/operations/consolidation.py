@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import contextlib
 import copy
-import uuid
 from collections.abc import Iterator
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -21,7 +20,14 @@ from bridge.a2ui_inbox import (
 from bridge.agent_gym import TribalRuleCategory
 from bridge.showcase.context import OperationContext
 from bridge.showcase.operations import operation, view_builder
-from bridge.telemetry import trace_step
+from bridge.telemetry import (
+    close_outcome,
+    get_current_outcome_id,
+    get_current_outcome_owner,
+    resume_outcome,
+    start_outcome,
+    trace_step,
+)
 from bridge.user_interaction.surfaces import ingest_accepted_submission
 from contract.extraction import SourceAnchor
 from contract.wire import Disposition, Gate, LedgerEntry
@@ -91,10 +97,15 @@ def _ingest_one(
         if asset_id
         else doc.get("raw_document_marker", "%PDF-1.7").encode()
     )
+    doc_ver_map = ctx.state.setdefault("_doc_versions", {})
+    ver_key = f"{context_id}:{entry.doc_id}"
+    doc_version = int(doc_ver_map.get(ver_key, 0)) + 1
+    doc_ver_map[ver_key] = doc_version
     res = ingest_accepted_submission(
         entry,
         entity_id=ctx.entity_for(doc.get("entity")),
         context_id=context_id,
+        version=doc_version,
         raw_document_bytes=raw,
         filename=doc.get("filename"),
         operational_store=ctx.store,
@@ -119,7 +130,9 @@ def _ingest_one(
 def ingest_documents(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any]:
     """Vault-lock + ingest the listed documents; results become `${doc:<alias>.*}`."""
     named = {k: _anchor(v) for k, v in (params.get("anchors") or {}).items()}
-    context_id = f"{params.get('context_prefix', 'ctx')}-{uuid.uuid4().hex[:8]}"
+    prefix = str(params.get("context_prefix", "ctx"))
+    conv_map = ctx.state.setdefault("_conversation_context_ids", {})
+    context_id = conv_map.setdefault(prefix, f"{prefix}-{ctx.manifest.id}")
     with _optional_trace(ctx, params.get("trace")):
         return {
             doc["alias"]: _ingest_one(
@@ -165,6 +178,10 @@ def patch_state(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any]
 @operation("inbox_waiver")
 def inbox_waiver(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any]:
     """Create + resolve the 1-click A2UI inbox action; exposes `${inbox_item_id}` etc."""
+    stored_outcome_id = ctx.state.get("outcome_id") or get_current_outcome_id()
+    owner = get_current_outcome_owner() or "meridian-loan-consolidation"
+    if stored_outcome_id:
+        resume_outcome(str(stored_outcome_id), owner=owner)
     with _optional_trace(ctx, params.get("trace")):
         citation = ActionCitation(**ctx.render(params["citation"]))
         steps = []
@@ -175,7 +192,10 @@ def inbox_waiver(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any
             steps.append(ActionProgressStep(**step))
         action = ctx.render(params["action"])
         item = ctx.inbox.create_action(
-            entity_id=ctx.entity_for(params.get("entity")), steps=steps, **action
+            entity_id=ctx.entity_for(params.get("entity")),
+            steps=steps,
+            outcome_id=str(stored_outcome_id) if stored_outcome_id else None,
+            **action,
         )
         resolve = ctx.render(params["resolve"])
         result = ctx.inbox.resolve_action(
@@ -185,7 +205,16 @@ def inbox_waiver(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any
             actor_role=resolve["actor_role"],
             channel=resolve.get("channel", "gemini_app"),
             agent_spiffe_id=resolve.get("agent_spiffe_id"),
+            close_outcome_on_resolve=False,
         )
+    if stored_outcome_id and not ctx.state.get("_outcome_closed"):
+        close_outcome(
+            "succeeded",
+            subject=ctx.entity_for(params.get("entity")),
+            owner=owner,
+            outcome_id=str(stored_outcome_id),
+        )
+        ctx.state["_outcome_closed"] = True
     ctx.vars["inbox_item_id"] = item.item_id
     ctx.vars["audit_id"] = result["audit_id"]
     ctx.vars["decision"] = result["decision"]
@@ -197,6 +226,10 @@ def gym_distill_and_compile(
     ctx: OperationContext, params: dict[str, Any]
 ) -> dict[str, Any]:
     """Distill the expert correction, pass the stress gate, compile the skill, verify Day-2."""
+    parent_outcome_id = ctx.state.get("outcome_id") or get_current_outcome_id()
+    owner = get_current_outcome_owner() or "meridian-loan-consolidation"
+    if parent_outcome_id:
+        resume_outcome(str(parent_outcome_id), owner=owner)
     distill = ctx.render(params["distill"])
     anchor = _anchor(distill.pop("source_anchor"))
     entity_alias = distill.pop("entity", None)
@@ -212,12 +245,29 @@ def gym_distill_and_compile(
 
     day2 = params["day2"]
     day2_doc = ctx.render(day2["document"])
+    day2_entity_id = ctx.entity_for(day2_doc.get("entity"))
+    day2_outcome_id = start_outcome(owner=owner)
+    ctx.state["day2_outcome_id"] = day2_outcome_id
+    conv_map = ctx.state.setdefault("_conversation_context_ids", {})
+    day2_prefix = str(day2.get("context_prefix", "ctx-day2"))
+    day2_context_id = conv_map.setdefault(
+        day2_prefix, f"{day2_prefix}-{ctx.manifest.id}"
+    )
     day2_info = _ingest_one(
         ctx,
         day2_doc,
         named_anchors={},
-        context_id=f"{day2.get('context_prefix', 'ctx-day2')}-{uuid.uuid4().hex[:8]}",
+        context_id=day2_context_id,
     )
+    close_outcome(
+        "succeeded",
+        subject=day2_entity_id,
+        parent_id=str(parent_outcome_id) if parent_outcome_id else None,
+        owner=owner,
+        outcome_id=day2_outcome_id,
+    )
+    if parent_outcome_id:
+        resume_outcome(str(parent_outcome_id), owner=owner)
 
     ctx.vars.update(
         {

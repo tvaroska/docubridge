@@ -14,8 +14,8 @@ run "root_wires_three_modules" {
   }
 
   assert {
-    condition     = output.runtime_service_name == "bridge-runtime"
-    error_message = "root must expose the runtime service name"
+    condition     = output.runtime_service_name == "bridge-kyc" && output.kyc_service_name == "bridge-kyc" && output.meridian_service_name == "bridge-meridian"
+    error_message = "root must expose the per-app Cloud Run service names (bridge-kyc and bridge-meridian)"
   }
 
   # Default (enable_gateway = false) is the local/dev ingress posture.
@@ -24,12 +24,9 @@ run "root_wires_three_modules" {
     error_message = "default enable_gateway = false must yield INGRESS_TRAFFIC_ALL"
   }
 
-  # The runtime runs as the SA the iam module minted (the wiring port). Assert
-  # on the input-derived service_name rather than the provider-computed SA email
-  # (opaque at plan time under mock_provider, P7-1 plan §2b).
   assert {
-    condition     = module.runtime.service_name == var.service_name
-    error_message = "runtime service name must track service_name"
+    condition     = module.runtime.service_name == var.kyc_service_name
+    error_message = "primary runtime service name must track kyc_service_name (bridge-kyc)"
   }
 }
 
@@ -102,7 +99,7 @@ run "root_allows_project_outside_block_list" {
   }
 
   assert {
-    condition     = output.runtime_service_name == "bridge-runtime"
+    condition     = output.runtime_service_name == "bridge-kyc"
     error_message = "a project outside blocked_project_ids must plan normally"
   }
 }

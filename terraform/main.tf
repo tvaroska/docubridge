@@ -170,7 +170,6 @@ module "telemetry" {
   project_id             = var.project_id
   region                 = var.region
   enable_telemetry_bq    = var.enable_telemetry_bq
-  dataset_id             = var.telemetry_bq_dataset_id
   service_account_member = module.iam.bridge_runtime_member
   deletion_protection    = var.deletion_protection
   labels                 = var.labels
@@ -182,6 +181,9 @@ module "runtime" {
   project_id            = var.project_id
   region                = var.region
   service_name          = var.service_name
+  kyc_service_name      = var.kyc_service_name
+  rfp_service_name      = var.rfp_service_name
+  meridian_service_name = var.meridian_service_name
   container_image       = var.container_image
   enable_gateway        = var.enable_gateway
   service_account_email = module.iam.bridge_runtime_email
@@ -254,7 +256,6 @@ module "runtime" {
   agent_engine_id     = var.agent_engine_id
   agent_engine_remote = var.agent_engine_remote
   agent_engine_a2a    = var.agent_engine_a2a
-  telemetry_bq_table  = module.telemetry.spans_table_fqn
   default_demo_domain = var.default_demo_domain
   deletion_protection = var.deletion_protection
   labels              = var.labels

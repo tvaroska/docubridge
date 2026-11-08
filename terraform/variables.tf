@@ -34,8 +34,26 @@ variable "region" {
 
 variable "service_name" {
   type        = string
-  description = "Name of the Cloud Run runtime service and the bridge-runtime workload SA account_id."
+  description = "Name prefix and bridge-runtime workload SA account_id."
   default     = "bridge-runtime"
+}
+
+variable "kyc_service_name" {
+  type        = string
+  description = "Cloud Run service name for the KYC Address Verification app (kyc-address-verification)."
+  default     = "bridge-kyc"
+}
+
+variable "rfp_service_name" {
+  type        = string
+  description = "Cloud Run service name for the Benefits RFP Procurement app (benefits-rfp-procurement)."
+  default     = "bridge-rfp"
+}
+
+variable "meridian_service_name" {
+  type        = string
+  description = "Cloud Run service name for the Meridian Loan Consolidation app (meridian-loan-consolidation)."
+  default     = "bridge-meridian"
 }
 
 variable "container_image" {
@@ -390,17 +408,11 @@ variable "extra_roles" {
   default     = []
 }
 
-# OpenTelemetry Trace Analytics in BigQuery (Zone 6 / Observability).
+# Native Cloud Observability, App Hub & Zone 4 Lakehouse Analytics.
 variable "enable_telemetry_bq" {
   type        = bool
-  description = "Provision the BigQuery OpenTelemetry trace analytics dataset (docubridge_telemetry), partitioned otel_spans table, SQL views, and Cloud Logging sink."
+  description = "Provision native Cloud Observability linked datasets, GenAI payload bucket + BigLake external table, App Hub applications, and the Zone 4 lakehouse dataset."
   default     = false
-}
-
-variable "telemetry_bq_dataset_id" {
-  type        = string
-  description = "BigQuery dataset id for OpenTelemetry trace analytics."
-  default     = "docubridge_telemetry"
 }
 
 variable "agent_registry_service_agent_member" {

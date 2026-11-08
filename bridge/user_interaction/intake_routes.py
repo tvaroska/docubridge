@@ -14,6 +14,11 @@ from bridge.identity import authorize_entity_access
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.operational_store import OperationalStore
 from bridge.showcase.loader import demo_static_root
+from bridge.telemetry.outcome import (
+    close_outcome,
+    current_outcome_id,
+    start_outcome,
+)
 from bridge.user_interaction.auth import (
     AuthenticationRequiredError,
     resolve_compound_identity,
@@ -50,6 +55,9 @@ def register_intake_and_demo_routes(
                 require_auth=require_auth,
             )
             authorize_entity_access(compound.user, body.entity_id)
+            outcome_id = current_outcome_id() or start_outcome(
+                owner=compound.user.subject
+            )
             rec_at = body.recorded_at or datetime.now(UTC)
             eff_from = body.effective_from or rec_at
             initial_disp = (
@@ -82,13 +90,27 @@ def register_intake_and_demo_routes(
                 raw_document_bytes=f"%PDF-1.7 {body.doc_id} {body.doctype}".encode(),
                 filename=body.filename or f"{body.doc_id}.pdf",
                 version=body.version,
+                source_mode="CUSTOM_WEB_PORTAL",
                 operational_store=store,
                 knowledge_catalog=catalog,
                 agent_gym=gym,
                 recorded_at=rec_at,
                 effective_from=eff_from,
             )
+            if res.entry.disposition is Disposition.accepted:
+                close_outcome(
+                    "succeeded",
+                    subject=body.entity_id,
+                    outcome_id=outcome_id,
+                )
+            elif res.entry.disposition is Disposition.rejected:
+                close_outcome(
+                    "failed",
+                    subject=body.entity_id,
+                    outcome_id=outcome_id,
+                )
             return {
+                "outcome_id": outcome_id,
                 "disposition": res.entry.disposition.value,
                 "redacted_fields": dict(res.entry.key_fields),
                 "applied_extraction_hints": list(res.applied_extraction_hints),

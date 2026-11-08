@@ -37,7 +37,14 @@ from bridge.knowledge_catalog import (
     authorize_access,
 )
 from bridge.operational_store import FactConflict
-from bridge.telemetry import trace_step
+from bridge.telemetry import (
+    close_outcome,
+    get_current_outcome_id,
+    get_current_outcome_owner,
+    resume_outcome,
+    start_outcome,
+    trace_step,
+)
 
 
 class ActionInboxStore:
@@ -65,6 +72,7 @@ class ActionInboxStore:
         pause_for_review: bool = False,
         max_approval_amount: float | None = None,
         blind_pre_commitment: bool = False,
+        outcome_id: str | None = None,
     ) -> ActionInboxItem:
         """Create a new human-in-the-loop action inbox item and record its initial audit event."""
         raise NotImplementedError
@@ -105,6 +113,7 @@ class ActionInboxStore:
         channel: DeliveryChannel,
         agent_spiffe_id: str | None = None,
         principal_max_approval_amount: float | None = None,
+        close_outcome_on_resolve: bool = True,
     ) -> dict[str, Any]:
         """Resolve an action inbox item with an operator decision, rationale, and signature."""
         raise NotImplementedError
@@ -143,8 +152,12 @@ class InMemoryActionInboxStore(ActionInboxStore):
         pause_for_review: bool = False,
         max_approval_amount: float | None = None,
         blind_pre_commitment: bool = False,
+        outcome_id: str | None = None,
     ) -> ActionInboxItem:
         """Create a new human-in-the-loop action inbox item in memory and record its audit event."""
+        resolved_outcome_id = (
+            outcome_id or get_current_outcome_id() or start_outcome()
+        )
         with trace_step(
             "docubridge.a2ui.create_action_item",
             {
@@ -155,6 +168,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 "docubridge.risk_level": risk_level,
                 "docubridge.pause_for_review": pause_for_review,
                 "docubridge.blind_pre_commitment": blind_pre_commitment,
+                "outcome.id": resolved_outcome_id,
             },
         ) as span:
             item_id = f"act_{uuid.uuid4().hex[:10]}"
@@ -227,6 +241,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 entity_id=entity_id,
                 context_id=context_id or entity_id,
                 session_id=session_id or f"sess_{uuid.uuid4().hex[:8]}",
+                outcome_id=resolved_outcome_id,
                 invocation_id=invocation_id or f"inv_{uuid.uuid4().hex[:8]}",
                 confirmation_call_id=confirmation_call_id
                 or f"call_{uuid.uuid4().hex[:8]}",
@@ -339,8 +354,15 @@ class InMemoryActionInboxStore(ActionInboxStore):
         channel: DeliveryChannel,
         agent_spiffe_id: str | None = None,
         principal_max_approval_amount: float | None = None,
+        close_outcome_on_resolve: bool = True,
     ) -> dict[str, Any]:
         """Resolve an in-memory action inbox item with an operator decision and signature."""
+        existing_item = self._items.get(item_id)
+        if existing_item is not None and existing_item.outcome_id:
+            resume_outcome(
+                existing_item.outcome_id,
+                owner=get_current_outcome_owner(),
+            )
         with trace_step(
             "docubridge.a2ui.resolve_inbox_action",
             {
@@ -570,10 +592,30 @@ class InMemoryActionInboxStore(ActionInboxStore):
             self._audits.append(audit)
             span.set_attribute("docubridge.audit_id", audit.audit_id)
             span.set_attribute("docubridge.task_state", item.task_state)
+            if close_outcome_on_resolve and item.outcome_id:
+                if decision in ("accept", "edit_and_approve"):
+                    close_outcome(
+                        "succeeded",
+                        subject=item.entity_id,
+                        outcome_id=item.outcome_id,
+                    )
+                elif decision == "reject":
+                    close_outcome(
+                        "failed",
+                        subject=item.entity_id,
+                        outcome_id=item.outcome_id,
+                    )
+                elif decision == "escalate":
+                    close_outcome(
+                        "escalated",
+                        subject=item.entity_id,
+                        outcome_id=item.outcome_id,
+                    )
 
             fn_resp = adk_resume.parts[0].function_response
             return {
                 "item_id": item.item_id,
+                "outcome_id": item.outcome_id,
                 "task_state": item.task_state,
                 "decision": decision,
                 "agent_spiffe_id": agent_spiffe_id,

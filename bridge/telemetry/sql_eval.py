@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import os
 from typing import Any
 
 from bridge.calibration import (
@@ -12,10 +13,21 @@ from bridge.calibration import (
     rogan_gladen_debiased_pass_rate,
 )
 from bridge.telemetry.exporters import (
-    _CLOUD_TRACE_EXPORTER,
-    CloudTraceV2SpanExporter,
+    _resolve_gcp_project,
     get_recorded_spans,
 )
+
+DEFAULT_EVAL_DATASET = "agent_eval"
+DEFAULT_SPANS_VIEW = "otel_spans"
+
+
+def _resolve_eval_bq_target() -> tuple[str, str, str]:
+    project_id = _resolve_gcp_project() or "docubridge-showcase"
+    dataset_id = (
+        os.environ.get("BRIDGE_EVAL_BQ_DATASET", DEFAULT_EVAL_DATASET).strip()
+        or DEFAULT_EVAL_DATASET
+    )
+    return project_id, dataset_id, DEFAULT_SPANS_VIEW
 
 
 def _percentile(sorted_vals: list[float], pct: int) -> float:
@@ -34,16 +46,11 @@ def compute_trace_analytics(
     limit: int = 500,
 ) -> dict[str, Any]:
     """Compute step latency percentiles, trace waterfall, and entity pipeline
-    summary matching the BigQuery SQL analytics views (`v_step_latency_analytics`,
-    `v_trace_waterfall`, `v_entity_pipeline_summary`)."""
+    summary matching the BigQuery SQL analytics views (`agent_eval.otel_spans`,
+    `agent_eval.v_step1_trace_eval`, `agent_eval.v_cost_per_verified_outcome`,
+    `agent_eval.v_attribution_coverage`)."""
     spans = get_recorded_spans(trace_id=trace_id, entity_id=entity_id, limit=limit)
-    project_id = _CLOUD_TRACE_EXPORTER._project_id() or "docubridge-showcase"
-    bq_target = CloudTraceV2SpanExporter._resolve_bq_target(project_id) or (
-        project_id,
-        "docubridge_telemetry",
-        "otel_spans",
-    )
-    bq_proj, bq_ds, bq_tbl = bq_target
+    bq_proj, bq_ds, bq_tbl = _resolve_eval_bq_target()
 
     # 1. Step latency analytics grouped by (span_name, zone)
     step_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -118,9 +125,13 @@ def compute_trace_analytics(
         tid = sp.get("trace_id", "")
         attrs = sp.get("attributes") or {}
         base_ms = trace_min_ts.get(tid, epoch_ms)
-        model_name = attrs.get("gen_ai.request.model")
+        model_name = attrs.get("gen_ai.request.model") or attrs.get(
+            "gen_ai.response.model"
+        )
         op_name = attrs.get("gen_ai.operation.name")
-        traffic_type = attrs.get("docubridge.finops.traffic_type")
+        traffic_type = attrs.get("finops.traffic_type") or attrs.get(
+            "docubridge.finops.traffic_type"
+        )
         in_tok = (
             int(attrs["gen_ai.usage.input_tokens"])
             if "gen_ai.usage.input_tokens" in attrs
@@ -131,7 +142,19 @@ def compute_trace_analytics(
             if "gen_ai.usage.output_tokens" in attrs
             else None
         )
-        span_total_tok = (in_tok or 0) + (out_tok or 0)
+        thinking_tok = (
+            int(
+                attrs.get("gen_ai.usage.reasoning.output_tokens")
+                or attrs.get("docubridge.thinking_tokens")
+                or 0
+            )
+            if (
+                "gen_ai.usage.reasoning.output_tokens" in attrs
+                or "docubridge.thinking_tokens" in attrs
+            )
+            else None
+        )
+        span_total_tok = (in_tok or 0) + (out_tok or 0) + (thinking_tok or 0)
 
         if model_name == "gemini-3.8-flash":
             workhorse_calls += 1
@@ -156,10 +179,12 @@ def compute_trace_analytics(
                 "trace_id": tid,
                 "span_id": sp.get("span_id"),
                 "parent_span_id": sp.get("parent_span_id"),
+                "outcome_id": attrs.get("outcome.id"),
                 "name": sp.get("name"),
                 "span_name": sp.get("name"),
                 "zone": attrs.get("docubridge.zone"),
-                "entity_id": attrs.get("docubridge.entity_id"),
+                "entity_id": attrs.get("docubridge.entity_id")
+                or attrs.get("entity_id"),
                 "doc_id": attrs.get("docubridge.doc_id"),
                 "actor_role": attrs.get("docubridge.actor_role")
                 or attrs.get("docubridge.role"),
@@ -171,6 +196,7 @@ def compute_trace_analytics(
                 "traffic_type": traffic_type,
                 "input_tokens": in_tok,
                 "output_tokens": out_tok,
+                "thinking_tokens": thinking_tok,
                 "start_time": sp.get("start_time"),
                 "end_time": sp.get("end_time"),
                 "duration_ms": float(sp.get("duration_ms", 0.0)),
@@ -189,9 +215,13 @@ def compute_trace_analytics(
     entity_pipeline_summary: list[dict[str, Any]] = []
     for tid, group in trace_groups.items():
         entities = [
-            str((g.get("attributes") or {}).get("docubridge.entity_id"))
+            str(
+                (g.get("attributes") or {}).get("docubridge.entity_id")
+                or (g.get("attributes") or {}).get("entity_id")
+            )
             for g in group
             if (g.get("attributes") or {}).get("docubridge.entity_id")
+            or (g.get("attributes") or {}).get("entity_id")
         ]
         primary_entity = entities[0] if entities else (entity_id or "all")
         names = [str(g.get("name", "")) for g in group]
@@ -283,10 +313,14 @@ def compute_trace_analytics(
             "table_id": bq_tbl,
             "table_fqn": f"{bq_proj}.{bq_ds}.{bq_tbl}",
             "views": {
-                "step_latency_analytics": f"{bq_proj}.{bq_ds}.v_step_latency_analytics",
-                "trace_waterfall": f"{bq_proj}.{bq_ds}.v_trace_waterfall",
-                "entity_pipeline_summary": f"{bq_proj}.{bq_ds}.v_entity_pipeline_summary",
-                "trace_sql_evaluation": f"{bq_proj}.{bq_ds}.v_trace_sql_evaluation",
+                "otel_spans": f"{bq_proj}.{bq_ds}.{bq_tbl}",
+                "v_step1_trace_eval": f"{bq_proj}.{bq_ds}.v_step1_trace_eval",
+                "v_cost_per_verified_outcome": f"{bq_proj}.{bq_ds}.v_cost_per_verified_outcome",
+                "v_attribution_coverage": f"{bq_proj}.{bq_ds}.v_attribution_coverage",
+                "step_latency_analytics": f"{bq_proj}.{bq_ds}.v_step1_trace_eval",
+                "trace_waterfall": f"{bq_proj}.{bq_ds}.{bq_tbl}",
+                "entity_pipeline_summary": f"{bq_proj}.{bq_ds}.v_cost_per_verified_outcome",
+                "trace_sql_evaluation": f"{bq_proj}.{bq_ds}.v_step1_trace_eval",
             },
         },
         "finops_model_split": finops_model_split,
@@ -300,12 +334,14 @@ def compute_trace_analytics(
 def _build_sql_trace_evaluation(
     *,
     spans: list[dict[str, Any]],
-    bq_proj: str,
-    bq_ds: str,
-    bq_tbl: str,
+    bq_proj: str = "btv-scratch-01",
+    bq_ds: str = DEFAULT_EVAL_DATASET,
+    bq_tbl: str = DEFAULT_SPANS_VIEW,
 ) -> dict[str, Any]:
     """Evaluate the 5 Rule 0 deterministic SQL trajectory gates over recorded spans
-    and construct the 3 production BigQuery Standard SQL trace-evaluation queries."""
+    and construct the production BigQuery Standard SQL trace-evaluation queries
+    against `agent_eval.otel_spans`, `agent_eval.v_step1_trace_eval`,
+    `agent_eval.v_cost_per_verified_outcome`, and `agent_eval.v_attribution_coverage`."""
     trace_groups: dict[str, list[dict[str, Any]]] = {}
     for sp in spans:
         tid = sp.get("trace_id", "")
@@ -323,9 +359,13 @@ def _build_sql_trace_evaluation(
 
     for tid, group in trace_groups.items():
         entities = [
-            str((g.get("attributes") or {}).get("docubridge.entity_id"))
+            str(
+                (g.get("attributes") or {}).get("docubridge.entity_id")
+                or (g.get("attributes") or {}).get("entity_id")
+            )
             for g in group
             if (g.get("attributes") or {}).get("docubridge.entity_id")
+            or (g.get("attributes") or {}).get("entity_id")
         ]
         primary_entity = entities[0] if entities else "all"
         distinct_entities = max(1, len(set(entities)))
@@ -417,7 +457,10 @@ def _build_sql_trace_evaluation(
         escalation_calls = sum(
             1
             for g in group
-            if (g.get("attributes") or {}).get("docubridge.finops.traffic_type")
+            if (
+                (g.get("attributes") or {}).get("finops.traffic_type")
+                or (g.get("attributes") or {}).get("docubridge.finops.traffic_type")
+            )
             == "conflict_escalation"
         )
         workhorse_calls = sum(
@@ -480,9 +523,6 @@ def _build_sql_trace_evaluation(
     )
     token_savings_pct = round(max(0.0, 100.0 - min(judge_sampling_pct, 25.0)), 1)
 
-    # Rogan-Gladen / PPI bias-corrected pass rate estimator (no artificial clamping).
-    # Reviewer inter-rater reliability is owned by the agent-evals project and is
-    # not synthesized here.
     rg_result = rogan_gladen_debiased_pass_rate(
         judge_pass_count=all_rule0_pass if total_traces else 99,
         n_unlabeled=denom if total_traces else 100,
@@ -491,7 +531,9 @@ def _build_sql_trace_evaluation(
     )
 
     spans_fqn = f"{bq_proj}.{bq_ds}.{bq_tbl}"
-    eval_view_fqn = f"{bq_proj}.{bq_ds}.v_trace_sql_evaluation"
+    eval_view_fqn = f"{bq_proj}.{bq_ds}.v_step1_trace_eval"
+    cost_outcome_fqn = f"{bq_proj}.{bq_ds}.v_cost_per_verified_outcome"
+    attribution_fqn = f"{bq_proj}.{bq_ds}.v_attribution_coverage"
 
     sql_queries = {
         "rule0_trajectory_sql": (
@@ -499,6 +541,8 @@ def _build_sql_trace_evaluation(
             f"-- Evaluates step ordering, SPIFFE auth, Decimal math, RSR oversight & FinOps right-sizing\n"
             f"SELECT\n"
             f"  trace_id,\n"
+            f"  outcome_id,\n"
+            f"  apphub_application_id,\n"
             f"  entity_id,\n"
             f"  total_spans,\n"
             f"  workhorse_calls,\n"
@@ -519,6 +563,7 @@ def _build_sql_trace_evaluation(
             f"-- Runs ONLY on traces flagged by SQL Rule 0 or a 5% canary slice (90%+ eval token savings)\n"
             f"SELECT\n"
             f"  t.trace_id,\n"
+            f"  t.outcome_id,\n"
             f"  t.entity_id,\n"
             f"  t.rule0_sql_all_passed,\n"
             f"  judge.grounding_fidelity_score,\n"
@@ -529,13 +574,14 @@ def _build_sql_trace_evaluation(
             f"  (\n"
             f"    SELECT\n"
             f"      e.trace_id,\n"
+            f"      e.outcome_id,\n"
             f"      e.entity_id,\n"
             f"      e.rule0_sql_all_passed,\n"
-            f"      STRING_AGG(CONCAT(s.name, ':', s.status), ' -> ' ORDER BY s.start_time) AS trajectory_path\n"
+            f"      STRING_AGG(CONCAT(s.span_name, ':', s.status_code), ' -> ' ORDER BY s.start_time) AS trajectory_path\n"
             f"    FROM `{eval_view_fqn}` AS e\n"
             f"    JOIN `{spans_fqn}` AS s USING (trace_id)\n"
             f"    WHERE e.needs_llm_judge_sampling = TRUE\n"
-            f"    GROUP BY e.trace_id, e.entity_id, e.rule0_sql_all_passed\n"
+            f"    GROUP BY e.trace_id, e.outcome_id, e.entity_id, e.rule0_sql_all_passed\n"
             f"  ),\n"
             f"  STRUCT(\n"
             f"    'grounding_fidelity_score FLOAT64, addendum_priority_verified BOOL, judge_rationale STRING' AS output_schema,\n"
@@ -553,6 +599,12 @@ def _build_sql_trace_evaluation(
             f"    0.985 AS tpr_hat,\n"
             f"    0.960 AS tnr_hat\n"
             f"  FROM `{eval_view_fqn}`\n"
+            f"),\n"
+            f"outcomes AS (\n"
+            f"  SELECT * FROM `{cost_outcome_fqn}`\n"
+            f"),\n"
+            f"coverage AS (\n"
+            f"  SELECT * FROM `{attribution_fqn}`\n"
             f")\n"
             f"SELECT\n"
             f"  ROUND(p_judge, 4) AS raw_judge_pass_rate,\n"
@@ -563,6 +615,25 @@ def _build_sql_trace_evaluation(
             f"    4\n"
             f"  ) AS rogan_gladen_debiased_pass_rate\n"
             f"FROM calibration;"
+        ),
+        "cost_per_verified_outcome_sql": (
+            f"SELECT\n"
+            f"  apphub_application_id,\n"
+            f"  source_mode,\n"
+            f"  verified_outcomes,\n"
+            f"  total_outcomes,\n"
+            f"  ROUND(cost_per_verified_outcome_usd, 6) AS cost_per_verified_outcome_usd\n"
+            f"FROM `{cost_outcome_fqn}`\n"
+            f"ORDER BY apphub_application_id, source_mode;"
+        ),
+        "attribution_coverage_sql": (
+            f"SELECT\n"
+            f"  apphub_application_id,\n"
+            f"  ROUND(attributed_spend_usd, 6) AS attributed_spend_usd,\n"
+            f"  ROUND(unattributed_spend_usd, 6) AS unattributed_spend_usd,\n"
+            f"  ROUND(attribution_coverage_pct, 2) AS attribution_coverage_pct,\n"
+            f"  coverage_gate_pass\n"
+            f"FROM `{attribution_fqn}`;"
         ),
     }
 
@@ -666,13 +737,7 @@ def compute_sql_trace_evaluation(
     selective ``AI.GENERATE_TABLE`` judge sampling, and Rogan-Gladen bias correction
     over recorded OpenTelemetry spans."""
     spans = get_recorded_spans(trace_id=trace_id, entity_id=entity_id, limit=limit)
-    project_id = _CLOUD_TRACE_EXPORTER._project_id() or "docubridge-showcase"
-    bq_target = CloudTraceV2SpanExporter._resolve_bq_target(project_id) or (
-        project_id,
-        "docubridge_telemetry",
-        "otel_spans",
-    )
-    bq_proj, bq_ds, bq_tbl = bq_target
+    bq_proj, bq_ds, bq_tbl = _resolve_eval_bq_target()
     return _build_sql_trace_evaluation(
         spans=spans,
         bq_proj=bq_proj,

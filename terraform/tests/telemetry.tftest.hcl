@@ -1,4 +1,5 @@
-# Credential-free plan-time test of the telemetry module (BigQuery OpenTelemetry Trace Analytics).
+# Credential-free plan-time test of the telemetry module (Native Cloud Observability,
+# GenAI payload bucket + BigLake external table, App Hub applications, and Zone 4 lakehouse).
 
 mock_provider "google" {}
 mock_provider "google-beta" {}
@@ -17,13 +18,18 @@ run "telemetry_disabled_by_default" {
   }
 
   assert {
-    condition     = output.dataset_id == ""
-    error_message = "enable_telemetry_bq = false must create no dataset"
+    condition     = output.obs_traces_dataset_id == "" && output.obs_logs_dataset_id == ""
+    error_message = "enable_telemetry_bq = false must create no linked observability datasets"
   }
 
   assert {
-    condition     = output.spans_table_fqn == ""
-    error_message = "enable_telemetry_bq = false must return empty spans_table_fqn"
+    condition     = output.genai_payloads_bucket_name == "" && output.completions_table_fqn == ""
+    error_message = "enable_telemetry_bq = false must create no GenAI payload bucket or completions table"
+  }
+
+  assert {
+    condition     = length(output.apphub_application_ids) == 0
+    error_message = "enable_telemetry_bq = false must create no App Hub applications"
   }
 }
 
@@ -38,33 +44,42 @@ run "telemetry_enabled_provisions_bq_dataset_table_and_views" {
     project_id             = "test-project"
     region                 = "us-central1"
     enable_telemetry_bq    = true
-    dataset_id             = "docubridge_telemetry"
     service_account_member = "serviceAccount:bridge-runtime@test-project.iam.gserviceaccount.com"
   }
 
   assert {
-    condition     = output.dataset_id == "docubridge_telemetry"
-    error_message = "enable_telemetry_bq = true must expose dataset_id"
+    condition     = output.obs_traces_dataset_id == "obs_traces"
+    error_message = "enable_telemetry_bq = true must expose obs_traces_dataset_id"
   }
 
   assert {
-    condition     = output.spans_table_fqn == "test-project.docubridge_telemetry.otel_spans"
-    error_message = "enable_telemetry_bq = true must expose spans_table_fqn"
+    condition     = output.obs_logs_dataset_id == "obs_logs"
+    error_message = "enable_telemetry_bq = true must expose obs_logs_dataset_id"
   }
 
   assert {
-    condition     = output.step_latency_view_fqn == "test-project.docubridge_telemetry.v_step_latency_analytics"
-    error_message = "enable_telemetry_bq = true must expose step_latency_view_fqn"
+    condition     = output.genai_payloads_bucket_name == "test-project-genai-payloads"
+    error_message = "enable_telemetry_bq = true must provision <project_id>-genai-payloads bucket"
   }
 
   assert {
-    condition     = output.trace_waterfall_view_fqn == "test-project.docubridge_telemetry.v_trace_waterfall"
-    error_message = "enable_telemetry_bq = true must expose trace_waterfall_view_fqn"
+    condition     = output.genai_payloads_upload_base_path == "gs://test-project-genai-payloads/"
+    error_message = "enable_telemetry_bq = true must expose gs://<project_id>-genai-payloads/ upload path"
   }
 
   assert {
-    condition     = output.entity_summary_view_fqn == "test-project.docubridge_telemetry.v_entity_pipeline_summary"
-    error_message = "enable_telemetry_bq = true must expose entity_summary_view_fqn"
+    condition     = output.completions_table_fqn == "test-project.agent_eval.completions"
+    error_message = "enable_telemetry_bq = true must provision completions BigLake external table"
+  }
+
+  assert {
+    condition = toset(output.apphub_application_ids) == toset([
+      "benefits-rfp-procurement",
+      "external-counterparty-agents",
+      "kyc-address-verification",
+      "meridian-loan-consolidation",
+    ])
+    error_message = "enable_telemetry_bq = true must provision all 4 App Hub applications"
   }
 
   assert {

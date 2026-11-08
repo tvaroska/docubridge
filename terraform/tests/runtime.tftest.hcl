@@ -213,4 +213,20 @@ run "agent_engine_a2a_envs_when_deployed" {
     ]) == 1
     error_message = "agent_engine_a2a = 1 must inject BRIDGE_AGENT_ENGINE_A2A=1 as a plain env"
   }
+
+  assert {
+    condition     = google_cloud_run_v2_service.bridge.name == "bridge-kyc" && google_cloud_run_v2_service.bridge_meridian.name == "bridge-meridian"
+    error_message = "runtime must provision per-app bridge-kyc and bridge-meridian Cloud Run services"
+  }
+
+  assert {
+    condition = length([
+      for e in google_cloud_run_v2_service.bridge.template[0].containers[0].env
+      : e if e.name == "BRIDGE_APPHUB_APPLICATION_ID" && e.value == "kyc-address-verification"
+    ]) == 1 && length([
+      for e in google_cloud_run_v2_service.bridge_meridian.template[0].containers[0].env
+      : e if e.name == "BRIDGE_APPHUB_APPLICATION_ID" && e.value == "meridian-loan-consolidation"
+    ]) == 1
+    error_message = "each per-app Cloud Run service must carry its App Hub application ID and OTel env vars"
+  }
 }

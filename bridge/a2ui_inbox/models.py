@@ -106,6 +106,7 @@ class ActionInboxItem(BaseModel):
     entity_id: str
     context_id: str
     session_id: str
+    outcome_id: str | None = None
     invocation_id: str | None = None
     confirmation_call_id: str | None = None
     title: str

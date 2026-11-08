@@ -10,8 +10,26 @@ variable "region" {
 
 variable "service_name" {
   type        = string
-  description = "Cloud Run service name."
+  description = "Workload identity / prefix name."
   default     = "bridge-runtime"
+}
+
+variable "kyc_service_name" {
+  type        = string
+  description = "Cloud Run service name for the KYC Address Verification app (kyc-address-verification)."
+  default     = "bridge-kyc"
+}
+
+variable "rfp_service_name" {
+  type        = string
+  description = "Cloud Run service name for the Benefits RFP Procurement app (benefits-rfp-procurement)."
+  default     = "bridge-rfp"
+}
+
+variable "meridian_service_name" {
+  type        = string
+  description = "Cloud Run service name for the Meridian Loan Consolidation app (meridian-loan-consolidation)."
+  default     = "bridge-meridian"
 }
 
 variable "container_image" {
@@ -326,12 +344,6 @@ variable "agent_engine_remote" {
 variable "agent_engine_a2a" {
   type        = string
   description = "Set to \"1\" to delegate A2A discovery (/.well-known/agent-card.json) and JSON-RPC POST / to BridgeA2aAgentEngine on Vertex AI Agent Engine (BRIDGE_AGENT_ENGINE_A2A plain env). Empty = no env (in-process default)."
-  default     = ""
-}
-
-variable "telemetry_bq_table" {
-  type        = string
-  description = "Fully qualified BigQuery table (project.dataset.table) injected as BRIDGE_TELEMETRY_BQ_TABLE for OpenTelemetry span streaming and SQL analytics. Empty = no env."
   default     = ""
 }
 

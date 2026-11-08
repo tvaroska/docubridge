@@ -632,7 +632,9 @@ class GeminiExtractor:
                 "gen_ai.operation.name": "call_llm",
                 "gen_ai.agent.name": "extraction_agent",
                 "gen_ai.request.model": self._model,
+                "gen_ai.response.model": self._model,
                 "docubridge.finops.traffic_type": "production_inference",
+                "finops.traffic_type": "production_inference",
             },
         ) as span:
             response = await asyncio.to_thread(
@@ -647,6 +649,7 @@ class GeminiExtractor:
                 out_tok = getattr(usage, "candidates_token_count", None)
                 tot_tok = getattr(usage, "total_token_count", None)
                 cached_tok = getattr(usage, "cached_content_token_count", None)
+                thoughts_tok = getattr(usage, "thoughts_token_count", None)
                 if in_tok is not None:
                     span.set_attribute("gen_ai.usage.input_tokens", int(in_tok))
                 if out_tok is not None:
@@ -655,6 +658,14 @@ class GeminiExtractor:
                     span.set_attribute("gen_ai.usage.total_tokens", int(tot_tok))
                 if cached_tok is not None:
                     span.set_attribute("gen_ai.usage.cached_tokens", int(cached_tok))
+                    span.set_attribute(
+                        "gen_ai.usage.cache_read.input_tokens", int(cached_tok)
+                    )
+                if thoughts_tok is not None:
+                    span.set_attribute(
+                        "gen_ai.usage.reasoning.output_tokens", int(thoughts_tok)
+                    )
+                    span.set_attribute("docubridge.thinking_tokens", int(thoughts_tok))
             return response
 
     async def _generate_validated(

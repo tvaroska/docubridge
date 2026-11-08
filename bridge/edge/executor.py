@@ -128,6 +128,12 @@ from bridge.edge.wire import (
 )
 from bridge.exchange_store import StaleExchangeWrite
 from bridge.satisfaction import SatisfactionAssessor, propose_outstanding
+from bridge.telemetry.outcome import (
+    close_outcome,
+    current_outcome_id,
+    resume_outcome,
+    start_outcome,
+)
 from contract.enums import Disposition, Gate
 from contract.extraction import ExtractionResult
 from contract.wire import (
@@ -194,6 +200,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         # S0-arch-19: the RFP opener's board, bound once by build_a2a_app (bind_rfp);
         # a bare executor routes every CollectRequest to the Collector.
         self._rfp: RfpBoard | None = None
+        self._task_outcomes: dict[str, str] = {}
 
     def bind_store(
         self, store: BaseArtifactService, *, base_url: str | None = None
@@ -291,6 +298,13 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Execute an inbound A2A document collection request against the bridge state machine."""
+        cid = context.context_id or context.task_id or "a2a-task"
+        stored_outcome = self._task_outcomes.get(cid)
+        if stored_outcome:
+            resume_outcome(stored_outcome, owner="a2a-edge")
+        else:
+            active_outcome = current_outcome_id() or start_outcome(owner="a2a-edge")
+            self._task_outcomes[cid] = active_outcome
         message = context.message
         route, scope = await self._route_for(message, context.current_task)
 
@@ -543,6 +557,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
                     entity_id=entity_id,
                     context_id=context_id,
                     filename=f"{doc_id}.json",
+                    source_mode="A2A_PATH_A",
                     vault_store=self._collector._vault_store,
                     operational_store=self._collector._operational_store,
                     knowledge_catalog=self._collector._knowledge_catalog,
@@ -605,6 +620,22 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         state = self._status_for(turn)
         status_message = status_message_for(turn)
         if state == TaskState.TASK_STATE_COMPLETED:
+            cid = context.context_id or context.task_id or "a2a-task"
+            outcome_id = self._task_outcomes.pop(cid, None) or current_outcome_id()
+            has_accepted = any(
+                e.disposition is Disposition.accepted for e in turn.status.entries
+            )
+            has_rejected = any(
+                e.disposition is Disposition.rejected for e in turn.status.entries
+            )
+            outcome_status = (
+                "failed" if has_rejected and not has_accepted else "succeeded"
+            )
+            close_outcome(
+                outcome_status,
+                subject=turn.context_id,
+                outcome_id=outcome_id,
+            )
             await updater.complete(message=status_message)
         else:
             # Non-terminal turn (terminal=False) → INPUT_REQUIRED, the park signal.
@@ -616,6 +647,13 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         # escalated stall) to CANCELED; an already-terminal task is not cancelable
         # (the SDK handler enforces both).
         """Cancel an in-flight A2A collection task and emit a cancellation event."""
+        cid = context.context_id or context.task_id or "a2a-task"
+        outcome_id = self._task_outcomes.pop(cid, None) or current_outcome_id()
+        close_outcome(
+            "abandoned",
+            subject=context.context_id,
+            outcome_id=outcome_id,
+        )
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
 

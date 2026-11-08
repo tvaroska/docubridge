@@ -17,7 +17,6 @@ import json
 import os
 import re
 import time
-import uuid
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -25,7 +24,11 @@ from bridge.agent_gym.models import _gcp_project_id
 from bridge.extraction.gemini import REASONING_MODEL, WORKHORSE_MODEL
 from bridge.showcase.context import OperationContext
 from bridge.showcase.operations.consolidation import recompute_counts
-from bridge.telemetry import trace_step
+from bridge.telemetry import (
+    resume_outcome,
+    start_outcome,
+    trace_step,
+)
 from bridge.user_interaction.surfaces import ingest_accepted_submission
 from contract.extraction import SourceAnchor
 from contract.wire import Disposition, Gate, LedgerEntry
@@ -183,7 +186,7 @@ def _extract_single_pdf(
 ) -> dict[str, Any]:
     t0 = time.monotonic()
     used_live = False
-    in_tok, out_tok = 680, 195
+    in_tok, out_tok, thoughts_tok = 0, 0, 0
     parsed: dict[str, Any] | None = None
     prompts = config.get("prompts", {})
 
@@ -212,8 +215,9 @@ def _extract_single_pdf(
             if raw_text:
                 parsed = json.loads(raw_text)
                 usage = getattr(resp, "usage_metadata", None)
-                in_tok = int(getattr(usage, "prompt_token_count", 0) or 1680)
-                out_tok = int(getattr(usage, "candidates_token_count", 0) or 260)
+                in_tok = int(getattr(usage, "prompt_token_count", 0) or 0)
+                out_tok = int(getattr(usage, "candidates_token_count", 0) or 0)
+                thoughts_tok = int(getattr(usage, "thoughts_token_count", 0) or 0)
                 used_live = True
         except Exception:
             parsed = None
@@ -233,6 +237,7 @@ def _extract_single_pdf(
         "used_live": used_live,
         "input_tokens": in_tok,
         "output_tokens": out_tok,
+        "thinking_tokens": thoughts_tok,
         "latency_ms": elapsed_ms if used_live else 95,
     }
 
@@ -243,9 +248,9 @@ def _invoke_reasoning_summary(
     use_live: bool,
     fallback_summary: str,
     genai_client: Any = None,
-) -> tuple[str, int, int, int, bool]:
+) -> tuple[str, int, int, int, int, bool]:
     if not use_live:
-        return fallback_summary, 610, 145, 85, False
+        return fallback_summary, 0, 0, 0, 85, False
     t0 = time.monotonic()
     try:
         from google.genai import types
@@ -262,14 +267,15 @@ def _invoke_reasoning_summary(
         )
         text = str(getattr(resp, "text", "") or "").strip()
         usage = getattr(resp, "usage_metadata", None)
-        in_tok = int(getattr(usage, "prompt_token_count", 0) or 640)
-        out_tok = int(getattr(usage, "candidates_token_count", 0) or 140)
+        in_tok = int(getattr(usage, "prompt_token_count", 0) or 0)
+        out_tok = int(getattr(usage, "candidates_token_count", 0) or 0)
+        thoughts_tok = int(getattr(usage, "thoughts_token_count", 0) or 0)
         elapsed_ms = max(25, int((time.monotonic() - t0) * 1000))
         if text:
-            return text, in_tok, out_tok, elapsed_ms, True
+            return text, in_tok, out_tok, thoughts_tok, elapsed_ms, True
     except Exception:
         pass
-    return fallback_summary, 610, 145, 85, False
+    return fallback_summary, 0, 0, 0, 85, False
 
 
 def _is_day2(config: dict[str, Any], filename: str, parsed: dict[str, Any]) -> bool:
@@ -316,13 +322,32 @@ def _ingest_live_document(
         bounding_box=(0.14, 0.36, 0.86, 0.58),
         snippet=str(parsed.get("citation_snippet") or fname)[:240],
     )
+    conv_ctx_map = ctx.state.setdefault("_conversation_context_ids", {})
+    conv_key = "day2" if res["is_day2"] else "primary"
+    stable_context_id = conv_ctx_map.setdefault(
+        conv_key,
+        f"{config.get('context_prefix', 'ctx-live')}-{ctx.manifest.id}-{conv_key}",
+    )
+    doc_ver_map = ctx.state.setdefault("_doc_versions", {})
+    ver_key = f"{stable_context_id}:{doc_id}"
+    doc_version = int(doc_ver_map.get(ver_key, 0)) + 1
+    doc_ver_map[ver_key] = doc_version
+    role_doctypes = config.get("role_doctypes", {})
+    resolved_doctype = role_doctypes.get(
+        role, role_doctypes.get("default", "credit-agreement")
+    )
     with trace_step(
         "docubridge.collab.live_pdf_extract",
         {
             "docubridge.zone": "2_mediation_quarantine",
             "docubridge.entity_id": entity_id,
+            "entity_id": entity_id,
+            "docubridge.context_id": stable_context_id,
             "docubridge.doc_id": doc_id,
             "docubridge.filename": fname,
+            "skill_id": resolved_doctype,
+            "source_mode": "PDF_PATH_B_FLASH",
+            "docubridge.source_mode": "PDF_PATH_B_FLASH",
             "docubridge.agent_spiffe_id": ctx.manifest.agents.get("bridge", ""),
             "docubridge.execution_mode": "live_gcp"
             if res["used_live"]
@@ -332,9 +357,13 @@ def _ingest_live_document(
             "gen_ai.operation.name": "extract_document",
             "gen_ai.agent.name": "document_bridge_sense_a",
             "gen_ai.request.model": WORKHORSE_MODEL,
+            "gen_ai.response.model": WORKHORSE_MODEL,
             "gen_ai.usage.input_tokens": res["input_tokens"],
             "gen_ai.usage.output_tokens": res["output_tokens"],
+            "gen_ai.usage.reasoning.output_tokens": res.get("thinking_tokens", 0),
+            "docubridge.thinking_tokens": res.get("thinking_tokens", 0),
             "docubridge.finops.traffic_type": "production_inference",
+            "finops.traffic_type": "production_inference",
         },
     ):
         key_fields: dict[str, str] = {"currency": "USD"}
@@ -349,12 +378,9 @@ def _ingest_live_document(
             key_fields["closing_fee"] = str(
                 wires[0].get("amount") or config.get("default_wire_amount", "")
             )
-        role_doctypes = config.get("role_doctypes", {})
         entry = LedgerEntry(
             doc_id=doc_id,
-            doctype=role_doctypes.get(
-                role, role_doctypes.get("default", "credit-agreement")
-            ),
+            doctype=resolved_doctype,
             disposition=Disposition.accepted,
             gate=Gate.auto_approve,
             overall_confidence=0.99,
@@ -366,12 +392,17 @@ def _ingest_live_document(
         ingest_res = ingest_accepted_submission(
             entry,
             entity_id=entity_id,
-            context_id=f"{config.get('context_prefix', 'ctx-live')}-{uuid.uuid4().hex[:8]}",
+            context_id=stable_context_id,
+            version=doc_version,
             raw_document_bytes=res["pdf_bytes"],
             filename=fname,
             operational_store=ctx.store,
             knowledge_catalog=ctx.catalog,
             agent_gym=ctx.gym,
+            input_tokens=res["input_tokens"] if res["used_live"] else None,
+            output_tokens=res["output_tokens"] if res["used_live"] else None,
+            thinking_tokens=res.get("thinking_tokens") if res["used_live"] else None,
+            source_mode="PDF_PATH_B_FLASH",
         )
 
     res["vault_uri"] = ingest_res.vault_record.vault_uri
@@ -426,7 +457,7 @@ def _reasoning_step(
     use_live: bool,
     genai_client: Any,
 ) -> bool:
-    rationale, a_in, a_out, a_ms, a_live = _invoke_reasoning_summary(
+    rationale, a_in, a_out, a_thoughts, a_ms, a_live = _invoke_reasoning_summary(
         ctx.render(prompt_block.get("prompt", "")),
         use_live=use_live,
         fallback_summary=ctx.render(prompt_block.get("fallback", "")),
@@ -437,14 +468,21 @@ def _reasoning_step(
         {
             "docubridge.zone": "3_consolidation_operational",
             "docubridge.entity_id": ctx.entity_id,
+            "entity_id": ctx.entity_id,
+            "source_mode": "PDF_PATH_B_ARGON",
+            "docubridge.source_mode": "PDF_PATH_B_ARGON",
             "docubridge.agent_spiffe_id": ctx.manifest.agents.get("underwriter", ""),
             "gen_ai.system": "gemini_platform",
             "gen_ai.operation.name": operation_name,
             "gen_ai.agent.name": "credit_underwriting_sense_b",
             "gen_ai.request.model": REASONING_MODEL,
+            "gen_ai.response.model": REASONING_MODEL,
             "gen_ai.usage.input_tokens": a_in,
             "gen_ai.usage.output_tokens": a_out,
+            "gen_ai.usage.reasoning.output_tokens": a_thoughts,
+            "docubridge.thinking_tokens": a_thoughts,
             "docubridge.finops.traffic_type": traffic_type,
+            "finops.traffic_type": traffic_type,
         },
     ):
         telem["argon_calls"] += 1
@@ -473,6 +511,13 @@ def process_uploaded_pdfs(
     beat_reconcile = int(beats.get("reconcile", 2))
     beat_distill = int(beats.get("distill", 4))
     state = ctx.state
+    owner = os.environ.get(
+        "BRIDGE_APPHUB_APPLICATION_ID", "meridian-loan-consolidation"
+    )
+    if state.get("outcome_id"):
+        resume_outcome(str(state["outcome_id"]), owner=owner)
+    else:
+        state["outcome_id"] = start_outcome(owner=owner)
     overall_t0 = time.monotonic()
     use_live = mode == "live" and is_live_gemini_configured(genai_client)
     skill_active = state.get("agent_gym_payoff") is not None or bool(

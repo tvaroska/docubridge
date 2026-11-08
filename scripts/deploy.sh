@@ -43,6 +43,9 @@ export TF_VAR_db_password="${DB_PASSWORD}"
 : "${SSL_DOMAIN:=}"
 : "${FRONTEND_SSL_DOMAIN:=${SSL_DOMAIN}}"
 : "${SERVICE_NAME:=${PROJECT_ID}-bridge}"
+: "${KYC_SERVICE_NAME:=bridge-kyc}"
+: "${RFP_SERVICE_NAME:=bridge-rfp}"
+: "${MERIDIAN_SERVICE_NAME:=bridge-meridian}"
 : "${AR_REPO:=bridge}"                      # Artifact Registry repo for the image
 : "${PARTY_INVOKER_MEMBERS:=}"              # comma-separated run.invoker members (P7-5)
 : "${CALLBACK_PATH:=/followups}"            # Cloud Tasks follow-up callback route
@@ -69,10 +72,30 @@ gcloud services enable \
   aiplatform.googleapis.com \
   cloudscheduler.googleapis.com \
   cloudtrace.googleapis.com \
+  telemetry.googleapis.com \
+  observability.googleapis.com \
+  apphub.googleapis.com \
   bigquery.googleapis.com \
+  bigqueryconnection.googleapis.com \
   documentai.googleapis.com \
   logging.googleapis.com \
   storage.googleapis.com
+
+if [[ "${ENABLE_TELEMETRY_BQ}" == "true" ]]; then
+  echo "==> Configuring Cloud Observability default storage location (us) and _Trace linked dataset (obs_traces)"
+  gcloud observability project-settings update \
+    --location=global \
+    --default-storage-location=us \
+    --project="${PROJECT_ID}" || true
+  gcloud observability buckets links describe obs_traces \
+    --bucket=_Trace \
+    --location=us \
+    --project="${PROJECT_ID}" >/dev/null 2>&1 ||
+    gcloud observability buckets links create obs_traces \
+      --bucket=_Trace \
+      --location=us \
+      --project="${PROJECT_ID}" || true
+fi
 
 # --------------------------------------------------------------------------- #
 # 2. Build + push the container image (Artifact Registry).                     #
@@ -98,6 +121,9 @@ TF_VARS=(
   -var "project_id=${PROJECT_ID}"
   -var "region=${REGION}"
   -var "service_name=${SERVICE_NAME}"
+  -var "kyc_service_name=${KYC_SERVICE_NAME}"
+  -var "rfp_service_name=${RFP_SERVICE_NAME}"
+  -var "meridian_service_name=${MERIDIAN_SERVICE_NAME}"
   -var "container_image=${IMAGE}"
   -var "enable_gateway=${ENABLE_GATEWAY}"
   -var "enable_frontend=${ENABLE_FRONTEND}"
@@ -166,10 +192,11 @@ fi
 cat <<EOF
 
 ==> Deploy complete.
-    edge_url    : ${EFFECTIVE_EDGE_URL}
-    runtime_uri : ${RUNTIME_URI}
-    rfp_board   : $(tf_out rfp_board_uri)
-    portal_url  : ${PORTAL_URL}
+    edge_url      : ${EFFECTIVE_EDGE_URL}
+    bridge_kyc    : ${RUNTIME_URI}
+    bridge_rfp    : $(tf_out rfp_board_uri)
+    bridge_merid  : $(tf_out meridian_service_uri)
+    portal_url    : ${PORTAL_URL}
 
     Run the deployed-path parity gate:
       BRIDGE_TEST_GCP=1 \\
