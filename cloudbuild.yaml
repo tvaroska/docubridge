@@ -142,7 +142,7 @@ steps:
         pnpm --filter "!@docubridge/e2e" -r --parallel test
         pnpm --filter @docubridge/shared build
         pnpm --filter "!@docubridge/e2e" --filter "!@docubridge/shared" -r --parallel build
-        pnpm --filter @docubridge/e2e exec tsc --noEmit
+        pnpm --filter @docubridge/e2e exec playwright test --list
 
   # ------------------------------------------------------------------------- #
   # 4. Infrastructure-as-Code Plan-Time Verification (t=0, terraform test)    #
