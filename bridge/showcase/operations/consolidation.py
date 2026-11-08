@@ -97,21 +97,30 @@ def _ingest_one(
         if asset_id
         else doc.get("raw_document_marker", "%PDF-1.7").encode()
     )
+    from bridge.vault import VaultImmutabilityError
+
     doc_ver_map = ctx.state.setdefault("_doc_versions", {})
     ver_key = f"{context_id}:{entry.doc_id}"
-    doc_version = int(doc_ver_map.get(ver_key, 0)) + 1
-    doc_ver_map[ver_key] = doc_version
-    res = ingest_accepted_submission(
-        entry,
-        entity_id=ctx.entity_for(doc.get("entity")),
-        context_id=context_id,
-        version=doc_version,
-        raw_document_bytes=raw,
-        filename=doc.get("filename"),
-        operational_store=ctx.store,
-        knowledge_catalog=ctx.catalog,
-        agent_gym=ctx.gym,
-    )
+    doc_version = int(doc_ver_map.get(ver_key, 0))
+    while True:
+        doc_version += 1
+        doc_ver_map[ver_key] = doc_version
+        try:
+            res = ingest_accepted_submission(
+                entry,
+                entity_id=ctx.entity_for(doc.get("entity")),
+                context_id=context_id,
+                version=doc_version,
+                raw_document_bytes=raw,
+                filename=doc.get("filename"),
+                operational_store=ctx.store,
+                knowledge_catalog=ctx.catalog,
+                agent_gym=ctx.gym,
+            )
+            break
+        except VaultImmutabilityError:
+            if doc_version >= 100:
+                raise
     info = {
         "doc_id": entry.doc_id,
         "filename": doc.get("filename"),

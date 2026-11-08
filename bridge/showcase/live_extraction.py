@@ -389,21 +389,33 @@ def _ingest_live_document(
             key_fields=key_fields,
             source_anchors=dict.fromkeys(key_fields, anchor),
         )
-        ingest_res = ingest_accepted_submission(
-            entry,
-            entity_id=entity_id,
-            context_id=stable_context_id,
-            version=doc_version,
-            raw_document_bytes=res["pdf_bytes"],
-            filename=fname,
-            operational_store=ctx.store,
-            knowledge_catalog=ctx.catalog,
-            agent_gym=ctx.gym,
-            input_tokens=res["input_tokens"] if res["used_live"] else None,
-            output_tokens=res["output_tokens"] if res["used_live"] else None,
-            thinking_tokens=res.get("thinking_tokens") if res["used_live"] else None,
-            source_mode="PDF_PATH_B_FLASH",
-        )
+        from bridge.vault import VaultImmutabilityError
+
+        while True:
+            try:
+                ingest_res = ingest_accepted_submission(
+                    entry,
+                    entity_id=entity_id,
+                    context_id=stable_context_id,
+                    version=doc_version,
+                    raw_document_bytes=res["pdf_bytes"],
+                    filename=fname,
+                    operational_store=ctx.store,
+                    knowledge_catalog=ctx.catalog,
+                    agent_gym=ctx.gym,
+                    input_tokens=res["input_tokens"] if res["used_live"] else None,
+                    output_tokens=res["output_tokens"] if res["used_live"] else None,
+                    thinking_tokens=res.get("thinking_tokens")
+                    if res["used_live"]
+                    else None,
+                    source_mode="PDF_PATH_B_FLASH",
+                )
+                break
+            except VaultImmutabilityError:
+                if doc_version >= 100:
+                    raise
+                doc_version += 1
+                doc_ver_map[ver_key] = doc_version
 
     res["vault_uri"] = ingest_res.vault_record.vault_uri
     res["cite_page"] = cite_page
@@ -509,6 +521,7 @@ def process_uploaded_pdfs(
     beats = config.get("beats", {})
     beat_expand = int(beats.get("expand", 1))
     beat_reconcile = int(beats.get("reconcile", 2))
+    beat_waiver = int(beats.get("waiver", 3))
     beat_distill = int(beats.get("distill", 4))
     state = ctx.state
     owner = os.environ.get(
@@ -548,6 +561,9 @@ def process_uploaded_pdfs(
 
     bindings = config.get("checklist_bindings", {})
     if any(r["is_day2"] for r in results):
+        for pre_beat in (beat_expand, beat_reconcile, beat_waiver):
+            if state.get("beat", 0) < pre_beat:
+                run_beat(pre_beat)
         if state.get("beat", 0) < beat_distill:
             run_beat(beat_distill)
         day2_res = next((r for r in results if r["is_day2"]), results[-1])
