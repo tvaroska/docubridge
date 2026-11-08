@@ -108,12 +108,17 @@ gcloud artifacts repositories describe "${AR_REPO}" --location="${REGION}" >/dev
     --repository-format=docker --location="${REGION}" \
     --description="Bridge runtime images"
 
-IMAGE_TAG="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || date +%s)"
+: "${IMAGE_TAG:=$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || date +%s)}"
+: "${SKIP_IMAGE_BUILD:=false}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${SERVICE_NAME}:${IMAGE_TAG}"
-echo "==> Running Cloud Build pipeline (lint + pytest + terraform test + image push) for ${IMAGE}"
-gcloud builds submit "${REPO_ROOT}" \
-  --config "${REPO_ROOT}/cloudbuild.yaml" \
-  --substitutions "_REGION=${REGION},_AR_REPO=${AR_REPO},_SERVICE_NAME=${SERVICE_NAME},_IMAGE=${IMAGE}"
+if [[ "${SKIP_IMAGE_BUILD}" != "true" ]]; then
+  echo "==> Running Cloud Build pipeline (lint + pytest + terraform test + image push) for ${IMAGE}"
+  gcloud builds submit "${REPO_ROOT}" \
+    --config "${REPO_ROOT}/cloudbuild.yaml" \
+    --substitutions "_REGION=${REGION},_AR_REPO=${AR_REPO},_SERVICE_NAME=${SERVICE_NAME},_IMAGE=${IMAGE}"
+else
+  echo "==> Skipping Cloud Build (reusing ${IMAGE})"
+fi
 
 # --------------------------------------------------------------------------- #
 # 3. Single-pass Terraform init + apply.                                       #
@@ -164,6 +169,21 @@ EFFECTIVE_EDGE_URL="${GATEWAY_URL:-${RUNTIME_URI}}"
 DB_PRIVATE_IP="$(tf_out db_private_ip)"
 DB_NAME="$(tf_out db_name)"
 DB_USER="$(tf_out db_user)"
+
+if [[ "${ENABLE_TELEMETRY_BQ}" == "true" ]]; then
+  curl -fsS "${RUNTIME_URI}/.well-known/agent-card.json" >/dev/null 2>&1 || true
+  curl -fsS "$(tf_out meridian_service_uri)/exchanges" >/dev/null 2>&1 || true
+  gcloud observability buckets datasets links describe obs_traces \
+    --bucket=_Trace \
+    --dataset=Spans \
+    --location=us \
+    --project="${PROJECT_ID}" >/dev/null 2>&1 ||
+    gcloud observability buckets datasets links create obs_traces \
+      --bucket=_Trace \
+      --dataset=Spans \
+      --location=us \
+      --project="${PROJECT_ID}" || true
+fi
 
 # --------------------------------------------------------------------------- #
 # 4. Optional Frontend — build each app + rsync into GCS when enabled.         #

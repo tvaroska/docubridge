@@ -187,18 +187,19 @@ resource "google_bigquery_table" "completions" {
   deletion_protection = false
   labels              = var.labels
 
+  schema = jsonencode([
+    { name = "payload", type = "JSON", mode = "NULLABLE", description = "Uploaded OTel GenAI prompt/context/completion JSON payload." },
+    { name = "user_prompt", type = "STRING", mode = "NULLABLE", description = "Optional top-level user prompt text." },
+    { name = "retrieved_context", type = "STRING", mode = "NULLABLE", description = "Optional top-level retrieved context." },
+    { name = "final_response", type = "STRING", mode = "NULLABLE", description = "Optional top-level final response." }
+  ])
+
   external_data_configuration {
     autodetect            = false
     ignore_unknown_values = true
     source_format         = "NEWLINE_DELIMITED_JSON"
     source_uris           = ["gs://${google_storage_bucket.genai_payloads[0].name}/*.jsonl"]
     connection_id         = google_bigquery_connection.vertex_ai[0].name
-    schema = jsonencode([
-      { name = "payload", type = "JSON", mode = "NULLABLE", description = "Uploaded OTel GenAI prompt/context/completion JSON payload." },
-      { name = "user_prompt", type = "STRING", mode = "NULLABLE", description = "Optional top-level user prompt text." },
-      { name = "retrieved_context", type = "STRING", mode = "NULLABLE", description = "Optional top-level retrieved context." },
-      { name = "final_response", type = "STRING", mode = "NULLABLE", description = "Optional top-level final response." }
-    ])
   }
 
   depends_on = [google_storage_bucket_iam_member.genai_payloads_biglake_viewer]

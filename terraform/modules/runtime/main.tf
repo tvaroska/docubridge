@@ -87,6 +87,7 @@ locals {
   }
 
   meridian_plain_env = {
+    BRIDGE_RFP_PROCESS                                 = var.rfp_process != "" ? var.rfp_process : "benefits_rfp"
     BRIDGE_RUNTIME_SA_EMAIL                            = var.runtime_sa_email
     BRIDGE_GATEWAY_HOST                                = var.gateway_host
     BRIDGE_PORT_MODE                                   = var.port_mode
