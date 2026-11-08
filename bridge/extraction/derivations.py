@@ -215,9 +215,7 @@ def apply_result_derivations(
     if new_fields is not result.fields:
         updates["fields"] = new_fields
     if applied_rules:
-        merged_rules = list(
-            dict.fromkeys([*result.applied_rule_ids, *applied_rules])
-        )
+        merged_rules = list(dict.fromkeys([*result.applied_rule_ids, *applied_rules]))
         updates["applied_rule_ids"] = merged_rules
     if ontology_revision_id is not None:
         updates["ontology_revision_id"] = ontology_revision_id

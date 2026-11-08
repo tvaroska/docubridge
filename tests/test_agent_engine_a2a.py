@@ -119,7 +119,9 @@ async def run_collection(
         streaming=True,
         supported_protocol_bindings=[TransportProtocol.JSONRPC.value],
     )
-    client = await ClientFactory(cfg).create_from_url(card_url.rsplit("/.well-known", 1)[0] + "/")
+    client = await ClientFactory(cfg).create_from_url(
+        card_url.rsplit("/.well-known", 1)[0] + "/"
+    )
     parts = encode_collect_request(
         CollectRequest(
             process="address-proof",

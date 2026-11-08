@@ -463,8 +463,18 @@ def test_empty_docubridge_boot_and_create_schema_from_documents(
         pkg = create_schema_from_documents(
             entity_id="utility-bill",
             sample_files=[
-                repo_root / "wiki" / "evals" / "address" / "images" / "bill-powerco-clean.svg",
-                repo_root / "wiki" / "evals" / "address" / "images" / "bill-aquautil-clean.svg",
+                repo_root
+                / "wiki"
+                / "evals"
+                / "address"
+                / "images"
+                / "bill-powerco-clean.svg",
+                repo_root
+                / "wiki"
+                / "evals"
+                / "address"
+                / "images"
+                / "bill-aquautil-clean.svg",
             ],
             paired_target_examples=[
                 {
@@ -484,13 +494,20 @@ def test_empty_docubridge_boot_and_create_schema_from_documents(
         assert pkg.installed_in_registry is True
         assert (out_dir / "catalog" / "doctypes" / "utility-bill.okf.md").is_file()
         assert (out_dir / "skills" / "utility-bill" / "SKILL.md").is_file()
-        assert (out_dir / "skills" / "utility-bill" / "assets" / "schema.json").is_file()
-        assert (out_dir / "skills" / "utility-bill" / "assets" / "validation.yaml").is_file()
+        assert (
+            out_dir / "skills" / "utility-bill" / "assets" / "schema.json"
+        ).is_file()
+        assert (
+            out_dir / "skills" / "utility-bill" / "assets" / "validation.yaml"
+        ).is_file()
 
         # Doctype is now live in doctype_schemas() and KnowledgeCatalog
         live_schemas = doctype_schemas()
         assert "utility-bill" in live_schemas
-        assert "service_address" in live_schemas["utility-bill"]["properties"]["key_fields"]["properties"]
+        assert (
+            "service_address"
+            in live_schemas["utility-bill"]["properties"]["key_fields"]["properties"]
+        )
     finally:
         monkeypatch.delenv(EMPTY_CATALOG_ENV, raising=False)
         monkeypatch.delenv("BRIDGE_SKILLS_DIR", raising=False)
@@ -612,8 +629,14 @@ def test_onboard_use_case_manifest_and_http_endpoint(
 
         # Verify tables.rates and tables.design were preserved in benefits-quote schema.json
         live_schemas = doctype_schemas()
-        assert "rates" in live_schemas["benefits-quote"]["properties"]["tables"]["properties"]
-        assert "design" in live_schemas["benefits-quote"]["properties"]["tables"]["properties"]
+        assert (
+            "rates"
+            in live_schemas["benefits-quote"]["properties"]["tables"]["properties"]
+        )
+        assert (
+            "design"
+            in live_schemas["benefits-quote"]["properties"]["tables"]["properties"]
+        )
 
         # Verify Agent Card now advertises both onboarded use-case processes
         card = build_agent_card()

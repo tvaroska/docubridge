@@ -39,7 +39,9 @@ from contract.refinery import OntologyEntitySpec
 
 _XML_TAG_RE = re.compile(r"<[^>]+>")
 _PDF_STREAM_RE = re.compile(rb"stream[\r\n]+(.*?)[\r\n]+endstream", re.S)
-_PDF_TEXT_TOKEN_RE = re.compile(r"\(((?:\\.|[^\\()])+)\)\s*Tj|\[((?:\\.|[^\[\]])+)\]\s*TJ")
+_PDF_TEXT_TOKEN_RE = re.compile(
+    r"\(((?:\\.|[^\\()])+)\)\s*Tj|\[((?:\\.|[^\[\]])+)\]\s*TJ"
+)
 
 DEFAULT_PROCESS_POLICY: dict[str, Any] = {
     "disposition": {
@@ -178,7 +180,9 @@ def _extract_pdf_text_bytes(raw_bytes: bytes) -> str:
 
 def _extract_svg_or_xml_text(raw_text: str) -> str:
     """Extract readable lines from SVG `<text>` or HTML/XML elements."""
-    replaced = re.sub(r"</(?:text|tspan|p|div|tr|li|h[1-6])>", "\n", raw_text, flags=re.I)
+    replaced = re.sub(
+        r"</(?:text|tspan|p|div|tr|li|h[1-6])>", "\n", raw_text, flags=re.I
+    )
     stripped = _XML_TAG_RE.sub(" ", replaced)
     unescaped = html.unescape(stripped)
     out_lines: list[str] = []
@@ -274,11 +278,20 @@ def render_doctype_skill_package(
         schema_version=schema_version,
     )
     schema_json_str = render_skill_schema_json(schema_dict)
-    val_doc = dict(validation_rules) if validation_rules else dict(DEFAULT_DOCTYPE_VALIDATION)
+    val_doc = (
+        dict(validation_rules) if validation_rules else dict(DEFAULT_DOCTYPE_VALIDATION)
+    )
     validation_yaml_str = yaml.safe_dump(val_doc, sort_keys=False, allow_unicode=True)
 
-    tag_list = ["doctype", spec.entity_id, *(t for t in tags if t not in ("doctype", spec.entity_id))]
-    desc_text = spec.entity_description.what_it_is.strip() or f"Structured {spec.entity_id} document."
+    tag_list = [
+        "doctype",
+        spec.entity_id,
+        *(t for t in tags if t not in ("doctype", spec.entity_id)),
+    ]
+    desc_text = (
+        spec.entity_description.what_it_is.strip()
+        or f"Structured {spec.entity_id} document."
+    )
     frontmatter = {
         "name": spec.entity_id,
         "description": desc_text[:1024],
@@ -319,9 +332,13 @@ def render_process_skill_package(
 ) -> tuple[str, dict[str, str]]:
     """Render `(skill_md, assets)` for a process skill ready for `Port.skill_registry.install_skill`."""
     slug = _slugify_entity_id(process_name)
-    candidates_clean = [ _slugify_entity_id(c) for c in candidate_doctypes if str(c).strip() ]
+    candidates_clean = [
+        _slugify_entity_id(c) for c in candidate_doctypes if str(c).strip()
+    ]
     if not candidates_clean:
-        raise ValueError(f"Process skill '{slug}' requires at least one candidate doctype")
+        raise ValueError(
+            f"Process skill '{slug}' requires at least one candidate doctype"
+        )
 
     policy_doc = dict(policy) if policy else dict(DEFAULT_PROCESS_POLICY)
     policy_yaml_str = yaml.safe_dump(policy_doc, sort_keys=False, allow_unicode=True)
@@ -341,7 +358,9 @@ def render_process_skill_package(
 
     frontmatter = {
         "name": slug,
-        "description": (description.strip() or f"Process exchange skill {slug}.")[:1024],
+        "description": (description.strip() or f"Process exchange skill {slug}.")[
+            :1024
+        ],
         "license": "Apache-2.0",
         "metadata": meta,
     }
@@ -385,11 +404,12 @@ def create_schema_from_documents(
     active_refinery = refinery or schema_refinery_from_env()
     combined_samples: list[SampleDocumentExample | Mapping[str, Any]] = list(samples)
     for idx, fpath in enumerate(sample_files, start=len(combined_samples) + 1):
-        combined_samples.append(load_sample_from_file(Path(fpath), sample_id=f"sample-{idx}"))
+        combined_samples.append(
+            load_sample_from_file(Path(fpath), sample_id=f"sample-{idx}")
+        )
 
     enums_tuple: dict[str, tuple[str, ...]] = {
-        str(k): tuple(str(v) for v in vals)
-        for k, vals in (field_enums or {}).items()
+        str(k): tuple(str(v) for v in vals) for k, vals in (field_enums or {}).items()
     }
     tables_dict: dict[str, dict[str, Any]] = {
         str(k): dict(v) for k, v in (tables or {}).items()
@@ -612,9 +632,7 @@ def load_manifest_file(manifest_path: Path) -> tuple[UseCaseOnboardingManifest, 
     resolved = manifest_path.resolve()
     raw = resolved.read_text(encoding="utf-8")
     data = (
-        json.loads(raw)
-        if resolved.suffix.lower() == ".json"
-        else yaml.safe_load(raw)
+        json.loads(raw) if resolved.suffix.lower() == ".json" else yaml.safe_load(raw)
     )
     manifest = UseCaseOnboardingManifest.model_validate(data)
     base_dir = resolved.parent
@@ -622,7 +640,9 @@ def load_manifest_file(manifest_path: Path) -> tuple[UseCaseOnboardingManifest, 
     for item in manifest.doctypes:
         samples_list = list(item.samples)
         for idx, rel in enumerate(item.sample_files, start=len(samples_list) + 1):
-            fpath = (base_dir / rel).resolve() if not Path(rel).is_absolute() else Path(rel)
+            fpath = (
+                (base_dir / rel).resolve() if not Path(rel).is_absolute() else Path(rel)
+            )
             sample = load_sample_from_file(fpath, sample_id=f"{item.entity_id}-{idx}")
             samples_list.append(sample.model_dump(mode="json"))
         hydrated_items.append(
@@ -651,23 +671,66 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="Path to a sample document (.pdf, .svg, .docx, .xlsx, .json, .yaml, .txt); repeatable (1-5)",
     )
-    p_schema.add_argument("--paired-target", default=None, help="Optional JSON/YAML file of paired target rows")
-    p_schema.add_argument("--spine", default=None, help="Optional shared spine entity ID")
-    p_schema.add_argument("--context-set", default="enterprise-document-intake", help="Ontology context set")
+    p_schema.add_argument(
+        "--paired-target",
+        default=None,
+        help="Optional JSON/YAML file of paired target rows",
+    )
+    p_schema.add_argument(
+        "--spine", default=None, help="Optional shared spine entity ID"
+    )
+    p_schema.add_argument(
+        "--context-set",
+        default="enterprise-document-intake",
+        help="Ontology context set",
+    )
     p_schema.add_argument("--domain", default="general", help="Domain tag")
-    p_schema.add_argument("--priority", type=int, default=20, help="Source priority tier (default 20)")
-    p_schema.add_argument("--write-dir", type=Path, default=None, help="Write catalog/doctypes and skills/<doctype> under this directory")
-    p_schema.add_argument("--install", action="store_true", help="Install into the active SkillRegistry and KnowledgeCatalog")
-    p_schema.add_argument("--live-llm", action="store_true", help="Use live gemini-4-argon for contrastive synthesis")
+    p_schema.add_argument(
+        "--priority", type=int, default=20, help="Source priority tier (default 20)"
+    )
+    p_schema.add_argument(
+        "--write-dir",
+        type=Path,
+        default=None,
+        help="Write catalog/doctypes and skills/<doctype> under this directory",
+    )
+    p_schema.add_argument(
+        "--install",
+        action="store_true",
+        help="Install into the active SkillRegistry and KnowledgeCatalog",
+    )
+    p_schema.add_argument(
+        "--live-llm",
+        action="store_true",
+        help="Use live gemini-4-argon for contrastive synthesis",
+    )
 
     p_onboard = sub.add_parser(
         "onboard",
         help="Onboard a use-case agent manifest (sample documents + process skill) locally or to a remote Bridge URL.",
     )
-    p_onboard.add_argument("--manifest", type=Path, required=True, help="Path to use-case onboarding manifest (.yaml or .json)")
-    p_onboard.add_argument("--bridge-url", default=None, help="Remote DocuBridge dashboard/API URL (e.g. https://<service>.run.app); omit for local")
-    p_onboard.add_argument("--write-dir", type=Path, default=None, help="Optional output directory to write induced OKF & skill files")
-    p_onboard.add_argument("--live-llm", action="store_true", help="Use live gemini-4-argon for contrastive synthesis")
+    p_onboard.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help="Path to use-case onboarding manifest (.yaml or .json)",
+    )
+    p_onboard.add_argument(
+        "--bridge-url",
+        default=None,
+        help="Remote DocuBridge dashboard/API URL (e.g. https://<service>.run.app); omit for local",
+    )
+    p_onboard.add_argument(
+        "--write-dir",
+        type=Path,
+        default=None,
+        help="Optional output directory to write induced OKF & skill files",
+    )
+    p_onboard.add_argument(
+        "--live-llm",
+        action="store_true",
+        help="Use live gemini-4-argon for contrastive synthesis",
+    )
 
     args = parser.parse_args(argv)
 
@@ -676,7 +739,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.paired_target:
             pt_path = Path(args.paired_target).resolve()
             raw_pt = pt_path.read_text(encoding="utf-8")
-            loaded_pt = json.loads(raw_pt) if pt_path.suffix.lower() == ".json" else yaml.safe_load(raw_pt)
+            loaded_pt = (
+                json.loads(raw_pt)
+                if pt_path.suffix.lower() == ".json"
+                else yaml.safe_load(raw_pt)
+            )
             if isinstance(loaded_pt, list):
                 paired_list = [dict(x) for x in loaded_pt]
             elif isinstance(loaded_pt, Mapping):

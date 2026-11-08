@@ -175,7 +175,11 @@ def build_extraction_prompt(
         if (target_doctype or candidate_doctypes or context_set)
         else schemas
     )
-    req_set = {str(f).strip() for f in requested_fields if str(f).strip()} if requested_fields else None
+    req_set = (
+        {str(f).strip() for f in requested_fields if str(f).strip()}
+        if requested_fields
+        else None
+    )
     scoped_hints = list(extraction_hints)
     if (target_doctype or candidate_doctypes or context_set) and scoped_hints:
         allowed_dtypes = {"*", "", *active_schemas.keys()}
@@ -256,7 +260,11 @@ def build_response_schema(
         if (target_doctype or candidate_doctypes or context_set)
         else schemas
     )
-    req_set = {str(f).strip() for f in requested_fields if str(f).strip()} if requested_fields else None
+    req_set = (
+        {str(f).strip() for f in requested_fields if str(f).strip()}
+        if requested_fields
+        else None
+    )
     ordered = _ordered_doctypes(active_schemas, catalog_order)
     union: dict[str, str] = {}
     for doctype in ordered:

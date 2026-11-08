@@ -370,8 +370,6 @@ class KnowledgeCatalogPort(PortABC):
     port = Port.knowledge_catalog
 
     @abc.abstractmethod
-    def build_knowledge_catalog(
-        self, db_url: str | None = None
-    ) -> "KnowledgeCatalog":
+    def build_knowledge_catalog(self, db_url: str | None = None) -> "KnowledgeCatalog":
         """Return a :class:`KnowledgeCatalog` (refuses in-memory fallback on GCP)."""
         raise NotImplementedError

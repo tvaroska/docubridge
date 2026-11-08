@@ -113,7 +113,9 @@ class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
                 CATALOG_REVISIONS_TABLE_NAME,
                 meta,
                 Column("seq", Integer, primary_key=True, autoincrement=True),
-                Column("revision_id", String(128), nullable=False, unique=True, index=True),
+                Column(
+                    "revision_id", String(128), nullable=False, unique=True, index=True
+                ),
                 Column("state", String(64), nullable=False, index=True),
                 Column("version", String(64), nullable=False),
                 Column("content_sha256", String(128), nullable=False),
@@ -562,9 +564,7 @@ def build_sql_or_memory_catalog(
         with _SQL_CATALOG_LOCK:
             cached = _SQL_CATALOG_CACHE.get(effective_dsn)
             if cached is None or cached._closed:
-                cached = SqlKnowledgeCatalog(
-                    effective_dsn, operational_store=store
-                )
+                cached = SqlKnowledgeCatalog(effective_dsn, operational_store=store)
                 _SQL_CATALOG_CACHE[effective_dsn] = cached
             else:
                 cached.bind_operational_store(store)

@@ -27,7 +27,7 @@ from bridge.knowledge_catalog.models import (
     QualityRule,
 )
 from bridge.knowledge_catalog.sql_store import (
-     _DEFAULT_CATALOG,
+    _DEFAULT_CATALOG,
     _SQL_CATALOG_CACHE,
     _SQL_CATALOG_LOCK,
     CATALOG_ASSETS_TABLE_NAME,

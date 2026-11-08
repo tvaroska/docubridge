@@ -69,6 +69,7 @@ def is_satisfied(status: CollectionStatus) -> bool:
     issuers = {e.issuer for e in accepted if e.doctype == "utility-bill" and e.issuer}
     return len(issuers) >= 2
 
+
 BASE = "http://test"
 URL = "http://test/"
 PROCESS = "address-proof"

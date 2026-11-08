@@ -31,9 +31,7 @@ FORBIDDEN_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("Internal Buganizer ID", re.compile(r"\bb" + r"/\d{6,}\b")),
     (
         "Internal shortlink",
-        re.compile(
-            r"\bgo" + r"/(?!mod\b|sum\b|work\b|version\b)[a-zA-Z0-9_-]{3,}"
-        ),
+        re.compile(r"\bgo" + r"/(?!mod\b|sum\b|work\b|version\b)[a-zA-Z0-9_-]{3,}"),
     ),
     (
         "Internal monorepo path",
