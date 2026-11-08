@@ -155,9 +155,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         outcome_id: str | None = None,
     ) -> ActionInboxItem:
         """Create a new human-in-the-loop action inbox item in memory and record its audit event."""
-        resolved_outcome_id = (
-            outcome_id or get_current_outcome_id() or start_outcome()
-        )
+        resolved_outcome_id = outcome_id or get_current_outcome_id() or start_outcome()
         with trace_step(
             "docubridge.a2ui.create_action_item",
             {

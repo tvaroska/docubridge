@@ -128,7 +128,9 @@ def start_outcome(
         if outcome_id is not None and outcome_id.strip()
         else f"out_{uuid.uuid4().hex}"
     )
-    return _attach_outcome_baggage(resolved_id, owner=owner, attach_context=attach_context)
+    return _attach_outcome_baggage(
+        resolved_id, owner=owner, attach_context=attach_context
+    )
 
 
 def resume_outcome(
@@ -139,8 +141,12 @@ def resume_outcome(
 ) -> str:
     """Re-attach a stored `outcome.id` when resuming after HITL review, A2A continuation, or task queue."""
     if not isinstance(outcome_id, str) or not outcome_id.strip():
-        raise ValueError("outcome_id must be a non-empty string when resuming an outcome.")
-    return _attach_outcome_baggage(outcome_id.strip(), owner=owner, attach_context=attach_context)
+        raise ValueError(
+            "outcome_id must be a non-empty string when resuming an outcome."
+        )
+    return _attach_outcome_baggage(
+        outcome_id.strip(), owner=owner, attach_context=attach_context
+    )
 
 
 def close_outcome(
@@ -163,9 +169,13 @@ def close_outcome(
         else get_current_outcome_id()
     )
     if not resolved_id:
-        raise ValueError("Cannot close outcome without an explicit or active baggage outcome.id.")
+        raise ValueError(
+            "Cannot close outcome without an explicit or active baggage outcome.id."
+        )
     resolved_owner = (
-        owner.strip() if owner is not None and owner.strip() else get_current_outcome_owner()
+        owner.strip()
+        if owner is not None and owner.strip()
+        else get_current_outcome_owner()
     )
 
     attrs: dict[str, str] = {
@@ -251,7 +261,9 @@ def inject_outcome_headers(
 ) -> dict[str, str]:
     """Inject W3C `traceparent` + `baggage` into `headers`, stripping `outcome.*` when `is_external=True`."""
     carrier: dict[str, str] = dict(headers) if headers is not None else {}
-    target_ctx = without_outcome_baggage(ctx) if is_external else (ctx or context.get_current())
+    target_ctx = (
+        without_outcome_baggage(ctx) if is_external else (ctx or context.get_current())
+    )
     propagate.inject(carrier, context=target_ctx)
     if is_external:
         carrier = strip_outcome_baggage_headers(carrier, is_external=True)

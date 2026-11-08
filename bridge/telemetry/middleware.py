@@ -275,7 +275,11 @@ def _sync_canonical_span_attributes(span: trace.Span) -> None:
     out_owner = get_current_outcome_owner() or os.environ.get(
         "BRIDGE_APPHUB_APPLICATION_ID"
     )
-    if out_owner and OUTCOME_OWNER_KEY not in attrs and (out_id or OUTCOME_ID_KEY in attrs):
+    if (
+        out_owner
+        and OUTCOME_OWNER_KEY not in attrs
+        and (out_id or OUTCOME_ID_KEY in attrs)
+    ):
         span.set_attribute(OUTCOME_OWNER_KEY, out_owner)
 
 

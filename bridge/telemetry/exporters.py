@@ -54,9 +54,7 @@ def _span_to_dict(span: ReadableSpan) -> dict[str, Any]:
     trace_id = f"{ctx.trace_id:032x}" if ctx and ctx.trace_id else "0" * 32
     span_id = f"{ctx.span_id:016x}" if ctx and ctx.span_id else "0" * 16
     parent_span_id = (
-        f"{span.parent.span_id:016x}"
-        if span.parent and span.parent.span_id
-        else None
+        f"{span.parent.span_id:016x}" if span.parent and span.parent.span_id else None
     )
     start_ns = span.start_time or 0
     end_ns = span.end_time or start_ns

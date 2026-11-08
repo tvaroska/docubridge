@@ -160,9 +160,7 @@ def resolve_caller_role(
         "" if enforce_auth else request.headers.get("x-bridge-principal", "").strip()
     )
     header_role = (
-        ""
-        if enforce_auth
-        else request.headers.get("x-bridge-role", "").strip().lower()
+        "" if enforce_auth else request.headers.get("x-bridge-role", "").strip().lower()
     )
 
     token_sub = str(user_token_claims.get("sub") or "").strip()
@@ -340,17 +338,11 @@ def resolve_compound_identity(
 
     tenant_id = (
         str(obo_claims.get("tenant_id") or user_token_claims.get("tenant_id") or "")
-        or (
-            ""
-            if enforce_auth
-            else request.headers.get(TENANT_ID_HEADER, "").strip()
-        )
+        or ("" if enforce_auth else request.headers.get(TENANT_ID_HEADER, "").strip())
         or None
     )
     raw_entities_header = (
-        ""
-        if enforce_auth
-        else request.headers.get(ALLOWED_ENTITIES_HEADER, "").strip()
+        "" if enforce_auth else request.headers.get(ALLOWED_ENTITIES_HEADER, "").strip()
     )
     header_entities = tuple(
         e.strip() for e in raw_entities_header.split(",") if e.strip()
@@ -373,9 +365,7 @@ def resolve_compound_identity(
             or ""
         )
         or (
-            ""
-            if enforce_auth
-            else request.headers.get(CARRIER_SLUG_HEADER, "").strip()
+            "" if enforce_auth else request.headers.get(CARRIER_SLUG_HEADER, "").strip()
         )
         or None
     )
