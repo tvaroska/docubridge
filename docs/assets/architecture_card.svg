@@ -1,142 +1,197 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" font-family="'Google Sans', 'Inter', system-ui, -apple-system, sans-serif">
-  <!-- Background & Header -->
-  <rect width="1280" height="720" fill="#f8f9fa"/>
-  <rect x="20" y="16" width="1240" height="76" rx="12" fill="#174ea6"/>
-  <rect x="20" y="16" width="8" height="76" rx="4" fill="#1a73e8"/>
-  <text x="44" y="48" fill="#ffffff" font-size="21" font-weight="700">DocuBridge — 6-Zone A2A Document Bridge, Hallucination Firewall &amp; Agent Gym</text>
-  <text x="44" y="74" fill="#e8f0fe" font-size="13.5" font-weight="500">4-Pillar Gemini Platform (BUILD • GOVERN • SCALE • OPTIMIZE) • 14 Hexagonal Dual-Mode Ports (local | gcp) • Rule 0 Decimal Consolidation</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 940" width="100%" height="100%">
+  <defs>
+    <style>
+      .font { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+      .mono { font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; }
+      .title { font-size: 28px; font-weight: 800; }
+      .subtitle { font-size: 14px; font-weight: 500; }
+      .step-num { font-size: 32px; font-weight: 800; }
+      .step-tag { font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+      .box-title { font-size: 20px; font-weight: 800; }
+      .box-sub { font-size: 13.5px; font-weight: 500; }
+      .pill-title { font-size: 13px; font-weight: 700; }
+      .pill-sub { font-size: 12px; font-weight: 500; }
+      .arrow-label { font-size: 11px; font-weight: 800; letter-spacing: 0.8px; }
+    </style>
+  </defs>
 
-  <!-- Column 1: BUILD & GOVERN (Zones 1 & 6) -->
-  <rect x="20" y="110" width="295" height="586" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.5"/>
-  <rect x="20" y="110" width="295" height="42" rx="12" fill="#e8f0fe"/>
-  <text x="36" y="136" fill="#174ea6" font-size="14.5" font-weight="700">1. BUILD &amp; GOVERN (Zones 1 &amp; 6)</text>
+  <!-- Outer Soft Slate Canvas -->
+  <rect x="0" y="0" width="1600" height="940" fill="#F8FAFC"/>
+  <rect x="20" y="20" width="1560" height="900" rx="14" fill="#FFFFFF" stroke="#0F172A" stroke-width="2.5"/>
 
-  <rect x="32" y="168" width="271" height="122" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="44" y="192" fill="#202124" font-size="12.5" font-weight="700">Hybrid A2A Edge &amp; Multi-Agent Interop</text>
-  <text x="44" y="214" fill="#5f6368" font-size="11.5">• A2A v0.3 JSON-RPC + SSE (/.well-known)</text>
-  <text x="44" y="234" fill="#5f6368" font-size="11.5">• Deterministic Collector + Resumable LlmLeg</text>
-  <text x="44" y="254" fill="#5f6368" font-size="11.5">• Google ADK ↔ LangGraph Carrier Interop</text>
-  <text x="44" y="276" fill="#1a73e8" font-size="11" font-weight="700">Sense A (Bridge Facts) ≠ Sense B (Policy)</text>
+  <!-- Top Dark Navy Swiss Masthead -->
+  <rect x="20" y="20" width="1560" height="104" rx="12" fill="#0F172A"/>
+  <rect x="20" y="90" width="1560" height="34" fill="#0F172A"/>
+  <text x="56" y="66" class="font title" fill="#FFFFFF">DOCUBRIDGE ARCHITECTURE</text>
+  <text x="56" y="96" class="font subtitle" fill="#94A3B8">Agent-to-Agent Document Mediation · Rule 0 Deterministic Consolidation · Self-Calibrating Skills</text>
 
-  <rect x="32" y="304" width="271" height="126" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="44" y="328" fill="#202124" font-size="12.5" font-weight="700">Agent Gateway &amp; Compound Identity</text>
-  <text x="44" y="350" fill="#5f6368" font-size="11.5">• CLIENT_TO_AGENT (Model Armor + DLP)</text>
-  <text x="44" y="370" fill="#5f6368" font-size="11.5">• AGENT_TO_ANYWHERE + IAM v3 CEL</text>
-  <text x="44" y="390" fill="#5f6368" font-size="11.5">• SPIFFE JWT-SVID + OBO (Agent ∩ User)</text>
-  <text x="44" y="412" fill="#c5221f" font-size="11" font-weight="700">Anti-Spoofing Role Guard (X-Bridge-Role)</text>
+  <!-- Top Right Color Legend Pills -->
+  <rect x="980" y="48" width="176" height="44" rx="8" fill="#1E293B" stroke="#38BDF8" stroke-width="1.5"/>
+  <circle cx="1004" cy="70" r="6" fill="#38BDF8"/>
+  <text x="1020" y="75" class="font pill-title" fill="#F8FAFC">Sense A: Intake</text>
 
-  <rect x="32" y="444" width="271" height="118" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="44" y="468" fill="#202124" font-size="12.5" font-weight="700">Agent &amp; Skill Registry (Zone 6)</text>
-  <text x="44" y="490" fill="#5f6368" font-size="11.5">• urn:agent | urn:mcp | urn:endpoint | urn:skill</text>
-  <text x="44" y="510" fill="#5f6368" font-size="11.5">• OKF Doctype Bundles (catalog/doctypes/)</text>
-  <text x="44" y="530" fill="#5f6368" font-size="11.5">• Content-Addressed SkillRevisionRecord</text>
-  <text x="44" y="550" fill="#137333" font-size="11" font-weight="700">Zero-Restart Skill &amp; Schema Hot-Reload</text>
+  <rect x="1172" y="48" width="196" height="44" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1.5"/>
+  <circle cx="1196" cy="70" r="6" fill="#F59E0B"/>
+  <text x="1212" y="75" class="font pill-title" fill="#FDE68A">Rule 0: Zero AI Math</text>
 
-  <rect x="32" y="576" width="271" height="104" rx="8" fill="#e8f0fe" stroke="#1a73e8"/>
-  <text x="44" y="600" fill="#174ea6" font-size="12.5" font-weight="700">14 Hexagonal Ports (bridge/ports/)</text>
-  <text x="44" y="622" fill="#202124" font-size="11.5">• AST Guard: bridge/ never imports agents/</text>
-  <text x="44" y="642" fill="#202124" font-size="11.5">• Shared contract/ Pydantic v2 Wire Types</text>
-  <text x="44" y="664" fill="#1a73e8" font-size="11" font-weight="700">100% Parity: Zero-Cred local | Live gcp</text>
+  <rect x="1384" y="48" width="164" height="44" rx="8" fill="#1E293B" stroke="#10B981" stroke-width="1.5"/>
+  <circle cx="1408" cy="70" r="6" fill="#10B981"/>
+  <text x="1424" y="75" class="font pill-title" fill="#6EE7B7">Sense B: Policy</text>
 
-  <!-- Column 2: DUAL-PATH INTAKE & VAULT (Zones 2–3) -->
-  <rect x="335" y="110" width="295" height="586" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.5"/>
-  <rect x="335" y="110" width="295" height="42" rx="12" fill="#fef7e0"/>
-  <text x="351" y="136" fill="#b06000" font-size="14.5" font-weight="700">2. INTAKE &amp; FIREWALL (Zones 2–3)</text>
+  <!-- ================================================================= -->
+  <!-- TOP ROW: STAGES 01 -> 02 -> 03 (y=156, h=296)                      -->
+  <!-- ================================================================= -->
 
-  <rect x="347" y="168" width="271" height="122" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="359" y="192" fill="#202124" font-size="12.5" font-weight="700">Zone 2 · Dual-Path Document Intake</text>
-  <text x="359" y="214" fill="#5f6368" font-size="11.5">• Path A: Schema Assertions (0 LLM Calls)</text>
-  <text x="359" y="234" fill="#5f6368" font-size="11.5">• Path B: DocAI Layout + gemini-3.8-flash</text>
-  <text x="359" y="254" fill="#5f6368" font-size="11.5">• M365 / MIME HMAC Email Ingress</text>
-  <text x="359" y="276" fill="#b06000" font-size="11" font-weight="700">Pinned Gate: accepted | pending | rejected</text>
+  <!-- STAGE 01: SKY BLUE -->
+  <rect x="56" y="156" width="440" height="296" rx="10" fill="#F8FAFC" stroke="#0284C7" stroke-width="2.5"/>
+  <rect x="56" y="156" width="440" height="64" rx="10" fill="#E0F2FE"/>
+  <rect x="56" y="196" width="440" height="24" fill="#E0F2FE"/>
+  <line x1="56" y1="220" x2="496" y2="220" stroke="#0284C7" stroke-width="2"/>
+  <text x="80" y="199" class="mono step-num" fill="#0369A1">01</text>
+  <text x="140" y="194" class="mono step-tag" fill="#0C4A6E">GOVERNED A2A EDGE</text>
 
-  <rect x="347" y="304" width="271" height="126" rx="8" fill="#fce8e6" stroke="#c5221f"/>
-  <text x="359" y="328" fill="#c5221f" font-size="12.5" font-weight="700">Rule 0 Hallucination Firewall</text>
-  <text x="359" y="350" fill="#202124" font-size="11.5">• LLMs Extract &amp; Route; Code Computes Math</text>
-  <text x="359" y="370" fill="#202124" font-size="11.5">• Deterministic Decimal Consolidation</text>
-  <text x="359" y="390" fill="#202124" font-size="11.5">• Stage-B FieldDerivation Receipts (LTV/DSCR)</text>
-  <text x="359" y="412" fill="#c5221f" font-size="11" font-weight="700">Zero Floating-Point or Unanchored Facts</text>
+  <text x="80" y="262" class="font box-title" fill="#0F172A">Agent Gateway &amp; Identity</text>
+  <text x="80" y="288" class="font box-sub" fill="#475569">Calling and partner agents ask once over A2A</text>
 
-  <rect x="347" y="444" width="271" height="118" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="359" y="468" fill="#202124" font-size="12.5" font-weight="700">Zone 3 · 7-Year WORM Audit Vault</text>
-  <text x="359" y="490" fill="#5f6368" font-size="11.5">• GCS WORM Lock (if_generation_match=0)</text>
-  <text x="359" y="510" fill="#5f6368" font-size="11.5">• SHA-256 Content-Addressed Digests</text>
-  <text x="359" y="530" fill="#5f6368" font-size="11.5">• Page-Anchored Bounding-Box Proofs</text>
-  <text x="359" y="550" fill="#137333" font-size="11" font-weight="700">Immutable Regulatory Evidence Chain</text>
+  <rect x="80" y="314" width="392" height="52" rx="8" fill="#FFFFFF" stroke="#7DD3FC" stroke-width="1.5"/>
+  <text x="100" y="345" class="font pill-title" fill="#0369A1">Workload mTLS + Human On-Behalf-Of</text>
 
-  <rect x="347" y="576" width="271" height="104" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="359" y="600" fill="#202124" font-size="12.5" font-weight="700">3 Seeded Industry Presets (/demo)</text>
-  <text x="359" y="622" fill="#5f6368" font-size="11.5">• CRE Loan: $45M (72% LTV, $50k→$100k Fee)</text>
-  <text x="359" y="642" fill="#5f6368" font-size="11.5">• Jumbo Mortgage: $1.85M ($4.25k→$8.5k)</text>
-  <text x="359" y="662" fill="#1a73e8" font-size="11" font-weight="700">• Specialty Property: $142.5M ($50k→$100k)</text>
+  <rect x="80" y="378" width="392" height="52" rx="8" fill="#E0F2FE" stroke="#38BDF8" stroke-width="1.5"/>
+  <text x="100" y="409" class="mono pill-title" fill="#0C4A6E">Scope = Strict Identity Intersection</text>
 
-  <!-- Column 3: SCALE & PROVENANCE (Zones 3–5) -->
-  <rect x="650" y="110" width="295" height="586" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.5"/>
-  <rect x="650" y="110" width="295" height="42" rx="12" fill="#e8f0fe"/>
-  <text x="666" y="136" fill="#174ea6" font-size="14.5" font-weight="700">3. SCALE &amp; PROVENANCE (Zones 3–5)</text>
+  <!-- Arrow 01 -> 02 -->
+  <line x1="496" y1="304" x2="564" y2="304" stroke="#2563EB" stroke-width="3.5"/>
+  <polygon points="564,295 580,304 564,313" fill="#2563EB"/>
+  <text x="538" y="288" text-anchor="middle" class="mono arrow-label" fill="#1D4ED8">INGEST</text>
 
-  <rect x="662" y="168" width="271" height="142" rx="8" fill="#f8f9fa" stroke="#1a73e8"/>
-  <text x="674" y="192" fill="#1a73e8" font-size="12.5" font-weight="700">Zone 3 · Bi-Temporal SQL Store</text>
-  <text x="674" y="214" fill="#202124" font-size="11.5">• learned_as_of × effective_on Bi-Temporal</text>
-  <text x="674" y="234" fill="#202124" font-size="11.5">• Source-Priority Override Hierarchy (10 → 40)</text>
-  <text x="674" y="254" fill="#202124" font-size="11.5">• Preserves Superseded Losers &amp; Conflicts</text>
-  <text x="674" y="274" fill="#202124" font-size="11.5">• Refcounted DsnSqlRuntime (5 Stores, 1 Pool)</text>
-  <text x="674" y="296" fill="#174ea6" font-size="11" font-weight="700">SQLite Async Twin ↔ Cloud SQL PostgreSQL</text>
+  <!-- STAGE 02: ROYAL BLUE -->
+  <rect x="580" y="156" width="440" height="296" rx="10" fill="#EFF6FF" stroke="#2563EB" stroke-width="2.5"/>
+  <rect x="580" y="156" width="440" height="64" rx="10" fill="#DBEAFE"/>
+  <rect x="580" y="196" width="440" height="24" fill="#DBEAFE"/>
+  <line x1="580" y1="220" x2="1020" y2="220" stroke="#2563EB" stroke-width="2"/>
+  <text x="604" y="199" class="mono step-num" fill="#1D4ED8">02</text>
+  <text x="664" y="194" class="mono step-tag" fill="#1E3A8A">DUAL-PATH INTAKE &amp; GATE</text>
 
-  <rect x="662" y="326" width="271" height="122" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="674" y="350" fill="#202124" font-size="12.5" font-weight="700">Zone 4 · Role Views &amp; Iceberg Sync</text>
-  <text x="674" y="372" fill="#5f6368" font-size="11.5">• Broker | Underwriter | Borrower | Auditor</text>
-  <text x="674" y="392" fill="#5f6368" font-size="11.5">• Least-Privilege Field Masking per Persona</text>
-  <text x="674" y="412" fill="#5f6368" font-size="11.5">• Watermarked BigQuery Open Iceberg Sync</text>
-  <text x="674" y="434" fill="#137333" font-size="11" font-weight="700">6-Hop Field-to-Page Provenance Lineage DAG</text>
+  <text x="604" y="262" class="font box-title" fill="#0F172A">Fast-Path vs. Document AI</text>
+  <text x="604" y="288" class="font box-sub" fill="#334155">4-Signal Gate anchors every span to its PDF page</text>
 
-  <rect x="662" y="464" width="271" height="122" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="674" y="488" fill="#202124" font-size="12.5" font-weight="700">Zone 5 · A2UI v0.9 Inbox &amp; Console</text>
-  <text x="674" y="510" fill="#5f6368" font-size="11.5">• Declarative A2UI v0.9 Provenance Surfaces</text>
-  <text x="674" y="530" fill="#5f6368" font-size="11.5">• Click-to-Source PDF Polygon Proof Modal</text>
-  <text x="674" y="550" fill="#5f6368" font-size="11.5">• Quarantine Triage &amp; RFC 6902 Patches</text>
-  <text x="674" y="572" fill="#1a73e8" font-size="11" font-weight="700">4 React/Vite SPAs + 5-Scene /demo Console</text>
+  <rect x="604" y="314" width="188" height="116" rx="8" fill="#ECFDF5" stroke="#34D399" stroke-width="2"/>
+  <text x="622" y="344" class="font pill-title" fill="#047857">Path A: Structured</text>
+  <text x="622" y="370" class="font pill-sub" fill="#065F46">JSON, CSV &amp; Excel</text>
+  <text x="622" y="406" class="mono pill-title" fill="#059669">0 LLM Calls</text>
 
-  <rect x="662" y="600" width="271" height="80" rx="8" fill="#e8f0fe" stroke="#1a73e8"/>
-  <text x="674" y="624" fill="#174ea6" font-size="12" font-weight="700">App Hub &amp; Cloud Run Service Mesh</text>
-  <text x="674" y="644" fill="#202124" font-size="11">bridge-kyc | bridge-rfp | bridge-meridian</text>
-  <text x="674" y="664" fill="#137333" font-size="11" font-weight="700">46 Credential-Free Terraform Plan Tests</text>
+  <rect x="808" y="314" width="188" height="116" rx="8" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2"/>
+  <text x="826" y="344" class="font pill-title" fill="#B45309">Path B: Documents</text>
+  <text x="826" y="370" class="font pill-sub" fill="#78350F">DocAI + gemini-3.8-flash</text>
+  <text x="826" y="406" class="mono pill-title" fill="#D97706">4-Signal Quarantine</text>
 
-  <!-- Column 4: OPTIMIZE: CALIBRATION & EVAL (Zone 6) -->
-  <rect x="965" y="110" width="295" height="586" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.5"/>
-  <rect x="965" y="110" width="295" height="42" rx="12" fill="#e6f4ea"/>
-  <text x="981" y="136" fill="#137333" font-size="14.5" font-weight="700">4. OPTIMIZE: GYM &amp; EVAL (Zone 6)</text>
+  <!-- Arrow 02 -> 03 -->
+  <line x1="1020" y1="304" x2="1088" y2="304" stroke="#D97706" stroke-width="3.5"/>
+  <polygon points="1088,295 1104,304 1088,313" fill="#D97706"/>
+  <text x="1062" y="288" text-anchor="middle" class="mono arrow-label" fill="#B45309">VERIFY</text>
 
-  <rect x="977" y="168" width="271" height="114" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="989" y="192" fill="#202124" font-size="12.5" font-weight="700">Schema Refinery (Ontology Evolution)</text>
-  <text x="989" y="214" fill="#5f6368" font-size="11.5">• Clusters Unmapped Fields &amp; Doctype Drift</text>
-  <text x="989" y="234" fill="#5f6368" font-size="11.5">• Versioned Ontology Revisions (ont-rev-*)</text>
-  <text x="989" y="256" fill="#137333" font-size="11" font-weight="700">Business Glossary &amp; Canonical Term Links</text>
+  <!-- STAGE 03: DARK NAVY & AMBER GOLD -->
+  <rect x="1104" y="156" width="440" height="296" rx="10" fill="#0F172A" stroke="#F59E0B" stroke-width="3"/>
+  <rect x="1104" y="156" width="440" height="64" rx="10" fill="#1E293B"/>
+  <rect x="1104" y="196" width="440" height="24" fill="#1E293B"/>
+  <line x1="1104" y1="220" x2="1544" y2="220" stroke="#F59E0B" stroke-width="2"/>
+  <text x="1128" y="199" class="mono step-num" fill="#F59E0B">03</text>
+  <text x="1188" y="194" class="mono step-tag" fill="#FDE68A">RULE 0 VAULT &amp; LEDGER</text>
 
-  <rect x="977" y="298" width="271" height="126" rx="8" fill="#fce8e6" stroke="#c5221f"/>
-  <text x="989" y="322" fill="#c5221f" font-size="12.5" font-weight="700">Agent Gym (Example-of-One Loop)</text>
-  <text x="989" y="344" fill="#202124" font-size="11.5">• SME Override → Candidate Extraction Hint</text>
-  <text x="989" y="364" fill="#202124" font-size="11.5">• gemini-4-argon Teacher &amp; Conflict Judge</text>
-  <text x="989" y="384" fill="#202124" font-size="11.5">• 3-Tier Counterfactual Gate (NFR == 0.0%)</text>
-  <text x="989" y="406" fill="#137333" font-size="11" font-weight="700">Compiles SKILL.md → Day-2 Auto-Approve</text>
+  <text x="1128" y="262" class="font box-title" fill="#FFFFFF">Deterministic Math &amp; SQL</text>
+  <text x="1128" y="288" class="font box-sub" fill="#CBD5E1">Pure Python Decimal math · Zero LLM arithmetic</text>
 
-  <rect x="977" y="440" width="271" height="114" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
-  <text x="989" y="464" fill="#202124" font-size="12.5" font-weight="700">Programmable Trust &amp; Two-Sided HITL</text>
-  <text x="989" y="486" fill="#5f6368" font-size="11.5">• Per-Slice Trust Dial (hitl_review → auto)</text>
-  <text x="989" y="506" fill="#5f6368" font-size="11.5">• Two-Sided Oversight (RAIR &amp; RSR ≥ 0.80)</text>
-  <text x="989" y="528" fill="#1a73e8" font-size="11" font-weight="700">Seeded Honeypots Catch Rubber-Stamping</text>
+  <rect x="1128" y="314" width="392" height="52" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="1148" y="345" class="font pill-title" fill="#FDE68A">7-Year Write-Once Evidence Lock (SHA-256)</text>
 
-  <rect x="977" y="570" width="271" height="110" rx="8" fill="#e6f4ea" stroke="#137333"/>
-  <text x="989" y="594" fill="#137333" font-size="12.5" font-weight="700">OTel &amp; BigQuery Rule 0 SQL Eval</text>
-  <text x="989" y="616" fill="#202124" font-size="11.5">• gen_ai.* Spans + Applied Hint Attribution</text>
-  <text x="989" y="636" fill="#202124" font-size="11.5">• Step 1 Rule 0 SQL → AI.GENERATE_TABLE</text>
-  <text x="989" y="658" fill="#137333" font-size="11" font-weight="700">Rogan-Gladen Debiasing • Gwet's AC2 ≥ 0.80</text>
+  <rect x="1128" y="378" width="392" height="52" rx="8" fill="#1E293B" stroke="#10B981" stroke-width="1.5"/>
+  <text x="1148" y="409" class="mono pill-title" fill="#34D399">Bi-Temporal SQL: Learned × Effective Time</text>
 
-  <!-- Inter-Column Connectors (Explicit Polygons for Universal SVG Renderers) -->
-  <line x1="315" y1="395" x2="329" y2="395" stroke="#1a73e8" stroke-width="2.5"/>
-  <polygon points="335,395 327,390 327,400" fill="#1a73e8"/>
-  <line x1="630" y1="395" x2="644" y2="395" stroke="#1a73e8" stroke-width="2.5"/>
-  <polygon points="650,395 642,390 642,400" fill="#1a73e8"/>
-  <line x1="945" y1="395" x2="959" y2="395" stroke="#137333" stroke-width="2.5"/>
-  <polygon points="965,395 957,390 957,400" fill="#137333"/>
+  <!-- Downward Connector Stage 03 -> Stage 04 -->
+  <line x1="1324" y1="452" x2="1324" y2="548" stroke="#059669" stroke-width="3.5"/>
+  <polygon points="1315,548 1324,564 1333,548" fill="#059669"/>
+  <text x="1376" y="508" class="mono arrow-label" fill="#047857">PROJECT</text>
+
+  <!-- Direct Quarantine Bypass Connector Stage 02 -> Stage 05 -->
+  <line x1="890" y1="452" x2="890" y2="548" stroke="#D97706" stroke-width="3" stroke-dasharray="8,6"/>
+  <polygon points="881,548 890,564 899,548" fill="#D97706"/>
+  <rect x="760" y="486" width="260" height="32" rx="16" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <text x="890" y="507" text-anchor="middle" class="mono arrow-label" fill="#B45309">QUARANTINE REVIEW QUEUE</text>
+
+  <!-- ================================================================= -->
+  <!-- BOTTOM ROW: STAGES 06 <- 05 <- 04 (y=564, h=296)                   -->
+  <!-- ================================================================= -->
+
+  <!-- STAGE 04: EMERALD GREEN -->
+  <rect x="1104" y="564" width="440" height="296" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="2.5"/>
+  <rect x="1104" y="564" width="440" height="64" rx="10" fill="#D1FAE5"/>
+  <rect x="1104" y="604" width="440" height="24" fill="#D1FAE5"/>
+  <line x1="1104" y1="628" x2="1544" y2="628" stroke="#059669" stroke-width="2"/>
+  <text x="1128" y="607" class="mono step-num" fill="#047857">04</text>
+  <text x="1188" y="602" class="mono step-tag" fill="#065F46">ROLE VIEWS &amp; LAKEHOUSE</text>
+
+  <text x="1128" y="670" class="font box-title" fill="#0F172A">Sense B Policy &amp; BigQuery</text>
+  <text x="1128" y="696" class="font box-sub" fill="#334155">Role-scoped SQL lenses &amp; watermarked batch sync</text>
+
+  <rect x="1128" y="722" width="392" height="52" rx="8" fill="#FFFFFF" stroke="#6EE7B7" stroke-width="1.5"/>
+  <text x="1148" y="753" class="font pill-title" fill="#065F46">Intake · Underwriting · Operations · Audit</text>
+
+  <rect x="1128" y="786" width="392" height="52" rx="8" fill="#D1FAE5" stroke="#34D399" stroke-width="1.5"/>
+  <text x="1148" y="817" class="mono pill-title" fill="#047857">BigQuery Open Iceberg + 6-Hop Lineage</text>
+
+  <!-- Arrow 04 -> 05 -->
+  <line x1="1104" y1="712" x2="1036" y2="712" stroke="#0891B2" stroke-width="3.5"/>
+  <polygon points="1036,703 1020,712 1036,721" fill="#0891B2"/>
+  <text x="1062" y="696" text-anchor="middle" class="mono arrow-label" fill="#0E7490">RENDER</text>
+
+  <!-- STAGE 05: TEAL / CYAN -->
+  <rect x="580" y="564" width="440" height="296" rx="10" fill="#ECFEFF" stroke="#0891B2" stroke-width="2.5"/>
+  <rect x="580" y="564" width="440" height="64" rx="10" fill="#CFFAFE"/>
+  <rect x="580" y="604" width="440" height="24" fill="#CFFAFE"/>
+  <line x1="580" y1="628" x2="1020" y2="628" stroke="#0891B2" stroke-width="2"/>
+  <text x="604" y="607" class="mono step-num" fill="#0E7490">05</text>
+  <text x="664" y="602" class="mono step-tag" fill="#155E75">CLICK-TO-SOURCE PROOF UI</text>
+
+  <text x="604" y="670" class="font box-title" fill="#0F172A">Visual Polygon Verification</text>
+  <text x="604" y="696" class="font box-sub" fill="#334155">Every metric highlights its exact source PDF polygon</text>
+
+  <rect x="604" y="722" width="188" height="116" rx="8" fill="#FFFFFF" stroke="#67E8F9" stroke-width="2"/>
+  <text x="622" y="752" class="font pill-title" fill="#0E7490">Internal Gemini App</text>
+  <text x="622" y="778" class="font pill-sub" fill="#334155">Employee workspace</text>
+  <text x="622" y="814" class="mono pill-title" fill="#0891B2">1-Click Approve</text>
+
+  <rect x="808" y="722" width="188" height="116" rx="8" fill="#FFFFFF" stroke="#67E8F9" stroke-width="2"/>
+  <text x="826" y="752" class="font pill-title" fill="#0E7490">External Web Portal</text>
+  <text x="826" y="778" class="font pill-sub" fill="#334155">Side-by-side PDF canvas</text>
+  <text x="826" y="814" class="mono pill-title" fill="#0891B2">Polygon Overlay</text>
+
+  <!-- Arrow 05 -> 06 -->
+  <line x1="580" y1="712" x2="512" y2="712" stroke="#7C3AED" stroke-width="3.5"/>
+  <polygon points="512,703 496,712 512,721" fill="#7C3AED"/>
+  <text x="538" y="696" text-anchor="middle" class="mono arrow-label" fill="#6D28D9">OVERRIDES</text>
+
+  <!-- STAGE 06: VIOLET / PURPLE -->
+  <rect x="56" y="564" width="440" height="296" rx="10" fill="#F5F3FF" stroke="#7C3AED" stroke-width="2.5"/>
+  <rect x="56" y="564" width="440" height="64" rx="10" fill="#EDE9FE"/>
+  <rect x="56" y="604" width="440" height="24" fill="#EDE9FE"/>
+  <line x1="56" y1="628" x2="496" y2="628" stroke="#7C3AED" stroke-width="2"/>
+  <text x="80" y="607" class="mono step-num" fill="#6D28D9">06</text>
+  <text x="140" y="602" class="mono step-tag" fill="#4C1D95">CATALOG &amp; CALIBRATION</text>
+
+  <text x="80" y="670" class="font box-title" fill="#0F172A">Schema Refinery &amp; Agent Gym</text>
+  <text x="80" y="696" class="font box-sub" fill="#334155">Pluggable domain pack · Reviewer fixes become rules</text>
+
+  <rect x="80" y="722" width="392" height="52" rx="8" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1.5"/>
+  <text x="100" y="753" class="font pill-title" fill="#5B21B6">Teacher Distillation: gemini-4-argon</text>
+
+  <rect x="80" y="786" width="392" height="52" rx="8" fill="#ECFDF5" stroke="#34D399" stroke-width="1.5"/>
+  <text x="100" y="817" class="mono pill-title" fill="#047857">3-Tier Gate: Promoted at 0.0% Regression</text>
+
+  <!-- Closed-Loop Feedback Connector Stage 06 -> Stage 02 (Up and Right into 02!) -->
+  <line x1="276" y1="564" x2="276" y2="502" stroke="#7C3AED" stroke-width="3.5"/>
+  <line x1="276" y1="502" x2="680" y2="502" stroke="#7C3AED" stroke-width="3.5"/>
+  <line x1="680" y1="502" x2="680" y2="468" stroke="#7C3AED" stroke-width="3.5"/>
+  <polygon points="671,468 680,452 689,468" fill="#7C3AED"/>
+  <rect x="350" y="486" width="268" height="32" rx="16" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
+  <text x="484" y="507" text-anchor="middle" class="mono arrow-label" fill="#5B21B6">UPGRADES INTAKE SKILLS &amp; SCHEMA</text>
 </svg>
