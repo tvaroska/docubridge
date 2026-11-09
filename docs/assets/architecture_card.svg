@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" font-family="'Google Sans', 'Inter', system-ui, -apple-system, sans-serif">
+  <!-- Background & Header -->
+  <rect width="1280" height="720" fill="#f8f9fa"/>
+  <rect x="20" y="16" width="1240" height="76" rx="12" fill="#174ea6"/>
+  <rect x="20" y="16" width="8" height="76" rx="4" fill="#1a73e8"/>
+  <text x="44" y="48" fill="#ffffff" font-size="21" font-weight="700">DocuBridge — 6-Zone A2A Document Bridge, Hallucination Firewall &amp; Agent Gym</text>
+  <text x="44" y="74" fill="#e8f0fe" font-size="13.5" font-weight="500">4-Pillar Gemini Platform (BUILD • GOVERN • SCALE • OPTIMIZE) • 14 Hexagonal Dual-Mode Ports (local | gcp) • Rule 0 Decimal Consolidation</text>
+
+  <!-- Column 1: BUILD & GOVERN (Zones 1 & 6) -->
+  <rect x="20" y="110" width="295" height="586" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.5"/>
+  <rect x="20" y="110" width="295" height="42" rx="12" fill="#e8f0fe"/>
+  <text x="36" y="136" fill="#174ea6" font-size="14.5" font-weight="700">1. BUILD &amp; GOVERN (Zones 1 &amp; 6)</text>
+
+  <rect x="32" y="168" width="271" height="122" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="44" y="192" fill="#202124" font-size="12.5" font-weight="700">Hybrid A2A Edge &amp; Multi-Agent Interop</text>
+  <text x="44" y="214" fill="#5f6368" font-size="11.5">• A2A v0.3 JSON-RPC + SSE (/.well-known)</text>
+  <text x="44" y="234" fill="#5f6368" font-size="11.5">• Deterministic Collector + Resumable LlmLeg</text>
+  <text x="44" y="254" fill="#5f6368" font-size="11.5">• Google ADK ↔ LangGraph Carrier Interop</text>
+  <text x="44" y="276" fill="#1a73e8" font-size="11" font-weight="700">Sense A (Bridge Facts) ≠ Sense B (Policy)</text>
+
+  <rect x="32" y="304" width="271" height="126" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="44" y="328" fill="#202124" font-size="12.5" font-weight="700">Agent Gateway &amp; Compound Identity</text>
+  <text x="44" y="350" fill="#5f6368" font-size="11.5">• CLIENT_TO_AGENT (Model Armor + DLP)</text>
+  <text x="44" y="370" fill="#5f6368" font-size="11.5">• AGENT_TO_ANYWHERE + IAM v3 CEL</text>
+  <text x="44" y="390" fill="#5f6368" font-size="11.5">• SPIFFE JWT-SVID + OBO (Agent ∩ User)</text>
+  <text x="44" y="412" fill="#c5221f" font-size="11" font-weight="700">Anti-Spoofing Role Guard (X-Bridge-Role)</text>
+
+  <rect x="32" y="444" width="271" height="118" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="44" y="468" fill="#202124" font-size="12.5" font-weight="700">Agent &amp; Skill Registry (Zone 6)</text>
+  <text x="44" y="490" fill="#5f6368" font-size="11.5">• urn:agent | urn:mcp | urn:endpoint | urn:skill</text>
+  <text x="44" y="510" fill="#5f6368" font-size="11.5">• OKF Doctype Bundles (catalog/doctypes/)</text>
+  <text x="44" y="530" fill="#5f6368" font-size="11.5">• Content-Addressed SkillRevisionRecord</text>
+  <text x="44" y="550" fill="#137333" font-size="11" font-weight="700">Zero-Restart Skill &amp; Schema Hot-Reload</text>
+
+  <rect x="32" y="576" width="271" height="104" rx="8" fill="#e8f0fe" stroke="#1a73e8"/>
+  <text x="44" y="600" fill="#174ea6" font-size="12.5" font-weight="700">14 Hexagonal Ports (bridge/ports/)</text>
+  <text x="44" y="622" fill="#202124" font-size="11.5">• AST Guard: bridge/ never imports agents/</text>
+  <text x="44" y="642" fill="#202124" font-size="11.5">• Shared contract/ Pydantic v2 Wire Types</text>
+  <text x="44" y="664" fill="#1a73e8" font-size="11" font-weight="700">100% Parity: Zero-Cred local | Live gcp</text>
+
+  <!-- Column 2: DUAL-PATH INTAKE & VAULT (Zones 2–3) -->
+  <rect x="335" y="110" width="295" height="586" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.5"/>
+  <rect x="335" y="110" width="295" height="42" rx="12" fill="#fef7e0"/>
+  <text x="351" y="136" fill="#b06000" font-size="14.5" font-weight="700">2. INTAKE &amp; FIREWALL (Zones 2–3)</text>
+
+  <rect x="347" y="168" width="271" height="122" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="359" y="192" fill="#202124" font-size="12.5" font-weight="700">Zone 2 · Dual-Path Document Intake</text>
+  <text x="359" y="214" fill="#5f6368" font-size="11.5">• Path A: Schema Assertions (0 LLM Calls)</text>
+  <text x="359" y="234" fill="#5f6368" font-size="11.5">• Path B: DocAI Layout + gemini-3.8-flash</text>
+  <text x="359" y="254" fill="#5f6368" font-size="11.5">• M365 / MIME HMAC Email Ingress</text>
+  <text x="359" y="276" fill="#b06000" font-size="11" font-weight="700">Pinned Gate: accepted | pending | rejected</text>
+
+  <rect x="347" y="304" width="271" height="126" rx="8" fill="#fce8e6" stroke="#c5221f"/>
+  <text x="359" y="328" fill="#c5221f" font-size="12.5" font-weight="700">Rule 0 Hallucination Firewall</text>
+  <text x="359" y="350" fill="#202124" font-size="11.5">• LLMs Extract &amp; Route; Code Computes Math</text>
+  <text x="359" y="370" fill="#202124" font-size="11.5">• Deterministic Decimal Consolidation</text>
+  <text x="359" y="390" fill="#202124" font-size="11.5">• Stage-B FieldDerivation Receipts (LTV/DSCR)</text>
+  <text x="359" y="412" fill="#c5221f" font-size="11" font-weight="700">Zero Floating-Point or Unanchored Facts</text>
+
+  <rect x="347" y="444" width="271" height="118" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="359" y="468" fill="#202124" font-size="12.5" font-weight="700">Zone 3 · 7-Year WORM Audit Vault</text>
+  <text x="359" y="490" fill="#5f6368" font-size="11.5">• GCS WORM Lock (if_generation_match=0)</text>
+  <text x="359" y="510" fill="#5f6368" font-size="11.5">• SHA-256 Content-Addressed Digests</text>
+  <text x="359" y="530" fill="#5f6368" font-size="11.5">• Page-Anchored Bounding-Box Proofs</text>
+  <text x="359" y="550" fill="#137333" font-size="11" font-weight="700">Immutable Regulatory Evidence Chain</text>
+
+  <rect x="347" y="576" width="271" height="104" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="359" y="600" fill="#202124" font-size="12.5" font-weight="700">3 Seeded Industry Presets (/demo)</text>
+  <text x="359" y="622" fill="#5f6368" font-size="11.5">• CRE Loan: $45M (72% LTV, $50k→$100k Fee)</text>
+  <text x="359" y="642" fill="#5f6368" font-size="11.5">• Jumbo Mortgage: $1.85M ($4.25k→$8.5k)</text>
+  <text x="359" y="662" fill="#1a73e8" font-size="11" font-weight="700">• Specialty Property: $142.5M ($50k→$100k)</text>
+
+  <!-- Column 3: SCALE & PROVENANCE (Zones 3–5) -->
+  <rect x="650" y="110" width="295" height="586" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.5"/>
+  <rect x="650" y="110" width="295" height="42" rx="12" fill="#e8f0fe"/>
+  <text x="666" y="136" fill="#174ea6" font-size="14.5" font-weight="700">3. SCALE &amp; PROVENANCE (Zones 3–5)</text>
+
+  <rect x="662" y="168" width="271" height="142" rx="8" fill="#f8f9fa" stroke="#1a73e8"/>
+  <text x="674" y="192" fill="#1a73e8" font-size="12.5" font-weight="700">Zone 3 · Bi-Temporal SQL Store</text>
+  <text x="674" y="214" fill="#202124" font-size="11.5">• learned_as_of × effective_on Bi-Temporal</text>
+  <text x="674" y="234" fill="#202124" font-size="11.5">• Source-Priority Override Hierarchy (10 → 40)</text>
+  <text x="674" y="254" fill="#202124" font-size="11.5">• Preserves Superseded Losers &amp; Conflicts</text>
+  <text x="674" y="274" fill="#202124" font-size="11.5">• Refcounted DsnSqlRuntime (5 Stores, 1 Pool)</text>
+  <text x="674" y="296" fill="#174ea6" font-size="11" font-weight="700">SQLite Async Twin ↔ Cloud SQL PostgreSQL</text>
+
+  <rect x="662" y="326" width="271" height="122" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="674" y="350" fill="#202124" font-size="12.5" font-weight="700">Zone 4 · Role Views &amp; Iceberg Sync</text>
+  <text x="674" y="372" fill="#5f6368" font-size="11.5">• Broker | Underwriter | Borrower | Auditor</text>
+  <text x="674" y="392" fill="#5f6368" font-size="11.5">• Least-Privilege Field Masking per Persona</text>
+  <text x="674" y="412" fill="#5f6368" font-size="11.5">• Watermarked BigQuery Open Iceberg Sync</text>
+  <text x="674" y="434" fill="#137333" font-size="11" font-weight="700">6-Hop Field-to-Page Provenance Lineage DAG</text>
+
+  <rect x="662" y="464" width="271" height="122" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="674" y="488" fill="#202124" font-size="12.5" font-weight="700">Zone 5 · A2UI v0.9 Inbox &amp; Console</text>
+  <text x="674" y="510" fill="#5f6368" font-size="11.5">• Declarative A2UI v0.9 Provenance Surfaces</text>
+  <text x="674" y="530" fill="#5f6368" font-size="11.5">• Click-to-Source PDF Polygon Proof Modal</text>
+  <text x="674" y="550" fill="#5f6368" font-size="11.5">• Quarantine Triage &amp; RFC 6902 Patches</text>
+  <text x="674" y="572" fill="#1a73e8" font-size="11" font-weight="700">4 React/Vite SPAs + 5-Scene /demo Console</text>
+
+  <rect x="662" y="600" width="271" height="80" rx="8" fill="#e8f0fe" stroke="#1a73e8"/>
+  <text x="674" y="624" fill="#174ea6" font-size="12" font-weight="700">App Hub &amp; Cloud Run Service Mesh</text>
+  <text x="674" y="644" fill="#202124" font-size="11">bridge-kyc | bridge-rfp | bridge-meridian</text>
+  <text x="674" y="664" fill="#137333" font-size="11" font-weight="700">46 Credential-Free Terraform Plan Tests</text>
+
+  <!-- Column 4: OPTIMIZE: CALIBRATION & EVAL (Zone 6) -->
+  <rect x="965" y="110" width="295" height="586" rx="12" fill="#ffffff" stroke="#dadce0" stroke-width="1.5"/>
+  <rect x="965" y="110" width="295" height="42" rx="12" fill="#e6f4ea"/>
+  <text x="981" y="136" fill="#137333" font-size="14.5" font-weight="700">4. OPTIMIZE: GYM &amp; EVAL (Zone 6)</text>
+
+  <rect x="977" y="168" width="271" height="114" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="989" y="192" fill="#202124" font-size="12.5" font-weight="700">Schema Refinery (Ontology Evolution)</text>
+  <text x="989" y="214" fill="#5f6368" font-size="11.5">• Clusters Unmapped Fields &amp; Doctype Drift</text>
+  <text x="989" y="234" fill="#5f6368" font-size="11.5">• Versioned Ontology Revisions (ont-rev-*)</text>
+  <text x="989" y="256" fill="#137333" font-size="11" font-weight="700">Business Glossary &amp; Canonical Term Links</text>
+
+  <rect x="977" y="298" width="271" height="126" rx="8" fill="#fce8e6" stroke="#c5221f"/>
+  <text x="989" y="322" fill="#c5221f" font-size="12.5" font-weight="700">Agent Gym (Example-of-One Loop)</text>
+  <text x="989" y="344" fill="#202124" font-size="11.5">• SME Override → Candidate Extraction Hint</text>
+  <text x="989" y="364" fill="#202124" font-size="11.5">• gemini-4-argon Teacher &amp; Conflict Judge</text>
+  <text x="989" y="384" fill="#202124" font-size="11.5">• 3-Tier Counterfactual Gate (NFR == 0.0%)</text>
+  <text x="989" y="406" fill="#137333" font-size="11" font-weight="700">Compiles SKILL.md → Day-2 Auto-Approve</text>
+
+  <rect x="977" y="440" width="271" height="114" rx="8" fill="#f8f9fa" stroke="#dadce0"/>
+  <text x="989" y="464" fill="#202124" font-size="12.5" font-weight="700">Programmable Trust &amp; Two-Sided HITL</text>
+  <text x="989" y="486" fill="#5f6368" font-size="11.5">• Per-Slice Trust Dial (hitl_review → auto)</text>
+  <text x="989" y="506" fill="#5f6368" font-size="11.5">• Two-Sided Oversight (RAIR &amp; RSR ≥ 0.80)</text>
+  <text x="989" y="528" fill="#1a73e8" font-size="11" font-weight="700">Seeded Honeypots Catch Rubber-Stamping</text>
+
+  <rect x="977" y="570" width="271" height="110" rx="8" fill="#e6f4ea" stroke="#137333"/>
+  <text x="989" y="594" fill="#137333" font-size="12.5" font-weight="700">OTel &amp; BigQuery Rule 0 SQL Eval</text>
+  <text x="989" y="616" fill="#202124" font-size="11.5">• gen_ai.* Spans + Applied Hint Attribution</text>
+  <text x="989" y="636" fill="#202124" font-size="11.5">• Step 1 Rule 0 SQL → AI.GENERATE_TABLE</text>
+  <text x="989" y="658" fill="#137333" font-size="11" font-weight="700">Rogan-Gladen Debiasing • Gwet's AC2 ≥ 0.80</text>
+
+  <!-- Inter-Column Connectors (Explicit Polygons for Universal SVG Renderers) -->
+  <line x1="315" y1="395" x2="329" y2="395" stroke="#1a73e8" stroke-width="2.5"/>
+  <polygon points="335,395 327,390 327,400" fill="#1a73e8"/>
+  <line x1="630" y1="395" x2="644" y2="395" stroke="#1a73e8" stroke-width="2.5"/>
+  <polygon points="650,395 642,390 642,400" fill="#1a73e8"/>
+  <line x1="945" y1="395" x2="959" y2="395" stroke="#137333" stroke-width="2.5"/>
+  <polygon points="965,395 957,390 957,400" fill="#137333"/>
+</svg>

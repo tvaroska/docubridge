@@ -1,5 +1,7 @@
 # A2A Document Bridge
 
+![DocuBridge 6-Zone A2A Architecture](docs/assets/architecture_card.svg)
+
 Collecting documents across institutions is slow, messy, and human-paced.
 **DocuBridge (A2A Document Bridge)** manages that process end-to-end so a calling service agent
 never touches raw document chasing, OCR variance, or cross-document conflicts — it
