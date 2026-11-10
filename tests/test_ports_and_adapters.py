@@ -1,4 +1,4 @@
-"""Tests for Hexagonal Ports & Adapters (`bridge/ports/`) across all 13 boundaries and Cloud SQL IAM auth."""
+"""Tests for Hexagonal Ports & Adapters (`bridge/ports/`) across all 14 boundaries and Cloud SQL IAM auth."""
 
 from __future__ import annotations
 

@@ -22,7 +22,7 @@ WORKDIR /app
 
 # Sync ONLY the dependency closure first (better layer caching): the manifest +
 # lockfile change rarely relative to source. --extra gcp pulls the deployed-path
-# deps (asyncpg / google-cloud-storage / google-cloud-tasks) the Gcp seam adapters
+# deps (asyncpg / google-cloud-storage / google-cloud-tasks) the Gcp port adapters
 # import lazily. --no-install-project: docubridge is a virtual project (no build
 # backend); we run from the copied source tree, not an installed wheel.
 COPY --chown=appuser:appuser pyproject.toml uv.lock ./
