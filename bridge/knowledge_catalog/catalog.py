@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, runtime_checkable
+from collections.abc import Sequence
+from datetime import datetime
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from bridge.knowledge_catalog.mcp_surface import (
+        DoctypePrecedenceVerdict,
+        EntityOntologyResponse,
+        MetricFormulaExplanation,
+        OntologyMcpSurface,
+    )
+    from bridge.knowledge_catalog.query_validator import MetricQueryValidationResult
 
 from bridge.identity import (
     DEFAULT_SPIFFE_AGENT_POLICIES,
@@ -291,6 +302,63 @@ class KnowledgeCatalog(Protocol):
 
     def is_monetary_field(self, field_name: str) -> bool:
         """Return True if the active Ontology Graph declares the field as monetary."""
+        ...
+
+    def mcp_surface(self) -> OntologyMcpSurface:
+        """Return the read-only allow-listed Ontology MCP surface over this catalog."""
+        ...
+
+    def get_entity_ontology(self, doctype: str) -> EntityOntologyResponse:
+        """Return the active ontology specification and edges for ``doctype``."""
+        ...
+
+    def explain_metric_formula(
+        self,
+        metric_id: str,
+        *,
+        doctype: str | None = None,
+    ) -> MetricFormulaExplanation:
+        """Explain certified ``[:FEEDS_METRIC]`` edges and formulas for ``metric_id``."""
+        ...
+
+    def check_doctype_precedence(
+        self,
+        doctype_a: str,
+        doctype_b: str,
+        *,
+        field_name: str | None = None,
+    ) -> DoctypePrecedenceVerdict:
+        """Compare consolidation priority between ``doctype_a`` and ``doctype_b``."""
+        ...
+
+    def validate_metric_query(
+        self,
+        metric_bucket: str,
+        *,
+        fields: Sequence[str] = (),
+        operation: str = "SUM_ACTIVE_DECIMAL",
+        sql: str | None = None,
+        learned_as_of: datetime | str | None = None,
+        effective_on: datetime | str | None = None,
+        require_bitemporal_watermark: bool = False,
+        include_supersedes_precedence: bool = True,
+        doctype: str | None = None,
+        raise_on_invalid: bool = False,
+    ) -> MetricQueryValidationResult:
+        """Validate a metric rollup or SQL query against certified ontology formulas."""
+        ...
+
+    def validate_consolidation_view(
+        self,
+        view_name: str,
+        *,
+        sql: str | None = None,
+        learned_as_of: datetime | str | None = None,
+        effective_on: datetime | str | None = None,
+        require_watermarks: bool = False,
+        raise_on_invalid: bool = False,
+    ) -> MetricQueryValidationResult:
+        """Validate a Zone 4 / Zone 5 business view definition and watermarks."""
         ...
 
 
@@ -805,6 +873,91 @@ class InMemoryKnowledgeCatalog:
             if fspec is not None and fspec.monetary:
                 return True
         return False
+
+    def mcp_surface(self) -> OntologyMcpSurface:
+        """Return the read-only allow-listed Ontology MCP surface over this catalog."""
+        from bridge.knowledge_catalog.mcp_surface import OntologyMcpSurface
+
+        return OntologyMcpSurface(self)
+
+    def get_entity_ontology(self, doctype: str) -> EntityOntologyResponse:
+        """Return the active ontology specification and edges for ``doctype``."""
+        return self.mcp_surface().get_entity_ontology(doctype)
+
+    def explain_metric_formula(
+        self,
+        metric_id: str,
+        *,
+        doctype: str | None = None,
+    ) -> MetricFormulaExplanation:
+        """Explain certified ``[:FEEDS_METRIC]`` edges and formulas for ``metric_id``."""
+        return self.mcp_surface().explain_metric_formula(metric_id, doctype=doctype)
+
+    def check_doctype_precedence(
+        self,
+        doctype_a: str,
+        doctype_b: str,
+        *,
+        field_name: str | None = None,
+    ) -> DoctypePrecedenceVerdict:
+        """Compare consolidation priority between ``doctype_a`` and ``doctype_b``."""
+        return self.mcp_surface().check_doctype_precedence(
+            doctype_a, doctype_b, field_name=field_name
+        )
+
+    def validate_metric_query(
+        self,
+        metric_bucket: str,
+        *,
+        fields: Sequence[str] = (),
+        operation: str = "SUM_ACTIVE_DECIMAL",
+        sql: str | None = None,
+        learned_as_of: datetime | str | None = None,
+        effective_on: datetime | str | None = None,
+        require_bitemporal_watermark: bool = False,
+        include_supersedes_precedence: bool = True,
+        doctype: str | None = None,
+        raise_on_invalid: bool = False,
+    ) -> MetricQueryValidationResult:
+        """Validate a metric rollup or SQL query against certified ontology formulas."""
+        from bridge.knowledge_catalog.query_validator import validate_metric_query
+
+        return validate_metric_query(
+            metric_bucket,
+            fields=fields,
+            operation=operation,
+            sql=sql,
+            learned_as_of=learned_as_of,
+            effective_on=effective_on,
+            require_bitemporal_watermark=require_bitemporal_watermark,
+            include_supersedes_precedence=include_supersedes_precedence,
+            doctype=doctype,
+            catalog=self,
+            raise_on_invalid=raise_on_invalid,
+        )
+
+    def validate_consolidation_view(
+        self,
+        view_name: str,
+        *,
+        sql: str | None = None,
+        learned_as_of: datetime | str | None = None,
+        effective_on: datetime | str | None = None,
+        require_watermarks: bool = False,
+        raise_on_invalid: bool = False,
+    ) -> MetricQueryValidationResult:
+        """Validate a Zone 4 / Zone 5 business view definition and watermarks."""
+        from bridge.knowledge_catalog.query_validator import validate_consolidation_view
+
+        return validate_consolidation_view(
+            view_name,
+            sql=sql,
+            learned_as_of=learned_as_of,
+            effective_on=effective_on,
+            require_watermarks=require_watermarks,
+            catalog=self,
+            raise_on_invalid=raise_on_invalid,
+        )
 
 
 def knowledge_catalog_from_env(

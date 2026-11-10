@@ -230,9 +230,12 @@ class RegistryGatewayMixin:
                     "uri": f"//run.googleapis.com/projects/{_gcp_project_number()}/locations/us-central1/services/{_board_service_name()}",
                 },
                 "tools": [
+                    "get_entity_ontology",
+                    "explain_metric_formula",
+                    "check_doctype_precedence",
+                    "trace_field_lineage",
                     "search_knowledge_catalog",
                     "get_glossary_term",
-                    "trace_field_lineage",
                     "authorize_spiffe_access",
                     "catalog.trace_lineage",
                     "catalog.lookup_glossary",

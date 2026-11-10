@@ -7,6 +7,11 @@ Architecture.
 
 from __future__ import annotations
 
+from bridge.knowledge_catalog.query_validator import (
+    UncertifiedMetricQueryError,
+    validate_consolidation_view,
+    validate_metric_query,
+)
 from bridge.operational_store.consolidation_rules import (
     _winning_key,
     compute_financial_summary,
@@ -77,6 +82,7 @@ __all__ = [
     "OperationalStore",
     "SourceTrace",
     "SqlOperationalStore",
+    "UncertifiedMetricQueryError",
     "UnderwriterExposureItem",
     "UnderwriterView",
     "_utc_dt",
@@ -89,4 +95,6 @@ __all__ = [
     "parse_decimal_money",
     "resolve_active_facts",
     "source_priority_for_doctype",
+    "validate_consolidation_view",
+    "validate_metric_query",
 ]

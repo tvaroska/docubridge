@@ -278,6 +278,14 @@ def render_domain_agent_a2ui(
         allow_raw_vault_uri = agent_ctx.access_decision.allow_raw_vault_uri
         allow_competitor_quotes = agent_ctx.access_decision.allow_competitor_quotes
 
+        if hasattr(catalog, "validate_consolidation_view"):
+            catalog.validate_consolidation_view(
+                resolved_view,
+                learned_as_of=as_of_learned,
+                effective_on=effective_on,
+                raise_on_invalid=True,
+            )
+
         if resolved_view == "v_broker_placement":
             b_view = store.broker_view(entity_id, learned_as_of=as_of_learned)
             widgets = _build_broker_widgets(

@@ -4,7 +4,7 @@ The high-level milestone view of the build. Each milestone is defined by **what 
 
 The core commitment: **one deployed core on the Gemini platform running Address, Employee Benefits, Emergent RFP, and the 6-Zone Financial Services & Regulated Industry Enterprise Showcase (`LOAN-MERIDIAN-001`, `MORTGAGE-WESTBROOK-2026`, `terrepower-coastal-2027`) end-to-end across all 14 Hexagonal `Port` boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`, `knowledge_catalog`).**
 
-> _Current status:_ Cycle 1 milestones **M0–M7 are complete** — M7 ("It's deployed") closed 2026-10-01 — and the Benefits cycle (CUJ‑3/11/12), Emergent RFP cycle (CUJ‑9/13/15, including variable-packaging `.zip`/`.msg`/`.eml` container unpacking in `bridge/extraction/containers.py` and resilient `.docx`/`.rtf`/`.xlsx` prepass + `1 -> N` bundled sub-entity fan-out in `bridge/extraction/office_prepass.py`), Hybrid `document_bridge` LlmAgent edge (off-script routing, real-erase deletion, HITL park/resume), the 6-Zone Enterprise Data Architecture + Agent Gym + Agent Gateway + Consolidation Collaboration Engine + Live Multimodal PDF `/ebc` showcase, and **Phase 8 — Schema Refinery & Insurance Showcase (`P8-1`–`P8-6`)** are all built, merged, and verified on `main`. Next up are **Phase 9 — Showcase Generalization (`P9-1`–`P9-3`)**, then **`P8-7`–`P8-8`** (`2` open items) and **`FX-1`**.
+> _Current status:_ Cycle 1 milestones **M0–M7 are complete** — M7 ("It's deployed") closed 2026-10-01 — and the Benefits cycle (CUJ‑3/11/12), Emergent RFP cycle (CUJ‑9/13/15, including variable-packaging `.zip`/`.msg`/`.eml` container unpacking in `bridge/extraction/containers.py` and resilient `.docx`/`.rtf`/`.xlsx` prepass + `1 -> N` bundled sub-entity fan-out in `bridge/extraction/office_prepass.py`), Hybrid `document_bridge` LlmAgent edge (off-script routing, real-erase deletion, HITL park/resume), the 6-Zone Enterprise Data Architecture + Agent Gym + Agent Gateway + Consolidation Collaboration Engine + Live Multimodal PDF `/ebc` showcase, **Phase 8 — Schema Refinery & Ontology-Driven Document Types (`P8-1`–`P8-8`)**, and **Phase 9 — Showcase Generalization (`P9-1`–`P9-3`)** are all built, merged, and verified on `main`. Next up are **`P9-4`** and **`FX-1`**.
 
 ## Cycle 1 milestones — Core + Address
 
@@ -43,7 +43,7 @@ The architecture is whole from day one — outbound port, trust boundary, contra
 
 <!-- Counters: p0=18 p1=10 p2=8 p3=9 p4=6 p5=6 p6=9 p7=12 p8=8 p9=4 -->
 
-> Full technical specification: [`design/schema-refinery.md`](../design/schema-refinery.md). `P8-1` through `P8-6` are complete and merged on `main`; `P8-7` through `P8-8` track the remaining ontology governance milestones.
+> Full technical specification: [`design/schema-refinery.md`](../design/schema-refinery.md). `P8-1` through `P8-8` are complete, merged, and verified on `main`.
 
 - [x] **P8-1: Contrastive Descriptions & OKF Schema Package Loader (`bridge/doctypes.py`, `bridge/extraction/gemini_schema.py`, `catalog/doctypes/*.okf.md`)**
   - Extend `DoctypeConfig` and `ContractSchema` to load top-level entity descriptions, contrastive field metadata (`what_it_is` / `where_to_read` / `distinguish_from`), and `OntologyEdge` declarations from `catalog/doctypes/*.okf.md` (alongside existing `skills/*/SKILL.md` + `assets/schema.json` across `commercial-property-quote`, `benefits-quote`, `trid-closing-disclosure`, `cre-credit-agreement`, and `mai-appraisal`).
@@ -71,13 +71,13 @@ The architecture is whole from day one — outbound port, trust boundary, contra
   - Scope `slice_ontology_for_extraction()`, `build_extraction_prompt()`, `build_response_schema()`, and `GeminiExtractor.extract()` to the known target `doctype` or active process `candidate_doctypes` (`context_set`) plus their shared spine and 1-hop ontology neighborhood (`[:SUPERSEDES]`, `[:SPLIT_FROM]`, `[:DISTINCT_FROM]`), instead of injecting the union of every installed doctype on every call. Keep `fields.doctype` as a free string so out-of-label-space documents still report their observed type cleanly.
   - **Verification Gate (T1/T2):** Unit tests in `tests/test_refinery_onboarding_and_slicing.py` verify target-scoped prompt/schema generation, reduced token footprint per call, and preserved `unsupported` disposition on out-of-label-space uploads.
 
-- [ ] **P8-7: Read-Only Allow-Listed Ontology MCP Surface over Zone 6 (`bridge/knowledge_catalog/`)**
+- [x] **P8-7: Read-Only Allow-Listed Ontology MCP Surface over Zone 6 (`bridge/knowledge_catalog/`)**
   - Expose an allow-listed, strictly read-only MCP tool surface over Zone 6 `KnowledgeCatalog` (`get_entity_ontology`, `explain_metric_formula`, `check_doctype_precedence`, `trace_field_lineage`) for calling A2A/MCP agents, keeping all state-changing ontology mutations (`onboard_doctype_from_examples`, `register_proposal`, `promote_proposal`) isolated to the Assay-Gated admin control plane.
-  - **Verification Gate (T1/T2):** Unit tests verify read-only MCP tool schemas, deterministic graph lookups, and zero mutation endpoints on the MCP surface.
+  - **Verification Gate (T1/T2):** Unit tests in `tests/test_ontology_mcp_and_query_validator.py` verify read-only MCP tool schemas, deterministic graph lookups, and zero mutation endpoints on the MCP surface.
 
-- [ ] **P8-8: Pre-Execution Query & Metric Formula Validator (`bridge/knowledge_catalog/`, `bridge/operational_store/`)**
+- [x] **P8-8: Pre-Execution Query & Metric Formula Validator (`bridge/knowledge_catalog/`, `bridge/operational_store/`)**
   - Add deterministic pre-execution validation (`validate_metric_query` / `validate_consolidation_view`) in Zone 6 so Zone 5 Domain Agent queries and analytical rollups over `OperationalStore` and BigQuery (`bq_operational_facts_iceberg`) are checked against certified `[:FEEDS_METRIC]` edges, bi-temporal watermarks (`learned_as_of`, `effective_on`), and `[:SUPERSEDES]` active-fact precedence before execution.
-  - **Verification Gate (T1/T2):** Unit tests verify that queries bypassing certified `[:FEEDS_METRIC]` formulas or omitting bi-temporal/precedence predicates are deterministically rejected.
+  - **Verification Gate (T1/T2):** Unit tests in `tests/test_ontology_mcp_and_query_validator.py` verify that queries bypassing certified `[:FEEDS_METRIC]` formulas or omitting bi-temporal/precedence predicates are deterministically rejected.
 
 ## Phase 9 — Showcase Generalization (`P9-1`–`P9-3`)
 
@@ -105,6 +105,20 @@ The architecture is whole from day one — outbound port, trust boundary, contra
 
 - [ ] **FX-1: 3-Arm Ontology Ablation Benchmark in `RefineryAssayReport` (`bridge/refinery/assay.py`)**
   - Evaluate candidate ontology revisions across three explicit ablation arms—**Arm 0 (Schema-Only Control:** flat JSON `field: type` with zero contrastive descriptions or graph edges), **Arm 1 (+ Contrastive Descriptions:** adding `what_it_is` / `where_to_read` / `distinguish_from` to isolate Stage-1 `gemini-3.8-flash` extraction disambiguation lift), and **Arm 2 (+ Full Ontology Graph:** adding `[:SUPERSEDES]`, `[:INCLUDES]` / `[:EXCLUDES]`, and `[:SPLIT_FROM]` edges to isolate Stage-2 consolidation conflict-resolution lift and quarantine reduction).
+
+## Candidate Runtime, Auth & A2A Hardening (Deferred — `google/adk-recipes` Audit)
+
+- [ ] **AR-1: Fail-Closed Cloud Run Auth & IAP JWT Verification ([`bridge/user_interaction/auth.py`](../bridge/user_interaction/auth.py))**
+  - Unconditionally reject `dev` auth mode whenever `K_SERVICE` is set (`DevAuthInProductionError` pattern from `long-horizon-harness/horizon/auth/identity.py`), and cryptographically verify Google IAP JWTs on both `X-Goog-IAP-JWT-Assertion` and a custom proxy-forwarded header (for non-IAP Cloud Run services where Google strips `X-Goog-*` inbound) instead of trusting raw `x-goog-authenticated-user-email`.
+
+- [ ] **AR-2: Staged A2UI Widgets & Coupled Presentation Contracts ([`bridge/edge/a2ui.py`](../bridge/edge/a2ui.py))**
+  - Mirror `staged-ui-widgets` (`app/staging/{lifecycle,state,gates,contract}.py`): stage parallel tool UI outputs into session registers with `temp:` dirty/suppress/revived flags and flush once in `after_agent_callback` (supplying the `mark_emitted` state delta so ADK does not drop actions when returning `None`), share one `is_live()` predicate with `before_model_callback` prose shaping so text never references suppressed widgets, and add an AST guard confining `.render_ui_widget(` to a single staging module.
+
+- [ ] **AR-3: Prefix-Cache Discipline, Memory Bounds, Pruning & Signed-URL Redaction ([`bridge/agent.py`](../bridge/agent.py))**
+  - Keep `static_instruction` / `system_instruction` byte-identical across multi-turn legs (`ContextCacheConfig(min_tokens=4096)`), moving volatile turn state into prompt-tail reminders, bounding memory recall (`PreloadMemoryTool` `max_memories`/`max_chars` in transient user content), zeroing stale large tool outputs only above a minimum reclaim threshold (keeping overflow paths intact) before LLM compaction, and scrubbing signed GCS URLs on deep-copied `llm_request.contents` while keeping real URLs in `session.events`.
+
+- [ ] **AR-4: Runtime Resilience, A2A Polish, Skill `EVAL.yaml` & CI Drift Guards ([`bridge/sql_runtime.py`](../bridge/sql_runtime.py), [`bridge/edge/agent_engine_a2a.py`](../bridge/edge/agent_engine_a2a.py), [`.env.example`](../.env.example))**
+  - Keep DocuBridge's custom `CollectExecutor` (do not adopt ADK `to_a2a()`), while cherry-picking v0.3 `card_modifier` + method inference, `_StreamDedupConverter`, `_enforce_artifact_lifecycle`, `asyncio.shield` SSE disconnect cleanup, `shared://session` / `shared://artifact` URI alignment, Cloud SQL failover pool/retry hardening (`pool_pre_ping`, `pool_recycle`, transient disconnect retries), `safety-plugins` `on_user_message_callback` session tombstone protection, composable reset-on-turn halt guards + `PAUSED:` child labels, declarative `EVAL.yaml` for doctype skills, and an AST `.env.example` drift test (`check_env_vars` pattern).
 
 ## See also
 - [`DECISIONS.md`](../DECISIONS.md) — architectural decision log · [`features.md`](features.md) — the feature catalog · [the Bridge](../design/bridge.md) — design source of truth · [Schema Refinery](../design/schema-refinery.md) — self-evolving ontology & taxonomy engine
