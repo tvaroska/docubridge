@@ -64,7 +64,8 @@ steps:
       - |
         set -euo pipefail
         uv sync --frozen --extra dev --extra gcp --no-install-project
-        uv pip install "pytest-cov==7.0.0" "pytest-xdist==3.8.0"
+        uv pip install "pytest-cov==7.0.0" "pytest-xdist==3.8.0" "ast-grep-cli>=0.35"
+        /workspace/.venv/bin/ast-grep scan --rule /workspace/specs/ast.rules.yaml
         /workspace/.venv/bin/ruff check .
         /workspace/.venv/bin/ruff format --check .
 

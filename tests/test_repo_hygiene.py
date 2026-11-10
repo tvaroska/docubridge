@@ -1,9 +1,14 @@
-"""Repository hygiene & spine integrity tests (`ADR-005`)."""
+"""Repository hygiene, spine integrity & declarative AST contract tests (`ADR-005`)."""
 
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -66,3 +71,82 @@ def test_required_docs_and_claude_md_symlink() -> None:
     assert decisions_md.stat().st_size <= 25_000, "DECISIONS.md must stay <= 25 KB"
     assert claude_md.is_symlink(), "CLAUDE.md must be a symlink to AGENTS.md"
     assert claude_md.readlink().as_posix() == "AGENTS.md"
+
+
+def _resolve_ast_grep() -> str | None:
+    found = shutil.which("ast-grep")
+    if found:
+        return found
+    local_bin = Path.home() / ".local" / "bin" / "ast-grep"
+    return str(local_bin) if local_bin.is_file() else None
+
+
+def test_declarative_ast_rules_and_positive_controls(tmp_path: Path) -> None:
+    rules_path = REPO_ROOT / "specs" / "ast.rules.yaml"
+    assert rules_path.is_file(), "Missing specs/ast.rules.yaml declarative AST contract"
+
+    docs = [d for d in yaml.safe_load_all(rules_path.read_text(encoding="utf-8")) if d]
+    assert len(docs) >= 6, "Expected >= 6 declarative AST rules in specs/ast.rules.yaml"
+
+    for doc in docs:
+        rule_id = doc.get("id")
+        assert rule_id, "Every AST rule must declare an id"
+        assert doc.get("severity") == "error", f"{rule_id} must set severity: error"
+        meta = doc.get("metadata") or {}
+        assert meta.get("test_path"), f"{rule_id} missing metadata.test_path"
+        assert meta.get("invalid_examples"), (
+            f"{rule_id} missing metadata.invalid_examples"
+        )
+        assert meta.get("valid_examples"), f"{rule_id} missing metadata.valid_examples"
+
+    ast_grep = _resolve_ast_grep()
+    if ast_grep is None:
+        pytest.skip("ast-grep binary not installed on this runner")
+
+    live_res = subprocess.run(
+        [ast_grep, "scan", "--rule", str(rules_path)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert live_res.returncode == 0, (
+        f"specs/ast.rules.yaml failed on repo:\n{live_res.stdout}\n{live_res.stderr}"
+    )
+
+    for idx, doc in enumerate(docs):
+        rule_id = str(doc["id"])
+        meta = doc["metadata"]
+        case_dir = tmp_path / f"case_{idx}_{rule_id}"
+        single_rule = case_dir / "_rule.yaml"
+        target_file = case_dir / str(meta["test_path"])
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        single_rule.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+
+        for bad_code in meta["invalid_examples"]:
+            target_file.write_text(f"{bad_code}\n", encoding="utf-8")
+            bad_res = subprocess.run(
+                [ast_grep, "scan", "--rule", str(single_rule), "."],
+                cwd=case_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert bad_res.returncode == 1, (
+                f"Positive control failed for {rule_id}: {bad_code!r} was not flagged"
+            )
+            assert rule_id in (bad_res.stdout + bad_res.stderr)
+
+        for good_code in meta["valid_examples"]:
+            target_file.write_text(f"{good_code}\n", encoding="utf-8")
+            good_res = subprocess.run(
+                [ast_grep, "scan", "--rule", str(single_rule), "."],
+                cwd=case_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert good_res.returncode == 0, (
+                f"False positive in {rule_id} on {good_code!r}:\n{good_res.stdout}"
+            )
+

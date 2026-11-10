@@ -1,0 +1,140 @@
+# Declarative Structural & Security AST Contract (ast-grep)
+# Enforces Hexagonal Core/Consumer isolation, SQLAlchemy 2.0 Core purity,
+# and static security invariants across Python modules in <30ms.
+# Verified by `proj-test docubridge` and `tests/test_repo_hygiene.py`.
+
+id: bridge-never-imports-agents-or-examples
+language: Python
+severity: error
+message: "Hexagonal violation: bridge/ core must never import agents/ or examples/ (communicate via contract/ only)."
+files:
+  - "bridge/**/*.py"
+metadata:
+  test_path: "bridge/sample_probe.py"
+  invalid_examples:
+    - "import agents"
+    - "from agents.address import run"
+    - "from examples.quickstart import main"
+  valid_examples:
+    - "from contract.wire import CollectRequest"
+    - "# import agents"
+    - 'x = "from agents import example"'
+rule:
+  any:
+    - kind: import_statement
+      regex: "^import\\s+(agents|examples)(\\b|\\.)"
+    - kind: import_from_statement
+      regex: "^from\\s+(agents|examples)(\\b|\\.)"
+---
+id: bridge-core-never-imports-demos
+language: Python
+severity: error
+message: "Hexagonal violation: bridge/ core outside bridge/demos/ must never import bridge.demos."
+files:
+  - "bridge/**/*.py"
+ignores:
+  - "bridge/demos/**"
+metadata:
+  test_path: "bridge/core_probe.py"
+  invalid_examples:
+    - "import bridge.demos"
+    - "from bridge.demos.seed import load"
+    - "from bridge import demos"
+  valid_examples:
+    - "from bridge.ports import resolve_port_mode"
+rule:
+  any:
+    - kind: import_statement
+      regex: "^import\\s+bridge\\.demos(\\b|\\.)"
+    - kind: import_from_statement
+      regex: "^from\\s+bridge\\.demos(\\b|\\.)"
+    - kind: import_from_statement
+      regex: "^from\\s+bridge\\s+import\\b.*\\bdemos\\b"
+---
+id: examples-never-import-bridge-or-agents
+language: Python
+severity: error
+message: "Wire-isolation violation: examples/ consumers must talk to DocuBridge over A2A + contract/ only."
+files:
+  - "examples/**/*.py"
+metadata:
+  test_path: "examples/consumer_probe.py"
+  invalid_examples:
+    - "import bridge"
+    - "from bridge.edge import server"
+  valid_examples:
+    - "from contract.wire import CollectRequest"
+rule:
+  any:
+    - kind: import_statement
+      regex: "^import\\s+(bridge|agents)(\\b|\\.)"
+    - kind: import_from_statement
+      regex: "^from\\s+(bridge|agents)(\\b|\\.)"
+---
+id: no-sqlalchemy-orm
+language: Python
+severity: error
+message: "Persistence violation: sqlalchemy.orm is banned; use SQLAlchemy 2.0 Core (Table, select, insert, update, delete)."
+ignores:
+  - "tests/**"
+metadata:
+  test_path: "bridge/sql_probe.py"
+  invalid_examples:
+    - "from sqlalchemy.orm import relationship"
+    - "import sqlalchemy.orm"
+  valid_examples:
+    - "from sqlalchemy import Table, select, insert"
+rule:
+  any:
+    - kind: import_statement
+      regex: "^import\\s+sqlalchemy\\.orm(\\b|\\.)"
+    - kind: import_from_statement
+      regex: "^from\\s+sqlalchemy\\.orm\\b"
+    - kind: import_from_statement
+      regex: "^from\\s+sqlalchemy\\s+import\\b.*\\borm\\b"
+---
+id: no-subprocess-shell-true
+language: Python
+severity: error
+message: "Security violation: subprocess with shell=True or os.system() is forbidden in production modules."
+ignores:
+  - "tests/**"
+metadata:
+  test_path: "bridge/proc_probe.py"
+  invalid_examples:
+    - "subprocess.run(cmd, shell=True)"
+    - "subprocess.Popen(cmd, shell=True, text=True)"
+    - "os.system(cmd)"
+  valid_examples:
+    - 'subprocess.run(["git", "status"], check=True)'
+rule:
+  any:
+    - pattern: subprocess.$FN($$$, shell=True)
+    - pattern: subprocess.$FN($$$, shell=True, $$$)
+    - pattern: subprocess.$FN(shell=True)
+    - pattern: subprocess.$FN(shell=True, $$$)
+    - pattern: os.system($$$)
+---
+id: no-dynamic-sql-execute
+language: Python
+severity: error
+message: "Security violation: dynamic f-string or concatenated SQL passed to .execute(); use parameterized SQL."
+ignores:
+  - "tests/**"
+metadata:
+  test_path: "bridge/query_probe.py"
+  invalid_examples:
+    - 'conn.execute(f"SELECT * FROM facts WHERE entity_id = {eid}")'
+    - 'conn.execute("SELECT * FROM facts WHERE entity_id = " + eid, params)'
+  valid_examples:
+    - 'conn.execute("SELECT * FROM facts WHERE entity_id = :eid", {"eid": eid})'
+constraints:
+  QUERY:
+    any:
+      - has:
+          kind: interpolation
+      - kind: binary_operator
+rule:
+  any:
+    - pattern: $DB.execute($QUERY)
+    - pattern: $DB.execute($QUERY, $$$)
