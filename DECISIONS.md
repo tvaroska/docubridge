@@ -85,7 +85,7 @@ This document captures the foundational architectural decisions and milestone re
 
 - **Context:** Static extraction prompts degrade on novel carrier/lender layouts, while uncalibrated human reviewers risk rubber-stamping automated suggestions.
 - **Decision:**
-  1. **Agent Gym (`bridge/agent_gym/`):** Capture daytime "Example of One" SME corrections from Quarantine and Inbox RFC 6902 patches, enforce **Two-Sided Oversight** (`oversight_rsr_score >= 0.50` based on citation verification and review dwell time), evaluate candidate `TribalKnowledgeRule`s through a 3-Tier gate (Tier 1 deterministic `Rule 0` + `Decimal` firewall, Tier 2 `gemini-4-argon` autorater, Tier 3 `threshold_corridor()` `FA=0` check), and compile promoted rules into content-addressed `SkillRevisionRecord`s (`POST /v1/gym/compile-skill`).
+  1. **Agent Gym (`bridge/agent_gym/`):** Capture daytime "Example of One" SME corrections from Quarantine and Inbox RFC 6902 patches, enforce **Two-Sided Oversight** (`oversight_rsr_score >= 0.80` based on citation verification and review dwell time), evaluate candidate `TribalKnowledgeRule`s through a 3-Tier gate (Tier 1 deterministic `Rule 0` + `Decimal` firewall, Tier 2 `gemini-4-argon` autorater, Tier 3 `threshold_corridor()` `FA=0` check), and compile promoted rules into content-addressed `SkillRevisionRecord`s (`POST /v1/gym/compile-skill`).
   2. **Gemini Platform Agent Registry & Agent Gateway (`bridge/agent_gym/registry_gateway.py`):** Govern all 4 registry component types (`Agents`, `MCP Servers`, `Endpoints`, `Skills` + `Bindings`) and enforce `CLIENT_TO_AGENT` (Model Armor + Cloud DLP) and `AGENT_TO_ANYWHERE` (IAM v3 Unified Access Policy CEL) gateway policies.
 - **Consequence:** Production runtime inference stays fast and economical on `gemini-3.8-flash`, while `gemini-4-argon` acts as teacher, judge, and skill compiler.
 
@@ -107,7 +107,7 @@ This document captures the foundational architectural decisions and milestone re
 
 - **Context:** Running an LLM judge over 100% of production traces is prohibitively expensive and subject to autorater sensitivity/specificity bias ($q_0, q_1 < 1$).
 - **Decision:** Emit W3C-correlated OpenTelemetry spans (`bridge/telemetry/`) with `BatchSpanProcessor` to Cloud Trace v2 and BigQuery (`otel_spans`), and evaluate traces in three layers (`terraform/modules/telemetry/main.tf`, `GET /v1/telemetry/sql-eval`):
-  1. **Layer 1 (`v_trace_sql_evaluation`):** Check 5 deterministic `Rule 0` trajectory & governance gates in BigQuery Standard SQL at `\$0` LLM token cost across 100% of traces.
+  1. **Layer 1 (`v_step1_trace_eval` / `v_trace_sql_evaluation`):** Check 5 deterministic `Rule 0` trajectory & governance gates in BigQuery Standard SQL at `\$0` LLM token cost across 100% of traces.
   2. **Layer 2 (`AI.GENERATE_TABLE` with `gemini-4-argon`):** Trigger LLM-as-a-Judge in SQL only on traces where `needs_llm_judge_sampling = TRUE` (~5% of traffic, cutting judge token spend by ~95%).
   3. **Layer 3 (Rogan-Gladen Debiasing):** Correct raw autorater pass rates ($p_{\text{obs}}$) against gold SME calibration labels in SQL via $\hat{\theta} = \text{clip}((p_{\text{obs}} + q_0 - 1) / (q_1 + q_0 - 1), 0, 1)$.
 - **Consequence:** Full-population compliance verification runs at SQL speed and zero token cost, while `gemini-4-argon` evaluation is reserved for anomalies and mathematically debiased.

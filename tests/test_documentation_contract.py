@@ -952,3 +952,172 @@ def test_dynamic_process_skill_resolution_and_two_sided_oversight_controls() -> 
     )
     assert verified_rec.oversight_rsr_score >= 0.95
     assert promoted_policy.consecutive_matches == before_matches + 1
+
+
+async def test_r1_r2_a2a_snippet_four_signals_oversight_and_cold_import() -> None:
+    """Verify R1 and R2 contracts: README A2A snippet, /demo favicon, 4-signal gate, RSR >= 0.80, HIGH-risk force guard, and empty-trace honesty."""
+    import subprocess
+    import sys
+
+    import httpx
+    import pytest
+
+    from bridge.agent_gym import InMemoryAgentGymEngine
+    from bridge.agent_gym.models import TrustAutonomyLevel
+    from bridge.edge.server import build_a2a_app
+    from bridge.signals import Signals, dispose_signals
+    from bridge.telemetry.sql_eval import _build_sql_trace_evaluation
+    from contract.enums import Disposition, Gate
+    from contract.wire import CONTRACT_VERSION, CollectRequest
+
+    # 1. Cold import of bridge.refinery.assay in a fresh Python interpreter succeeds (0 circular import)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from bridge.refinery.assay import evaluate_ontology_proposal; print(callable(evaluate_ontology_proposal))",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, f"Cold import failed: {proc.stderr}"
+    assert "True" in proc.stdout
+
+    # 2. README 10-line A2A JSON-RPC consumer snippet executes cleanly against build_a2a_app()
+    a2a_app = build_a2a_app(url="http://localhost:8000/")
+    transport = httpx.ASGITransport(app=a2a_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://localhost:8000"
+    ) as client:
+        req = CollectRequest(
+            process="commercial-loan-underwriting",
+            party="LOAN-MERIDIAN-001",
+            context_id="ctx-meridian-001",
+        )
+        v1_resp = (
+            await client.post(
+                "http://localhost:8000/",
+                headers={"A2A-Version": "1.0"},
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "req-1",
+                    "method": "SendMessage",
+                    "params": {
+                        "message": {
+                            "messageId": "m-1",
+                            "role": "ROLE_USER",
+                            "parts": [
+                                {
+                                    "data": req.model_dump(mode="json"),
+                                    "metadata": {
+                                        "kind": "collect_request",
+                                        "contract_version": CONTRACT_VERSION,
+                                    },
+                                }
+                            ],
+                        }
+                    },
+                },
+            )
+        ).json()
+        assert v1_resp["result"]["task"]["status"]["state"] == "TASK_STATE_COMPLETED"
+        assert len(v1_resp["result"]["task"]["artifacts"]) >= 1
+
+        # Legacy A2A v0.3 message/send is also accepted via enable_v0_3_compat=True
+        v03_resp = (
+            await client.post(
+                "http://localhost:8000/",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "req-v03",
+                    "method": "message/send",
+                    "params": {
+                        "message": {
+                            "messageId": "m-v03",
+                            "role": "user",
+                            "parts": [
+                                {
+                                    "kind": "data",
+                                    "data": req.model_dump(mode="json"),
+                                    "metadata": {
+                                        "kind": "collect_request",
+                                        "contract_version": CONTRACT_VERSION,
+                                    },
+                                }
+                            ],
+                        }
+                    },
+                },
+            )
+        ).json()
+        assert "error" not in v03_resp
+
+    # 3. /demo HTML includes <link rel="icon"> pointing to /ebc/favicon.svg
+    demo_html = (REPO_ROOT / "demo/enterprise-demo.html").read_text(encoding="utf-8")
+    assert '<link rel="icon"' in demo_html
+    dash_client = TestClient(build_dashboard_app())
+    assert dash_client.get("/ebc/favicon.svg").status_code == 200
+
+    # 4. 4-Signal Quarantine Gate evaluates freshness (document_age_days <= max_age_days) & corroboration (failed_rules)
+    stale_sig = Signals(
+        doctype="utility-bill",
+        candidate_doctypes=["utility-bill"],
+        legible=True,
+        overall_confidence=0.95,
+        document_age_days=120,
+        max_age_days=60,
+    )
+    assert stale_sig.freshness_ok is False
+    stale_verdict = dispose_signals(stale_sig)
+    assert stale_verdict.disposition is Disposition.rejected
+    assert stale_verdict.gate is Gate.resubmit
+    assert stale_verdict.reason_code == "stale_document"
+
+    uncorroborated_sig = Signals(
+        doctype="utility-bill",
+        candidate_doctypes=["utility-bill"],
+        legible=True,
+        overall_confidence=0.95,
+        failed_rules=["distinct_issuer_corroboration"],
+    )
+    assert uncorroborated_sig.corroboration_ok is False
+    corr_verdict = dispose_signals(uncorroborated_sig)
+    assert corr_verdict.disposition is Disposition.pending
+    assert corr_verdict.gate is Gate.hitl_review
+    assert corr_verdict.reason_code == "corroboration_required"
+
+    # 5. RSR >= 0.80 rejects low-scrutiny signals (e.g. RSR = 0.62) and HIGH-risk slices reject force=True
+    gym = InMemoryAgentGymEngine()
+    low_sig, low_rule = gym.distill_from_quarantine_correction(
+        entity_id="LOAN-MERIDIAN-001",
+        doc_id="doc-low-dwell",
+        doctype="closing-disclosure",
+        issuer="Meridian Bank",
+        field_path="origination_fee",
+        before_value="$50,000.00",
+        after_value="$100,000.00",
+        expert_memo="Quick click without dwell.",
+        actor_principal="reviewer@docubridge.io",
+        citation_verified=True,
+        review_dwell_ms=500,
+    )
+    assert low_sig.oversight_rsr_score < 0.80
+    assert low_rule.status.value == "rejected"
+
+    with pytest.raises(ValueError, match="Cannot force-promote HIGH-risk slice"):
+        gym.dial_trust_policy(
+            "slice:appraisal-report:commercial:HIGH",
+            target_level=TrustAutonomyLevel.TRUSTED_AUTO_APPROVE,
+            actor_principal="lead@docubridge.io",
+            actor_role="underwriter",
+            reason="Attempted force bypass on HIGH-risk slice",
+            force=True,
+        )
+
+    # 6. Empty span buffer reports evaluated=False and 0 traces rather than synthetic 1/1
+    empty_eval = _build_sql_trace_evaluation(spans=[])
+    assert empty_eval["evaluated"] is False
+    assert empty_eval["total_traces_evaluated"] == 0
+    assert empty_eval["statistical_calibration"]["evaluated"] is False
+    assert empty_eval["statistical_calibration"]["n_unlabeled"] == 0

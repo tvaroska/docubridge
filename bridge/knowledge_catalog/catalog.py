@@ -38,11 +38,9 @@ from bridge.knowledge_catalog.models import (
     LineageNode,
     LineageTrace,
 )
-from bridge.operational_store import (
-    ConsolidatedFact,
-    OperationalStore,
-    operational_store_from_env,
-)
+from bridge.operational_store.memory_store import OperationalStore
+from bridge.operational_store.models import ConsolidatedFact
+from bridge.operational_store.sql_store import operational_store_from_env
 from bridge.telemetry import trace_step
 from contract.refinery import (
     OntologyEdge,

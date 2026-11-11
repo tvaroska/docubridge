@@ -218,7 +218,7 @@ class SkillCompilerMixin:
                 f"name: {doctype}\n"
                 f"description: Distilled extraction and consolidation skill for {doctype} "
                 f"(compiled by {REASONING_MODEL} for {WORKHORSE_MODEL} runtime execution).\n"
-                f"license: Proprietary. LICENSE.txt has complete terms\n"
+                f"license: Apache-2.0\n"
                 f"metadata:\n"
                 f"  bridge-kind: doctype\n"
                 f'  bridge-tags: "doctype {doctype} harness-evolve"\n'
@@ -523,7 +523,7 @@ class SkillCompilerMixin:
             signals = [
                 s
                 for s in signals
-                if s.citation_verified and s.oversight_rsr_score >= 0.50
+                if s.citation_verified and s.oversight_rsr_score >= 0.80
             ]
         return sorted(signals, key=lambda s: s.recorded_at)
 
@@ -767,6 +767,16 @@ class SkillCompilerMixin:
             if policy is None:
                 raise KeyError(f"ProgrammableTrustPolicy '{slice_id}' not found.")
 
+            if (
+                target_level == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE
+                and policy.risk_level == "HIGH"
+                and policy.consecutive_matches < policy.required_matches_for_promotion
+            ):
+                raise ValueError(
+                    f"Cannot force-promote HIGH-risk slice '{slice_id}' to trusted_auto_approve: "
+                    f"only {policy.consecutive_matches}/{policy.required_matches_for_promotion} "
+                    "consecutive matches recorded (force override is disabled on HIGH-risk slices)."
+                )
             if (
                 target_level == TrustAutonomyLevel.TRUSTED_AUTO_APPROVE
                 and not force

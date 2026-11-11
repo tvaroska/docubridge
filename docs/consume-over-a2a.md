@@ -63,7 +63,7 @@ Everything on the wire is defined in [`contract/wire.py`](../contract/wire.py) a
 [`contract/enums.py`](../contract/enums.py); `contract/` is the only package a
 consumer imports from this repo.
 
-1. **Send** an A2A `Message` (`message/send` or `message/stream`) whose parts are:
+1. **Send** an A2A `Message` (`SendMessage` with header `A2A-Version: 1.0`, or legacy v0.3 `message/send` / `message/stream`) whose parts are:
    - one data part = `CollectRequest.model_dump(mode="json")` with part metadata
      `{"kind": "collect_request", "contract_version": CONTRACT_VERSION}`. Required:
      `process`; optional: `party`, `context_id` (reuse to continue an exchange),

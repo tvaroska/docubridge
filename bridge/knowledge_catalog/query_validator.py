@@ -110,8 +110,7 @@ def _resolve_target_buckets(
         return {leaf}, set()
 
     glossary = {
-        t.term_id: t
-        for t in catalog.list_glossary_terms(include_confidential=True)
+        t.term_id: t for t in catalog.list_glossary_terms(include_confidential=True)
     }
     term = glossary.get(raw)
     if term is not None:
@@ -148,9 +147,7 @@ def _sql_has_supersedes_precedence(sql_text: str) -> bool:
         tbl in low for tbl in _RAW_FACT_TABLES
     ):
         return True
-    has_partition = bool(
-        re.search(r"partition\s+by\s+entity_id\s*,\s*field_path", low)
-    )
+    has_partition = bool(re.search(r"partition\s+by\s+entity_id\s*,\s*field_path", low))
     has_priority_order = "source_priority" in low and "desc" in low
     has_rn_filter = bool(re.search(r"\brn\s*=\s*1\b", low))
     return has_partition and has_priority_order and has_rn_filter
@@ -248,10 +245,10 @@ def validate_metric_query(
                 )
                 continue
 
-            if (
-                norm_op in ("SUM_ACTIVE_DECIMAL", "RATIO_ACTIVE_DECIMAL")
-                and not resolved_catalog.is_monetary_field(leaf)
-            ):
+            if norm_op in (
+                "SUM_ACTIVE_DECIMAL",
+                "RATIO_ACTIVE_DECIMAL",
+            ) and not resolved_catalog.is_monetary_field(leaf):
                 violations.append(
                     QueryValidationViolation(
                         code="NON_MONETARY_FIELD_AGGREGATION",

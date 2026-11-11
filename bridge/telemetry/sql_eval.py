@@ -315,6 +315,7 @@ def compute_trace_analytics(
             "views": {
                 "otel_spans": f"{bq_proj}.{bq_ds}.{bq_tbl}",
                 "v_step1_trace_eval": f"{bq_proj}.{bq_ds}.v_step1_trace_eval",
+                "v_trace_sql_evaluation": f"{bq_proj}.{bq_ds}.v_step1_trace_eval",
                 "v_cost_per_verified_outcome": f"{bq_proj}.{bq_ds}.v_cost_per_verified_outcome",
                 "v_attribution_coverage": f"{bq_proj}.{bq_ds}.v_attribution_coverage",
                 "step_latency_analytics": f"{bq_proj}.{bq_ds}.v_step1_trace_eval",
@@ -514,24 +515,30 @@ def _build_sql_trace_evaluation(
         )
 
     total_traces = len(trace_groups)
+    evaluated = total_traces > 0
     denom = max(1, total_traces)
-    rule0_pass_rate = (
-        round(100.0 * all_rule0_pass / denom, 1) if total_traces else 100.0
-    )
+    rule0_pass_rate = round(100.0 * all_rule0_pass / denom, 1) if evaluated else 0.0
     judge_sampling_pct = (
-        round(100.0 * sampled_for_judge / denom, 1) if total_traces else 5.0
+        round(100.0 * sampled_for_judge / denom, 1) if evaluated else 0.0
     )
-    token_savings_pct = round(max(0.0, 100.0 - min(judge_sampling_pct, 25.0)), 1)
+    token_savings_pct = (
+        round(max(0.0, 100.0 - min(judge_sampling_pct, 25.0)), 1) if evaluated else 0.0
+    )
 
-    rg_result = rogan_gladen_debiased_pass_rate(
-        judge_pass_count=all_rule0_pass if total_traces else 99,
-        n_unlabeled=denom if total_traces else 100,
-        calibration_human_labels=CALIBRATION_HUMAN_LABELS,
-        calibration_judge_labels=CALIBRATION_JUDGE_LABELS,
+    rg_result = (
+        rogan_gladen_debiased_pass_rate(
+            judge_pass_count=all_rule0_pass,
+            n_unlabeled=total_traces,
+            calibration_human_labels=CALIBRATION_HUMAN_LABELS,
+            calibration_judge_labels=CALIBRATION_JUDGE_LABELS,
+        )
+        if evaluated
+        else None
     )
 
     spans_fqn = f"{bq_proj}.{bq_ds}.{bq_tbl}"
     eval_view_fqn = f"{bq_proj}.{bq_ds}.v_step1_trace_eval"
+    eval_view_alias_fqn = f"{bq_proj}.{bq_ds}.v_trace_sql_evaluation"
     cost_outcome_fqn = f"{bq_proj}.{bq_ds}.v_cost_per_verified_outcome"
     attribution_fqn = f"{bq_proj}.{bq_ds}.v_attribution_coverage"
 
@@ -642,85 +649,104 @@ def _build_sql_trace_evaluation(
             "gate_id": "gate_1_pii_redacted_before_extract",
             "title": "Gate 1 · PII Redaction & WORM Lock Before Extraction",
             "sql_expression": "MIN(redact_pii.start_time) <= MIN(collect_document.start_time) AND lock_worm_artifact = 'OK'",
-            "passed_traces": g1_pass if total_traces else 1,
-            "total_traces": total_traces if total_traces else 1,
-            "pass_rate_pct": round(100.0 * g1_pass / denom, 1)
-            if total_traces
-            else 100.0,
-            "status": "PASS"
-            if (not total_traces or g1_pass == total_traces)
-            else "WARN",
+            "passed_traces": g1_pass,
+            "total_traces": total_traces,
+            "pass_rate_pct": round(100.0 * g1_pass / denom, 1) if evaluated else 0.0,
+            "status": (
+                "NOT_EVALUATED"
+                if not evaluated
+                else ("PASS" if g1_pass == total_traces else "WARN")
+            ),
         },
         {
             "gate_id": "gate_2_spiffe_zero_trust_verified",
             "title": "Gate 2 · SPIFFE JWT-SVID Verified Before Store/A2UI",
             "sql_expression": "COUNTIF(verify_jwt_svid = 'ERROR') = 0 AND agent_spiffe_id IS NOT NULL",
-            "passed_traces": g2_pass if total_traces else 1,
-            "total_traces": total_traces if total_traces else 1,
-            "pass_rate_pct": round(100.0 * g2_pass / denom, 1)
-            if total_traces
-            else 100.0,
-            "status": "PASS"
-            if (not total_traces or g2_pass == total_traces)
-            else "WARN",
+            "passed_traces": g2_pass,
+            "total_traces": total_traces,
+            "pass_rate_pct": round(100.0 * g2_pass / denom, 1) if evaluated else 0.0,
+            "status": (
+                "NOT_EVALUATED"
+                if not evaluated
+                else ("PASS" if g2_pass == total_traces else "WARN")
+            ),
         },
         {
             "gate_id": "gate_3_decimal_math_and_bitemporal_audit",
             "title": "Gate 3 · Deterministic Decimal Math & Bi-Temporal Ledger",
             "sql_expression": "COUNTIF(STARTS_WITH(name, 'docubridge.consolidation.') AND status = 'ERROR') = 0",
-            "passed_traces": g3_pass if total_traces else 1,
-            "total_traces": total_traces if total_traces else 1,
-            "pass_rate_pct": round(100.0 * g3_pass / denom, 1)
-            if total_traces
-            else 100.0,
-            "status": "PASS"
-            if (not total_traces or g3_pass == total_traces)
-            else "WARN",
+            "passed_traces": g3_pass,
+            "total_traces": total_traces,
+            "pass_rate_pct": round(100.0 * g3_pass / denom, 1) if evaluated else 0.0,
+            "status": (
+                "NOT_EVALUATED"
+                if not evaluated
+                else ("PASS" if g3_pass == total_traces else "WARN")
+            ),
         },
         {
             "gate_id": "gate_4_oversight_anti_rubber_stamp",
             "title": "Gate 4 · Two-Sided HITL Oversight (RSR >= 0.80)",
             "sql_expression": "SAFE_CAST(JSON_VALUE(attributes_json, '$.\"docubridge.oversight.rsr_score\"') AS FLOAT64) >= 0.80",
-            "passed_traces": g4_pass if total_traces else 1,
-            "total_traces": total_traces if total_traces else 1,
-            "pass_rate_pct": round(100.0 * g4_pass / denom, 1)
-            if total_traces
-            else 100.0,
-            "status": "PASS"
-            if (not total_traces or g4_pass == total_traces)
-            else "WARN",
+            "passed_traces": g4_pass,
+            "total_traces": total_traces,
+            "pass_rate_pct": round(100.0 * g4_pass / denom, 1) if evaluated else 0.0,
+            "status": (
+                "NOT_EVALUATED"
+                if not evaluated
+                else ("PASS" if g4_pass == total_traces else "WARN")
+            ),
         },
         {
             "gate_id": "gate_5_finops_workhorse_right_sized",
             "title": "Gate 5 · FinOps Model Right-Sizing & Traffic Attribution",
             "sql_expression": "COUNTIF(status = 'ERROR') = 0 AND conflict_escalation_calls <= 1",
-            "passed_traces": g5_pass if total_traces else 1,
-            "total_traces": total_traces if total_traces else 1,
-            "pass_rate_pct": round(100.0 * g5_pass / denom, 1)
-            if total_traces
-            else 100.0,
-            "status": "PASS"
-            if (not total_traces or g5_pass == total_traces)
-            else "WARN",
+            "passed_traces": g5_pass,
+            "total_traces": total_traces,
+            "pass_rate_pct": round(100.0 * g5_pass / denom, 1) if evaluated else 0.0,
+            "status": (
+                "NOT_EVALUATED"
+                if not evaluated
+                else ("PASS" if g5_pass == total_traces else "WARN")
+            ),
         },
     ]
 
     return {
         "view_fqn": eval_view_fqn,
+        "view_alias_fqn": eval_view_alias_fqn,
+        "evaluated": evaluated,
         "judge_model": "gemini-4-argon",
         "workhorse_model": "gemini-3.8-flash",
-        "total_traces_evaluated": total_traces if total_traces else 1,
+        "total_traces_evaluated": total_traces,
         "rule0_sql_pass_rate_pct": rule0_pass_rate,
         "selective_judge_sampling_pct": judge_sampling_pct,
         "estimated_eval_token_savings_pct": token_savings_pct,
-        "statistical_calibration": {
-            "raw_judge_pass_rate": round(rg_result.raw_judge_pass_rate, 4),
-            "calibrated_tpr": round(rg_result.tpr_sensitivity, 4),
-            "calibrated_tnr": round(rg_result.tnr_specificity, 4),
-            "rogan_gladen_debiased_pass_rate": round(rg_result.debiased_pass_rate, 4),
-            "ci_95_lower": round(rg_result.ci_95_lower, 4),
-            "ci_95_upper": round(rg_result.ci_95_upper, 4),
-        },
+        "statistical_calibration": (
+            {
+                "evaluated": True,
+                "n_unlabeled": total_traces,
+                "raw_judge_pass_rate": round(rg_result.raw_judge_pass_rate, 4),
+                "calibrated_tpr": round(rg_result.tpr_sensitivity, 4),
+                "calibrated_tnr": round(rg_result.tnr_specificity, 4),
+                "rogan_gladen_debiased_pass_rate": round(
+                    rg_result.debiased_pass_rate, 4
+                ),
+                "ci_95_lower": round(rg_result.ci_95_lower, 4),
+                "ci_95_upper": round(rg_result.ci_95_upper, 4),
+            }
+            if rg_result is not None
+            else {
+                "evaluated": False,
+                "n_unlabeled": 0,
+                "raw_judge_pass_rate": None,
+                "calibrated_tpr": 0.985,
+                "calibrated_tnr": 0.96,
+                "rogan_gladen_debiased_pass_rate": None,
+                "ci_95_lower": None,
+                "ci_95_upper": None,
+            }
+        ),
         "gates": gates_summary,
         "traces": per_trace_evals,
         "sql_queries": sql_queries,

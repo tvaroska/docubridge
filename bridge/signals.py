@@ -30,14 +30,28 @@ class Signals(BaseModel):
     flagged_fields: list[str] = []
     # sense-A canonical issuer (per-doc normalization)
     issuer: str | None = None
-    # signal 4 — completeness/failed-rules. Sense-A declared-rule flags live here;
-    # completeness proper is sense-B (app decides). Left EMPTY this phase (rules = P3-3).
+    # signal 2b — optional freshness (document age vs. max_age_days threshold)
+    document_age_days: int | None = None
+    max_age_days: int | None = None
+    # signal 4 — corroboration & declared-rule flags (completeness proper is sense-B)
     failed_rules: list[str] = []
 
     @property
     def type_match(self) -> bool:  # signal 2 — right kind?
         """Return True if the detected document type matches the expected document type."""
         return is_in_label_space(self.doctype, self.candidate_doctypes)
+
+    @property
+    def freshness_ok(self) -> bool:
+        """Return True if document_age_days is within max_age_days (or when unbounded)."""
+        if self.document_age_days is None or self.max_age_days is None:
+            return True
+        return self.document_age_days <= self.max_age_days
+
+    @property
+    def corroboration_ok(self) -> bool:
+        """Return True when no declared corroboration or cross-field rules failed."""
+        return len(self.failed_rules) == 0
 
 
 def signals_from_result(
@@ -98,5 +112,8 @@ def dispose_signals(
         legible=signals.legible,
         overall_confidence=signals.overall_confidence,
         flagged_fields=signals.flagged_fields,
+        failed_rules=signals.failed_rules,
+        document_age_days=signals.document_age_days,
+        max_age_days=signals.max_age_days,
         thresholds=thresholds,
     )

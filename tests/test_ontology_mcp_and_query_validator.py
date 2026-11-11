@@ -108,8 +108,7 @@ def test_mcp_explain_metric_formula() -> None:
     assert scoped["canonical_bucket"] == "total_premium"
     assert scoped["glossary_term_id"] == "term.premium"
     assert all(
-        f["entity_id"] == "commercial-property-quote"
-        for f in scoped["feeding_fields"]
+        f["entity_id"] == "commercial-property-quote" for f in scoped["feeding_fields"]
     )
 
     with pytest.raises(KeyError, match="Uncertified metric"):
@@ -232,7 +231,9 @@ def test_validate_metric_query_accepts_certified_formulas_and_sql() -> None:
     assert sql_res.precedence_predicates_verified is True
 
 
-def test_validate_metric_query_rejects_uncertified_formulas_and_missing_predicates() -> None:
+def test_validate_metric_query_rejects_uncertified_formulas_and_missing_predicates() -> (
+    None
+):
     """P8-8: Queries bypassing [:FEEDS_METRIC] or omitting bi-temporal/precedence fail."""
     catalog = InMemoryKnowledgeCatalog()
 
@@ -268,7 +269,9 @@ def test_validate_metric_query_rejects_uncertified_formulas_and_missing_predicat
     assert "MISSING_BITEMPORAL_WATERMARK" in codes
     assert "MISSING_SUPERSEDES_PRECEDENCE" in codes
 
-    with pytest.raises(UncertifiedMetricQueryError, match="MISSING_SUPERSEDES_PRECEDENCE"):
+    with pytest.raises(
+        UncertifiedMetricQueryError, match="MISSING_SUPERSEDES_PRECEDENCE"
+    ):
         catalog.validate_metric_query(
             "total_coverage_limit",
             fields=("loan_amount",),

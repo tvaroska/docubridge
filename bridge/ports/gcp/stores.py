@@ -74,7 +74,12 @@ class GcpSessions(SessionsPort):
 
         from google.adk.sessions import DatabaseSessionService
 
-        return DatabaseSessionService(db_url=_resolve_dsn(db_url))
+        from bridge.sql_runtime import enable_iam_auth, is_iam_auth_enabled
+
+        svc = DatabaseSessionService(db_url=_resolve_dsn(db_url))
+        if is_iam_auth_enabled() and hasattr(svc, "db_engine"):
+            enable_iam_auth(svc.db_engine)
+        return svc
 
 
 class GcpMemoryBank(MemoryBankPort):

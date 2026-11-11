@@ -935,9 +935,30 @@ def evaluate_ontology_proposal(
         if extractor is not None and sample_documents
         else not_evaluated("no live extractor")
     )
+    field_specs = [
+        f_spec
+        for ent in candidate_rev.entities.values()
+        for f_spec in ent.fields.values()
+    ]
+    valid_field_specs = sum(
+        1
+        for f_spec in field_specs
+        if bool(f_spec.description.what_it_is.strip())
+        and (
+            bool(f_spec.description.where_to_read.strip())
+            or bool(f_spec.description.distinguish_from.strip())
+        )
+    )
+    invariant_flags = (dag_ok, formulas_ok, paired_ok, corridor_ok, *new_verdicts)
+    total_eval_items = max(1, len(field_specs) + len(invariant_flags))
+    passed_eval_items = valid_field_specs + sum(1 for ok in invariant_flags if ok)
+    if not (dag_ok and formulas_ok and paired_ok and nfr == 0.0):
+        passed_eval_items = min(
+            passed_eval_items, sum(1 for ok in invariant_flags if ok)
+        )
     rg = rogan_gladen_debiased_pass_rate(
-        judge_pass_count=38,
-        n_unlabeled=40,
+        judge_pass_count=passed_eval_items,
+        n_unlabeled=total_eval_items,
         calibration_human_labels=CALIBRATION_HUMAN_LABELS,
         calibration_judge_labels=CALIBRATION_JUDGE_LABELS,
     )

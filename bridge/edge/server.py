@@ -338,7 +338,7 @@ def build_a2a_app(
 
     routes = (
         create_agent_card_routes(card, card_modifier=_live_card)
-        + create_jsonrpc_routes(handler, RPC_PATH)
+        + create_jsonrpc_routes(handler, RPC_PATH, enable_v0_3_compat=True)
         + [
             # signer=None locally (stream bytes); on deploy build_fetch_signer()
             # returns a GCS signer so the fetch route redirects to a signed URL

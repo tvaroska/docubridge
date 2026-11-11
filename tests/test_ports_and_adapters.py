@@ -138,8 +138,10 @@ def test_port_env_var_precedence(monkeypatch):
 
 
 @pytest.mark.port("audit_vault")
-def test_audit_vault_port_local_and_gcp_adapters(monkeypatch):
+def test_audit_vault_port_local_and_gcp_adapters(adapter: PortMode, monkeypatch):
     """Verify `Port.audit_vault` local/GCP adapters, WORM lock roundtrip, and `vault_from_env()` wiring."""
+    active_adapter = get_port_adapter(Port.audit_vault, adapter)
+    assert isinstance(active_adapter, AuditVaultPort)
     local_adapter = get_port_adapter(Port.audit_vault, PortMode.local)
     gcp_adapter = get_port_adapter(Port.audit_vault, PortMode.gcp)
     assert isinstance(local_adapter, AuditVaultPort)
@@ -176,8 +178,12 @@ def test_audit_vault_port_local_and_gcp_adapters(monkeypatch):
 
 
 @pytest.mark.port("operational_store")
-def test_operational_store_port_local_and_gcp_adapters(monkeypatch, tmp_path):
+def test_operational_store_port_local_and_gcp_adapters(
+    adapter: PortMode, monkeypatch, tmp_path
+):
     """Verify `Port.operational_store` local/GCP adapters, SQLite roundtrip, and `operational_store_from_env()`."""
+    active_adapter = get_port_adapter(Port.operational_store, adapter)
+    assert isinstance(active_adapter, OperationalStorePort)
     local_adapter = get_port_adapter(Port.operational_store, PortMode.local)
     gcp_adapter = get_port_adapter(Port.operational_store, PortMode.gcp)
     assert isinstance(local_adapter, OperationalStorePort)
@@ -235,8 +241,12 @@ def test_operational_store_port_local_and_gcp_adapters(monkeypatch, tmp_path):
 
 
 @pytest.mark.port("action_inbox")
-def test_action_inbox_port_local_and_gcp_adapters(monkeypatch, tmp_path):
+def test_action_inbox_port_local_and_gcp_adapters(
+    adapter: PortMode, monkeypatch, tmp_path
+):
     """Verify `Port.action_inbox` local/GCP adapters, SQLite roundtrip, and `action_inbox_store_from_env()`."""
+    active_adapter = get_port_adapter(Port.action_inbox, adapter)
+    assert isinstance(active_adapter, ActionInboxPort)
     local_adapter = get_port_adapter(Port.action_inbox, PortMode.local)
     gcp_adapter = get_port_adapter(Port.action_inbox, PortMode.gcp)
     assert isinstance(local_adapter, ActionInboxPort)
@@ -278,8 +288,12 @@ def test_action_inbox_port_local_and_gcp_adapters(monkeypatch, tmp_path):
 
 
 @pytest.mark.port("agent_gym")
-def test_agent_gym_port_local_and_gcp_adapters(monkeypatch, tmp_path):
+def test_agent_gym_port_local_and_gcp_adapters(
+    adapter: PortMode, monkeypatch, tmp_path
+):
     """Verify `Port.agent_gym` local/GCP adapters, SQLite roundtrip, and `agent_gym_from_env()`."""
+    active_adapter = get_port_adapter(Port.agent_gym, adapter)
+    assert isinstance(active_adapter, AgentGymPort)
     local_adapter = get_port_adapter(Port.agent_gym, PortMode.local)
     gcp_adapter = get_port_adapter(Port.agent_gym, PortMode.gcp)
     assert isinstance(local_adapter, AgentGymPort)
@@ -411,9 +425,11 @@ async def test_collect_executor_and_build_a2a_app_enterprise_store_binding():
 
 @pytest.mark.port("knowledge_catalog")
 def test_knowledge_catalog_port_local_gcp_and_cross_replica_read_after_write(
-    monkeypatch, tmp_path
+    adapter: PortMode, monkeypatch, tmp_path
 ):
     """Verify `Port.knowledge_catalog` local/GCP adapters and cross-replica TBox graph persistence (`SqlKnowledgeCatalog`)."""
+    active_adapter = get_port_adapter(Port.knowledge_catalog, adapter)
+    assert isinstance(active_adapter, KnowledgeCatalogPort)
     local_adapter = get_port_adapter(Port.knowledge_catalog, PortMode.local)
     gcp_adapter = get_port_adapter(Port.knowledge_catalog, PortMode.gcp)
     assert isinstance(local_adapter, KnowledgeCatalogPort)
@@ -544,3 +560,15 @@ async def test_widened_extraction_port_and_stage_b_derivations():
     )
     assert list(scoped_res.fields.key_fields.keys()) == ["name"]
     assert scoped_res.ontology_revision_id == "ont-rev-v1-1-baseline"
+
+
+@pytest.mark.port("memory_bank")
+def test_memory_bank_port_local_and_gcp_adapters(adapter: PortMode, tmp_path) -> None:
+    """Verify `Port.memory_bank` local and GCP adapters via `@pytest.mark.port("memory_bank")`."""
+    from bridge.ports.protocols import MemoryBankPort
+
+    inst = get_port_adapter(Port.memory_bank, adapter)
+    assert isinstance(inst, MemoryBankPort)
+    local_mb = get_port_adapter(Port.memory_bank, PortMode.local)
+    svc = local_mb.build_memory_service(str(tmp_path / "mb.sqlite"))
+    assert svc is not None

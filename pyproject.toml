@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "docubridge"
 version = "1.14.0"
-description = "A2A Document Bridge — Flagship 4-Pillar Gemini platform & 6-Zone Financial Services Reference Architecture"
+description = "Governed A2A document mediation engine: separate page-anchored evidence and deterministic Rule 0 conflict resolution from caller policy, with 0.0% regression skill calibration."
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2.7",

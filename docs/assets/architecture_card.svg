@@ -6,12 +6,12 @@
       .title { font-size: 28px; font-weight: 800; }
       .subtitle { font-size: 14px; font-weight: 500; }
       .step-num { font-size: 32px; font-weight: 800; }
-      .step-tag { font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+      .step-tag { font-size: 13px; font-weight: 800; letter-spacing: 0.9px; }
       .box-title { font-size: 20px; font-weight: 800; }
-      .box-sub { font-size: 13.5px; font-weight: 500; }
-      .pill-title { font-size: 13px; font-weight: 700; }
-      .pill-sub { font-size: 12px; font-weight: 500; }
-      .arrow-label { font-size: 11px; font-weight: 800; letter-spacing: 0.8px; }
+      .box-sub { font-size: 14px; font-weight: 600; }
+      .pill-title { font-size: 14px; font-weight: 700; }
+      .pill-sub { font-size: 13px; font-weight: 600; }
+      .arrow-label { font-size: 13.5px; font-weight: 800; letter-spacing: 0.6px; }
     </style>
   </defs>
 
@@ -23,20 +23,20 @@
   <rect x="20" y="20" width="1560" height="104" rx="12" fill="#0F172A"/>
   <rect x="20" y="90" width="1560" height="34" fill="#0F172A"/>
   <text x="56" y="66" class="font title" fill="#FFFFFF">DOCUBRIDGE ARCHITECTURE</text>
-  <text x="56" y="96" class="font subtitle" fill="#94A3B8">Agent-to-Agent Document Mediation · Rule 0 Deterministic Consolidation · Self-Calibrating Skills</text>
+  <text x="56" y="96" class="font subtitle" fill="#94A3B8">Agent-to-Agent Document Mediation · Rule 0 Deterministic Conflict Resolution · Zero-Regression Skill Calibration</text>
 
   <!-- Top Right Color Legend Pills -->
-  <rect x="980" y="48" width="176" height="44" rx="8" fill="#1E293B" stroke="#38BDF8" stroke-width="1.5"/>
-  <circle cx="1004" cy="70" r="6" fill="#38BDF8"/>
-  <text x="1020" y="75" class="font pill-title" fill="#F8FAFC">Sense A: Intake</text>
+  <rect x="936" y="48" width="196" height="44" rx="8" fill="#1E293B" stroke="#38BDF8" stroke-width="1.5"/>
+  <circle cx="960" cy="70" r="6" fill="#38BDF8"/>
+  <text x="976" y="75" class="font pill-title" fill="#F8FAFC">Sense A: Evidence</text>
 
-  <rect x="1172" y="48" width="196" height="44" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1.5"/>
-  <circle cx="1196" cy="70" r="6" fill="#F59E0B"/>
-  <text x="1212" y="75" class="font pill-title" fill="#FDE68A">Rule 0: Zero AI Math</text>
+  <rect x="1146" y="48" width="204" height="44" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1.5"/>
+  <circle cx="1170" cy="70" r="6" fill="#F59E0B"/>
+  <text x="1186" y="75" class="font pill-title" fill="#FDE68A">Rule 0: Zero AI Math</text>
 
-  <rect x="1384" y="48" width="164" height="44" rx="8" fill="#1E293B" stroke="#10B981" stroke-width="1.5"/>
-  <circle cx="1408" cy="70" r="6" fill="#10B981"/>
-  <text x="1424" y="75" class="font pill-title" fill="#6EE7B7">Sense B: Policy</text>
+  <rect x="1364" y="48" width="184" height="44" rx="8" fill="#1E293B" stroke="#10B981" stroke-width="1.5"/>
+  <circle cx="1388" cy="70" r="6" fill="#10B981"/>
+  <text x="1404" y="75" class="font pill-title" fill="#6EE7B7">Sense B: Caller Policy</text>
 
   <!-- ================================================================= -->
   <!-- TOP ROW: STAGES 01 -> 02 -> 03 (y=156, h=296)                      -->
@@ -62,7 +62,7 @@
   <!-- Arrow 01 -> 02 -->
   <line x1="496" y1="304" x2="564" y2="304" stroke="#2563EB" stroke-width="3.5"/>
   <polygon points="564,295 580,304 564,313" fill="#2563EB"/>
-  <text x="538" y="288" text-anchor="middle" class="mono arrow-label" fill="#1D4ED8">INGEST</text>
+  <text x="538" y="286" text-anchor="middle" class="mono arrow-label" fill="#1D4ED8">INGEST</text>
 
   <!-- STAGE 02: ROYAL BLUE -->
   <rect x="580" y="156" width="440" height="296" rx="10" fill="#EFF6FF" stroke="#2563EB" stroke-width="2.5"/>
@@ -73,12 +73,12 @@
   <text x="664" y="194" class="mono step-tag" fill="#1E3A8A">DUAL-PATH INTAKE &amp; GATE</text>
 
   <text x="604" y="262" class="font box-title" fill="#0F172A">Fast-Path vs. Document AI</text>
-  <text x="604" y="288" class="font box-sub" fill="#334155">4-Signal Gate anchors every span to its PDF page</text>
+  <text x="604" y="288" class="font box-sub" fill="#334155">Quality · Freshness · Completeness · Corroboration</text>
 
   <rect x="604" y="314" width="188" height="116" rx="8" fill="#ECFDF5" stroke="#34D399" stroke-width="2"/>
   <text x="622" y="344" class="font pill-title" fill="#047857">Path A: Structured</text>
   <text x="622" y="370" class="font pill-sub" fill="#065F46">JSON, CSV &amp; Excel</text>
-  <text x="622" y="406" class="mono pill-title" fill="#059669">0 LLM Calls</text>
+  <text x="622" y="406" class="mono pill-title" fill="#059669">0 LLM Calls ($0)</text>
 
   <rect x="808" y="314" width="188" height="116" rx="8" fill="#FFFBEB" stroke="#F59E0B" stroke-width="2"/>
   <text x="826" y="344" class="font pill-title" fill="#B45309">Path B: Documents</text>
@@ -88,7 +88,7 @@
   <!-- Arrow 02 -> 03 -->
   <line x1="1020" y1="304" x2="1088" y2="304" stroke="#D97706" stroke-width="3.5"/>
   <polygon points="1088,295 1104,304 1088,313" fill="#D97706"/>
-  <text x="1062" y="288" text-anchor="middle" class="mono arrow-label" fill="#B45309">VERIFY</text>
+  <text x="1062" y="286" text-anchor="middle" class="mono arrow-label" fill="#B45309">VERIFY</text>
 
   <!-- STAGE 03: DARK NAVY & AMBER GOLD -->
   <rect x="1104" y="156" width="440" height="296" rx="10" fill="#0F172A" stroke="#F59E0B" stroke-width="3"/>
@@ -105,7 +105,7 @@
   <text x="1148" y="345" class="font pill-title" fill="#FDE68A">7-Year Write-Once Evidence Lock (SHA-256)</text>
 
   <rect x="1128" y="378" width="392" height="52" rx="8" fill="#1E293B" stroke="#10B981" stroke-width="1.5"/>
-  <text x="1148" y="409" class="mono pill-title" fill="#34D399">Bi-Temporal SQL: Learned × Effective Time</text>
+  <text x="1148" y="409" class="mono pill-title" fill="#34D399">Audit-Preserving Override Ledger (SQL)</text>
 
   <!-- Downward Connector Stage 03 -> Stage 04 -->
   <line x1="1324" y1="452" x2="1324" y2="548" stroke="#059669" stroke-width="3.5"/>
@@ -115,7 +115,7 @@
   <!-- Direct Quarantine Bypass Connector Stage 02 -> Stage 05 -->
   <line x1="890" y1="452" x2="890" y2="548" stroke="#D97706" stroke-width="3" stroke-dasharray="8,6"/>
   <polygon points="881,548 890,564 899,548" fill="#D97706"/>
-  <rect x="760" y="486" width="260" height="32" rx="16" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+  <rect x="742" y="484" width="296" height="36" rx="18" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2"/>
   <text x="890" y="507" text-anchor="middle" class="mono arrow-label" fill="#B45309">QUARANTINE REVIEW QUEUE</text>
 
   <!-- ================================================================= -->
@@ -142,7 +142,7 @@
   <!-- Arrow 04 -> 05 -->
   <line x1="1104" y1="712" x2="1036" y2="712" stroke="#0891B2" stroke-width="3.5"/>
   <polygon points="1036,703 1020,712 1036,721" fill="#0891B2"/>
-  <text x="1062" y="696" text-anchor="middle" class="mono arrow-label" fill="#0E7490">RENDER</text>
+  <text x="1062" y="694" text-anchor="middle" class="mono arrow-label" fill="#0E7490">RENDER</text>
 
   <!-- STAGE 05: TEAL / CYAN -->
   <rect x="580" y="564" width="440" height="296" rx="10" fill="#ECFEFF" stroke="#0891B2" stroke-width="2.5"/>
@@ -168,7 +168,7 @@
   <!-- Arrow 05 -> 06 -->
   <line x1="580" y1="712" x2="512" y2="712" stroke="#7C3AED" stroke-width="3.5"/>
   <polygon points="512,703 496,712 512,721" fill="#7C3AED"/>
-  <text x="538" y="696" text-anchor="middle" class="mono arrow-label" fill="#6D28D9">OVERRIDES</text>
+  <text x="538" y="694" text-anchor="middle" class="mono arrow-label" fill="#6D28D9">OVERRIDES</text>
 
   <!-- STAGE 06: VIOLET / PURPLE -->
   <rect x="56" y="564" width="440" height="296" rx="10" fill="#F5F3FF" stroke="#7C3AED" stroke-width="2.5"/>
@@ -192,6 +192,6 @@
   <line x1="276" y1="502" x2="680" y2="502" stroke="#7C3AED" stroke-width="3.5"/>
   <line x1="680" y1="502" x2="680" y2="468" stroke="#7C3AED" stroke-width="3.5"/>
   <polygon points="671,468 680,452 689,468" fill="#7C3AED"/>
-  <rect x="350" y="486" width="268" height="32" rx="16" fill="#EDE9FE" stroke="#7C3AED" stroke-width="1.5"/>
-  <text x="484" y="507" text-anchor="middle" class="mono arrow-label" fill="#5B21B6">UPGRADES INTAKE SKILLS &amp; SCHEMA</text>
+  <rect x="332" y="484" width="304" height="36" rx="18" fill="#EDE9FE" stroke="#7C3AED" stroke-width="2"/>
+  <text x="484" y="507" text-anchor="middle" class="mono arrow-label" fill="#5B21B6">PROMOTES SKILL.MD (0.0% REGR.)</text>
 </svg>

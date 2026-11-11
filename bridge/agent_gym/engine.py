@@ -518,7 +518,7 @@ class AgentGymEngine(SkillCompilerMixin, RegistryGatewayMixin, abc.ABC):
             agent_spiffe_id=signal.agent_spiffe_id,
             status=(
                 TribalRuleStatus.REJECTED
-                if signal.oversight_rsr_score < 0.50
+                if signal.oversight_rsr_score < 0.80
                 else TribalRuleStatus.CANDIDATE
             ),
         )

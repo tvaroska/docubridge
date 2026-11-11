@@ -570,9 +570,7 @@ class OntologyMcpSurface:
                 explanation=explanation,
             )
 
-    def trace_field_lineage(
-        self, entity_id: str, field_name: str
-    ) -> dict[str, Any]:
+    def trace_field_lineage(self, entity_id: str, field_name: str) -> dict[str, Any]:
         """Trace W3C PROV-O field lineage for ``(entity_id, field_name)``."""
         active = self._catalog.get_active_ontology_revision()
         trace = self._catalog.trace_lineage(entity_id, field_name)

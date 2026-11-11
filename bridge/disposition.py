@@ -20,11 +20,12 @@ class DispositionThresholds:
 
     Invariant: ``0.0 <= resubmit_below <= auto_approve_at <= 1.0`` (NaN refused).
     Equal values are legal: there is then no confidence HITL band, and flags still
-    route to HITL.
+    route to HITL. Optional ``max_age_days`` bounds document freshness when set.
     """
 
     auto_approve_at: float = 0.85
     resubmit_below: float = 0.55
+    max_age_days: int | None = None
 
     def __post_init__(self) -> None:
         # Written as one chained comparison so NaN (never ordered) is refused too.
@@ -34,6 +35,10 @@ class DispositionThresholds:
                 "0 <= resubmit_below <= auto_approve_at <= 1; got "
                 f"auto_approve_at={self.auto_approve_at!r}, "
                 f"resubmit_below={self.resubmit_below!r}"
+            )
+        if self.max_age_days is not None and self.max_age_days < 0:
+            raise ValueError(
+                f"max_age_days must be non-negative; got {self.max_age_days!r}"
             )
 
 
@@ -201,14 +206,19 @@ def dispose(
     legible: bool,
     overall_confidence: float,
     flagged_fields: list[str] | None = None,
+    failed_rules: list[str] | None = None,
+    document_age_days: int | None = None,
+    max_age_days: int | None = None,
     thresholds: DispositionThresholds = DEFAULT_THRESHOLDS,
 ) -> DispositionVerdict:
     """Pure disposition gate implementing the ordered decision logic.
 
     Precedence (first match wins):
     1. Label-space / type gate (doctype not in candidate_doctypes)
-    2. Quality gate (not legible or overall_confidence < resubmit_below)
-    3. Confidence gate (flagged_fields non-empty or overall_confidence < auto_approve_at)
+    2. Quality & freshness gate (not legible, overall_confidence < resubmit_below,
+       or document_age_days > max_age_days)
+    3. Confidence & corroboration gate (flagged_fields non-empty, failed_rules
+       non-empty, or overall_confidence < auto_approve_at)
     4. Auto-approve (fell through all gates)
 
     Args:
@@ -217,6 +227,9 @@ def dispose(
         legible: Whether the document was readable.
         overall_confidence: The extraction confidence score (0.0-1.0).
         flagged_fields: List of field names flagged for review (None treated as []).
+        failed_rules: List of declared rule or corroboration checks that failed.
+        document_age_days: Observed document age in days when freshness is evaluated.
+        max_age_days: Maximum permitted document age in days (overrides thresholds.max_age_days).
         thresholds: Override for policy thresholds (defaults to module constants).
 
     Returns:
@@ -224,6 +237,10 @@ def dispose(
     """
     # Treat None as empty list
     flagged = flagged_fields or []
+    rule_failures = failed_rules or []
+    effective_max_age = (
+        max_age_days if max_age_days is not None else thresholds.max_age_days
+    )
 
     # 1. Label-space / type gate
     if not is_in_label_space(doctype, candidate_doctypes):
@@ -241,7 +258,7 @@ def dispose(
             message=f"The document type '{doctype}' is not supported for this process. {accepted}",
         )
 
-    # 2. Quality gate
+    # 2. Quality & freshness gate
     if not legible:
         return DispositionVerdict(
             disposition=Disposition.rejected,
@@ -258,13 +275,39 @@ def dispose(
             message=f"The document quality was too low (confidence: {overall_confidence:.2f}) — please resubmit a clearer copy.",
         )
 
-    # 3. Confidence gate
+    if (
+        document_age_days is not None
+        and effective_max_age is not None
+        and document_age_days > effective_max_age
+    ):
+        return DispositionVerdict(
+            disposition=Disposition.rejected,
+            gate=Gate.resubmit,
+            reason_code="stale_document",
+            message=(
+                f"The document is {document_age_days} days old "
+                f"(maximum allowed: {effective_max_age} days) — please submit a more recent copy."
+            ),
+        )
+
+    # 3. Confidence & corroboration gate
     if flagged:
         return DispositionVerdict(
             disposition=Disposition.pending,
             gate=Gate.hitl_review,
             reason_code="flagged_fields",
             message=f"The following fields require human review: {', '.join(flagged)}.",
+        )
+
+    if rule_failures:
+        return DispositionVerdict(
+            disposition=Disposition.pending,
+            gate=Gate.hitl_review,
+            reason_code="corroboration_required",
+            message=(
+                f"The document requires corroboration or rule review: "
+                f"{', '.join(rule_failures)}."
+            ),
         )
 
     if overall_confidence < thresholds.auto_approve_at:

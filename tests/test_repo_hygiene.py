@@ -149,4 +149,3 @@ def test_declarative_ast_rules_and_positive_controls(tmp_path: Path) -> None:
             assert good_res.returncode == 0, (
                 f"False positive in {rule_id} on {good_code!r}:\n{good_res.stdout}"
             )
-
