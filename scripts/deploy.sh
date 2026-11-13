@@ -58,6 +58,7 @@ export TF_VAR_db_password="${DB_PASSWORD}"
 : "${ENABLE_AUDIT_VAULT:=true}"             # Provision 7-year WORM GCS Audit Vault bucket
 : "${ENABLE_TELEMETRY_BQ:=true}"            # Provision BigQuery OTel spans dataset + SQL eval views
 : "${SEED_SKILLS:=true}"                    # Seed repository skills/ into the Skill Registry bucket
+: "${SCENARIOS_ARCHIVE_URI:=}"              # Optional long-term gs:// prefix holding scenarios/ & evals/
 
 echo "==> Enabling required APIs"
 gcloud services enable \
@@ -172,6 +173,20 @@ EFFECTIVE_EDGE_URL="${GATEWAY_URL:-${RUNTIME_URI}}"
 DB_PRIVATE_IP="$(tf_out db_private_ip)"
 DB_NAME="$(tf_out db_name)"
 DB_USER="$(tf_out db_user)"
+SCENARIOS_BUCKET="$(tf_out scenarios_bucket_name)"
+
+if [[ -n "${SCENARIOS_BUCKET}" ]]; then
+  if [[ -n "${SCENARIOS_ARCHIVE_URI}" ]]; then
+    echo "==> Hydrating scenarios and eval PDFs from ${SCENARIOS_ARCHIVE_URI%/} into gs://${SCENARIOS_BUCKET}"
+    gcloud storage rsync -r "${SCENARIOS_ARCHIVE_URI%/}/scenarios" "gs://${SCENARIOS_BUCKET}"
+    gcloud storage rsync -r "${SCENARIOS_ARCHIVE_URI%/}/evals" "gs://${SCENARIOS_BUCKET}/evals" || true
+  else
+    echo "==> Rendering and uploading scenarios into gs://${SCENARIOS_BUCKET}"
+    uv --directory "${REPO_ROOT}" run --no-sync python "${REPO_ROOT}/scripts/push-scenario.py" \
+      --project "${PROJECT_ID}" \
+      --bucket "gs://${SCENARIOS_BUCKET}"
+  fi
+fi
 
 if [[ "${ENABLE_TELEMETRY_BQ}" == "true" ]]; then
   curl -fsS "${RUNTIME_URI}/.well-known/agent-card.json" >/dev/null 2>&1 || true

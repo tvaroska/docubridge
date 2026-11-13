@@ -92,7 +92,7 @@ def push_scenario(
             gcs_uri = f"gs://{bucket_name}/{obj_key}"
             blob = bucket.blob(obj_key)
             blob.upload_from_string(rendered.pdf_bytes, content_type="application/pdf")
-            asset_dict["gcs_uri"] = gcs_uri
+            asset_dict.pop("gcs_uri", None)
             asset_dict["sha256"] = rendered.sha256
             asset_dict["document_title"] = rendered.asset.document_title
             uploaded_docs.append(
