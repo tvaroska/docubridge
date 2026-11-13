@@ -156,6 +156,7 @@ def close_outcome(
     parent_id: str | None = None,
     owner: str | None = None,
     outcome_id: str | None = None,
+    attributes: Mapping[str, Any] | None = None,
     tracer: trace.Tracer | None = None,
 ) -> str:
     """Emit a zero-duration `outcome.closed` span recording terminal status and optional `outcome.subject`."""
@@ -178,10 +179,14 @@ def close_outcome(
         else get_current_outcome_owner()
     )
 
-    attrs: dict[str, str] = {
+    attrs: dict[str, Any] = {
         OUTCOME_ID_KEY: resolved_id,
         OUTCOME_STATUS_KEY: str(status),
     }
+    if attributes:
+        for k, v in attributes.items():
+            if v is not None:
+                attrs[str(k)] = v
     if subject is not None and str(subject).strip():
         attrs[OUTCOME_SUBJECT_KEY] = str(subject).strip()
     if parent_id is not None and str(parent_id).strip():

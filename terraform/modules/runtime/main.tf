@@ -50,6 +50,10 @@ locals {
   meridian_service_name = var.meridian_service_name
   meridian_service_url  = "https://${local.meridian_service_name}-${data.google_project.this.number}.${var.region}.run.app"
   genai_upload_base     = "gs://${var.project_id}-genai-payloads/"
+  scenarios_dir_uri     = var.scenarios_bucket != "" ? "gs://${var.scenarios_bucket}/" : ""
+  default_fnb_url       = var.port_mode == "gcp" ? "https://${var.project_id}-fnb-${data.google_project.this.number}.${var.region}.run.app" : ""
+  default_carrier_a_url = var.port_mode == "gcp" ? "https://${var.project_id}-carrier-a-${data.google_project.this.number}.${var.region}.run.app" : ""
+  default_carrier_b_url = var.port_mode == "gcp" ? "https://${var.project_id}-carrier-b-${data.google_project.this.number}.${var.region}.run.app" : ""
 
   board_plain_env = {
     BRIDGE_RFP_PROCESS                                 = var.rfp_process
@@ -59,6 +63,9 @@ locals {
     BRIDGE_ARTIFACT_BUCKET                             = var.artifacts_bucket
     BRIDGE_VAULT_BUCKET                                = var.vault_bucket
     BRIDGE_SKILLS_BUCKET                               = var.skills_bucket
+    BRIDGE_SCENARIOS_DIR                               = local.scenarios_dir_uri
+    BRIDGE_CARRIER_A_URL                               = local.default_carrier_a_url
+    BRIDGE_CARRIER_B_URL                               = local.default_carrier_b_url
     BRIDGE_EXTRACTION_ENGINE                           = var.extraction_engine
     BRIDGE_DOCAI_PROCESSOR                             = var.docai_processor
     BRIDGE_AGENT_ENGINE_ID                             = var.agent_engine_id
@@ -94,6 +101,8 @@ locals {
     BRIDGE_ARTIFACT_BUCKET                             = var.artifacts_bucket
     BRIDGE_VAULT_BUCKET                                = var.vault_bucket
     BRIDGE_SKILLS_BUCKET                               = var.skills_bucket
+    BRIDGE_SCENARIOS_DIR                               = local.scenarios_dir_uri
+    BRIDGE_FNB_AGENT_URL                               = local.default_fnb_url
     BRIDGE_EXTRACTION_ENGINE                           = var.extraction_engine
     BRIDGE_DOCAI_PROCESSOR                             = var.docai_processor
     BRIDGE_AGENT_ENGINE_ID                             = var.agent_engine_id

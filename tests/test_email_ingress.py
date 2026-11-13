@@ -30,6 +30,7 @@ from contract.enums import RfpItemStatus
 from tests.email_fixtures import (
     BASE_URL,
     CI_PDF,
+    CI_PDF_BYTES,
     HI_PDF,
     MAILBOX,
     RFP_ID,
@@ -130,7 +131,7 @@ async def test_reply_files_each_attachment_through_the_real_gate(rig):
         session_id=leg.context_id,
         filename=CI_PDF.name,
     )
-    assert part.inline_data.data == CI_PDF.read_bytes()
+    assert part.inline_data.data == CI_PDF_BYTES
 
     # The marker is the outcome, and the key left the queue.
     assert rig.port.processed(key) == outcome.model_dump(mode="json")
@@ -156,7 +157,7 @@ async def test_a_second_mail_is_a_new_artifact_version(rig):
     rig.land(
         rig.reply(
             message_id="<quote-2@carrier-a.example>",
-            attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+            attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")],
         )
     )
     (outcome,) = await rig.proc.drain()
@@ -213,7 +214,7 @@ async def test_subject_tag_only_reply_files_normally(rig):
         compose(
             "broker@broker.example",
             subject=f"Quote {tag}",
-            attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+            attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")],
         )
     )
     (outcome,) = await rig.proc.drain()
@@ -224,7 +225,7 @@ async def test_subject_tag_only_reply_files_normally(rig):
 async def test_deterministic_engine_refusal_is_unreadable_and_the_rest_still_file(rig):
     atts = [
         ("unknown-stem.pdf", b"%PDF-1.4 x", "application/pdf"),
-        (CI_PDF.name, CI_PDF.read_bytes(), "application/pdf"),
+        (CI_PDF.name, CI_PDF_BYTES, "application/pdf"),
     ]
     rig.land(rig.reply(attachments=atts))
     (outcome,) = await rig.proc.drain()
@@ -242,7 +243,7 @@ async def test_hostile_filenames_never_wedge_the_drain(rig):
     atts = [
         (". .pdf", b"%PDF-1.4 x", "application/pdf"),
         (long_cjk, b"PK\x03\x04", "application/vnd.ms-excel"),
-        (CI_PDF.name, CI_PDF.read_bytes(), "application/pdf"),
+        (CI_PDF.name, CI_PDF_BYTES, "application/pdf"),
     ]
     key = rig.land(rig.reply(attachments=atts))
     (outcome,) = await rig.proc.drain()
@@ -324,9 +325,7 @@ async def test_live_gemini_files_the_emailed_quote(
 
     monkeypatch.setenv("BRIDGE_ALLOW_FILE_URI", "1")
     rig = Rig(tmp_path, extraction=GeminiExtractor())
-    rig.land(
-        rig.reply(attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")])
-    )
+    rig.land(rig.reply(attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")]))
     (outcome,) = await rig.proc.drain()
     assert outcome.status == "filed"
     # Terminal-outcome parity, never float equality.

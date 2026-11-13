@@ -57,6 +57,7 @@ export TF_VAR_db_password="${DB_PASSWORD}"
 : "${INVOKER_IAM_DISABLED:=true}"           # --no-invoker-iam-check for Argolis orgs
 : "${ENABLE_AUDIT_VAULT:=true}"             # Provision 7-year WORM GCS Audit Vault bucket
 : "${ENABLE_TELEMETRY_BQ:=true}"            # Provision BigQuery OTel spans dataset + SQL eval views
+: "${SEED_SKILLS:=true}"                    # Seed repository skills/ into the Skill Registry bucket
 
 echo "==> Enabling required APIs"
 gcloud services enable \
@@ -147,6 +148,7 @@ TF_VARS=(
   -var "tasks_queue_name=${TASKS_QUEUE_NAME}"
   -var "port_mode=gcp"
   -var "extraction_engine=gemini"
+  -var "seed_skills=${SEED_SKILLS}"
 )
 if [[ -n "${SSL_DOMAIN}" ]]; then
   TF_VARS+=(-var "ssl_domains=[\"${SSL_DOMAIN}\"]")

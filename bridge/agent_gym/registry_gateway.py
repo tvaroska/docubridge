@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from bridge.agent_gym.models import (
     REASONING_MODEL,
@@ -21,9 +21,6 @@ from bridge.agent_gym.models import (
     _vault_bucket,
 )
 from bridge.telemetry import trace_step
-
-if TYPE_CHECKING:
-    pass
 
 
 class RegistryGatewayMixin:
@@ -106,9 +103,9 @@ class RegistryGatewayMixin:
                     "gcs_source_uri": active_rev.gcs_source_uri,
                     "compiled_rule_ids": list(active_rev.compiled_rule_ids),
                     "revision_count": max(1, len(history)),
-                    "revisions": [r.model_dump(mode="json") for r in history]
-                    if history
-                    else [active_rev.model_dump(mode="json")],
+                    "revisions": [
+                        r.model_dump(mode="json") for r in (history or [active_rev])
+                    ],
                 }
             )
         for skill_name, history in sorted(revs_by_skill.items()):
@@ -821,13 +818,15 @@ class RegistryGatewayMixin:
                 | {a["spiffe_id"] for a in cat["agents"]}
             )
             if source_principal not in registered_agent_principals:
-                span.set_attribute(
-                    "docubridge.gateway.decision", "DENY_SHADOW_AI_SOURCE"
-                )
+                verdict = "DENIED_BY_SIMULATED_POLICY"
+                span.set_attribute("docubridge.gateway.decision", verdict)
+                span.set_attribute("gate_2_identity_verified_demo", False)
                 return {
                     "allowed": False,
                     "http_status": 403,
-                    "decision": "DENY_UNREGISTERED_SHADOW_AGENT",
+                    "decision": verdict,
+                    "shim_verdict": verdict,
+                    "gate_2_identity_verified_demo": False,
                     "gateway": f"projects/{_gcp_project_id()}/locations/us-central1/agentGateways/docubridge-agent-to-anywhere-gw",
                     "governed_access_path": "AGENT_TO_ANYWHERE",
                     "matched_uap_rule": "agent-registry-membership-check",

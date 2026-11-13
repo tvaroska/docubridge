@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import subprocess
 import sys
 
 import pytest
@@ -210,17 +211,20 @@ def test_outbound_carries_no_bearer_token_field():
 
 def test_importing_gcp_pkg_does_not_import_google_oauth2():
     """The transport lazy-imports google.oauth2 / google.auth.transport.requests
-    inside deliver(); importing the package must not pull them (mirrors the asyncpg /
-    cloud-tasks / storage lazy-import invariants). NOTE: httpx and the base google.auth
-    are deliberately NOT asserted absent — the parent ``bridge`` package already pulls
-    them via its a2a-sdk / google-adk deps, not this adapter's module body; the
-    adapter's OWN OIDC-minting deps (google.oauth2.id_token + the auth request
-    transport) are the ones that must stay lazy."""
-    import bridge.ports.gcp  # noqa: F401
-
-    assert "bridge.ports.gcp" in sys.modules
-    assert "google.oauth2" not in sys.modules
-    assert "google.auth.transport.requests" not in sys.modules
+    inside deliver(); importing the package in a clean interpreter must not pull them."""
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys, bridge.ports.gcp; "
+                "assert 'bridge.ports.gcp' in sys.modules; "
+                "assert 'google.oauth2' not in sys.modules; "
+                "assert 'google.auth.transport.requests' not in sys.modules"
+            ),
+        ],
+        check=True,
+    )
 
 
 # --- live send, gated (a P7-9 / S1-benefits-6 input) ------------------------

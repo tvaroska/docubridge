@@ -102,32 +102,38 @@ pages:
       - {op: "text", x: 492, y: 30, value: "Page 4 of 4", font: "F2", size: 8.5, rgb: [0.25, 0.28, 0.33]}
       - {op: "text", x: 44, y: 694, value: "NOTE 6 - SCHEDULE OF EXISTING LIABILITIES TO BE CONSOLIDATED", font: "F2", size: 12.0, rgb: [0.12, 0.14, 0.18]}
       - {op: "text", x: 44, y: 674, value: "Borrower requests a $1,800,000.00 Commercial Debt Consolidation Facility to retire", font: "F1", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 44, y: 658, value: "the following three (3) existing credit obligations recorded as of December 31, 2025:", font: "F1", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "rect_fill", x: 44, y: 345, w: 524, h: 180, rgb: [0.96, 0.98, 1.0]}
-      - {op: "rect_stroke", x: 44, y: 345, w: 524, h: 180, rgb: [0.1, 0.45, 0.91], line_width: 1.4}
-      - {op: "rect_fill", x: 44, y: 499, w: 524, h: 26, rgb: [0.1, 0.45, 0.91]}
-      - {op: "text", x: 52, y: 508, value: "CREDITOR / INSTITUTION", font: "F2", size: 8.8, rgb: [1, 1, 1]}
-      - {op: "text", x: 225, y: 508, value: "ACCOUNT REF", font: "F2", size: 8.8, rgb: [1, 1, 1]}
-      - {op: "text", x: 312, y: 508, value: "FACILITY TYPE", font: "F2", size: 8.8, rgb: [1, 1, 1]}
-      - {op: "text", x: 476, y: 508, value: "BALANCE (USD)", font: "F2", size: 8.8, rgb: [1, 1, 1]}
-      - {op: "text", x: 52, y: 476, value: "1. First National Bank", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 225, y: 476, value: "#FNB-4402", font: "F3", size: 9.5, rgb: [0.08, 0.3, 0.68]}
-      - {op: "text", x: 312, y: 476, value: "Senior Commercial Mortgage", font: "F1", size: 9.0, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 476, y: 476, value: "$1,200,000.00", font: "F3", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 52, y: 463, value: "External Lender - Official Payoff Statement Required at Closing", font: "F1", size: 8.0, rgb: [0.38, 0.42, 0.48]}
-      - {op: "hline", x1: 50, x2: 562, y: 456, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
-      - {op: "text", x: 52, y: 436, value: "2. EquipLease Financial Corp", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 225, y: 436, value: "#8841", font: "F3", size: 9.5, rgb: [0.08, 0.3, 0.68]}
-      - {op: "text", x: 312, y: 436, value: "Fleet & Material Term Loan", font: "F1", size: 9.0, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 476, y: 436, value: "$350,000.00", font: "F3", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 52, y: 423, value: "External Lender - Balance as of 2025-12-31 (Subject to 2026 Paydown)", font: "F1", size: 8.0, rgb: [0.38, 0.42, 0.48]}
-      - {op: "hline", x1: 50, x2: 562, y: 416, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
-      - {op: "text", x: 52, y: 396, value: "3. DocuBridge Commercial Bank", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 225, y: 396, value: "#LOC-9012", font: "F3", size: 9.5, rgb: [0.08, 0.3, 0.68]}
-      - {op: "text", x: 312, y: 396, value: "Internal Working Capital LOC", font: "F1", size: 9.0, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 476, y: 396, value: "$250,000.00", font: "F3", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 52, y: 383, value: "On-Us Internal Facility - Verified Directly via Core Banking Ledger", font: "F1", size: 8.0, rgb: [0.38, 0.42, 0.48]}
-      - {op: "hline", x1: 50, x2: 562, y: 376, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
-      - {op: "rect_fill", x: 44, y: 345, w: 524, h: 26, rgb: [0.9, 0.94, 0.99]}
-      - {op: "text", x: 52, y: 354, value: "TOTAL EXISTING OBLIGATIONS TO CONSOLIDATE (3 FACILITIES)", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
-      - {op: "text", x: 472, y: 354, value: "$1,800,000.00", font: "F2", size: 10.0, rgb: [0.08, 0.3, 0.68]}
+      - {op: "text", x: 44, y: 658, value: "the following four (4) existing credit obligations recorded for consolidation:", font: "F1", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "rect_fill", x: 44, y: 315, w: 524, h: 215, rgb: [0.96, 0.98, 1.0]}
+      - {op: "rect_stroke", x: 44, y: 315, w: 524, h: 215, rgb: [0.1, 0.45, 0.91], line_width: 1.4}
+      - {op: "rect_fill", x: 44, y: 504, w: 524, h: 26, rgb: [0.1, 0.45, 0.91]}
+      - {op: "text", x: 52, y: 513, value: "CREDITOR / INSTITUTION", font: "F2", size: 8.8, rgb: [1, 1, 1]}
+      - {op: "text", x: 225, y: 513, value: "ACCOUNT REF", font: "F2", size: 8.8, rgb: [1, 1, 1]}
+      - {op: "text", x: 312, y: 513, value: "FACILITY TYPE", font: "F2", size: 8.8, rgb: [1, 1, 1]}
+      - {op: "text", x: 472, y: 513, value: "BALANCE (USD)", font: "F2", size: 8.8, rgb: [1, 1, 1]}
+      - {op: "text", x: 52, y: 484, value: "1. Apex Capital Funding", font: "F2", size: 9.3, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 225, y: 484, value: "#7712", font: "F3", size: 9.3, rgb: [0.08, 0.3, 0.68]}
+      - {op: "text", x: 312, y: 484, value: "Senior Commercial Mortgage", font: "F1", size: 8.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 472, y: 484, value: "$1,089,790.00", font: "F3", size: 9.3, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 52, y: 471, value: "External Lender (Path-B PDF) - Official Payoff Statement Required", font: "F1", size: 7.8, rgb: [0.38, 0.42, 0.48]}
+      - {op: "hline", x1: 50, x2: 562, y: 465, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 446, value: "2. First National Bank", font: "F2", size: 9.3, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 225, y: 446, value: "#FNB-4402", font: "F3", size: 9.3, rgb: [0.08, 0.3, 0.68]}
+      - {op: "text", x: 312, y: 446, value: "Warehouse Equipment Facility", font: "F1", size: 8.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 472, y: 446, value: "$412,000.00", font: "F3", size: 9.3, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 52, y: 433, value: "External Lender (Path-A A2A Connected) - Direct Agent Payoff Assertion", font: "F1", size: 7.8, rgb: [0.38, 0.42, 0.48]}
+      - {op: "hline", x1: 50, x2: 562, y: 427, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 408, value: "3. EquipLease Financial Corp", font: "F2", size: 9.3, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 225, y: 408, value: "#8841", font: "F3", size: 9.3, rgb: [0.08, 0.3, 0.68]}
+      - {op: "text", x: 312, y: 408, value: "Fleet & Material Term Loan", font: "F1", size: 8.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 472, y: 408, value: "$48,210.00", font: "F3", size: 9.3, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 52, y: 395, value: "External Lender - Remaining Payoff Balance (Subject to Wire Proof)", font: "F1", size: 7.8, rgb: [0.38, 0.42, 0.48]}
+      - {op: "hline", x1: 50, x2: 562, y: 389, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "text", x: 52, y: 370, value: "4. DocuBridge Commercial Bank", font: "F2", size: 9.3, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 225, y: 370, value: "#LOC-9012", font: "F3", size: 9.3, rgb: [0.08, 0.3, 0.68]}
+      - {op: "text", x: 312, y: 370, value: "Internal Working Capital LOC", font: "F1", size: 8.8, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 472, y: 370, value: "$250,000.00", font: "F3", size: 9.3, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 52, y: 357, value: "On-Us Internal Facility - Verified Directly via Core Banking Ledger", font: "F1", size: 7.8, rgb: [0.38, 0.42, 0.48]}
+      - {op: "hline", x1: 50, x2: 562, y: 348, rgb: [0.85, 0.87, 0.9], line_width: 0.6}
+      - {op: "rect_fill", x: 44, y: 315, w: 524, h: 28, rgb: [0.9, 0.94, 0.99]}
+      - {op: "text", x: 52, y: 325, value: "TOTAL EXISTING OBLIGATIONS TO CONSOLIDATE (4 FACILITIES)", font: "F2", size: 9.5, rgb: [0.12, 0.14, 0.18]}
+      - {op: "text", x: 472, y: 325, value: "$1,800,000.00", font: "F2", size: 10.0, rgb: [0.08, 0.3, 0.68]}

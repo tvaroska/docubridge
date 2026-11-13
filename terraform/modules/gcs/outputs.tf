@@ -17,3 +17,8 @@ output "audit_vault_bucket_name" {
   description = "The immutable WORM Audit Vault bucket name — injected as BRIDGE_VAULT_BUCKET on the runtime (\"\" when disabled)."
   value       = var.enable_audit_vault ? google_storage_bucket.audit_vault[0].name : ""
 }
+
+output "scenarios_bucket_name" {
+  description = "The Cloud Storage Scenarios bucket name — injected as BRIDGE_SCENARIOS_DIR=gs://<bucket>/ on runtime services."
+  value       = google_storage_bucket.scenarios.name
+}

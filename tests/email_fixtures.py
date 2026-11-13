@@ -15,6 +15,7 @@ from bridge.extraction.fixture import FixtureExtractor
 from bridge.rfp import load_rfp_policy, open_rfp
 from contract.enums import RequirementStatus
 from contract.wire import CollectRequest, Requirement, RequirementsList
+from tests import corpus_pdf
 
 PROCESS = "benefits-rfp"  # the process skill under test (named here, never in bridge/)
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,13 @@ BENEFITS_DIR = ROOT / "wiki/evals/benefits"
 CONFORMANCE = BENEFITS_DIR / "conformance.json"
 CI_PDF = BENEFITS_DIR / "images/benefits-conformance-ci-usd.pdf"
 HI_PDF = BENEFITS_DIR / "images/benefits-conformance-hi-usd-flagged.pdf"
+_CONFORMANCE_RECORDS = corpus_pdf.load_records(CONFORMANCE)
+CI_PDF_BYTES: bytes = corpus_pdf.build_conformance_pdf(
+    _CONFORMANCE_RECORDS["benefits-conformance-ci-usd"]
+)
+HI_PDF_BYTES: bytes = corpus_pdf.build_conformance_pdf(
+    _CONFORMANCE_RECORDS["benefits-conformance-hi-usd-flagged"]
+)
 
 MAILBOX = "rfp-quotes@broker.example"
 SECRET = b"test-intake-secret"
@@ -103,8 +111,8 @@ def compose(
 
 def quote_attachments(*, xlsx: bool = True) -> list[tuple[str, bytes, str]]:
     atts = [
-        (CI_PDF.name, CI_PDF.read_bytes(), "application/pdf"),
-        (HI_PDF.name, HI_PDF.read_bytes(), "application/pdf"),
+        (CI_PDF.name, CI_PDF_BYTES, "application/pdf"),
+        (HI_PDF.name, HI_PDF_BYTES, "application/pdf"),
     ]
     if xlsx:
         atts.append(("rates.xlsx", b"PK\x03\x04 synthetic rate sheet", XLSX))

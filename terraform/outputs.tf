@@ -130,6 +130,11 @@ output "audit_vault_bucket_name" {
   value       = module.gcs.audit_vault_bucket_name
 }
 
+output "scenarios_bucket_name" {
+  description = "The Cloud Storage Scenarios bucket name (BRIDGE_SCENARIOS_DIR=gs://<bucket>/)."
+  value       = module.gcs.scenarios_bucket_name
+}
+
 # Cloud Tasks surface (P7-4) — the queue the runtime injects as BRIDGE_TASKS_QUEUE
 # (the GcpScheduler queue_path; a queue path is not a secret, so it rides a plain env).
 output "tasks_queue_name" {

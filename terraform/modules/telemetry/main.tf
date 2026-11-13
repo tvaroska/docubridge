@@ -127,6 +127,14 @@ resource "google_storage_bucket_iam_member" "genai_payloads_biglake_viewer" {
   member = "serviceAccount:${google_bigquery_connection.vertex_ai[0].cloud_resource[0].service_account_id}"
 }
 
+resource "google_project_iam_member" "vertex_connection_aiplatform" {
+  count = var.enable_telemetry_bq ? 1 : 0
+
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_bigquery_connection.vertex_ai[0].cloud_resource[0].service_account_id}"
+}
+
 resource "google_bigquery_dataset" "agent_eval" {
   count = var.enable_telemetry_bq ? 1 : 0
 

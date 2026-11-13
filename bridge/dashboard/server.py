@@ -42,6 +42,7 @@ from pydantic import BaseModel, ConfigDict
 
 from bridge.dashboard import readmodel
 from bridge.dashboard.rfp_api import mount_rfp_routes
+from bridge.dashboard.rfp_procurement import mount_rfp_procurement_routes
 from bridge.email_ingress.correlation import IntakeAddressing
 from bridge.exchange_store import StaleExchangeWrite
 from bridge.portal import session as portal_session
@@ -247,6 +248,7 @@ def build_dashboard_app(
         return readmodel.project_comparison(comparison)
 
     mount_rfp_routes(app, rfps=rfps, intake=reply_intake, outbound=outbound)
+    mount_rfp_procurement_routes(app, rfps=rfps)
     if processor is not None:
         mount_email_drain_routes(app, processor)
     app.include_router(

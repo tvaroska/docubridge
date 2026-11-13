@@ -34,6 +34,7 @@ from contract.enums import RfpItemStatus
 from tests.email_fixtures import (
     BASE_URL,
     CI_PDF,
+    CI_PDF_BYTES,
     MAILBOX,
     RFP_ID,
     SECRET,
@@ -174,7 +175,7 @@ def test_poll_loop_drains_without_any_explicit_call(intake_env, tmp_path):
             _reply_address(client, "carrier-b"),
             message_id="<quote-1@carrier-b.example>",
             sender="quotes@carrier-b.example",
-            attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+            attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")],
         )
         key = landing_key(raw)
         assert port.land(key, raw)
@@ -205,7 +206,7 @@ def test_poll_loop_survives_a_failing_drain(clean_env, tmp_path, caplog):
     app = build_dashboard_app(rfps=board, email=proc, email_drain_interval=0.02)
     raw = compose(
         proc.reply_address(RFP_ID, "carrier-a"),
-        attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+        attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")],
     )
     key = landing_key(raw)
     assert port.land(key, raw)

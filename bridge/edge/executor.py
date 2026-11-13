@@ -128,9 +128,11 @@ from bridge.edge.wire import (
 )
 from bridge.exchange_store import StaleExchangeWrite
 from bridge.satisfaction import SatisfactionAssessor, propose_outstanding
+from bridge.telemetry import trace_step
 from bridge.telemetry.outcome import (
     close_outcome,
     current_outcome_id,
+    current_outcome_owner,
     resume_outcome,
     start_outcome,
 )
@@ -201,6 +203,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         # a bare executor routes every CollectRequest to the Collector.
         self._rfp: RfpBoard | None = None
         self._task_outcomes: dict[str, str] = {}
+        self._caller_owned_tasks: set[str] = set()
 
     def bind_store(
         self, store: BaseArtifactService, *, base_url: str | None = None
@@ -298,14 +301,23 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Execute an inbound A2A document collection request against the bridge state machine."""
+        import os
+
         cid = context.context_id or context.task_id or "a2a-task"
+        default_owner = (
+            os.environ.get("BRIDGE_APPHUB_APPLICATION_ID", "").strip() or "a2a-edge"
+        )
+        inbound_outcome = current_outcome_id()
+        inbound_owner = current_outcome_owner() or default_owner
         stored_outcome = self._task_outcomes.get(cid)
-        if stored_outcome:
-            resume_outcome(stored_outcome, owner="a2a-edge")
+        if inbound_outcome:
+            self._caller_owned_tasks.add(cid)
+            self._task_outcomes[cid] = inbound_outcome
+            resume_outcome(inbound_outcome, owner=inbound_owner)
+        elif stored_outcome:
+            resume_outcome(stored_outcome, owner=default_owner)
         else:
-            active_outcome = current_outcome_id() or start_outcome(
-                outcome_id=f"out_{cid}", owner="a2a-edge"
-            )
+            active_outcome = start_outcome(outcome_id=f"out_{cid}", owner=default_owner)
             self._task_outcomes[cid] = active_outcome
         message = context.message
         route, scope = await self._route_for(message, context.current_task)
@@ -543,9 +555,21 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         assertion = decode_assertion(message)
         doc_id = assertion.fields.doctype or "assertion"
         try:
-            entry = patha.validate_only_entry(
-                assertion, doc_id=doc_id, candidate_doctypes=doctypes
-            )
+            with trace_step(
+                "docubridge.edge.path_a_validate",
+                {
+                    "source_mode": "A2A_PATH_A",
+                    "skill_id": doc_id,
+                    "entity_id": request.party or context_id,
+                    "gen_ai.operation.name": "execute_tool",
+                    "gen_ai.tool.name": "path_a_validate_assertion",
+                    "gen_ai.agent.name": "document_bridge_path_a",
+                    "finops.traffic_type": "production_inference",
+                },
+            ):
+                entry = patha.validate_only_entry(
+                    assertion, doc_id=doc_id, candidate_doctypes=doctypes
+                )
             if entry.disposition is Disposition.accepted and (
                 self._collector._vault_store is not None
                 or self._collector._operational_store is not None
@@ -621,28 +645,44 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
 
         state = self._status_for(turn)
         status_message = status_message_for(turn)
+        from bridge.telemetry.payload_log import emit_trace_payload_log
+
+        emit_trace_payload_log(
+            user_prompt=f"A2A edge exchange turn context={turn.context_id}",
+            retrieved_context=turn.model_dump_json(),
+            final_response=f"state={TaskState.Name(state)} entries={len(turn.status.entries)}",
+        )
         if state == TaskState.TASK_STATE_COMPLETED:
+            import os
+
             cid = context.context_id or context.task_id or "a2a-task"
+            caller_owned = cid in self._caller_owned_tasks
+            self._caller_owned_tasks.discard(cid)
             outcome_id = (
                 self._task_outcomes.pop(cid, None)
                 or current_outcome_id()
                 or f"out_{cid}"
             )
-            has_accepted = any(
-                e.disposition is Disposition.accepted for e in turn.status.entries
-            )
-            has_rejected = any(
-                e.disposition is Disposition.rejected for e in turn.status.entries
-            )
-            outcome_status = (
-                "failed" if has_rejected and not has_accepted else "succeeded"
-            )
-            close_outcome(
-                outcome_status,
-                subject=turn.context_id,
-                outcome_id=outcome_id,
-                owner="a2a-edge",
-            )
+            if not caller_owned:
+                default_owner = (
+                    os.environ.get("BRIDGE_APPHUB_APPLICATION_ID", "").strip()
+                    or "a2a-edge"
+                )
+                has_accepted = any(
+                    e.disposition is Disposition.accepted for e in turn.status.entries
+                )
+                has_rejected = any(
+                    e.disposition is Disposition.rejected for e in turn.status.entries
+                )
+                outcome_status = (
+                    "failed" if has_rejected and not has_accepted else "succeeded"
+                )
+                close_outcome(
+                    outcome_status,
+                    subject=turn.context_id,
+                    outcome_id=outcome_id,
+                    owner=current_outcome_owner() or default_owner,
+                )
             await updater.complete(message=status_message)
         else:
             # Non-terminal turn (terminal=False) → INPUT_REQUIRED, the park signal.

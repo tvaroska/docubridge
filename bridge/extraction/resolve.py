@@ -198,6 +198,12 @@ async def resolve_document(
         path.relative_to(root)
     except ValueError as exc:
         raise ValueError(f"artifact {name!r} escapes the corpus root") from exc
+    if not path.is_file() and name.lower().endswith(".pdf"):
+        from bridge.extraction.corpus_pdf import resolve_corpus_pdf_bytes
+
+        synthesized = resolve_corpus_pdf_bytes(root, name)
+        if synthesized is not None:
+            return ResolvedDocument(data=synthesized, mime_type=mime_for(name))
     return ResolvedDocument(data=path.read_bytes(), mime_type=mime_for(name))
 
 

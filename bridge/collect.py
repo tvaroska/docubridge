@@ -188,7 +188,13 @@ class Collector:
                         "docubridge.artifact_name": sub.artifact_name,
                     },
                 ) as doc_span:
-                    result = await extractor.extract(sub.artifact_name)
+                    try:
+                        result = await extractor.extract(
+                            sub.artifact_name,
+                            candidate_doctypes=candidate_doctypes or None,
+                        )
+                    except TypeError:
+                        result = await extractor.extract(sub.artifact_name)
                     if should_redact:
                         result, _ = redact_personal_data(result)
                     if results_out is not None:

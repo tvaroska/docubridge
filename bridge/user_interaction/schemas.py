@@ -222,6 +222,44 @@ class LiveCollabModeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: Literal["live", "cached"] = "live"
+    auto_promote: bool = True
+
+
+class RequestA2aPayoffBody(BaseModel):
+    """Request body for `POST /v1/demo/scenarios/{id}/request-a2a-payoff`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    counterparty_id: str | None = None
+    mode: Literal["live", "cached"] = "live"
+
+
+class PromoteScenarioSkillBody(BaseModel):
+    """Request body for `POST /v1/demo/scenarios/{id}/promote-skill`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    revision_id: str | None = None
+
+
+class RunMeridianFleetDealBody(BaseModel):
+    """Request body for `POST /v1/demo/scenarios/{id}/run-fleet-deal`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str
+    case_type: Literal["day1", "day2_in_policy", "day2_out_of_policy"] = "day1"
+    deal_entity_id: str
+    borrower_name: str
+    fnb_account: str = "#FNB-4402"
+    fnb_amount: str = "$412,000.00"
+    pdf_uris: list[str] = Field(default_factory=list)
+    wire_amount: str = "$48,210.00"
+    wire_facility_ref: str = "#8841"
+    wire_memo: str = "FINAL PAYOFF - LOAN #8841 - PAID IN FULL"
+    policy_ceiling_usd: str = "100000.00"
+    parent_outcome_id: str | None = None
+    mode: Literal["live", "cached"] = "live"
 
 
 class RunRefineryAssayRequest(BaseModel):

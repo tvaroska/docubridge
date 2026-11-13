@@ -117,6 +117,12 @@ variable "vault_bucket" {
   default     = ""
 }
 
+variable "scenarios_bucket" {
+  type        = string
+  description = "Scenarios GCS bucket name, injected as BRIDGE_SCENARIOS_DIR=gs://<bucket>/ on Meridian and board services. Empty = repo fallback."
+  default     = ""
+}
+
 variable "tasks_queue_path" {
   type        = string
   description = <<-EOT

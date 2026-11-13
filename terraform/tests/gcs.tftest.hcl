@@ -34,6 +34,18 @@ run "buckets_are_private_versioned_retained_and_scoped" {
     condition     = google_storage_bucket.artifacts.name == "bridge-runtime-artifacts"
     error_message = "artifacts bucket name must be <name_prefix>-artifacts"
   }
+  assert {
+    condition     = google_storage_bucket.scenarios.name == "bridge-runtime-scenarios"
+    error_message = "scenarios bucket name must be <name_prefix>-scenarios"
+  }
+  assert {
+    condition     = google_storage_bucket.scenarios.uniform_bucket_level_access == true && google_storage_bucket.scenarios.public_access_prevention == "enforced"
+    error_message = "scenarios bucket must enable UBLA and enforce public access prevention"
+  }
+  assert {
+    condition     = google_storage_bucket_iam_member.scenarios_object_admin.role == "roles/storage.objectAdmin"
+    error_message = "scenarios bucket grant must be roles/storage.objectAdmin"
+  }
 
   # NEVER public: UBLA on both buckets.
   assert {

@@ -22,6 +22,7 @@ from contract.enums import RfpItemStatus
 from tests.email_fixtures import (
     BASE_URL,
     CI_PDF,
+    CI_PDF_BYTES,
     MAILBOX,
     RFP_ID,
     SECRET,
@@ -267,7 +268,7 @@ async def test_processor_bound_drain_files_and_outcome_route(env):
     fake, graph, _port, board, proc = env
     raw = compose(
         proc.reply_address(RFP_ID, "carrier-a"),
-        attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+        attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")],
     )
     fake.messages["AAMk1"] = raw
     key = landing_key(raw)
@@ -309,7 +310,7 @@ async def test_background_drain_failure_is_logged_not_raised(env, caplog):
     proc.extraction = Flaky()
     raw = compose(
         proc.reply_address(RFP_ID, "carrier-a"),
-        attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+        attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")],
     )
     fake.messages["AAMk1"] = raw
     async with _client(

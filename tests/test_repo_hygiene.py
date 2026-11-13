@@ -56,6 +56,19 @@ def test_zero_github_workflows() -> None:
     )
 
 
+def test_zero_committed_pdfs() -> None:
+    """Decision 18: no binary .pdf files may live in the repository tree (Cloud Storage only)."""
+    found: list[str] = []
+    for path in REPO_ROOT.rglob("*.pdf"):
+        rel = path.relative_to(REPO_ROOT)
+        if any(part in EXCLUDED_DIRS for part in rel.parts):
+            continue
+        found.append(rel.as_posix())
+    assert found == [], (
+        f"Committed PDFs must live in Cloud Storage only: {sorted(found)}"
+    )
+
+
 def test_required_docs_and_claude_md_symlink() -> None:
     agents_md = REPO_ROOT / "AGENTS.md"
     claude_md = REPO_ROOT / "CLAUDE.md"

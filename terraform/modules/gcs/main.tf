@@ -105,6 +105,29 @@ resource "google_storage_bucket_iam_member" "artifacts_object_admin" {
   member = var.service_account_member
 }
 
+# Scenarios bucket (Decision 18) — holds `<scenario_id>/scenario.yaml` + `docs/*.pdf`
+# and `eval-corpus/<run_id>/` test documents; never public (UBLA + PAP enforced).
+resource "google_storage_bucket" "scenarios" {
+  project       = var.project_id
+  name          = "${var.name_prefix}-scenarios"
+  location      = var.location
+  labels        = var.labels
+  force_destroy = true
+
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+
+  versioning {
+    enabled = true
+  }
+}
+
+resource "google_storage_bucket_iam_member" "scenarios_object_admin" {
+  bucket = google_storage_bucket.scenarios.name
+  role   = "roles/storage.objectAdmin"
+  member = var.service_account_member
+}
+
 # Email landing bucket (S0-arch-13, design/email-intake.md) — the GCP adapter of the
 # email_ingress port (GcpEmailIngress): inbox/<key>.eml, attachments/<key>/<i>/<name>,
 # processed/<key>.json. Never public (UBLA + PAP enforced, like the buckets above).

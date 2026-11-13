@@ -97,9 +97,11 @@ def _assert_expected_terminal_outcome(result: ExtractionResult) -> None:
 
 
 def test_committed_pdf_is_a_real_pdf():
-    """The corpus carries actual PDF bytes, not a placeholder or a .gitkeep."""
-    assert PDF_PATH.is_file(), f"missing committed corpus asset: {PDF_PATH}"
-    data = PDF_PATH.read_bytes()
+    """The corpus synthesizes actual PDF bytes on demand with zero committed .pdf files."""
+    assert not PDF_PATH.exists(), (
+        f"committed binary PDF must be moved to GCS: {PDF_PATH}"
+    )
+    data = corpus_pdf.build_quote_pdf(RECORD)
     assert data.startswith(b"%PDF-1."), data[:16]
     assert b"\nstartxref\n" in data
     assert data.endswith(b"%%EOF\n")
@@ -107,14 +109,9 @@ def test_committed_pdf_is_a_real_pdf():
 
 
 def test_generator_reproduces_the_committed_pdf_byte_for_byte(tmp_path):
-    """The drift guard: the asset is regenerable from the corpus record itself.
-
-    ``tests/corpus_pdf.py`` renders the record's own ``key_fields``, and the output is
-    byte-deterministic (no /CreationDate, no /ID, no compression). If the oracle's
-    values move and the committed page does not, this fails.
-    """
+    """The drift guard: the asset is regenerable byte-deterministically from the corpus record."""
     regenerated = corpus_pdf.write_quote_pdf(RECORD, tmp_path / "regenerated.pdf")
-    assert regenerated.read_bytes() == PDF_PATH.read_bytes()
+    assert regenerated.read_bytes() == corpus_pdf.build_quote_pdf(RECORD)
 
 
 def test_pdf_carries_the_oracle_values():
@@ -122,7 +119,7 @@ def test_pdf_carries_the_oracle_values():
 
     The content stream is uncompressed, so the cp1252 text literals are greppable.
     """
-    page = PDF_PATH.read_bytes().decode("cp1252")
+    page = corpus_pdf.build_quote_pdf(RECORD).decode("cp1252")
     for field, value in RECORD["extraction"]["fields"]["key_fields"].items():
         assert value in page, f"{field}={value!r} is not printed on the page"
     assert RECORD["party"] in page
@@ -139,7 +136,7 @@ def test_corpus_resolver_reads_the_pdf_as_application_pdf():
     """The engine's default resolver hands the PDF back as ``application/pdf``."""
     data, mime = _corpus_resolver(BENEFITS_ROOT)(ARTIFACT)
     assert mime == "application/pdf"
-    assert data == PDF_PATH.read_bytes()
+    assert data == corpus_pdf.build_quote_pdf(RECORD)
 
 
 def test_pdf_suffix_maps_to_application_pdf_on_both_mime_maps():
@@ -174,7 +171,7 @@ async def test_pdf_rides_as_an_inline_bytes_part_not_text():
     assert isinstance(part, genai_types.Part), type(part)
     assert part.inline_data is not None
     assert part.inline_data.mime_type == "application/pdf"
-    assert part.inline_data.data == PDF_PATH.read_bytes()
+    assert part.inline_data.data == corpus_pdf.build_quote_pdf(RECORD)
     # The request is still schema-driven (S0-arch-5).
     assert call["config"]["response_mime_type"] == "application/json"
     assert "response_schema" in call["config"]

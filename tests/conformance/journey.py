@@ -46,6 +46,7 @@ from bridge.collect import Collector
 from bridge.edge import CollectExecutor, build_a2a_app, encode_collect_request
 from bridge.edge.pathroute import EdgeMode, resolve_edge_mode
 from bridge.edge.wire import KIND_EXCHANGE_TURN, META_CONTRACT_VERSION, META_KIND
+from bridge.extraction.corpus_pdf import resolve_corpus_pdf_bytes
 from bridge.extraction.fixture import FixtureExtractor
 from bridge.extraction.gemini import GeminiExtractor
 from contract.wire import CollectRequest, ExchangeTurn, LedgerEntry, decode_wire
@@ -108,16 +109,22 @@ def serve_corpus() -> Iterator[CorpusServer]:
             server.seen.append(self.path)
             rel = self.path.split("?", 1)[0].lstrip("/")
             target = (BENEFITS_ROOT / rel).resolve()
+            synthesized = (
+                resolve_corpus_pdf_bytes(BENEFITS_ROOT, rel)
+                if rel.startswith("images/") and target.suffix == ".pdf"
+                else None
+            )
             if (
                 not rel.startswith("images/")
                 or target.parent != images
                 or target.suffix != ".pdf"
-                or not target.is_file()
+                or (not target.is_file() and synthesized is None)
             ):
                 self.send_response(404)
                 self.end_headers()
                 return
-            body = target.read_bytes()
+            body = target.read_bytes() if target.is_file() else synthesized
+            assert body is not None
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
             self.send_header("Content-Length", str(len(body)))

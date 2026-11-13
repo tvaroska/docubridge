@@ -1,0 +1,69 @@
+{
+  "type": "object",
+  "description": "Official lender payoff demand statement or cryptographically signed A2A payoff assertion establishing exact principal, accrued interest, per-diem accrual, good-through date, and closing wire routing instructions for an existing facility scheduled for retirement. Where to read: Identified by \"Official Payoff Statement\", \"Payoff Demand\", or structured A2A `loan-payoff-statement` assertions carrying a loan account reference, total payoff amount, and good-through date. Distinguish from: Do NOT confuse with a recurring monthly installment invoice, a preliminary credit agreement (`cre-credit-agreement`), or a final borrower closing statement (`trid-closing-disclosure`).",
+  "x_okf_revision_id": "ont-rev-v1-1-baseline",
+  "required": [
+    "doctype",
+    "issuer",
+    "key_fields"
+  ],
+  "properties": {
+    "doctype": {
+      "type": "string",
+      "enum": [
+        "loan-payoff-statement"
+      ]
+    },
+    "issuer": {
+      "type": "string",
+      "description": "Existing commercial mortgage, equipment finance, or working-capital lender issuing an official payoff demand or structured A2A payoff assertion."
+    },
+    "key_fields": {
+      "type": "object",
+      "required": [
+        "loan_account",
+        "payoff_amount",
+        "good_through_date",
+        "currency"
+      ],
+      "properties": {
+        "loan_account": {
+          "type": "string",
+          "description": "Lender-assigned loan or facility account identifier being retired. Where to read: Header or Loan Account Reference row (e.g. #FNB-4402, #7712, #8841). Distinguish from: Do NOT extract the ABA wire routing number or borrower tax ID."
+        },
+        "payoff_amount": {
+          "type": "string",
+          "description": "Total principal, accrued interest, and release fees required to retire the facility in full. Where to read: Total Official Payoff Amount row or structured payoff assertion. Distinguish from: Do NOT extract the original loan commitment or a recurring monthly installment."
+        },
+        "good_through_date": {
+          "type": "string",
+          "description": "ISO date (YYYY-MM-DD) through which the stated payoff amount remains valid before additional per-diem interest accrues. Where to read: Payoff Quote Good Through clause or footer. Distinguish from: Do NOT extract the original loan origination date."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 3-letter currency code (e.g. USD). Where to read: Payoff summary table or monetary unit indicator. Distinguish from: Normalize '$' to 'USD'."
+        },
+        "borrower_name": {
+          "type": "string",
+          "description": "Legal name of the borrowing entity obligated on the facility. Where to read: Borrower header block. Distinguish from: Do NOT extract the issuing lender or administrative agent name."
+        },
+        "per_diem_interest": {
+          "type": "string",
+          "description": "Daily interest accrual amount charged after the good-through date. Where to read: Per-diem interest line item. Distinguish from: Do NOT extract the annual interest rate percentage."
+        },
+        "wire_routing_aba": {
+          "type": "string",
+          "description": "9-digit ABA routing number for closing Fedwire settlement. Where to read: Wire Instructions / Fedwire ABA block. Distinguish from: Do NOT extract the loan account number."
+        },
+        "wire_reference": {
+          "type": "string",
+          "description": "Beneficiary wire reference or OBI memo confirming final payoff settlement. Where to read: Wire instructions or bank statement outgoing wire OBI/memo line. Distinguish from: Do NOT extract recurring monthly payment memos."
+        },
+        "payoff_waiver_status": {
+          "type": "string",
+          "description": "Underwriting payoff waiver status when reconciled against verified wire proof. Where to read: Derived or distilled cross-document settlement status. Distinguish from: Leave unset unless verified payoff wire proof is present."
+        }
+      }
+    }
+  }
+}

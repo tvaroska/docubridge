@@ -110,7 +110,7 @@ class ScenarioBeat(BaseModel):
 
 
 class ScenarioPdfAsset(BaseModel):
-    """A sample PDF rendered from a declarative page spec (`pages`), never from code."""
+    """A sample PDF rendered from a declarative page spec (`pages`) or fetched from Cloud Storage (`gcs_uri`)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -121,8 +121,10 @@ class ScenarioPdfAsset(BaseModel):
     batch_stage: str
     page_count: int = Field(ge=1)
     highlight_page: int = Field(ge=1)
-    document_title: str
-    pages: tuple[dict[str, Any], ...]
+    document_title: str = ""
+    pages: tuple[dict[str, Any], ...] = ()
+    gcs_uri: str | None = None
+    sha256: str | None = None
 
 
 class ScenarioStage(BaseModel):
@@ -137,6 +139,7 @@ class ScenarioStage(BaseModel):
     view: dict[str, Any] = Field(default_factory=dict)
     pdf_url_base: str | None = None
     pdf_assets: tuple[ScenarioPdfAsset, ...] = ()
+    a2a_counterparties: tuple[dict[str, Any], ...] = ()
     live_extraction: dict[str, Any] = Field(default_factory=dict)
 
 

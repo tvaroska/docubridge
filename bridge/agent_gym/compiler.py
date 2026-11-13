@@ -101,6 +101,8 @@ class SkillCompilerMixin:
         doctype: str = "closing-disclosure",
         issuer_pattern: str = "*",
         install_to_port: bool = False,
+        auto_promote: bool = True,
+        policy_ceiling_usd: str = "100000.00",
     ) -> dict[str, Any]:
         """Harness Evolve Nightly Compiler: fold daytime SQL tribal rules into a versioned
         `SKILL.md` package via `gemini-4-argon` and register an immutable `SkillRevision`
@@ -117,11 +119,14 @@ class SkillCompilerMixin:
                 "docubridge.zone": "6_knowledge_catalog_agent_gym",
                 "docubridge.doctype": doctype,
                 "docubridge.issuer_pattern": issuer_pattern,
+                "skill_id": doctype,
                 "gen_ai.system": "gemini_platform",
                 "gen_ai.operation.name": "compile_skill",
                 "gen_ai.agent.name": "harness_evolve_compiler",
                 "gen_ai.request.model": REASONING_MODEL,
+                "gen_ai.response.model": REASONING_MODEL,
                 "docubridge.finops.traffic_type": "agent_gym_eval",
+                "finops.traffic_type": "agent_gym_eval",
                 "gen_ai.usage.input_tokens": in_tok,
                 "gen_ai.usage.output_tokens": out_tok,
             },
@@ -149,7 +154,9 @@ class SkillCompilerMixin:
                 if r.status in (TribalRuleStatus.PROMOTED, TribalRuleStatus.VERIFIED)
             ]
             target_state: Literal["DRAFT", "ACTIVE"] = (
-                "ACTIVE" if (verified_or_promoted or not matched) else "DRAFT"
+                "ACTIVE"
+                if auto_promote and (verified_or_promoted or not matched)
+                else "DRAFT"
             )
 
             rule_bullets = [
@@ -178,32 +185,16 @@ class SkillCompilerMixin:
             skill_urn = f"urn:skill:projects-{_gcp_project_id()}:locations:global:private-{doctype}"
             sorted_rule_ids = tuple(sorted(r.rule_id for r in matched))
 
-            schema_payload = {
-                "doctype": doctype,
-                "version": semver,
-                "compiled_by": REASONING_MODEL,
-                "runtime_workhorse": WORKHORSE_MODEL,
-                "fields": {
-                    "issuer": {
-                        "type": "string",
-                        "description": "Canonical issuer or lender name",
-                    },
-                    "effective_date": {
-                        "type": "string",
-                        "description": "ISO-8601 effective date",
-                    },
-                    "origination_fee": {
-                        "type": "string",
-                        "description": "Origination fee (Schedule B / Page 3 Section A)",
-                    },
-                    "loan_amount": {
-                        "type": "string",
-                        "description": "Total principal loan amount",
-                    },
-                },
-                "compiled_rule_ids": list(sorted_rule_ids),
-            }
-            schema_json_str = json.dumps(schema_payload, indent=2, sort_keys=True)
+            from bridge.agent_gym.skill_promotion import (
+                render_compiled_skill_markdown,
+                resolve_compiled_schema_json,
+            )
+
+            schema_json_str = resolve_compiled_schema_json(
+                doctype,
+                semver=semver,
+                sorted_rule_ids=sorted_rule_ids,
+            )
             digest_input = f"{doctype}|{semver}|{','.join(sorted_rule_ids)}|{'\n'.join(rule_bullets)}".encode()
             short_hash = hashlib.sha256(digest_input).hexdigest()[:8]
             revision_id = f"rev-v1-{minor_num}-{short_hash}"
@@ -213,33 +204,17 @@ class SkillCompilerMixin:
             )
             skill_uri = f"gs://{_skills_bucket()}/{doctype}/SKILL.md"
 
-            skill_markdown = (
-                f"---\n"
-                f"name: {doctype}\n"
-                f"description: Distilled extraction and consolidation skill for {doctype} "
-                f"(compiled by {REASONING_MODEL} for {WORKHORSE_MODEL} runtime execution).\n"
-                f"license: Apache-2.0\n"
-                f"metadata:\n"
-                f"  bridge-kind: doctype\n"
-                f'  bridge-tags: "doctype {doctype} harness-evolve"\n'
-                f"  bridge-extraction-engine: gemini\n"
-                f"  bridge-schema: assets/schema.json\n"
-                f'  version: "{semver}"\n'
-                f'  revision-id: "{revision_id}"\n'
-                f'  parent-revision-id: "{parent_revision_id}"\n'
-                f'  compiled-by-model: "{REASONING_MODEL}"\n'
-                f'  runtime-workhorse-model: "{WORKHORSE_MODEL}"\n'
-                f'  compiled-rule-ids: "{",".join(sorted_rule_ids)}"\n'
-                f"---\n\n"
-                f"# {doctype.upper()} Extraction & Consolidation Skill ({skill_version} · `{revision_id}`)\n\n"
-                f"## Distilled Domain Precedence Rules (Compiled via Harness Evolve)\n"
-                + "\n".join(rule_bullets)
-                + "\n\n## Runtime Execution Contract & Lineage\n"
-                f"- **Skill URN:** `{skill_urn}`\n"
-                f"- **Active Revision:** `{revision_id}` (parent: `{parent_revision_id}`, state: `{target_state}`)\n"
-                f"- **Workhorse Model:** `{WORKHORSE_MODEL}` (`thinking_budget=0`)\n"
-                "- **Deterministic Gate:** `Rule 0` (`pin_gate_args` + `threshold_corridor` FA=0)\n"
-                "- **Prompt Compaction:** Daytime SQL rules folded into canonical schema instructions (0 prompt bloat)\n"
+            skill_markdown = render_compiled_skill_markdown(
+                doctype=doctype,
+                semver=semver,
+                skill_version=skill_version,
+                revision_id=revision_id,
+                parent_revision_id=parent_revision_id,
+                sorted_rule_ids=sorted_rule_ids,
+                rule_bullets=rule_bullets,
+                policy_ceiling_usd=policy_ceiling_usd,
+                skill_urn=skill_urn,
+                target_state=target_state,
             )
 
             # Validate against ADK + DocuBridge SkillMeta validator before creating revision
@@ -303,7 +278,7 @@ class SkillCompilerMixin:
             )
             self._save_skill_revision(rev_record)
 
-            if install_to_port:
+            if install_to_port and is_default:
                 from bridge.ports import Port, get_adapter, resolve_mode
 
                 registry = get_adapter(
@@ -344,6 +319,20 @@ class SkillCompilerMixin:
                 "compiled_rules_count": len(rule_bullets),
                 "skill_markdown": skill_markdown,
             }
+
+    def promote_skill_revision(
+        self,
+        skill_name: str,
+        revision_id: str,
+        *,
+        install_to_port: bool = True,
+    ) -> SkillRevisionRecord:
+        """Promote a compiled `DRAFT` `SkillRevision` to `ACTIVE` (`defaultRevision`) after human diff sign-off."""
+        from bridge.agent_gym.skill_promotion import execute_skill_promotion
+
+        return execute_skill_promotion(
+            self, skill_name, revision_id, install_to_port=install_to_port
+        )
 
     def list_skill_revisions(
         self, skill_name: str | None = None

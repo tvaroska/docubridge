@@ -109,46 +109,16 @@
     var items = pdfCatalog.length
       ? pdfCatalog
       : [
-          {
-            title: "1. 2025 Financials (p.4)",
-            pdf_url: "/v1/demo/consolidation-collab/pdfs/01_Meridian_2025_Audited_Financials.pdf",
-            highlight_page: 4,
-          },
-          {
-            title: "2. MAI Appraisal (p.1)",
-            pdf_url: "/v1/demo/consolidation-collab/pdfs/02_Meridian_MAI_Appraisal.pdf",
-            highlight_page: 1,
-          },
-          {
-            title: "3. FNB Payoff (p.1)",
-            pdf_url: "/v1/demo/consolidation-collab/pdfs/03_First_National_Payoff_FNB4402.pdf",
-            highlight_page: 1,
-          },
-          {
-            title: "4. Oct Bank Stmt (p.2)",
-            pdf_url: "/v1/demo/consolidation-collab/pdfs/04_Meridian_Oct2026_Operating_Bank_Statement.pdf",
-            highlight_page: 2,
-          },
-          {
-            title: "5. Day-2 Apex PDF (p.2)",
-            pdf_url: "/v1/demo/consolidation-collab/pdfs/05_Apex_Precision_Day2_Bank_Statement.pdf",
-            highlight_page: 2,
-          },
+          { title: "1. 2025 Financials (p.4)", pdf_url: "/v1/demo/consolidation-collab/pdfs/01_Meridian_2025_Audited_Financials.pdf", highlight_page: 4 },
+          { title: "2. MAI Appraisal (p.1)", pdf_url: "/v1/demo/consolidation-collab/pdfs/02_Meridian_MAI_Appraisal.pdf", highlight_page: 1 },
+          { title: "3. Apex Payoff (p.1)", pdf_url: "/v1/demo/consolidation-collab/pdfs/03_Apex_Capital_Payoff_7712.pdf", highlight_page: 1 },
+          { title: "4. Oct Bank Stmt (p.14)", pdf_url: "/v1/demo/consolidation-collab/pdfs/04_Meridian_Oct2026_Operating_Bank_Statement.pdf", highlight_page: 14 },
+          { title: "5. Day-2 Apex PDF (p.2)", pdf_url: "/v1/demo/consolidation-collab/pdfs/05_Apex_Precision_Day2_Bank_Statement.pdf", highlight_page: 2 },
         ];
     box.innerHTML = items
       .map(function (p, idx) {
         var shortLabel = (idx + 1) + ". " + p.title.split("(")[0].trim().slice(0, 22) + " (p." + p.highlight_page + ")";
-        return (
-          '<button class="chip-btn" onclick="window.openPdfProof(\'' +
-          esc(p.pdf_url) +
-          "', " +
-          Number(p.highlight_page || 1) +
-          ", '" +
-          esc(p.title + " · Page " + p.highlight_page) +
-          '\', \'7-Year WORM Cloud Storage\')">' +
-          esc(shortLabel) +
-          "</button>"
-        );
+        return '<button class="chip-btn" onclick="window.openPdfProof(\'' + esc(p.pdf_url) + "', " + Number(p.highlight_page || 1) + ", '" + esc(p.title + " · Page " + p.highlight_page) + "', '7-Year WORM Cloud Storage')\">" + esc(shortLabel) + "</button>";
       })
       .join("");
   }
@@ -239,15 +209,14 @@
       }
     } else {
       if (kpiSkill) kpiSkill.textContent = "v1.0.0";
-      if (kpiSkillSub) kpiSkillSub.textContent = "consolidation-payoff · Guided Review";
+      if (kpiSkillSub) kpiSkillSub.textContent = "loan-payoff-statement · Guided Review";
     }
 
-    // Borrower Count & Banner
     var countPill = document.getElementById("borrower-count-pill");
     if (countPill) {
       countPill.textContent =
         counts.required === 0
-          ? "Cleared to Close (6/6)"
+          ? "Cleared to Close (" + counts.total + "/" + counts.total + ")"
           : counts.required + " Required · " + doneCount + " Cleared";
       countPill.classList.toggle("complete", counts.required === 0);
     }
@@ -283,8 +252,16 @@
               Number(pageNum) +
               " ↗</button>"
             : "";
+          var a2aBtn =
+            item.a2a_counterparty_id && st === "required"
+              ? '<button class="chip-btn" onclick="window.requestA2aPayoff(\'' +
+                esc(item.a2a_counterparty_id) +
+                "')\">⚡ Request A2A Payoff (0 Tokens)</button>"
+              : "";
           var shaLabel = item.sha256
             ? "SHA-256: " + item.sha256.slice(0, 12) + "… · WORM Locked"
+            : item.a2a_counterparty_id
+            ? "A2A Counterparty Ready (Path-A)"
             : "Awaiting borrower PDF";
           return (
             '<div class="check-item ' +
@@ -307,9 +284,10 @@
             '<div class="check-footer">' +
             '<span class="mono-hash">' +
             esc(shaLabel) +
-            "</span>" +
+            "</span><span>" +
+            a2aBtn +
             citeBtn +
-            "</div>" +
+            "</span></div>" +
             "</div>"
           );
         })
@@ -391,23 +369,55 @@
           "</button>" +
           '<button class="chip-btn" onclick="window.openPdfProof(\'' +
           esc(disc.pdf_url || "/v1/demo/consolidation-collab/pdfs/04_Meridian_Oct2026_Operating_Bank_Statement.pdf") +
-          "', 2, 'Bank Statement Page 2 · $48,210.00 PAID IN FULL Wire', '" +
+          "', " +
+          Number(disc.page_number || 14) +
+          ", 'Bank Statement Page " +
+          Number(disc.page_number || 14) +
+          " · $48,210.00 PAID IN FULL Wire', '" +
           esc(disc.vault_uri || "") +
-          "')\">Inspect Bank Statement Page 2 ↗</button>" +
+          "')\">Inspect Bank Statement Page " +
+          Number(disc.page_number || 14) +
+          " ↗</button>" +
           "</div></div>";
       } else if (ow && ow.status === "approved" && !state.agent_gym_payoff) {
         actionSlot.innerHTML =
           '<div class="action-callout approved">' +
           '<div class="action-callout-hdr">' +
-          '<div class="action-callout-title">Deal #1 Cleared to Close (6/6) · Ready for Agent Gym Distillation</div>' +
-          '<span class="status-pill satisfied">RSR = 0.98 · SPIFFE OBO VERIFIED</span>' +
+          '<div class="action-callout-title">Deal #1 Cleared to Close (' +
+          counts.total +
+          "/" +
+          counts.total +
+          ") · Ready for Agent Gym Distillation</div>" +
+          '<span class="status-pill satisfied">RSR = 0.98 · OBO DELEGATION VERIFIED</span>' +
           "</div>" +
           '<div class="agent-detail">' +
-          "Turn this single expert waiver into a governed, stress-tested skill revision (`consolidation-payoff@1.1.0`) so Gemini 3.8 Flash handles future deals with zero escalation." +
+          "Compile this waiver into a governed `loan-payoff-statement@1.1.0` DRAFT revision (`<= $100,000.00` ceiling, exact facility + `PAID IN FULL` match), inspect the diff, and promote in 1 click." +
           "</div>" +
           '<div class="cta-row">' +
-          '<button class="primary-cta-btn purple" id="btn-distill-skill" onclick="window.distillSkill()">' +
-          "✦ Distill Rule & Compile SKILL.md v1.1 (Gemini 4 Argon)" +
+          '<button class="primary-cta-btn purple" id="btn-compile-draft" onclick="window.distillSkillDraft()">' +
+          "⚡ Compile Rule to SKILL.md (v1.1.0 Draft Diff)" +
+          "</button>" +
+          '<button class="chip-btn purple" id="btn-distill-skill" onclick="window.distillSkill()">' +
+          "Compile &amp; Auto-Promote" +
+          "</button></div></div>";
+      } else if (
+        state.agent_gym_payoff &&
+        state.agent_gym_payoff.target_state === "DRAFT"
+      ) {
+        actionSlot.innerHTML =
+          '<div class="action-callout">' +
+          '<div class="action-callout-hdr">' +
+          '<div class="action-callout-title">Review SKILL.md Diff (`' +
+          esc(state.agent_gym_payoff.skill_name + "@" + state.agent_gym_payoff.skill_version) +
+          "` · DRAFT)</div>" +
+          '<span class="status-pill waived">AWAITING 1-CLICK HUMAN PROMOTION</span>' +
+          "</div>" +
+          '<pre class="skill-code-pre" style="max-height:140px;margin:8px 0">' +
+          esc(state.agent_gym_payoff.skill_markdown || "") +
+          "</pre>" +
+          '<div class="cta-row">' +
+          '<button class="primary-cta-btn green" id="btn-promote-skill" onclick="window.promoteCompiledSkill()">' +
+          "✓ Promote `loan-payoff-statement@1.1.0` to Active" +
           "</button></div></div>";
       } else {
         actionSlot.innerHTML = "";
@@ -514,7 +524,7 @@
       batchName === "batch_1"
         ? ["meridian-financials", "meridian-appraisal"]
         : batchName === "batch_2"
-        ? ["fnb-payoff", "meridian-bank-stmt"]
+        ? ["apex-payoff", "meridian-bank-stmt"]
         : ["apex-day2-bank-stmt"];
     setBusy(
       true,
@@ -538,6 +548,30 @@
     }
   };
 
+  window.requestA2aPayoff = async function (counterpartyId) {
+    setBusy(
+      true,
+      "Requesting Live A2A Structured Payoff (#FNB-4402)...",
+      "Validating signed counterparty assertion via Path-A JSON Schema (0 LLM tokens)..."
+    );
+    try {
+      var nextState = await apiRequest(
+        "/v1/demo/consolidation-collab/request-a2a-payoff",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            counterparty_id: counterpartyId || "fnb-payoff",
+            mode: executionMode,
+          }),
+        }
+      );
+      renderState(nextState);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   window.approveWaiver = async function () {
     setBusy(true, "Recording SPIFFE OBO Underwriter Waiver...", "Writing RFC 6902 governance audit to Cloud SQL...");
     try {
@@ -554,21 +588,35 @@
     }
   };
 
-  window.distillSkill = async function () {
-    setBusy(
-      true,
-      "Distilling Tribal Rule & Compiling SKILL.md v1.1 via Gemini 4 Argon...",
-      "Running 4 synthetic stress cases (including recurring monthly payment guardrail)..."
-    );
+  async function runDistill(autoPromote) {
+    setBusy(true, "Compiling SKILL.md v1.1.0 via Gemini 4 Argon...", "Running 4/4 synthetic stress cases...");
     try {
       var nextState = await apiRequest("/v1/demo/consolidation-collab/distill-skill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: executionMode }),
+        body: JSON.stringify({ mode: executionMode, auto_promote: autoPromote }),
       });
       renderState(nextState);
     } catch (_err) {
-      await window.jumpToBeat(4);
+      if (autoPromote) await window.jumpToBeat(4);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  window.distillSkill = function () { return runDistill(true); };
+  window.distillSkillDraft = function () { return runDistill(false); };
+
+  window.promoteCompiledSkill = async function () {
+    setBusy(true, "Promoting loan-payoff-statement@1.1.0 to Active...", "Writing active revision to Skill Registry...");
+    try {
+      var revId = currentState && currentState.agent_gym_payoff && currentState.agent_gym_payoff.skill_revision_id;
+      var nextState = await apiRequest("/v1/demo/consolidation-collab/promote-skill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revision_id: revId || null }),
+      });
+      renderState(nextState);
     } finally {
       setBusy(false);
     }

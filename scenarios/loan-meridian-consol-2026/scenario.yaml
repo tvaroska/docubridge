@@ -1,7 +1,7 @@
 id: loan-meridian-consol-2026
 domain: banking
 order: 15
-title: Collaborative Commercial Debt Consolidation Loan (4-Beat Split-Screen & Live PDF Intake)
+title: Collaborative Commercial Debt Consolidation Loan (Hybrid Path-A A2A + Path-B Live PDF Intake)
 entity_id: LOAN-MERIDIAN-CONSOL-2026
 related_entity_ids:
   day2: LOAN-APEX-CONSOL-DAY2
@@ -9,8 +9,8 @@ process_skill: commercial-loan-underwriting
 doctypes:
   - cre-credit-agreement
   - mai-appraisal
-  - closing-disclosure
-  - consolidation-payoff
+  - trid-closing-disclosure
+  - loan-payoff-statement
 display:
   client: Meridian Logistics Center LLC
   program: $1,800,000.00 Commercial Debt Consolidation Facility
@@ -19,7 +19,7 @@ display:
     reset_caption: Restored Meridian Logistics Center LLC ($1.80M Consolidation Facility) to initial 3-document checklist.
     day2_borrower: Apex Precision Manufacturing LLC
 agents:
-  bridge: spiffe://agents.docubridge.io/internal/broker-placement-agent
+  bridge: spiffe://agents.docubridge.io/ingest/docubridge-collector
   underwriter: spiffe://agents.docubridge.io/internal/credit-officer-agent
 principals:
   senior_underwriter: usr:senior.credit.officer@docubridge.io
@@ -30,7 +30,7 @@ stage:
     - asset_id: meridian-financials
       filename: 01_Meridian_2025_Audited_Financials.pdf
       title: 2025 Audited Financials & Note 6 Debt Schedule
-      subtitle: 4 pages · Page 4 lists 3 existing creditors ($1.80M) + Page 1 PII
+      subtitle: 4 pages · Page 4 lists 4 existing facilities ($1.80M) + Page 1 PII
       batch_stage: batch_1
       page_count: 4
       highlight_page: 4
@@ -43,21 +43,21 @@ stage:
       page_count: 2
       highlight_page: 1
       spec: pdf/meridian-appraisal.yaml
-    - asset_id: fnb-payoff
-      filename: 03_First_National_Payoff_FNB4402.pdf
-      title: First National Bank Payoff Statement (#FNB-4402)
-      subtitle: 1 page · Official $1,200,000.00 senior mortgage payoff demand
+    - asset_id: apex-payoff
+      filename: 03_Apex_Capital_Payoff_7712.pdf
+      title: Apex Capital Payoff Statement (#7712)
+      subtitle: 1 page · Official $1,089,790.00 senior mortgage payoff demand
       batch_stage: batch_2
       page_count: 1
       highlight_page: 1
-      spec: pdf/fnb-payoff.yaml
+      spec: pdf/apex-payoff.yaml
     - asset_id: meridian-bank-stmt
       filename: 04_Meridian_Oct2026_Operating_Bank_Statement.pdf
-      title: Oct 2026 Operating Bank Statement
-      subtitle: 2 pages · Page 2 contains Oct 12 $48,210.00 'PAID IN FULL' wire (#8841)
+      title: Oct 2026 Operating Bank Statement (28 Pages)
+      subtitle: 28 pages · Page 14 contains Oct 12 $48,210.00 'PAID IN FULL' wire (#8841)
       batch_stage: batch_2
-      page_count: 2
-      highlight_page: 2
+      page_count: 28
+      highlight_page: 14
       spec: pdf/meridian-bank-stmt.yaml
     - asset_id: apex-day2-bank-stmt
       filename: 05_Apex_Precision_Day2_Bank_Statement.pdf
@@ -68,6 +68,38 @@ stage:
       highlight_page: 2
       spec: pdf/apex-day2-bank-stmt.yaml
 
+  a2a_counterparties:
+    - counterparty_id: fnb-payoff
+      checklist_item_id: item-4-fnb-payoff
+      creditor: First National Bank
+      account_ref: "#FNB-4402"
+      doctype: loan-payoff-statement
+      expected_amount: "$412,000.00"
+      agent_spiffe_id: spiffe://agents.fnb.example.com/external/fnb-payoff-agent
+      target_resource: projects/0/locations/us-central1/agents/agentregistry-fnb-payoff-agent
+      url_env: BRIDGE_FNB_AGENT_URL
+      fallback_assertion:
+        fields:
+          doctype: loan-payoff-statement
+          issuer: First National Bank
+          key_fields:
+            borrower_name: Meridian Logistics Center LLC
+            loan_account: "#FNB-4402"
+            payoff_amount: "$412,000.00"
+            good_through_date: "2026-11-30"
+            per_diem_interest: "$67.73"
+            wire_routing_aba: "021000021"
+            wire_reference: "FNB-4402-CLOSING-WIRE"
+            currency: USD
+        overall_confidence: 1.0
+        field_confidence:
+          loan_account: 1.0
+          payoff_amount: 1.0
+          good_through_date: 1.0
+          currency: 1.0
+        legible: true
+        flagged_fields: []
+
   setup:
     - name: financial_summary
       params:
@@ -77,15 +109,20 @@ stage:
         ltv_policy_cap_pct: "75.00"
         dscr_policy_min: "1.25"
         liabilities:
+          - creditor: Apex Capital Commercial Funding
+            account_ref: "#7712"
+            facility_type: Senior Commercial Mortgage
+            balance: "1089790.00"
+            handling: External Payoff Letter Required (Path-B PDF)
           - creditor: First National Bank
             account_ref: "#FNB-4402"
-            facility_type: Senior Commercial Mortgage
-            balance: "1200000.00"
-            handling: External Payoff Letter Required
+            facility_type: Warehouse Equipment Facility
+            balance: "412000.00"
+            handling: Direct A2A Counterparty Payoff (Path-A Structured)
           - creditor: EquipLease Financial Corp
             account_ref: "#8841"
             facility_type: Fleet & Material Handling Term Loan
-            balance: "350000.00"
+            balance: "48210.00"
             handling: External Payoff or Verified Wire Proof
           - creditor: DocuBridge Commercial Bank (Internal)
             account_ref: "#LOC-9012"
@@ -117,8 +154,8 @@ stage:
         pdf_url: ${pdf_url:meridian-financials}
         auto_waived_reason: null
       - id: item-2-bank-stmt
-        label: Oct 2026 Operating Bank Statement (90-Day Liquidity & Cash Flow)
-        doctype: closing-disclosure
+        label: Oct 2026 Operating Bank Statement (28-Page Liquidity & Wire Ledger)
+        doctype: trid-closing-disclosure
         status: required
         emergent: false
         badge_text: REQUIRED
@@ -149,17 +186,17 @@ stage:
     borrower_banner:
       tone: info
       headline: Application Opened · 3 Baseline Documents Requested
-      message: Upload your 2025 Audited Financials, Oct 2026 Operating Bank Statement, and MAI Appraisal to begin automated underwriting.
-      agent_note: Document Bridge (Sense A) will inspect your Debt Schedule and dynamically tailor payoff requirements.
+      message: Upload your 2025 Audited Financials, Oct 2026 Operating Bank Statement (28 pages), and MAI Appraisal to begin automated underwriting.
+      agent_note: Document Bridge (Sense A) will inspect your Note 6 Debt Schedule and dynamically tailor payoff requirements.
     agent1_bridge_status:
       agent_name: Agent 1 · Document Bridge (Sense A Intake & OCR)
       spiffe_id: ${agent.bridge}
       model: ${model.workhorse}
       headline: Awaiting Borrower Document Upload
-      detail: Ready to run Edge PII Redaction, 7-Year WORM Audit Vault lock, and Document AI page/bbox anchor extraction.
+      detail: Ready to run Edge PII Redaction, 7-Year WORM Audit Vault lock, Path-A schema check, and page/bbox extraction.
       documents_processed: 0
       active_anchors: []
-      skill_revision: consolidation-payoff@1.0.0
+      skill_revision: loan-payoff-statement@1.0.0
     agent2_policy_status:
       agent_name: Agent 2 · Bank Underwriting & Policy Agent (Sense B)
       spiffe_id: ${agent.underwriter}
@@ -190,9 +227,8 @@ stage:
       recent_extractions: []
 
   beats:
-    # ------------------------------------------------------------------ Beat 1
     - index: 1
-      title: Upload 2025 Financials + Appraisal -> Mutate Checklist (3 -> 6)
+      title: Upload 2025 Financials + Appraisal -> Mutate Checklist (3 -> 7)
       operations:
         - name: ingest_documents
           params:
@@ -215,7 +251,7 @@ stage:
               debt_schedule:
                 page_number: 4
                 bounding_box: [0.12, 0.38, 0.84, 0.56]
-                snippet: "Note 6 — Schedule of Existing Liabilities to be Consolidated: (1) First National Bank Commercial Mortgage #FNB-4402: $1,200,000.00; (2) EquipLease Financial Corp Term Loan #8841: $350,000.00; (3) DocuBridge Commercial Bank Internal LOC #LOC-9012: $250,000.00."
+                snippet: "Note 6 — Schedule of Existing Liabilities to be Consolidated ($1,800,000.00): (1) Apex Capital #7712: $1,089,790.00; (2) First National Bank #FNB-4402: $412,000.00; (3) EquipLease Financial Corp #8841: $48,210.00; (4) DocuBridge Commercial Bank Internal LOC #LOC-9012: $250,000.00."
               appraisal:
                 page_number: 1
                 bounding_box: [0.14, 0.22, 0.82, 0.36]
@@ -223,7 +259,7 @@ stage:
             documents:
               - alias: financials
                 doc_id: doc-meridian-2025-financials
-                doctype: credit-agreement
+                doctype: cre-credit-agreement
                 issuer: ${display.client}
                 message: Accepted 2025 Audited Financials & Note 6 Debt Schedule
                 key_fields:
@@ -257,7 +293,7 @@ stage:
                 gen_ai.usage.input_tokens: 520
                 gen_ai.usage.output_tokens: 160
                 docubridge.finops.traffic_type: production_inference
-                docubridge.emergent_items_added: 2
+                docubridge.emergent_items_added: 3
                 docubridge.emergent_items_auto_waived: 1
             set:
               borrower_checklist:
@@ -267,7 +303,7 @@ stage:
                   status: satisfied
                   emergent: false
                   badge_text: VERIFIED · PAGE 4
-                  reason: Extracted 3 existing liabilities totaling $1,800,000.00 from Note 6 (Page 4 [0.12, 0.38]) and locked in 7-year WORM Audit Vault.
+                  reason: Extracted 4 existing liabilities totaling $1,800,000.00 from Note 6 (Page 4 [0.12, 0.38]) and locked in 7-year WORM Audit Vault.
                   source_citation: Page 4 · Region [0.12, 0.38]
                   page_number: 4
                   bounding_box: [0.12, 0.38, 0.84, 0.56]
@@ -277,12 +313,12 @@ stage:
                   pdf_url: ${pdf_url:meridian-financials}
                   auto_waived_reason: null
                 - id: item-2-bank-stmt
-                  label: Oct 2026 Operating Bank Statement (90-Day Liquidity & Cash Flow)
-                  doctype: closing-disclosure
+                  label: Oct 2026 Operating Bank Statement (28-Page Liquidity & Wire Ledger)
+                  doctype: trid-closing-disclosure
                   status: required
                   emergent: false
                   badge_text: REQUIRED
-                  reason: Upload October 2026 operating account statement to verify cash flow and recent debt payments.
+                  reason: Upload October 2026 28-page operating account statement to verify cash flow and recent debt payments.
                   source_citation: null
                   page_number: null
                   bounding_box: null
@@ -307,12 +343,13 @@ stage:
                   pdf_url: ${pdf_url:meridian-appraisal}
                   auto_waived_reason: null
                 - id: item-4-fnb-payoff
-                  label: Payoff Letter — First National Bank Mortgage (#FNB-4402 · $1,200,000.00)
-                  doctype: consolidation-payoff
+                  label: A2A Counterparty Payoff — First National Bank (#FNB-4402 · $412,000.00)
+                  doctype: loan-payoff-statement
                   status: required
                   emergent: true
-                  badge_text: NEW · REQUIRED
-                  reason: "Spawned dynamically by Agent 2 from Note 6 Debt Schedule (Page 4): external senior mortgage payoff statement required for closing wire."
+                  a2a_counterparty_id: fnb-payoff
+                  badge_text: A2A PATH-A AVAILABLE
+                  reason: "Spawned from Note 6 (Page 4): First National Bank runs an A2A payoff agent — request a signed structured assertion directly (0 LLM tokens)."
                   source_citation: Page 4 · Region [0.12, 0.38]
                   page_number: 4
                   bounding_box: [0.12, 0.38, 0.84, 0.56]
@@ -321,13 +358,28 @@ stage:
                   sha256: ${doc:financials.sha256}
                   pdf_url: ${pdf_url:meridian-financials}
                   auto_waived_reason: null
-                - id: item-5-equip-payoff
-                  label: Payoff Letter — EquipLease Financial Corp (#8841 · $350,000.00)
-                  doctype: consolidation-payoff
+                - id: item-5-apex-payoff
+                  label: Payoff Letter — Apex Capital Funding (#7712 · $1,089,790.00)
+                  doctype: loan-payoff-statement
+                  status: required
+                  emergent: true
+                  badge_text: NEW · REQUIRED (PDF)
+                  reason: "Spawned from Note 6 (Page 4): legacy commercial mortgage lender requires official PDF payoff statement (#7712)."
+                  source_citation: Page 4 · Region [0.12, 0.38]
+                  page_number: 4
+                  bounding_box: [0.12, 0.38, 0.84, 0.56]
+                  doc_id: doc-meridian-2025-financials
+                  vault_uri: ${doc:financials.vault_uri}
+                  sha256: ${doc:financials.sha256}
+                  pdf_url: ${pdf_url:apex-payoff}
+                  auto_waived_reason: null
+                - id: item-6-equip-payoff
+                  label: Payoff Letter — EquipLease Financial Corp (#8841 · $48,210.00)
+                  doctype: loan-payoff-statement
                   status: required
                   emergent: true
                   badge_text: NEW · REQUIRED
-                  reason: "Spawned dynamically by Agent 2 from Note 6 Debt Schedule (Page 4): external equipment loan payoff quote or verified settlement proof required."
+                  reason: "Spawned from Note 6 (Page 4): external equipment loan payoff quote or verified settlement wire proof required."
                   source_citation: Page 4 · Region [0.12, 0.38]
                   page_number: 4
                   bounding_box: [0.12, 0.38, 0.84, 0.56]
@@ -336,13 +388,13 @@ stage:
                   sha256: ${doc:financials.sha256}
                   pdf_url: ${pdf_url:meridian-financials}
                   auto_waived_reason: null
-                - id: item-6-internal-loc
+                - id: item-7-internal-loc
                   label: Internal Revolving LOC Payoff — DocuBridge Bank (#LOC-9012 · $250,000.00)
-                  doctype: consolidation-payoff
+                  doctype: loan-payoff-statement
                   status: waived
                   emergent: true
                   badge_text: AUTO-WAIVED BY AGENT 2
-                  reason: "Discovered on Note 6 Debt Schedule (Page 4), but automatically waived by Agent 2: account #LOC-9012 is held on-us and verified directly via internal core banking ledger ($250,000.00 balance, zero borrower upload needed)."
+                  reason: "Discovered on Note 6 (Page 4), automatically waived by Agent 2: account #LOC-9012 is held on-us and verified via internal core banking ledger ($250,000.00 balance)."
                   source_citation: Page 4 · Region [0.12, 0.38]
                   page_number: 4
                   bounding_box: [0.12, 0.38, 0.84, 0.56]
@@ -353,15 +405,15 @@ stage:
                   auto_waived_reason: "On-us facility #LOC-9012 verified directly against internal core banking feed."
               borrower_banner:
                 tone: warning
-                headline: Checklist Dynamically Updated (3 -> 6 Items) from Your Note 6 Debt Schedule
-                message: "We verified your 2025 Financials and $2.60M Appraisal (69.23% LTV, 1.44x DSCR). Because Note 6 (Page 4) lists 3 existing facilities to consolidate, we added 2 external payoff letters (#FNB-4402 and #8841) and automatically waived your internal $250K LOC (#LOC-9012)."
-                agent_note: "Next: Upload your Oct 2026 Operating Bank Statement and First National Bank Payoff Letter."
+                headline: Checklist Dynamically Updated (3 -> 7 Items) from Your Note 6 Debt Schedule
+                message: "We verified your 2025 Financials and $2.60M Appraisal (69.23% LTV, 1.44x DSCR). Note 6 (Page 4) lists 4 facilities totaling $1.80M: click Request A2A Payoff for First National (#FNB-4402, $412K) and upload Apex Capital (#7712, $1,089,790) + your 28-page Oct Bank Statement."
+                agent_note: "Internal $250K LOC (#LOC-9012) auto-waived via core ledger."
               agent1_bridge_status:
                 agent_name: Agent 1 · Document Bridge (Sense A Intake & OCR)
                 spiffe_id: ${agent.bridge}
                 model: ${model.workhorse}
                 headline: Extracted Note 6 Debt Schedule (Page 4 [0.12, 0.38]) & Locked WORM Vault
-                detail: "Redacted 2 PII tokens at edge, archived SHA-256 WORM copy, and extracted 3 creditor rows ($1.20M First National, $350K EquipLease #8841, $250K Internal LOC)."
+                detail: "Redacted 2 PII tokens at edge, archived SHA-256 WORM copy, and extracted 4 creditor rows ($1,089,790 Apex #7712, $412,000 FNB #FNB-4402, $48,210 EquipLease #8841, $250,000 Internal LOC)."
                 documents_processed: 2
                 active_anchors:
                   - field: Note 6 Debt Schedule ($1.80M)
@@ -371,25 +423,25 @@ stage:
                     page_number: 4
                     vault_uri: ${doc:financials.vault_uri}
                     sha256: ${doc:financials.sha256}
-                skill_revision: consolidation-payoff@1.0.0
+                skill_revision: loan-payoff-statement@1.0.0
               agent2_policy_status:
                 agent_name: Agent 2 · Bank Underwriting & Policy Agent (Sense B)
                 spiffe_id: ${agent.underwriter}
                 model: ${model.reasoning}
-                headline: Spawned 3 Emergent Payoff Tasks (2 External Required, 1 On-Us Auto-Waived)
-                detail: "Computed deterministic LTV = 69.23% (<= 75% cap) and DSCR = 1.44x (>= 1.25x floor). Expanded borrower checklist from 3 to 6 items and auto-waived internal LOC #LOC-9012."
+                headline: Spawned 4 Emergent Payoff Tasks (1 A2A Path-A, 2 Path-B PDF, 1 Auto-Waived)
+                detail: "Computed deterministic LTV = 69.23% (<= 75% cap) and DSCR = 1.44x (>= 1.25x floor). Expanded borrower checklist from 3 to 7 items."
                 checklist_mutations:
-                  - "+ REQUIRED: First National Bank Payoff (#FNB-4402 · $1,200,000.00)"
-                  - "+ REQUIRED: EquipLease Financial Corp Payoff (#8841 · $350,000.00)"
+                  - "+ A2A PATH-A: First National Bank Payoff (#FNB-4402 · $412,000.00)"
+                  - "+ REQUIRED PDF: Apex Capital Payoff (#7712 · $1,089,790.00)"
+                  - "+ REQUIRED: EquipLease Financial Corp Payoff (#8841 · $48,210.00)"
                   - "+ AUTO-WAIVED: Internal Revolving LOC (#LOC-9012 · $250,000.00 via Core Banking Feed)"
                 policy_rules_evaluated:
                   - "Rule 0 Decimal LTV: $1.80M / $2.60M = 69.23% (PASS)"
                   - "Rule 0 Decimal DSCR: $312.0K / $216.7K = 1.44x (PASS)"
                   - Policy 4.2 On-Us Consolidation Auto-Waiver (#LOC-9012)
 
-    # ------------------------------------------------------------------ Beat 2
     - index: 2
-      title: Upload Oct 2026 Bank Statement + FNB Payoff -> Propose Waiver
+      title: Path-A FNB Payoff + Apex PDF + 28-Page Bank Stmt (Page 14 Wire) -> Propose Waiver
       operations:
         - name: ingest_documents
           params:
@@ -410,32 +462,36 @@ stage:
                 docubridge.finops.traffic_type: production_inference
             anchors:
               wire:
-                page_number: 2
+                page_number: 14
                 bounding_box: [0.16, 0.54, 0.88, 0.63]
                 snippet: "2026-10-12 OUTGOING FEDWIRE #99481204 · BENEFICIARY: EQUIPLEASE FINANCIAL CORP · AMOUNT: $48,210.00 · OBI/MEMO: FINAL PAYOFF - LOAN #8841 - PAID IN FULL (ZERO BALANCE)"
-              fnb:
+              apex:
                 page_number: 1
                 bounding_box: [0.15, 0.28, 0.85, 0.44]
-                snippet: "First National Bank Official Payoff Statement — Loan #FNB-4402: Total Principal & Accrued Interest Payoff: $1,200,000.00 (Good through 2026-11-15)."
+                snippet: "Apex Capital Commercial Funding Official Payoff Statement — Loan #7712: Total Principal & Accrued Interest Payoff: $1,089,790.00 (Good through 2026-11-30)."
             documents:
               - alias: bank_stmt
                 doc_id: doc-meridian-oct2026-bank-stmt
-                doctype: closing-disclosure
+                doctype: trid-closing-disclosure
                 issuer: Meridian Operating Account
-                message: Accepted Oct 2026 Operating Bank Statement with Page 2 Payoff Wire
+                message: Accepted 28-Page Oct 2026 Operating Bank Statement with Page 14 Payoff Wire
                 key_fields: {currency: USD, closing_fee: "$48,210.00"}
                 source_anchors: {closing_fee: wire}
                 pdf_asset: meridian-bank-stmt
                 filename: 04_Meridian_Oct2026_Operating_Bank_Statement.pdf
-              - alias: fnb_payoff
-                doc_id: doc-meridian-fnb-payoff
-                doctype: addendum
-                issuer: First National Bank
-                message: Accepted First National Bank Payoff Statement (#FNB-4402)
-                key_fields: {currency: USD, principal_amount: "$1,200,000.00"}
-                source_anchors: {principal_amount: fnb}
-                pdf_asset: fnb-payoff
-                filename: 03_First_National_Payoff_FNB4402.pdf
+              - alias: apex_payoff
+                doc_id: doc-meridian-apex-payoff
+                doctype: loan-payoff-statement
+                issuer: Apex Capital Commercial Funding
+                message: Accepted Apex Capital Official Payoff Statement (#7712)
+                key_fields:
+                  currency: USD
+                  loan_account: "#7712"
+                  payoff_amount: "$1,089,790.00"
+                  good_through_date: "2026-11-30"
+                source_anchors: {payoff_amount: apex}
+                pdf_asset: apex-payoff
+                filename: 03_Apex_Capital_Payoff_7712.pdf
         - name: patch_state
           params:
             beat: 2
@@ -460,10 +516,10 @@ stage:
               borrower_checklist:
                 item-2-bank-stmt:
                   status: satisfied
-                  badge_text: VERIFIED · PAGE 2 WIRE SPOTTED
-                  reason: "Verified 90-day operating liquidity AND spotted Oct 12 outgoing Fedwire $48,210.00 ('FINAL PAYOFF - LOAN #8841 - PAID IN FULL') on Page 2 [0.16, 0.54]."
-                  source_citation: Page 2 · Region [0.16, 0.54]
-                  page_number: 2
+                  badge_text: VERIFIED · PAGE 14 WIRE SPOTTED
+                  reason: "Verified 28-page operating liquidity AND spotted Oct 12 outgoing Fedwire $48,210.00 ('FINAL PAYOFF - LOAN #8841 - PAID IN FULL') on Page 14 [0.16, 0.54, 0.88, 0.63]."
+                  source_citation: Page 14 · Region [0.16, 0.54, 0.88, 0.63]
+                  page_number: 14
                   bounding_box: [0.16, 0.54, 0.88, 0.63]
                   doc_id: doc-meridian-oct2026-bank-stmt
                   vault_uri: ${doc:bank_stmt.vault_uri}
@@ -471,20 +527,29 @@ stage:
                   pdf_url: ${pdf_url:meridian-bank-stmt}
                 item-4-fnb-payoff:
                   status: satisfied
-                  badge_text: VERIFIED · $1.20M PAYOFF
-                  reason: Verified First National Bank payoff letter (#FNB-4402 · $1,200,000.00) on Page 1 [0.15, 0.28].
-                  source_citation: Page 1 · Region [0.15, 0.28]
+                  badge_text: A2A PATH-A · $412K (0 TOKENS)
+                  reason: "Verified signed Path-A structured payoff assertion from First National Bank (#FNB-4402 · $412,000.00, per-diem $67.73, ABA 021000021) with 0 LLM tokens."
+                  source_citation: A2A Path-A · spiffe://agents.fnb.example.com/external/fnb-payoff-agent
+                  page_number: 1
+                  bounding_box: [0.10, 0.20, 0.90, 0.35]
+                  doc_id: doc-a2a-fnb-payoff
+                  source_mode: A2A_PATH_A
+                item-5-apex-payoff:
+                  status: satisfied
+                  badge_text: VERIFIED · $1.09M PDF PAYOFF
+                  reason: Verified Apex Capital payoff letter (#7712 · $1,089,790.00) on Page 1 [0.15, 0.28, 0.85, 0.44].
+                  source_citation: Page 1 · Region [0.15, 0.28, 0.85, 0.44]
                   page_number: 1
                   bounding_box: [0.15, 0.28, 0.85, 0.44]
-                  doc_id: doc-meridian-fnb-payoff
-                  vault_uri: ${doc:fnb_payoff.vault_uri}
-                  sha256: ${doc:fnb_payoff.sha256}
-                  pdf_url: ${pdf_url:fnb-payoff}
-                item-5-equip-payoff:
-                  badge_text: WAIVER RECOMMENDED · SEE PAGE 2 WIRE
-                  reason: "Agent 1 & Agent 2 matched Oct 12 outgoing wire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL') on Bank Statement Page 2 [0.16, 0.54] to EquipLease #8841. Awaiting Underwriter 1-click waiver approval."
-                  source_citation: Page 2 · Region [0.16, 0.54]
-                  page_number: 2
+                  doc_id: doc-meridian-apex-payoff
+                  vault_uri: ${doc:apex_payoff.vault_uri}
+                  sha256: ${doc:apex_payoff.sha256}
+                  pdf_url: ${pdf_url:apex-payoff}
+                item-6-equip-payoff:
+                  badge_text: WAIVER RECOMMENDED · SEE PAGE 14 WIRE
+                  reason: "Agent 1 & Agent 2 matched Oct 12 outgoing wire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL') on 28-page Bank Statement Page 14 [0.16, 0.54, 0.88, 0.63] to EquipLease #8841. Awaiting Underwriter 1-click waiver approval."
+                  source_citation: Page 14 · Region [0.16, 0.54, 0.88, 0.63]
+                  page_number: 14
                   bounding_box: [0.16, 0.54, 0.88, 0.63]
                   doc_id: doc-meridian-oct2026-bank-stmt
                   vault_uri: ${doc:bank_stmt.vault_uri}
@@ -496,52 +561,51 @@ stage:
                 discovered_in_doc_id: doc-meridian-oct2026-bank-stmt
                 discovered_in_filename: 04_Meridian_Oct2026_Operating_Bank_Statement.pdf
                 pdf_url: ${pdf_url:meridian-bank-stmt}
-                page_number: 2
+                page_number: 14
                 bounding_box: [0.16, 0.54, 0.88, 0.63]
-                region_label: Page 2 · Region [0.16, 0.54]
+                region_label: Page 14 · Region [0.16, 0.54, 0.88, 0.63]
                 wire_date: "2026-10-12"
                 wire_amount: $48,210.00
                 wire_beneficiary: EquipLease Financial Corp
                 wire_reference: "FINAL PAYOFF - LOAN #8841 - PAID IN FULL"
-                target_checklist_item_id: item-5-equip-payoff
-                recommendation: "Waive standalone EquipLease #8841 payoff letter: 2025 Audited Financials (as of 2025-12-31) carried $350,000.00, but Oct 12, 2026 Operating Bank Statement Page 2 [0.16, 0.54] proves the remaining $48,210.00 balance was wired with memo 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL'."
+                target_checklist_item_id: item-6-equip-payoff
+                recommendation: "Waive standalone EquipLease #8841 payoff letter: 28-page Oct 2026 Operating Bank Statement Page 14 [0.16, 0.54, 0.88, 0.63] proves the exact $48,210.00 balance was wired with memo 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL'."
                 vault_uri: ${doc:bank_stmt.vault_uri}
                 sha256: ${doc:bank_stmt.sha256}
               underwriter_overwatch:
                 status: awaiting_approval
                 headline: Underwriter Overwatch · 1-Click Cross-Document Waiver Ready
-                recommendation: "Approve Agent 2's recommendation to waive Item #5 (EquipLease Financial Corp #8841 Payoff Letter) based on verified Page 2 [0.16, 0.54] Fedwire receipt ($48,210.00 'PAID IN FULL')."
+                recommendation: "Approve Agent 2's recommendation to waive Item #6 (EquipLease Financial Corp #8841 Payoff Letter) based on verified Page 14 [0.16, 0.54, 0.88, 0.63] Fedwire receipt ($48,210.00 'PAID IN FULL')."
                 actor_principal: ${principal.senior_underwriter}
                 actor_role: underwriter
                 agent_spiffe_id: ${agent.underwriter}
-                citation_label: Page 2 · Region [0.16, 0.54]
+                citation_label: Page 14 · Region [0.16, 0.54, 0.88, 0.63]
                 doc_title: 04_Meridian_Oct2026_Operating_Bank_Statement.pdf
                 pdf_url: ${pdf_url:meridian-bank-stmt}
-                page_number: 2
+                page_number: 14
                 vault_uri: ${doc:bank_stmt.vault_uri}
                 sha256: ${doc:bank_stmt.sha256}
               borrower_banner:
                 tone: info
-                headline: Cross-Document Payoff Proof Spotted in Your Oct 2026 Bank Statement!
-                message: "We verified your First National Bank ($1.20M) payoff letter and spotted your Oct 12, 2026 outgoing wire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL') to EquipLease Financial Corp on Page 2 of your Bank Statement. We proposed waiving the separate EquipLease payoff letter so you don't need to chase the lender."
-                agent_note: Underwriter Overwatch is reviewing the Page 2 [0.16, 0.54] wire anchor for 1-click waiver sign-off.
-              agent1_bridge_status.headline: Spotted Oct 12 '$48,210.00 PAID IN FULL' Wire on Bank Statement Page 2 [0.16, 0.54]
-              agent1_bridge_status.detail: "Extracted First National $1.20M payoff quote AND detected outgoing Fedwire #99481204 to EquipLease Financial Corp referencing Loan #8841 on Page 2 [0.16, 0.54]."
+                headline: Hybrid Path-A + Path-B Payoffs Verified · Page 14 Wire Spotted!
+                message: "First National Bank (#FNB-4402, $412K) verified via A2A Path-A (0 tokens), Apex Capital (#7712, $1,089,790) extracted from PDF, and EquipLease (#8841, $48,210) matched to your Oct 12 wire on Page 14 of the 28-page Bank Statement."
+                agent_note: Underwriter Overwatch is reviewing the Page 14 [0.16, 0.54, 0.88, 0.63] wire anchor for 1-click waiver sign-off.
+              agent1_bridge_status.headline: Spotted Oct 12 '$48,210.00 PAID IN FULL' Wire on Bank Statement Page 14 [0.16, 0.54, 0.88, 0.63]
+              agent1_bridge_status.detail: "Validated FNB Path-A assertion (0 LLM tokens), extracted Apex $1,089,790 PDF payoff, and detected Fedwire #99481204 to EquipLease #8841 on Page 14 of 28."
               agent1_bridge_status.documents_processed: 4
               agent2_policy_status.headline: "Cross-Document Reconciliation Matched Wire #8841 -> Escalated Waiver to Overwatch"
-              agent2_policy_status.detail: Bi-temporal reconciliation resolved the 2025-12-31 Note 6 liability ($350K) against the 2026-10-12 bank wire ($48,210.00 'PAID IN FULL'). Queued 1-click waiver in Action Inbox.
+              agent2_policy_status.detail: Bi-temporal reconciliation matched Note 6 facility #8841 ($48,210.00) against the 2026-10-12 Page 14 bank wire ('PAID IN FULL'). Queued 1-click waiver in Action Inbox.
             append:
               agent1_bridge_status.active_anchors:
                 field: "EquipLease #8841 Final Payoff Wire ($48,210.00)"
-                citation: Page 2 · Region [0.16, 0.54]
+                citation: Page 14 · Region [0.16, 0.54, 0.88, 0.63]
                 doc_title: 04_Meridian_Oct2026_Operating_Bank_Statement.pdf
                 pdf_url: ${pdf_url:meridian-bank-stmt}
-                page_number: 2
+                page_number: 14
                 vault_uri: ${doc:bank_stmt.vault_uri}
                 sha256: ${doc:bank_stmt.sha256}
-              agent2_policy_status.checklist_mutations: "~ WAIVER PROPOSED: EquipLease #8841 matched to Oct 12 Bank Wire ($48,210.00 Page 2 [0.16, 0.54])"
+              agent2_policy_status.checklist_mutations: "~ WAIVER PROPOSED: EquipLease #8841 matched to Oct 12 Bank Wire ($48,210.00 Page 14 [0.16, 0.54, 0.88, 0.63])"
 
-    # ------------------------------------------------------------------ Beat 3
     - index: 3
       title: Underwriter 1-click waiver approval via A2UI ActionInboxStore -> Done = True
       operations:
@@ -559,11 +623,12 @@ stage:
                 docubridge.citation_opened: true
                 docubridge.pre_committed: true
                 docubridge.oversight_rsr_score: 0.98
+                hitl.review: "true"
             citation:
               doc_id: doc-meridian-oct2026-bank-stmt
               document_title: 04_Meridian_Oct2026_Operating_Bank_Statement.pdf
               field_name: equiplease_8841_final_payoff_wire
-              page_number: 2
+              page_number: 14
               bounding_box: [0.16, 0.54, 0.88, 0.63]
               excerpt: "2026-10-12 OUTGOING FEDWIRE $48,210.00 - FINAL PAYOFF - LOAN #8841 - PAID IN FULL"
               vault_uri: ${doc:bank_stmt.vault_uri}
@@ -574,21 +639,21 @@ stage:
                 external_label: "Step 1: Debt Schedule Reviewed"
                 zone: zone_2_extraction
                 status: completed
-                detail: Extracted 3 existing liabilities totaling $1,800,000.00.
+                detail: Extracted 4 existing liabilities totaling $1,800,000.00.
                 external_detail: Reviewed existing loan schedule.
               - step_id: step_cross_doc_wire
                 step_number: 2
-                label: "Zone 3: Reconcile Bank Statement Page 2 Payoff Wire (#8841)"
+                label: "Zone 3: Reconcile 28-Page Bank Statement Page 14 Wire (#8841)"
                 external_label: "Step 2: Verified Payoff Wire on Bank Statement"
                 zone: zone_3_operational
                 status: input-required
-                detail: "Matched Oct 12 $48,210.00 'PAID IN FULL' wire to EquipLease #8841."
+                detail: "Matched Oct 12 $48,210.00 'PAID IN FULL' wire on Page 14 to EquipLease #8841."
                 external_detail: Verifying wire transfer receipt.
                 with_citation: true
             action:
-              title: "Waive EquipLease #8841 Payoff Letter via Bank Statement Page 2 Wire Proof"
+              title: "Waive EquipLease #8841 Payoff Letter via Bank Statement Page 14 Wire Proof"
               external_title: "EquipLease Loan #8841 Payoff Verification"
-              hint: Approve cross-document payoff waiver backed by Oct 12 $48,210.00 wire on Page 2 [0.16, 0.54].
+              hint: Approve cross-document payoff waiver backed by Oct 12 $48,210.00 wire on Page 14 [0.16, 0.54, 0.88, 0.63].
               external_hint: Underwriter verifying your Oct 12 payoff wire.
               assigned_role: underwriter
               target_view: v_underwriter_exposure
@@ -597,7 +662,7 @@ stage:
               data_model:
                 resolution: {selectedValue: WAIVE_VIA_BANK_STATEMENT_WIRE_PROOF}
                 review:
-                  memo: "Verified Page 2 [0.16, 0.54] outgoing wire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL') to EquipLease Financial Corp."
+                  memo: "Verified Page 14 [0.16, 0.54, 0.88, 0.63] outgoing wire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL') to EquipLease Financial Corp."
               pause_for_review: true
               blind_pre_commitment: true
             resolve:
@@ -609,7 +674,7 @@ stage:
                   citation_opened: true
                   pre_committed: true
                   review:
-                    memo: "Approved cross-document payoff waiver for EquipLease #8841 using Bank Statement Page 2 [0.16, 0.54] wire proof ($48,210.00)."
+                    memo: "Approved cross-document payoff waiver for EquipLease #8841 using Bank Statement Page 14 [0.16, 0.54, 0.88, 0.63] wire proof ($48,210.00)."
               actor_principal: ${principal.senior_underwriter}
               actor_role: underwriter
               channel: gemini_app
@@ -621,17 +686,17 @@ stage:
             recount_checklist: true
             update_items:
               borrower_checklist:
-                item-5-equip-payoff:
+                item-6-equip-payoff:
                   status: waived
-                  badge_text: WAIVED · PAID ON BANK STMT (PAGE 2)
-                  reason: "Waived via Cross-Document Proof (approved by Senior Credit Officer): Oct 12, 2026 outgoing wire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL') on Bank Statement Page 2 [0.16, 0.54] confirms zero remaining balance."
-                  auto_waived_reason: Cross-document payoff wire verified on Oct 2026 Bank Statement Page 2 [0.16, 0.54].
+                  badge_text: WAIVED · PAID ON BANK STMT (PAGE 14)
+                  reason: "Waived via Cross-Document Proof (approved by Senior Credit Officer): Oct 12, 2026 outgoing wire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL') on Bank Statement Page 14 [0.16, 0.54, 0.88, 0.63] confirms zero remaining balance."
+                  auto_waived_reason: Cross-document payoff wire verified on Oct 2026 Bank Statement Page 14 [0.16, 0.54, 0.88, 0.63].
             set:
               cross_doc_discovery.status: waiver_approved
               underwriter_overwatch:
                 status: approved
                 headline: Waiver Approved by Senior Credit Officer (RSR = 0.98 · 0 Remaining Blockers)
-                recommendation: "Item #5 (EquipLease #8841 Payoff Letter) is officially WAIVED with immutable RFC 6902 audit trail and WORM source anchor citation (Page 2 [0.16, 0.54])."
+                recommendation: "Item #6 (EquipLease #8841 Payoff Letter) is officially WAIVED with immutable RFC 6902 audit trail and WORM source anchor citation (Page 14 [0.16, 0.54, 0.88, 0.63])."
                 inbox_item_id: ${inbox_item_id}
                 audit_id: ${audit_id}
                 actor_principal: ${principal.senior_underwriter}
@@ -642,24 +707,23 @@ stage:
                 pre_committed: true
                 oversight_rsr_score: 0.98
                 decision: ${decision}
-                citation_label: Page 2 · Region [0.16, 0.54]
+                citation_label: Page 14 · Region [0.16, 0.54, 0.88, 0.63]
                 doc_title: 04_Meridian_Oct2026_Operating_Bank_Statement.pdf
                 pdf_url: ${pdf_url:meridian-bank-stmt}
-                page_number: 2
+                page_number: 14
                 vault_uri: ${doc:bank_stmt.vault_uri}
                 sha256: ${doc:bank_stmt.sha256}
-                resolution_summary: Loan package ${entity_id} is 100% complete (4 Satisfied, 2 Waived, 0 Required) and cleared for closing.
+                resolution_summary: Loan package ${entity_id} is 100% complete (5 Satisfied, 2 Waived, 0 Required) and cleared for closing.
               borrower_banner:
                 tone: success
-                headline: Application 100% Complete — Cleared to Close! (4 Verified · 2 Waived · 0 Remaining)
-                message: "Your Senior Underwriter approved the cross-document payoff waiver for EquipLease #8841 using your Oct 2026 Bank Statement Page 2 wire receipt ($48,210.00). All 6 consolidation requirements are satisfied or waived!"
-                agent_note: Distill this cross-document waiver into Agent Gym (v1.1.0) for zero-touch Day-2 underwriting.
-              agent2_policy_status.headline: All 6 Consolidation Requirements Resolved (4 Satisfied · 2 Waived · Done = True)
-              agent2_policy_status.detail: Recorded RFC 6902 governance audit under SPIFFE OBO. Ready to distill 'Example of One' cross-document payoff wire pattern into Agent Gym.
+                headline: Application 100% Complete — Cleared to Close! (5 Verified · 2 Waived · 0 Remaining)
+                message: "Your Senior Underwriter approved the cross-document payoff waiver for EquipLease #8841 using your Oct 2026 Bank Statement Page 14 wire receipt ($48,210.00). All 7 consolidation requirements are satisfied or waived!"
+                agent_note: Distill this cross-document waiver into Agent Gym (loan-payoff-statement@1.1.0) with policy guardrails for Day-2 underwriting.
+              agent2_policy_status.headline: All 7 Consolidation Requirements Resolved (5 Satisfied · 2 Waived · Done = True)
+              agent2_policy_status.detail: Recorded RFC 6902 governance audit under demo-implemented SPIFFE OBO. Ready to compile loan-payoff-statement@1.1.0 with $100K policy ceiling.
             append:
-              agent2_policy_status.checklist_mutations: "✓ WAIVED BY OVERWATCH: EquipLease #8841 cleared via Page 2 [0.16, 0.54] wire proof (RSR 0.98)"
+              agent2_policy_status.checklist_mutations: "✓ WAIVED BY OVERWATCH: EquipLease #8841 cleared via Page 14 [0.16, 0.54, 0.88, 0.63] wire proof (RSR 0.98)"
 
-    # ------------------------------------------------------------------ Beat 4
     - index: 4
       title: Distill cross-doc wire waiver -> 4/4 Stress Gate -> Compile v1.1.0 -> Day-2 Auto-Approve
       operations:
@@ -668,42 +732,46 @@ stage:
             distill:
               entity: primary
               doc_id: doc-meridian-oct2026-bank-stmt
-              doctype: consolidation-payoff
+              doctype: loan-payoff-statement
               issuer: EquipLease Financial Corp
               field_path: payoff_waiver_status
               before_value: require_external_payoff_letter
               after_value: waived_via_bank_statement_paid_in_full_wire
-              expert_memo: "When a prior-year debt schedule lists an equipment loan (e.g., EquipLease #8841), extract any outgoing wire on the recent 90-day Operating Bank Statement matching the creditor + loan number with memo 'FINAL PAYOFF' / 'PAID IN FULL', derive remaining_liability_balance='$0.00' (superseding the prior-year balance), and emit payoff_waiver_status='waived_via_bank_statement_paid_in_full_wire' so Agent 2 can waive the checklist item; never treat recurring monthly installment debits as payoff settlements."
+              expert_memo: "Within policy limits (amount <= $100,000.00 USD), when a debt schedule lists an equipment facility, extract any outgoing wire on the recent 90-day Operating Bank Statement matching the creditor + exact facility number with memo 'FINAL PAYOFF' or 'PAID IN FULL' to the cent and emit payoff_waiver_status='waived_via_bank_statement_paid_in_full_wire'; escalate recurring monthly installments or wires above $100,000.00 to Overwatch."
               actor_principal: ${principal.senior_underwriter}
               actor_role: underwriter
               agent_spiffe_id: ${agent.underwriter}
               source_anchor:
-                page_number: 2
+                page_number: 14
                 bounding_box: [0.16, 0.54, 0.88, 0.63]
                 snippet: "2026-10-12 OUTGOING FEDWIRE #99481204 · BENEFICIARY: EQUIPLEASE FINANCIAL CORP · AMOUNT: $48,210.00 · OBI/MEMO: FINAL PAYOFF - LOAN #8841 - PAID IN FULL"
               category: EXTRACTION_HINT
               citation_verified: true
               review_dwell_ms: 4800
             compile:
-              doctype: consolidation-payoff
+              doctype: loan-payoff-statement
               issuer_pattern: EquipLease*
+              install_to_port: true
+              policy_ceiling_usd: "100000.00"
             day2:
               context_prefix: ctx-apex-consol-day2
               document:
                 alias: day2_bank_stmt
                 entity: day2
                 doc_id: doc-apex-consol-day2
-                doctype: consolidation-payoff
+                doctype: loan-payoff-statement
                 disposition: pending
                 gate: hitl_review
                 issuer: EquipLease Financial Corp
-                message: Day-2 Consolidation Package (Auto-promoted via Agent Gym Rule)
+                message: Day-2 Consolidation Package (Auto-promoted within policy limits via Agent Gym Skill)
                 key_fields:
                   currency: USD
-                  loan_amount: $1,450,000.00
+                  loan_account: "#9914"
+                  payoff_amount: "$62,400.00"
+                  good_through_date: "2026-10-24"
                   payoff_waiver_status: require_external_payoff_letter
                 source_anchors:
-                  loan_amount:
+                  payoff_amount:
                     page_number: 2
                     bounding_box: [0.18, 0.51, 0.86, 0.61]
                     snippet: "2026-10-24 OUTGOING FEDWIRE #99810442 · BENEFICIARY: EQUIPLEASE FINANCIAL CORP · AMOUNT: $62,400.00 · MEMO: FINAL PAYOFF - LOAN #9914 - PAID IN FULL"
@@ -718,18 +786,19 @@ stage:
               day2_latency_ms: 142
               human_touchpoints: 0
               escalation_tokens: 0
+              policy_ceiling_usd: "$100,000.00"
               stress_cases:
                 - case_id: stress-1-fedwire-paid-in-full
-                  name: "Fedwire Final Payoff ('PAID IN FULL' + Loan # Match)"
+                  name: "Fedwire Final Payoff ('PAID IN FULL' + Loan # Match <= $100K)"
                   expected: Auto-Waive Payoff Letter
                   passed: true
                 - case_id: stress-2-ach-payoff-settlement
-                  name: ACH Commercial Payoff Settlement ('FINAL PAYOFF' Memo)
+                  name: ACH Commercial Payoff Settlement ('FINAL PAYOFF' Memo <= $100K)
                   expected: Auto-Waive Payoff Letter
                   passed: true
-                - case_id: stress-3-cashiers-check-remittance
-                  name: "Cashier's Check Remittance Advice ('LOAN # PAID IN FULL')"
-                  expected: Auto-Waive Payoff Letter
+                - case_id: stress-3-out-of-policy-ceiling-guard
+                  name: "Policy Ceiling Guardrail: Wire > $100,000.00 ($148,500)"
+                  expected: Escalate to Overwatch Human Review
                   passed: true
                 - case_id: stress-4-negative-monthly-installment-guard
                   name: "Negative Guardrail: Recurring Monthly P&I Installment ($4,850/mo)"
@@ -742,60 +811,60 @@ stage:
             recount_checklist: true
             set:
               agent1_bridge_status.skill_revision: ${skill_name}@${skill_version} (${skill_revision_id})
-              agent1_bridge_status.headline: Hot-Reloaded ${skill_name}@${skill_version} -> Day-2 Deal Auto-Approved in 142 ms
-              agent1_bridge_status.detail: Agent 1 (`${model.workhorse}`) now extracts cross-document 'PAID IN FULL' payoff wire facts and derives `remaining_liability_balance = $0.00` on Day-2 deals (`${entity:day2}`) with 0 human touchpoints and 0 `${model.reasoning}` escalation tokens so Agent 2 waives the checklist requirement automatically.
+              agent1_bridge_status.headline: Hot-Reloaded ${skill_name}@${skill_version} -> Day-2 Deal Cleared Within Policy Limits
+              agent1_bridge_status.detail: Agent 1 (`${model.workhorse}`) extracts cross-document 'PAID IN FULL' payoff wire facts within policy limits (`<= $100K`) on Day-2 deals (`${entity:day2}`) with 0 human touchpoints within policy limits and 0 `${model.reasoning}` escalation tokens.
               agent2_policy_status.headline: Agent Gym Promoted Rule ${rule_id} (4/4 Stress Cases) & Compiled Skill v${skill_version}
-              agent2_policy_status.detail: Verified 4/4 synthetic stress cases (including Negative Guardrail blocking payoff extraction on monthly P&I installments). Day-2 borrower ${display.day2_borrower} cleared zero-touch by Agent 2.
+              agent2_policy_status.detail: Verified 4/4 synthetic stress cases (blocking monthly installments and escalating >$100K out-of-policy wires). Day-2 borrower ${display.day2_borrower} ($62,400 <= $100K) cleared zero-touch.
               borrower_banner:
                 tone: success
-                headline: Day-2 Continual Learning Active · Next Borrower Auto-Cleared in 142 ms!
-                message: Agent Gym distilled your Underwriter's correction into `${skill_name}@${skill_version}` (4/4 stress tests passed). When Day-2 borrower ${display.day2_borrower} uploaded a bank statement with a 'PAID IN FULL' wire, Document Bridge extracted the zero-balance settlement fact in 142 ms and Agent 2 waived the payoff letter automatically.
-                agent_note: Zero human touchpoints · Zero gemini-4-argon escalation tokens · Full WORM & bi-temporal lineage.
+                headline: Day-2 Continual Learning Active · 0 Human Touchpoints Within Policy Limits!
+                message: Agent Gym distilled your Underwriter's correction into `${skill_name}@${skill_version}` (`<= $100,000.00` ceiling, 4/4 stress tests passed). Day-2 borrower ${display.day2_borrower} ($62,400.00 'PAID IN FULL' wire) cleared automatically while out-of-policy deals still escalate to Overwatch.
+                agent_note: Zero human touchpoints within policy limits · Pinned v1.0.0 rollback ready.
 
   live_extraction:
-    gym_skill_doctype: consolidation-payoff
+    gym_skill_doctype: loan-payoff-statement
     context_prefix: ctx-meridian-consol-live
     default_wire_amount: $48,210.00
     beats: {expand: 1, reconcile: 2, waiver: 3, distill: 4}
     expand_roles: [audited_financials, appraisal]
     role_doctypes:
-      bank_statement: closing-disclosure
-      payoff_letter: addendum
-      default: credit-agreement
-    citation_page_by_role: {audited_financials: 4, bank_statement: 2}
+      bank_statement: trid-closing-disclosure
+      payoff_letter: loan-payoff-statement
+      default: cre-credit-agreement
+    citation_page_by_role: {audited_financials: 4, bank_statement: 14}
     day2_markers:
-      filename: [apex, "05_"]
-      borrower: [apex]
+      filename: [apex-precision, day2, "05_"]
+      borrower: [apex precision]
       loan_accounts: ["#9914"]
     prompts:
       extract: Extract commercial loan underwriting facts, Note 6 existing liabilities schedule (if present), and any outgoing FINAL PAYOFF / PAID IN FULL wire settlements (if present) from this PDF.
-      skill_clause_active: " ACTIVE SKILL consolidation-payoff@1.1.0: If an outgoing bank wire shows memo 'FINAL PAYOFF' or 'PAID IN FULL' matching a loan number, extract the settlement wire fact and set auto_waive_payoff_letter=true for Agent 2."
+      skill_clause_active: " ACTIVE SKILL loan-payoff-statement@1.1.0 (policy ceiling <= $100,000.00): If an outgoing bank wire <= $100,000.00 shows memo 'FINAL PAYOFF' or 'PAID IN FULL' matching a facility number to the cent, extract the settlement wire fact and set auto_waive_payoff_letter=true."
       skill_clause_inactive: " Set auto_waive_payoff_letter=false under baseline v1.0.0."
     policy_summary:
-      prompt: "In 2 crisp sentences for a bank underwriter, explain why extracting Meridian Logistics Center LLC's Note 6 Debt Schedule ($1.20M First National #FNB-4402, $350K EquipLease #8841, $250K internal on-us LOC #LOC-9012) expands the checklist from 3 to 6 items while auto-waiving the on-us LOC at 69.23% LTV and 1.44x DSCR."
-      fallback: "Expanded closing checklist from 3 to 6 items after Note 6 (Page 4) disclosed 3 facilities: spawned 2 external payoff demands (#FNB-4402, #8841) and auto-waived internal on-us facility #LOC-9012 via core banking feed."
+      prompt: "In 2 crisp sentences for a bank underwriter, explain why extracting Meridian Logistics Center LLC's Note 6 Debt Schedule ($1,089,790 Apex #7712, $412,000 First National #FNB-4402 A2A, $48,210 EquipLease #8841, $250,000 internal on-us LOC #LOC-9012) expands the checklist from 3 to 7 items while auto-waiving the on-us LOC at 69.23% LTV and 1.44x DSCR."
+      fallback: "Expanded closing checklist from 3 to 7 items after Note 6 (Page 4) disclosed 4 facilities ($1.80M total): spawned FNB A2A Path-A (#FNB-4402), Apex PDF (#7712), and EquipLease (#8841), and auto-waived internal on-us LOC #LOC-9012."
     reconcile_summary:
-      prompt: "In 2 crisp sentences for a senior credit officer, explain why the Oct 12, 2026 outgoing Fedwire of $48,210.00 to EquipLease Financial Corp with memo 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL' on Bank Statement Page 2 justifies waiving the standalone $350,000.00 prior-year EquipLease #8841 payoff letter."
-      fallback: "Bi-temporal reconciliation matched the 2025-12-31 Note 6 liability ($350K EquipLease #8841) to the 2026-10-12 Bank Statement Page 2 Fedwire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL'), queuing a 1-click Overwatch waiver."
-    day2_rationale: "Zero ${model.reasoning} escalation: ${model.workhorse} applied compiled consolidation-payoff@1.1.0 directly to waive EquipLease Loan #9914 ($62,400.00 PAID IN FULL wire)."
+      prompt: "In 2 crisp sentences for a senior credit officer, explain why the Oct 12, 2026 outgoing Fedwire of $48,210.00 to EquipLease Financial Corp with memo 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL' on Page 14 of the 28-page Operating Bank Statement justifies waiving the standalone EquipLease #8841 payoff letter."
+      fallback: "Bi-temporal reconciliation matched Note 6 facility #8841 ($48,210.00) to the 2026-10-12 28-page Bank Statement Page 14 Fedwire ($48,210.00 'FINAL PAYOFF - LOAN #8841 - PAID IN FULL'), queuing a 1-click Overwatch waiver."
+    day2_rationale: "Zero ${model.reasoning} escalation within policy limits: ${model.workhorse} applied promoted loan-payoff-statement@1.1.0 directly to waive EquipLease Loan #9914 ($62,400.00 <= $100,000.00 PAID IN FULL wire)."
     checklist_bindings:
       audited_financials:
-        items: [item-1-financials, item-4-fnb-payoff, item-5-equip-payoff, item-6-internal-loc]
+        items: [item-1-financials, item-4-fnb-payoff, item-5-apex-payoff, item-6-equip-payoff, item-7-internal-loc]
       appraisal:
         items: [item-3-appraisal]
         set: {status: satisfied}
       payoff_letter:
-        items: [item-4-fnb-payoff]
+        items: [item-5-apex-payoff]
         set:
           status: satisfied
-          badge_text: VERIFIED · $1.20M PAYOFF
+          badge_text: VERIFIED · $1.09M PAYOFF
           page_number: 1
           source_citation: Page 1 · Official Payoff Demand
     reconcile_bindings:
-      bank_statement_items: [item-2-bank-stmt, item-5-equip-payoff]
-      payoff_letter_items: [item-4-fnb-payoff]
+      bank_statement_items: [item-2-bank-stmt, item-6-equip-payoff]
+      payoff_letter_items: [item-5-apex-payoff]
     fallbacks:
-      - match_any: [apex, day2, "05_"]
+      - match_any: [apex_precision, day2, "05_"]
         payload:
           doc_role: bank_statement
           borrower_name: Apex Precision Manufacturing LLC
@@ -824,11 +893,12 @@ stage:
           appraised_value: ""
           annual_noi: $312,000.00
           citation_page: 4
-          citation_snippet: "Note 6 Schedule of Existing Liabilities: First National #FNB-4402 ($1.20M), EquipLease #8841 ($350K), Internal LOC #LOC-9012 ($250K)."
+          citation_snippet: "Note 6 Schedule of Existing Liabilities: Apex #7712 ($1,089,790), First National #FNB-4402 ($412,000), EquipLease #8841 ($48,210), Internal LOC #LOC-9012 ($250,000)."
           auto_waive_payoff_letter: false
           liabilities:
-            - {creditor: First National Bank, account_ref: "#FNB-4402", balance: "$1,200,000.00", is_internal_on_us: false}
-            - {creditor: EquipLease Financial Corp, account_ref: "#8841", balance: "$350,000.00", is_internal_on_us: false}
+            - {creditor: Apex Capital Commercial Funding, account_ref: "#7712", balance: "$1,089,790.00", is_internal_on_us: false}
+            - {creditor: First National Bank, account_ref: "#FNB-4402", balance: "$412,000.00", is_internal_on_us: false}
+            - {creditor: EquipLease Financial Corp, account_ref: "#8841", balance: "$48,210.00", is_internal_on_us: false}
             - {creditor: DocuBridge Commercial Bank, account_ref: "#LOC-9012", balance: "$250,000.00", is_internal_on_us: true}
           payoff_wires: []
       - match_any: [appraisal, mai, "02_"]
@@ -844,16 +914,16 @@ stage:
           auto_waive_payoff_letter: false
           liabilities: []
           payoff_wires: []
-      - match_any: [payoff, fnb, "03_"]
+      - match_any: [payoff, apex_capital, "03_"]
         payload:
           doc_role: payoff_letter
           borrower_name: Meridian Logistics Center LLC
-          issuer: First National Bank
-          loan_amount: $1,200,000.00
+          issuer: Apex Capital Commercial Funding
+          loan_amount: $1,089,790.00
           appraised_value: ""
           annual_noi: ""
           citation_page: 1
-          citation_snippet: "Official Payoff Statement - Loan #FNB-4402: Total Payoff Amount $1,200,000.00 USD."
+          citation_snippet: "Official Payoff Statement - Loan #7712: Total Payoff Amount $1,089,790.00 USD."
           auto_waive_payoff_letter: false
           liabilities: []
           payoff_wires: []
@@ -865,7 +935,7 @@ stage:
           loan_amount: ""
           appraised_value: ""
           annual_noi: ""
-          citation_page: 2
+          citation_page: 14
           citation_snippet: "2026-10-12 OUTGOING FEDWIRE #99481204 · EQUIPLEASE FINANCIAL CORP · $48,210.00 · FINAL PAYOFF - LOAN #8841 - PAID IN FULL"
           auto_waive_payoff_letter: ${skill_active}
           liabilities: []
@@ -876,7 +946,7 @@ stage:
               amount: $48,210.00
               memo: "FINAL PAYOFF - LOAN #8841 - PAID IN FULL"
               is_paid_in_full: true
-              page_number: 2
+              page_number: 14
     default_payload:
       doc_role: other
       borrower_name: Commercial Borrower

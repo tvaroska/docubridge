@@ -63,8 +63,8 @@
       </div>
       <div class="stage-progress-pills" id="stage-progress-pills">
         <button class="stage-step active" id="step-pill-0" onclick="window.jumpToBeat(0)">0. Baseline (0/3)</button>
-        <button class="stage-step" id="step-pill-1" onclick="window.dropSampleBatch('batch_1')">1. Debt Schedule (3→6)</button>
-        <button class="stage-step" id="step-pill-2" onclick="window.dropSampleBatch('batch_2')">2. Cross-Doc Wire</button>
+        <button class="stage-step" id="step-pill-1" onclick="window.dropSampleBatch('batch_1')">1. Debt Schedule (3→7)</button>
+        <button class="stage-step" id="step-pill-2" onclick="window.dropSampleBatch('batch_2')">2. A2A + Page 14 Wire</button>
         <button class="stage-step" id="step-pill-3" onclick="window.approveWaiver()">3. Overwatch Waiver</button>
         <button class="stage-step" id="step-pill-4" onclick="window.distillSkill()">4. Agent Gym &amp; Day-2</button>
       </div>
@@ -89,7 +89,7 @@
       <div class="kpi-card">
         <div class="kpi-label">SKILL REGISTRY &amp; CONTINUAL LEARNING</div>
         <div class="kpi-val" id="kpi-skill">v1.0.0</div>
-        <div class="kpi-sub" id="kpi-skill-sub">consolidation-payoff · Guided Review</div>
+        <div class="kpi-sub" id="kpi-skill-sub">loan-payoff-statement · Guided Review</div>
       </div>
     </div>
   </section>
@@ -129,8 +129,11 @@
           <button class="chip-btn" id="btn-drop-batch1" onclick="window.dropSampleBatch('batch_1')">
             + Batch 1: 2025 Financials &amp; Appraisal (2 PDFs)
           </button>
+          <button class="chip-btn" id="btn-request-a2a" onclick="window.requestA2aPayoff()">
+            ⚡ Request A2A Payoff (#FNB-4402)
+          </button>
           <button class="chip-btn" id="btn-drop-batch2" onclick="window.dropSampleBatch('batch_2')">
-            + Batch 2: Oct Bank Stmt &amp; FNB Payoff (2 PDFs)
+            + Batch 2: 28p Bank Stmt &amp; Apex PDF
           </button>
           <button class="chip-btn purple" id="btn-drop-day2" onclick="window.dropSampleBatch('day_2')">
             + Day-2: Apex Precision PDF
@@ -220,8 +223,8 @@
         <div id="otel-waterfall-box" class="waterfall-box"></div>
 
         <div class="skill-md-section">
-          <div class="section-mini-title">COMPILED AGENT SKILL (`consolidation-payoff` SKILL.md)</div>
-          <pre id="compiled-skill-pre" class="skill-code-pre">Distill the cross-document payoff waiver in Step 4 to compile `consolidation-payoff@1.1.0` via Gemini 4 Argon.</pre>
+          <div class="section-mini-title">COMPILED AGENT SKILL (`loan-payoff-statement` SKILL.md)</div>
+          <pre id="compiled-skill-pre" class="skill-code-pre">Compile the cross-document payoff waiver in Step 4 to inspect `loan-payoff-statement@1.1.0` policy limits and promote to active.</pre>
         </div>
       </div>
     </section>

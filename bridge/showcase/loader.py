@@ -87,10 +87,34 @@ def load_manifest(path: Path) -> ScenarioManifest:
 
 
 def discover_manifests(
-    scenarios_dir: Path | None = None,
+    scenarios_dir: Path | str | None = None,
+    *,
+    storage_client: Any = None,
 ) -> tuple[ScenarioManifest, ...]:
-    """All manifests under the scenarios root, ordered by (`order`, `id`)."""
-    root = scenarios_root(scenarios_dir)
+    """All manifests under the scenarios root (local folder or `gs://` bucket), ordered by (`order`, `id`)."""
+    raw_override = (
+        str(scenarios_dir).strip()
+        if isinstance(scenarios_dir, str)
+        else (
+            ""
+            if scenarios_dir is not None
+            else os.environ.get(SCENARIOS_DIR_ENV, "").strip()
+        )
+    )
+    if raw_override.startswith("gs://"):
+        from bridge.showcase.gcs_scenarios import discover_gcs_manifests
+
+        try:
+            return discover_gcs_manifests(
+                raw_override,
+                manifest_filename=MANIFEST_FILENAME,
+                storage_client=storage_client,
+            )
+        except ValueError as exc:
+            raise ScenarioLoadError(str(exc)) from exc
+
+    path_dir = Path(scenarios_dir) if isinstance(scenarios_dir, str) else scenarios_dir
+    root = scenarios_root(path_dir)
     if not root.is_dir():
         return ()
     manifests = [load_manifest(p) for p in sorted(root.glob(f"*/{MANIFEST_FILENAME}"))]

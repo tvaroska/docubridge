@@ -172,6 +172,12 @@ def patch_state(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any]
             for item in ctx.state.get(list_key, []):
                 patch = patches.get(item.get("id"))
                 if patch:
+                    if (
+                        item.get("source_mode") == "A2A_PATH_A"
+                        and item.get("status") == "satisfied"
+                        and patch.get("status") == "satisfied"
+                    ):
+                        continue
                     item.update(ctx.render(patch))
         for dotted, value in (params.get("append") or {}).items():
             _set_path(ctx.state, dotted, ctx.render(value), append=True)
@@ -250,7 +256,10 @@ def gym_distill_and_compile(
         **distill,
     )
     report = ctx.gym.evaluate_candidate_rule(rule.rule_id, auto_promote=True)
-    compiled = ctx.gym.compile_rules_to_skill(**ctx.render(params["compile"]))
+    compile_args = dict(ctx.render(params["compile"]))
+    if "_gym_auto_promote" in ctx.state:
+        compile_args["auto_promote"] = bool(ctx.state.pop("_gym_auto_promote"))
+    compiled = ctx.gym.compile_rules_to_skill(**compile_args)
 
     day2 = params["day2"]
     day2_doc = ctx.render(day2["document"])
@@ -296,6 +305,8 @@ def gym_distill_and_compile(
         "skill_version": compiled["version"],
         "skill_revision_id": compiled["revision_id"],
         "skill_urn": compiled["skill_urn"],
+        "target_state": compiled.get("target_state", "ACTIVE"),
+        "is_default_revision": compiled.get("is_default_revision", True),
         "skill_markdown": compiled.get("skill_markdown", ""),
         "stress_cases_passed": report.stress_cases_passed,
         "stress_cases_total": report.stress_cases_total,

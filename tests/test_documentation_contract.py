@@ -548,6 +548,7 @@ def test_fsi_skills_loaded_and_advertised_on_a2a_agent_card() -> None:
         "cre-credit-agreement",
         "mai-appraisal",
         "commercial-property-quote",
+        "loan-payoff-statement",
     )
     assert proc_skill.candidate_doctypes == expected_fsi_doctypes
     for dtype in expected_fsi_doctypes:

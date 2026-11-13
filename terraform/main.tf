@@ -198,6 +198,7 @@ module "runtime" {
   skills_bucket    = module.gcs.skills_bucket_name
   artifacts_bucket = module.gcs.artifacts_bucket_name
   vault_bucket     = module.gcs.audit_vault_bucket_name
+  scenarios_bucket = module.gcs.scenarios_bucket_name
   # Cloud Tasks scheduler wiring (P7-4) as plain envs (a queue path / SA email are
   # not secrets). The follow-up callback URL is the runtime's OWN service_uri — a
   # Terraform self-reference cycle, so it is injected out-of-band at deploy (P7-9)

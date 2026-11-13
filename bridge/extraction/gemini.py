@@ -522,8 +522,6 @@ class GeminiExtractor:
             ontology_revision=ontology_revision,
             catalog_order=catalog_order,
         )
-        # The catalog is built first on purpose: a registry/authoring error must
-        # surface before any artifact fetch is issued.
         resolved = _coerce_resolved(await maybe_await(self._resolver(artifact_name)))
         client = self._get_client()
         document = self._document_part(resolved, client=client)
@@ -531,6 +529,8 @@ class GeminiExtractor:
         if response_schema is not None:
             config["response_schema"] = response_schema
         config["max_output_tokens"] = self._max_output_tokens
+        if "flash" in self._model.lower():
+            config["thinking_config"] = {"thinking_budget": 0}
 
         base = [prompt, document]
         if self._prepass is not None:
@@ -624,16 +624,17 @@ class GeminiExtractor:
         test double implements only ``.models.generate_content``, so the thread hop —
         not ``client.aio`` — is the port-neutral fix.
         """
+        mode_tag = "PDF_PATH_B_ARGON" if "argon" in self._model else "PDF_PATH_B_FLASH"
         with trace_step(
             "docubridge.extract.call_llm",
             {
                 "docubridge.zone": "2_extraction_quarantine",
+                "source_mode": mode_tag,
                 "gen_ai.system": "gemini_platform",
                 "gen_ai.operation.name": "call_llm",
                 "gen_ai.agent.name": "extraction_agent",
                 "gen_ai.request.model": self._model,
                 "gen_ai.response.model": self._model,
-                "docubridge.finops.traffic_type": "production_inference",
                 "finops.traffic_type": "production_inference",
             },
         ) as span:
@@ -665,7 +666,6 @@ class GeminiExtractor:
                     span.set_attribute(
                         "gen_ai.usage.reasoning.output_tokens", int(thoughts_tok)
                     )
-                    span.set_attribute("docubridge.thinking_tokens", int(thoughts_tok))
             return response
 
     async def _generate_validated(

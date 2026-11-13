@@ -319,7 +319,7 @@ def test_p8_4_live_schema_evolution_4_beat_collab_stage() -> None:
     beat0 = r_reset.json()
     assert beat0["beat"] == 0
     assert beat0["active_ontology_revision"] == BASELINE_REVISION_ID
-    assert beat0["entity_count"] == 7
+    assert beat0["entity_count"] == 8
 
     # Beat 1: Carrier uploads 1-page Schedule B Coastal Wind Deductible Endorsement
     r_b1 = client.post("/v1/demo/schema-evolution/advance", json={"beat": 1})
@@ -345,7 +345,7 @@ def test_p8_4_live_schema_evolution_4_beat_collab_stage() -> None:
     beat3 = r_b3.json()
     assert beat3["beat"] == 3
     assert beat3["active_ontology_revision"] == "ont-rev-v1-2-insurance"
-    assert beat3["entity_count"] == 8
+    assert beat3["entity_count"] == 9
     assert beat3["done"] is True
     assert beat3["financial_summary"]["coastal_wind_deductible"] == "$100,000.00"
     assert (

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -22,6 +23,7 @@ from opentelemetry.trace import (
 from bridge.telemetry.exporters import (
     _clean_attr_value,
     ensure_telemetry_initialized,
+    force_flush_telemetry,
     get_tracer,
 )
 from bridge.telemetry.outcome import (
@@ -436,9 +438,17 @@ class OtelAsgiMiddleware:
                         if active_owner:
                             span.set_attribute(OUTCOME_OWNER_KEY, active_owner)
                         message = {**message, "headers": out_headers}
+                    elif (
+                        message.get("type") == "http.response.body"
+                        and not message.get("more_body", False)
+                        and os.environ.get("K_SERVICE")
+                    ):
+                        await asyncio.to_thread(force_flush_telemetry, 4000)
                     await send(message)
 
                 await self.app(scope, receive, _send_with_trace)
+            if os.environ.get("K_SERVICE"):
+                await asyncio.to_thread(force_flush_telemetry, 3000)
         finally:
             if token is not None:
                 context.detach(token)

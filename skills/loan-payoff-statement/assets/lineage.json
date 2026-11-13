@@ -1,0 +1,13 @@
+{
+  "compiled_by_model": "gemini-4-argon",
+  "compiled_rule_ids": [
+    "rule-3585d9fb"
+  ],
+  "parent_revision_id": "rev-v1-0-baseline",
+  "revision_id": "rev-v1-1-43debe2b",
+  "skill_name": "loan-payoff-statement",
+  "skill_urn": "urn:skill:projects-docubridge-showcase:locations:global:private-loan-payoff-statement",
+  "target_state": "ACTIVE",
+  "version": "1.1.0",
+  "workhorse_model": "gemini-3.8-flash"
+}

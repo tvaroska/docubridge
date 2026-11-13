@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   bridge-kind: process
   bridge-pattern: collect
-  bridge-candidate-doctypes: "trid-closing-disclosure cre-credit-agreement mai-appraisal commercial-property-quote"
+  bridge-candidate-doctypes: "trid-closing-disclosure cre-credit-agreement mai-appraisal commercial-property-quote loan-payoff-statement"
   bridge-tags: "banking mortgage insurance lending underwriting collect fsi"
   bridge-policy: assets/policy.yaml
   bridge-hitl: park

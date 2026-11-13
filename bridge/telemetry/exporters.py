@@ -284,7 +284,7 @@ class CloudTraceV2SpanExporter(SpanExporter):
         self._otlp_exporter = OTLPSpanExporter(
             endpoint=resolved_endpoint,
             headers=init_headers,
-            timeout=5,
+            timeout=10,
         )
 
     @property
@@ -354,6 +354,10 @@ class CloudTraceV2SpanExporter(SpanExporter):
             session = getattr(self._otlp_exporter, "_session", None)
             if session is not None and hasattr(session, "headers"):
                 session.headers.update(auth_headers)
+            otlp_client = getattr(self._otlp_exporter, "_client", None)
+            client_hdrs = getattr(otlp_client, "_headers", None)
+            if isinstance(client_hdrs, dict):
+                client_hdrs.update(auth_headers)
         try:
             return self._otlp_exporter.export(spans)
         except Exception as exc:
@@ -390,7 +394,13 @@ def ensure_telemetry_initialized() -> TracerProvider:
         if isinstance(current, TracerProvider):
             if not _PROVIDER_INITIALIZED:
                 current.add_span_processor(SimpleSpanProcessor(_IN_MEMORY_EXPORTER))
-                current.add_span_processor(BatchSpanProcessor(_CLOUD_TRACE_EXPORTER))
+                current.add_span_processor(
+                    BatchSpanProcessor(
+                        _CLOUD_TRACE_EXPORTER,
+                        schedule_delay_millis=250,
+                        export_timeout_millis=10000,
+                    )
+                )
                 configure_propagation(current)
                 _PROVIDER_INITIALIZED = True
             else:
@@ -400,11 +410,24 @@ def ensure_telemetry_initialized() -> TracerProvider:
         resource = build_gcp_resource()
         provider = TracerProvider(resource=resource)
         provider.add_span_processor(SimpleSpanProcessor(_IN_MEMORY_EXPORTER))
-        provider.add_span_processor(BatchSpanProcessor(_CLOUD_TRACE_EXPORTER))
+        provider.add_span_processor(
+            BatchSpanProcessor(
+                _CLOUD_TRACE_EXPORTER,
+                schedule_delay_millis=250,
+                export_timeout_millis=10000,
+            )
+        )
         configure_propagation(provider)
         trace.set_tracer_provider(provider)
         _PROVIDER_INITIALIZED = True
         return provider
+
+
+def force_flush_telemetry(timeout_millis: int = 4000) -> None:
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "force_flush"):
+        with contextlib.suppress(Exception):
+            provider.force_flush(timeout_millis)
 
 
 def get_tracer() -> trace.Tracer:

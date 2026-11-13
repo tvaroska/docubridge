@@ -78,7 +78,7 @@ def corpus_server(monkeypatch, edge_mode):
 
 
 def _pdf_bytes(record_id: str) -> bytes:
-    return (BENEFITS_ROOT / RECORDS[record_id]["artifact"]).read_bytes()
+    return corpus_pdf.build_conformance_pdf(RECORDS[record_id])
 
 
 async def _journey(record_id: str, leg: str, ref: str, server, *, client=None):
@@ -383,10 +383,12 @@ def test_conformance_pdfs_are_regenerable_and_carry_the_oracle(record_id, tmp_pa
     assert record_id in corpus_pdf.CONFORMANCE_DOC_IDS
     assert record["artifact"] == f"images/{record_id}.pdf"  # the parity pivot
     committed = BENEFITS_ROOT / record["artifact"]
+    assert not committed.exists()
     regenerated = corpus_pdf.write_conformance_pdf(record, tmp_path / "regen.pdf")
-    assert regenerated.read_bytes() == committed.read_bytes()
+    expected_bytes = corpus_pdf.build_conformance_pdf(record)
+    assert regenerated.read_bytes() == expected_bytes
 
-    page = committed.read_bytes().decode("cp1252")
+    page = expected_bytes.decode("cp1252")
     for value in _printed_cells(record):
         assert value in page, f"{value!r} is not printed on {record_id}'s page"
     assert record["party"] in page

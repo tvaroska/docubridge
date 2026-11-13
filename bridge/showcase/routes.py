@@ -17,6 +17,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 
+from bridge.showcase.counterparty_and_fleet import (
+    promote_compiled_skill,
+    request_a2a_payoff,
+    run_meridian_fleet_deal,
+)
 from bridge.showcase.engine import ScenarioEngine, UnknownScenarioError
 from bridge.showcase.live_extraction import (
     build_initial_live_telemetry,
@@ -29,6 +34,9 @@ from bridge.user_interaction.schemas import (
     AdvanceConsolidationCollabRequest,
     AdvanceSchemaEvolutionCollabRequest,
     LiveCollabModeRequest,
+    PromoteScenarioSkillBody,
+    RequestA2aPayoffBody,
+    RunMeridianFleetDealBody,
     UploadConsolidationPdfRequest,
 )
 from contract.scenario import AdvanceScenarioRequest, ScenarioStageKind
@@ -162,6 +170,7 @@ def _distill_skill(
     for name in ("expand", "reconcile", "waiver"):
         if ctx.state.get("beat", 0) < beats[name]:
             engine.run_beat(scenario_id, beats[name])
+    ctx.state["_gym_auto_promote"] = body.auto_promote
     live = body.mode == "live" and is_live_gemini_configured()
     prev_env = os.environ.get("BRIDGE_GYM_LIVE_LLM")
     try:
@@ -175,7 +184,11 @@ def _distill_skill(
             os.environ["BRIDGE_GYM_LIVE_LLM"] = prev_env
     revs = engine.gym.list_skill_revisions(config["gym_skill_doctype"])
     if revs and ctx.state.get("agent_gym_payoff") is not None:
-        ctx.state["agent_gym_payoff"]["skill_markdown"] = revs[0].skill_markdown
+        ctx.state["agent_gym_payoff"]["skill_markdown"] = revs[-1].skill_markdown
+        ctx.state["agent_gym_payoff"]["target_state"] = revs[-1].target_state
+        ctx.state["agent_gym_payoff"]["is_default_revision"] = revs[
+            -1
+        ].is_default_revision
     telem = ctx.state.setdefault("live_telemetry", build_initial_live_telemetry())
     elapsed_ms = max(25, int((time.monotonic() - t0) * 1000))
     telem["last_action_latency_ms"] = elapsed_ms
@@ -264,6 +277,11 @@ def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> No
     def scenario_seed_endpoint() -> dict[str, Any]:
         return engine.seed_all()
 
+    @router.post("/v1/demo/scenarios/reload")
+    def scenario_reload_endpoint() -> dict[str, Any]:
+        """Hot-reload scenario manifests and clear cached PDFs from `BRIDGE_SCENARIOS_DIR`."""
+        return engine.reload()
+
     @router.get("/v1/demo/scenarios/{scenario_id}/pdfs")
     def scenario_pdfs_endpoint(scenario_id: str) -> dict[str, Any]:
         return _pdf_listing(
@@ -295,6 +313,58 @@ def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> No
         scenario_id: str, body: LiveCollabModeRequest
     ) -> dict[str, Any]:
         return _distill_skill(engine, scenario_id, body)
+
+    @router.post("/v1/demo/scenarios/{scenario_id}/request-a2a-payoff")
+    def scenario_request_a2a_payoff_endpoint(
+        scenario_id: str, body: RequestA2aPayoffBody
+    ) -> dict[str, Any]:
+        try:
+            return request_a2a_payoff(
+                engine,
+                scenario_id,
+                counterparty_id=body.counterparty_id,
+                mode=body.mode,
+            )
+        except UnknownScenarioError as exc:
+            raise _not_found(scenario_id) from exc
+
+    @router.post("/v1/demo/scenarios/{scenario_id}/promote-skill")
+    def scenario_promote_skill_endpoint(
+        scenario_id: str, body: PromoteScenarioSkillBody
+    ) -> dict[str, Any]:
+        try:
+            return promote_compiled_skill(
+                engine, scenario_id, revision_id=body.revision_id
+            )
+        except UnknownScenarioError as exc:
+            raise _not_found(scenario_id) from exc
+
+    @router.post("/v1/demo/scenarios/{scenario_id}/run-fleet-deal")
+    def scenario_run_fleet_deal_endpoint(
+        scenario_id: str, body: RunMeridianFleetDealBody, response: Response
+    ) -> dict[str, Any]:
+        try:
+            outcome_id, payload = run_meridian_fleet_deal(
+                engine,
+                scenario_id,
+                case_id=body.case_id,
+                case_type=body.case_type,
+                deal_entity_id=body.deal_entity_id,
+                borrower_name=body.borrower_name,
+                fnb_account=body.fnb_account,
+                fnb_amount=body.fnb_amount,
+                pdf_uris=body.pdf_uris,
+                wire_amount=body.wire_amount,
+                wire_facility_ref=body.wire_facility_ref,
+                wire_memo=body.wire_memo,
+                policy_ceiling_usd=body.policy_ceiling_usd,
+                parent_outcome_id=body.parent_outcome_id,
+                mode=body.mode,
+            )
+        except UnknownScenarioError as exc:
+            raise _not_found(scenario_id) from exc
+        response.headers["x-outcome-id"] = outcome_id
+        return payload
 
     _register_legacy_aliases(router, engine)
 
@@ -362,6 +432,25 @@ def _register_legacy_aliases(router: APIRouter, engine: ScenarioEngine) -> None:
         body: LiveCollabModeRequest,
     ) -> dict[str, Any]:
         return _distill_skill(engine, _require(engine, consolidation), body)
+
+    @router.post("/v1/demo/consolidation-collab/request-a2a-payoff")
+    def request_consolidation_a2a_payoff_endpoint(
+        body: RequestA2aPayoffBody,
+    ) -> dict[str, Any]:
+        return request_a2a_payoff(
+            engine,
+            _require(engine, consolidation),
+            counterparty_id=body.counterparty_id,
+            mode=body.mode,
+        )
+
+    @router.post("/v1/demo/consolidation-collab/promote-skill")
+    def promote_consolidation_skill_endpoint(
+        body: PromoteScenarioSkillBody,
+    ) -> dict[str, Any]:
+        return promote_compiled_skill(
+            engine, _require(engine, consolidation), revision_id=body.revision_id
+        )
 
     @router.get("/v1/demo/schema-evolution/state")
     def get_schema_evolution_state(

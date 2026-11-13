@@ -29,7 +29,16 @@ from bridge.extraction.chunking import (
 )
 from contract.enums import ReviewReason
 from contract.extraction import ExtractionResult, fields_requiring_review
-from tests.corpus_pdf import BENEFITS_ROOT, build_multipage_pdf, build_pdf, load_records
+from tests.corpus_pdf import (
+    CONFORMANCE_DOC_IDS,
+    CONFORMANCE_PATH,
+    PDF_DOC_IDS,
+    build_conformance_pdf,
+    build_multipage_pdf,
+    build_pdf,
+    build_quote_pdf,
+    load_records,
+)
 from tests.corpus_scanned_pdf import build_scanned_quote_pdf
 
 CHUNKING = Path(__file__).resolve().parents[1] / "bridge/extraction/chunking.py"
@@ -40,11 +49,13 @@ CHUNKING = Path(__file__).resolve().parents[1] / "bridge/extraction/chunking.py"
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize(
-    "pdf", sorted((BENEFITS_ROOT / "images").glob("*.pdf")), ids=lambda p: p.name
-)
-def test_committed_benefits_pdfs_are_one_page(pdf):
-    assert pdf_page_count(pdf.read_bytes()) == 1
+@pytest.mark.parametrize("doc_id", [*PDF_DOC_IDS, *CONFORMANCE_DOC_IDS])
+def test_committed_benefits_pdfs_are_one_page(doc_id):
+    if doc_id in PDF_DOC_IDS:
+        raw = build_quote_pdf(load_records()[doc_id])
+    else:
+        raw = build_conformance_pdf(load_records(CONFORMANCE_PATH)[doc_id])
+    assert pdf_page_count(raw) == 1
 
 
 def test_single_page_generator_is_one_page():

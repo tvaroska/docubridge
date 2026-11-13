@@ -45,6 +45,7 @@ from contract.wire import CollectRequest, Requirement, RequirementsList
 from tests.email_fixtures import (
     BASE_URL,
     CI_PDF,
+    CI_PDF_BYTES,
     CONFORMANCE,
     DUE,
     MAILBOX,
@@ -287,7 +288,7 @@ def test_poll_loop_files_a_landed_reply_with_no_explicit_drain(host_env, dsn):
             _reply_address(client, "carrier-b"),
             message_id="<quote-1@carrier-b.example>",
             sender="quotes@carrier-b.example",
-            attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+            attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")],
         )
         key = landing_key(raw)
         assert proc.port.land(key, raw)
@@ -365,7 +366,7 @@ def _replica(store: ExchangeStore, mail_dir) -> EmailProcessor:
 def _land_ci_reply(proc: EmailProcessor, party: str = "carrier-a") -> str:
     raw = compose(
         proc.reply_address(RFP_ID, party),
-        attachments=[(CI_PDF.name, CI_PDF.read_bytes(), "application/pdf")],
+        attachments=[(CI_PDF.name, CI_PDF_BYTES, "application/pdf")],
     )
     key = landing_key(raw)
     assert proc.port.land(key, raw)

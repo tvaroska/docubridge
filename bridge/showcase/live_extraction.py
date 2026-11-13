@@ -261,8 +261,10 @@ def _invoke_reasoning_summary(
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,
-                max_output_tokens=220,
-                thinking_config=types.ThinkingConfig(thinking_budget=128),
+                max_output_tokens=1024,
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW
+                ),
             ),
         )
         text = str(getattr(resp, "text", "") or "").strip()

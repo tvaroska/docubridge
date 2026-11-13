@@ -449,6 +449,12 @@ def _corpus_resolver(corpus_root: Path) -> Resolver:
             raise ValueError(
                 f"artifact {artifact_name!r} escapes the corpus root"
             ) from exc
+        if not path.is_file() and artifact_name.lower().endswith(".pdf"):
+            from bridge.extraction.corpus_pdf import resolve_corpus_pdf_bytes
+
+            synth = resolve_corpus_pdf_bytes(root, artifact_name)
+            if synth is not None:
+                return synth, mime_for(artifact_name)
         return path.read_bytes(), mime_for(artifact_name)
 
     return _resolve

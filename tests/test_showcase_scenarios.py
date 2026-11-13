@@ -238,7 +238,7 @@ def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes() -> N
     assert b1.executed_beats == (1,)
     p1 = b1.payload
     assert p1["beat"] == 1 and p1["done"] is False
-    assert p1["counts"] == {"total": 6, "satisfied": 2, "waived": 1, "required": 3}
+    assert p1["counts"] == {"total": 7, "satisfied": 2, "waived": 1, "required": 4}
     items = {i["id"]: i for i in p1["borrower_checklist"]}
     assert items["item-1-financials"]["status"] == "satisfied"
     assert items["item-1-financials"]["page_number"] == 4
@@ -246,12 +246,13 @@ def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes() -> N
     assert items["item-3-appraisal"]["status"] == "satisfied"
     assert items["item-4-fnb-payoff"]["status"] == "required"
     assert items["item-4-fnb-payoff"]["emergent"] is True
-    assert items["item-5-equip-payoff"]["status"] == "required"
-    assert items["item-6-internal-loc"]["status"] == "waived"
+    assert items["item-5-apex-payoff"]["status"] == "required"
+    assert items["item-6-equip-payoff"]["status"] == "required"
+    assert items["item-7-internal-loc"]["status"] == "waived"
 
     p2 = engine.advance(sid, 2).payload
-    assert p2["counts"] == {"total": 6, "satisfied": 4, "waived": 1, "required": 1}
-    assert p2["cross_doc_discovery"]["page_number"] == 2
+    assert p2["counts"] == {"total": 7, "satisfied": 5, "waived": 1, "required": 1}
+    assert p2["cross_doc_discovery"]["page_number"] == 14
     assert p2["cross_doc_discovery"]["bounding_box"] == [0.16, 0.54, 0.88, 0.63]
     assert p2["cross_doc_discovery"]["wire_amount"] == "$48,210.00"
     assert "PAID IN FULL" in p2["cross_doc_discovery"]["wire_reference"]
@@ -259,8 +260,8 @@ def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes() -> N
 
     p3 = engine.advance(sid, 3).payload
     assert p3["beat"] == 3 and p3["done"] is True
-    assert p3["counts"] == {"total": 6, "satisfied": 4, "waived": 2, "required": 0}
-    assert {i["id"]: i for i in p3["borrower_checklist"]}["item-5-equip-payoff"][
+    assert p3["counts"] == {"total": 7, "satisfied": 5, "waived": 2, "required": 0}
+    assert {i["id"]: i for i in p3["borrower_checklist"]}["item-6-equip-payoff"][
         "status"
     ] == ("waived")
     assert p3["underwriter_overwatch"]["status"] == "approved"
@@ -274,7 +275,7 @@ def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes() -> N
 
     p4 = engine.advance(sid, 4).payload
     payoff = p4["agent_gym_payoff"]
-    assert payoff["skill_name"] == "consolidation-payoff"
+    assert payoff["skill_name"] == "loan-payoff-statement"
     assert payoff["skill_version"] == "1.1.0"
     assert payoff["stress_cases_passed"] == 4 and payoff["stress_cases_total"] == 4
     assert len(payoff["stress_cases"]) == 4
@@ -282,13 +283,13 @@ def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes() -> N
     assert payoff["day2_status"] == "accepted" and payoff["day2_gate"] == "auto_approve"
     assert payoff["day2_latency_ms"] == 142
     assert payoff["human_touchpoints"] == 0 and payoff["escalation_tokens"] == 0
-    assert "consolidation-payoff@1.1.0" in p4["agent1_bridge_status"]["headline"]
+    assert "loan-payoff-statement@1.1.0" in p4["agent1_bridge_status"]["headline"]
     assert payoff["rule_id"] in p4["agent2_policy_status"]["headline"]
 
     # Advancing backwards restarts from Beat 0 before replaying.
     back = engine.advance(sid, 1)
     assert back.executed_beats == (1,)
-    assert back.payload["counts"]["total"] == 6
+    assert back.payload["counts"]["total"] == 7
 
     rst = engine.reset(sid).payload
     assert rst["beat"] == 0 and rst["done"] is False
@@ -320,7 +321,7 @@ def test_schema_evolution_insurance_beats_match_legacy_outcomes() -> None:
     assert b0["entity_id"] == "terrepower-coastal-2027"
     assert b0["beat"] == 0
     assert b0["active_ontology_revision"] == BASELINE_REVISION_ID
-    assert b0["entity_count"] == 7
+    assert b0["entity_count"] == 8
     assert len(b0["placement_checklist"]) == 3
 
     b1 = engine.advance(sid, 1).payload
@@ -335,7 +336,7 @@ def test_schema_evolution_insurance_beats_match_legacy_outcomes() -> None:
 
     b3 = engine.advance(sid, 3).payload
     assert b3["active_ontology_revision"] == "ont-rev-v1-2-insurance"
-    assert b3["entity_count"] == 8 and b3["done"] is True
+    assert b3["entity_count"] == 9 and b3["done"] is True
     assert b3["financial_summary"]["coastal_wind_deductible"] == "$100,000.00"
     assert ENTITY_WIND_ENDORSEMENT in b3["financial_summary"]["deductible_authority"]
     assert len(b3["graph_edges_preview"]) == 4
@@ -405,7 +406,7 @@ def test_generic_routes_and_legacy_aliases_share_one_engine() -> None:
     body = adv.json()
     assert body["scenario_id"] == consol["id"]
     assert body["executed_beats"] == [1, 2]
-    assert body["payload"]["counts"]["satisfied"] == 4
+    assert body["payload"]["counts"]["satisfied"] == 5
     assert client.get("/v1/demo/consolidation-collab/state").json()["beat"] == 2
     with pytest.raises(ValueError, match=r"beat must be in 1\.\.4"):
         _engine().advance(consol["id"], 9)
@@ -432,6 +433,6 @@ def test_operation_context_placeholders() -> None:
     assert ctx.render("${entity_id}") == ctx.manifest.entity_id
     assert ctx.render("${entity:day2}") == ctx.manifest.related_entity_ids["day2"]
     assert ctx.render("x ${display.client} y") == f"x {ctx.manifest.display.client} y"
-    assert ctx.render("${pdf_url:fnb-payoff}").endswith(".pdf")
+    assert ctx.render("${pdf_url:apex-payoff}").endswith(".pdf")
     with pytest.raises(KeyError):
         ctx.render("${doc:missing.vault_uri}")

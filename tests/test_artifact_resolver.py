@@ -48,10 +48,13 @@ from bridge.extraction.resolve import (
     resolve_document,
 )
 from contract.extraction import ExtractionResult
+from tests import corpus_pdf
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PDF_PATH = REPO_ROOT / "wiki/evals/benefits/images/benefits-carrier-c-eur-fr.pdf"
-PDF_BYTES = PDF_PATH.read_bytes()
+PDF_BYTES = corpus_pdf.build_quote_pdf(
+    corpus_pdf.load_records()["benefits-carrier-c-eur-fr"]
+)
 CORPUS_SVG = "images/gov-id-clean.svg"
 
 _CANNED = json.dumps(
@@ -353,10 +356,12 @@ async def test_file_uri_is_refused_by_default(monkeypatch):
         await resolve_document("file:///etc/passwd")
 
 
-async def test_file_uri_opt_in_reads_the_path(monkeypatch):
+async def test_file_uri_opt_in_reads_the_path(monkeypatch, tmp_path):
     monkeypatch.setenv("BRIDGE_ALLOW_FILE_URI", "1")
+    pdf_file = tmp_path / "quote.pdf"
+    pdf_file.write_bytes(PDF_BYTES)
 
-    resolved = await resolve_document(f"file://{PDF_PATH}")
+    resolved = await resolve_document(f"file://{pdf_file}")
 
     assert resolved.data == PDF_BYTES
     assert resolved.mime_type == "application/pdf"

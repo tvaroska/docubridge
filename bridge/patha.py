@@ -58,7 +58,10 @@ _LOG = logging.getLogger("bridge.patha")
 
 
 def validate_assertion(
-    assertion: dict | ExtractionResult, *, schemas: dict[str, dict] | None = None
+    assertion: dict | ExtractionResult,
+    *,
+    schemas: dict[str, dict] | None = None,
+    require_installed_schema: bool = False,
 ) -> ExtractionResult:
     """Schema-validate a structured extraction assertion (§2e), no disposition.
 
@@ -83,6 +86,10 @@ def validate_assertion(
     catalog = doctype_schemas() if schemas is None else schemas
     schema = catalog.get(doctype)
     if schema is None:
+        if require_installed_schema:
+            raise ValueError(
+                f"path-a: required doctype skill {doctype!r} has no installed schema"
+            )
         # Out of the installed label space — a free-string doctype (the corpus's
         # passport) must stay reportable; the disposition gate owns rejecting it.
         _LOG.debug(
@@ -91,6 +98,10 @@ def validate_assertion(
         return result
     model = key_field_model(doctype, schema)
     if model is None:
+        if require_installed_schema:
+            raise ValueError(
+                f"path-a: doctype skill {doctype!r} declares no key fields"
+            )
         # Installed but declares no key fields (half-installed asset). Skipping is
         # right, staying quiet about it is not — a capability gap is never silent.
         _LOG.warning(
@@ -113,6 +124,7 @@ async def validate_only(
     candidate_doctypes: list[str],
     thresholds: DispositionThresholds = DEFAULT_THRESHOLDS,
     schemas: dict[str, dict] | None = None,
+    require_installed_schema: bool = False,
 ) -> DispositionVerdict:
     """PATH-A: schema-validate the assertion, then dispose the asserted signals.
 
@@ -120,7 +132,9 @@ async def validate_only(
     produced the fields. ``async`` to mirror the Path-B ``step`` signature (the executor
     branches on shape, not on sync/async), though no I/O occurs.
     """
-    result = validate_assertion(assertion, schemas=schemas)
+    result = validate_assertion(
+        assertion, schemas=schemas, require_installed_schema=require_installed_schema
+    )
     signals = signals_from_result(result, candidate_doctypes=candidate_doctypes)
     return dispose_signals(signals, thresholds)
 
@@ -133,6 +147,7 @@ def validate_only_entry(
     thresholds: DispositionThresholds = DEFAULT_THRESHOLDS,
     artifact: ArtifactRef | None = None,
     schemas: dict[str, dict] | None = None,
+    require_installed_schema: bool = False,
 ) -> LedgerEntry:
     """Validate + dispose a Path-A assertion into a ``LedgerEntry`` (no extraction).
 
@@ -140,7 +155,9 @@ def validate_only_entry(
     Path-A entry is indistinguishable in the ledger from a Path-B one. Raises
     ``pydantic.ValidationError`` on a malformed assertion (before disposition).
     """
-    result = validate_assertion(assertion, schemas=schemas)
+    result = validate_assertion(
+        assertion, schemas=schemas, require_installed_schema=require_installed_schema
+    )
     signals = signals_from_result(result, candidate_doctypes=candidate_doctypes)
     verdict = dispose_signals(signals, thresholds)
     return project_ledger_entry(

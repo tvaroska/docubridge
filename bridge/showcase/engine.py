@@ -50,14 +50,17 @@ class ScenarioEngine:
         inbox: ActionInboxStore | None = None,
         gym: AgentGymEngine | None = None,
         refinery: SchemaRefineryEngine | None = None,
-        scenarios_dir: Path | None = None,
+        scenarios_dir: Path | str | None = None,
+        storage_client: Any = None,
     ) -> None:
+        self._scenarios_dir = scenarios_dir
+        self._storage_client = storage_client
         self._manifests: dict[str, ScenarioManifest] = {
             m.id: m
             for m in (
                 manifests
                 if manifests is not None
-                else discover_manifests(scenarios_dir)
+                else discover_manifests(scenarios_dir, storage_client=storage_client)
             )
         }
         self.store = store or operational_store_from_env()
@@ -263,12 +266,30 @@ class ScenarioEngine:
             executed_beats=tuple(executed),
         )
 
-    # -------------------------------------------------------------------- pdfs
+    def reload(self) -> dict[str, Any]:
+        """Hot-reload scenario manifests and clear cached PDF bytes (`<2s` zero-redeploy)."""
+        self.reset_all()
+        self._pdfs.clear()
+        self._manifests = {
+            m.id: m
+            for m in discover_manifests(
+                self._scenarios_dir, storage_client=self._storage_client
+            )
+        }
+        return {
+            "status": "reloaded",
+            "scenario_count": len(self._manifests),
+            "scenario_ids": list(self._manifests),
+        }
+
     def pdf_catalog(self, scenario_id: str) -> dict[str, RenderedPdf]:
         if scenario_id not in self._pdfs:
             manifest = self.get(scenario_id)
             assets = manifest.stage.pdf_assets if manifest.stage else ()
-            self._pdfs[scenario_id] = {a.asset_id: render_pdf_asset(a) for a in assets}
+            self._pdfs[scenario_id] = {
+                a.asset_id: render_pdf_asset(a, storage_client=self._storage_client)
+                for a in assets
+            }
         return self._pdfs[scenario_id]
 
     def pdf(self, scenario_id: str, asset_id: str) -> RenderedPdf:

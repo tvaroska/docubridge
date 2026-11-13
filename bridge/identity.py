@@ -61,7 +61,7 @@ DEFAULT_DEV_SVID_SECRET = "docubridge-spiffe-svid-signing-key-v1"
 SvidAlgorithmLiteral = Literal["HS256", "RS256", "ES256"]
 ALLOWED_SVID_ALGORITHMS: frozenset[str] = frozenset({"HS256", "RS256", "ES256"})
 EXTERNAL_COUNTERPARTY_TRUST_DOMAINS: frozenset[str] = frozenset(
-    {"agents.fnb.example", "external.docubridge.io"}
+    {"agents.fnb.example", "agents.fnb.example.com", "external.docubridge.io"}
 )
 
 SPIFFE_SVID_HEADER = "x-bridge-spiffe-svid"
@@ -137,6 +137,12 @@ class SpiffeAgentPolicy(BaseModel):
         return self
 
 
+_ALL_INTERNAL_VIEWS: tuple[str, ...] = (
+    "v_underwriter_exposure",
+    "v_broker_placement",
+    "v_claims_coverage",
+)
+
 DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
     "spiffe://agents.docubridge.io/internal/credit-officer-agent": SpiffeAgentPolicy(
         spiffe_id="spiffe://agents.docubridge.io/internal/credit-officer-agent",
@@ -144,11 +150,7 @@ DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
         security_zone="internal",
         allowed_channels=("gemini_app",),
         allowed_roles=("underwriter", "broker", "executive"),
-        allowed_views=(
-            "v_underwriter_exposure",
-            "v_broker_placement",
-            "v_claims_coverage",
-        ),
+        allowed_views=_ALL_INTERNAL_VIEWS,
         allow_vault_promotion=True,
     ),
     "spiffe://agents.docubridge.io/internal/broker-agent": SpiffeAgentPolicy(
@@ -157,11 +159,7 @@ DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
         security_zone="internal",
         allowed_channels=("gemini_app",),
         allowed_roles=("broker", "executive"),
-        allowed_views=(
-            "v_broker_placement",
-            "v_claims_coverage",
-            "v_underwriter_exposure",
-        ),
+        allowed_views=_ALL_INTERNAL_VIEWS,
         allow_vault_promotion=True,
     ),
     "spiffe://agents.docubridge.io/internal/claims-agent": SpiffeAgentPolicy(
@@ -179,11 +177,7 @@ DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
         security_zone="internal",
         allowed_channels=("gemini_app",),
         allowed_roles=("underwriter", "broker", "executive"),
-        allowed_views=(
-            "v_underwriter_exposure",
-            "v_broker_placement",
-            "v_claims_coverage",
-        ),
+        allowed_views=_ALL_INTERNAL_VIEWS,
         allow_vault_promotion=True,
     ),
     "spiffe://agents.docubridge.io/portal/external-portal-agent": SpiffeAgentPolicy(
@@ -201,22 +195,21 @@ DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
         security_zone="internal",
         allowed_channels=("gemini_app",),
         allowed_roles=("broker", "claims", "underwriter", "executive"),
-        allowed_views=(
-            "v_broker_placement",
-            "v_claims_coverage",
-            "v_underwriter_exposure",
-        ),
+        allowed_views=_ALL_INTERNAL_VIEWS,
         allow_vault_promotion=True,
     ),
-    "spiffe://agents.fnb.example/external/fnb-payoff-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.fnb.example/external/fnb-payoff-agent",
-        display_name="FNB External Counterparty Payoff Agent",
-        security_zone="external",
-        allowed_channels=("custom_web",),
-        allowed_roles=("client", "carrier"),
-        allowed_views=("v_broker_placement",),
-        allow_vault_promotion=False,
-    ),
+    **{
+        f"spiffe://{td}/external/fnb-payoff-agent": SpiffeAgentPolicy(
+            spiffe_id=f"spiffe://{td}/external/fnb-payoff-agent",
+            display_name="FNB External Counterparty Payoff Agent",
+            security_zone="external",
+            allowed_channels=("custom_web",),
+            allowed_roles=("client", "carrier"),
+            allowed_views=("v_broker_placement",),
+            allow_vault_promotion=False,
+        )
+        for td in ("agents.fnb.example", "agents.fnb.example.com")
+    },
 }
 
 DEFAULT_ROLE_APPROVAL_LIMITS: dict[CatalogRoleLiteral, Decimal] = {

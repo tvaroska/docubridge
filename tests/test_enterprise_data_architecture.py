@@ -3539,33 +3539,35 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> 
     assert s0["financial_summary"]["ltv_formatted"] == "69.23%"
     assert s0["financial_summary"]["dscr_formatted"] == "1.44x"
 
-    # 2. Beat 1: Upload 2025 Audited Financials -> Discover 3-Row Debt Schedule -> Mutate Checklist (3 -> 6)
+    # 2. Beat 1: Upload 2025 Audited Financials -> Discover 4-Row Debt Schedule -> Mutate Checklist (3 -> 7)
     b1_resp = client.post("/v1/demo/consolidation-collab/advance", json={"beat": 1})
     assert b1_resp.status_code == 200
     b1 = b1_resp.json()
     assert b1["beat"] == 1
     assert b1["done"] is False
-    assert b1["counts"] == {"total": 6, "satisfied": 2, "waived": 1, "required": 3}
+    assert b1["counts"] == {"total": 7, "satisfied": 2, "waived": 1, "required": 4}
     items_by_id = {item["id"]: item for item in b1["borrower_checklist"]}
     assert items_by_id["item-1-financials"]["status"] == "satisfied"
     assert items_by_id["item-1-financials"]["page_number"] == 4
     assert items_by_id["item-3-appraisal"]["status"] == "satisfied"
     assert items_by_id["item-4-fnb-payoff"]["status"] == "required"
     assert items_by_id["item-4-fnb-payoff"]["emergent"] is True
-    assert items_by_id["item-5-equip-payoff"]["status"] == "required"
-    assert items_by_id["item-5-equip-payoff"]["emergent"] is True
-    assert items_by_id["item-6-internal-loc"]["status"] == "waived"
-    assert items_by_id["item-6-internal-loc"]["emergent"] is True
+    assert items_by_id["item-5-apex-payoff"]["status"] == "required"
+    assert items_by_id["item-5-apex-payoff"]["emergent"] is True
+    assert items_by_id["item-6-equip-payoff"]["status"] == "required"
+    assert items_by_id["item-6-equip-payoff"]["emergent"] is True
+    assert items_by_id["item-7-internal-loc"]["status"] == "waived"
+    assert items_by_id["item-7-internal-loc"]["emergent"] is True
 
-    # 3. Beat 2: Upload Oct 2026 Bank Statement + FNB Payoff -> Spot $48,210 PAID IN FULL wire on Page 2
+    # 3. Beat 2: FNB Path-A + Apex PDF + 28-Page Bank Stmt -> Spot $48,210 PAID IN FULL wire on Page 14
     b2_resp = client.post("/v1/demo/consolidation-collab/advance", json={"beat": 2})
     assert b2_resp.status_code == 200
     b2 = b2_resp.json()
     assert b2["beat"] == 2
     assert b2["done"] is False
-    assert b2["counts"] == {"total": 6, "satisfied": 4, "waived": 1, "required": 1}
+    assert b2["counts"] == {"total": 7, "satisfied": 5, "waived": 1, "required": 1}
     assert b2["cross_doc_discovery"] is not None
-    assert b2["cross_doc_discovery"]["page_number"] == 2
+    assert b2["cross_doc_discovery"]["page_number"] == 14
     assert b2["cross_doc_discovery"]["bounding_box"] == [0.16, 0.54, 0.88, 0.63]
     assert b2["cross_doc_discovery"]["wire_amount"] == "$48,210.00"
     assert "PAID IN FULL" in b2["cross_doc_discovery"]["wire_reference"]
@@ -3577,9 +3579,9 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> 
     b3 = b3_resp.json()
     assert b3["beat"] == 3
     assert b3["done"] is True
-    assert b3["counts"] == {"total": 6, "satisfied": 4, "waived": 2, "required": 0}
+    assert b3["counts"] == {"total": 7, "satisfied": 5, "waived": 2, "required": 0}
     items_b3 = {item["id"]: item for item in b3["borrower_checklist"]}
-    assert items_b3["item-5-equip-payoff"]["status"] == "waived"
+    assert items_b3["item-6-equip-payoff"]["status"] == "waived"
     assert b3["underwriter_overwatch"]["status"] == "approved"
     assert b3["underwriter_overwatch"]["oversight_rsr_score"] == 0.98
     assert b3["underwriter_overwatch"]["review_dwell_ms"] == 4800
@@ -3594,7 +3596,7 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> 
     assert b4["done"] is True
     payoff = b4["agent_gym_payoff"]
     assert payoff is not None
-    assert payoff["skill_name"] == "consolidation-payoff"
+    assert payoff["skill_name"] == "loan-payoff-statement"
     assert payoff["skill_version"] == "1.1.0"
     assert payoff["stress_cases_passed"] == 4
     assert payoff["stress_cases_total"] == 4

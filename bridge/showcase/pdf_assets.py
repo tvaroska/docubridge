@@ -197,7 +197,20 @@ def _draw(canvas: _PdfPageCanvas, element: dict[str, Any]) -> None:
         raise ValueError(f"unknown PDF drawing op {kind!r}")
 
 
-def render_pdf_asset(asset: ScenarioPdfAsset) -> RenderedPdf:
+def render_pdf_asset(
+    asset: ScenarioPdfAsset, *, storage_client: Any = None
+) -> RenderedPdf:
+    if asset.gcs_uri and not asset.pages:
+        from bridge.showcase.gcs_scenarios import fetch_gcs_bytes
+
+        raw = fetch_gcs_bytes(
+            asset.gcs_uri,
+            expected_sha256=asset.sha256,
+            storage_client=storage_client,
+        )
+        return RenderedPdf(
+            asset=asset, pdf_bytes=raw, sha256=hashlib.sha256(raw).hexdigest()
+        )
     pages: list[_PdfPageCanvas] = []
     for page in asset.pages:
         canvas = _PdfPageCanvas()
@@ -209,7 +222,7 @@ def render_pdf_asset(asset: ScenarioPdfAsset) -> RenderedPdf:
             f"pdf asset {asset.asset_id!r} declares page_count={asset.page_count} "
             f"but has {len(pages)} page specs"
         )
-    raw = _assemble_pdf(pages, title=asset.document_title)
+    raw = _assemble_pdf(pages, title=asset.document_title or asset.title)
     return RenderedPdf(
         asset=asset, pdf_bytes=raw, sha256=hashlib.sha256(raw).hexdigest()
     )
