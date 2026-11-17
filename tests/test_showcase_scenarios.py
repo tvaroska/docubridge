@@ -44,6 +44,15 @@ from contract.scenario import ScenarioDomain, ScenarioManifest, ScenarioStageKin
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _isolate_skills_and_telemetry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skills_copy = tmp_path / "skills"
+    shutil.copytree(REPO_ROOT / "skills", skills_copy)
+    monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(skills_copy))
+    monkeypatch.setenv("BRIDGE_CLOUD_TRACE_EXPORT", "0")
+
+
 def _engine() -> ScenarioEngine:
     store = InMemoryOperationalStore()
     return ScenarioEngine(
@@ -220,7 +229,10 @@ def test_seed_all_is_idempotent_and_reproduces_the_canonical_figures() -> None:
 # --------------------------------------------------------------------------- #
 # Consolidation stage                                                          #
 # --------------------------------------------------------------------------- #
-def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes() -> None:
+def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_skills_and_telemetry(tmp_path, monkeypatch)
     engine = _engine()
     sid = _by_kind(engine, ScenarioStageKind.consolidation)
 
@@ -395,7 +407,10 @@ def test_schema_evolution_benefits_beats_and_refinery_handoff() -> None:
 # --------------------------------------------------------------------------- #
 # Generic routes + legacy aliases                                              #
 # --------------------------------------------------------------------------- #
-def test_generic_routes_and_legacy_aliases_share_one_engine() -> None:
+def test_generic_routes_and_legacy_aliases_share_one_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _isolate_skills_and_telemetry(tmp_path, monkeypatch)
     client = TestClient(build_user_interaction_app())
     listed = client.get("/v1/demo/scenarios").json()["scenarios"]
     consol = next(s for s in listed if s["stage_kind"] == "consolidation")

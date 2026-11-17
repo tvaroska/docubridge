@@ -103,6 +103,10 @@ class SkillCompilerMixin:
         install_to_port: bool = False,
         auto_promote: bool = True,
         policy_ceiling_usd: str = "100000.00",
+        ceiling_note: str | None = None,
+        exact_match_condition: str | None = None,
+        fallback_target: str | None = None,
+        guardrail_bullets: list[str] | None = None,
     ) -> dict[str, Any]:
         """Harness Evolve Nightly Compiler: fold daytime SQL tribal rules into a versioned
         `SKILL.md` package via `gemini-4-argon` and register an immutable `SkillRevision`
@@ -204,6 +208,16 @@ class SkillCompilerMixin:
             )
             skill_uri = f"gs://{_skills_bucket()}/{doctype}/SKILL.md"
 
+            guardrail_kwargs: dict[str, Any] = {}
+            if ceiling_note is not None:
+                guardrail_kwargs["ceiling_note"] = ceiling_note
+            if exact_match_condition is not None:
+                guardrail_kwargs["exact_match_condition"] = exact_match_condition
+            if fallback_target is not None:
+                guardrail_kwargs["fallback_target"] = fallback_target
+            if guardrail_bullets is not None:
+                guardrail_kwargs["guardrail_bullets"] = guardrail_bullets
+
             skill_markdown = render_compiled_skill_markdown(
                 doctype=doctype,
                 semver=semver,
@@ -215,6 +229,7 @@ class SkillCompilerMixin:
                 policy_ceiling_usd=policy_ceiling_usd,
                 skill_urn=skill_urn,
                 target_state=target_state,
+                **guardrail_kwargs,
             )
 
             # Validate against ADK + DocuBridge SkillMeta validator before creating revision
@@ -279,19 +294,22 @@ class SkillCompilerMixin:
             self._save_skill_revision(rev_record)
 
             if install_to_port and is_default:
+                import contextlib
+
                 from bridge.ports import Port, get_adapter, resolve_mode
 
                 registry = get_adapter(
                     Port.skill_registry, resolve_mode(Port.skill_registry)
                 )
-                registry.install_skill(
-                    doctype,
-                    skill_markdown,
-                    {
-                        "assets/schema.json": schema_json_str,
-                        "assets/lineage.json": lineage_manifest,
-                    },
-                )
+                install_assets: dict[str, str] = {
+                    "assets/schema.json": schema_json_str,
+                    "assets/lineage.json": lineage_manifest,
+                }
+                with contextlib.suppress(KeyError, ValueError, OSError):
+                    install_assets["assets/validation.yaml"] = registry.read_asset(
+                        doctype, "assets/validation.yaml"
+                    )
+                registry.install_skill(doctype, skill_markdown, install_assets)
 
             span.set_attribute("docubridge.compiled_rule_count", len(rule_bullets))
             span.set_attribute("docubridge.skill_version", skill_version)

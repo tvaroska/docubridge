@@ -3500,10 +3500,14 @@ def test_docai_uptraining_dataset_export_and_verified_filtering(tmp_path: Path) 
         gym.close()
 
 
-def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> None:
+def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Verify the 4-Beat Collaborative Commercial Consolidation Loan workflow,
     cross-document Bank Statement payoff wire waiver, Agent Gym v1.1.0 compilation,
     Day-2 zero-touch auto-approval, and /demo split-screen DOM elements."""
+    import shutil
+
     from fastapi.testclient import TestClient
 
     from bridge.a2ui_inbox import InMemoryActionInboxStore
@@ -3511,6 +3515,12 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> 
     from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
     from bridge.operational_store import InMemoryOperationalStore
     from bridge.user_interaction import build_user_interaction_app
+
+    repo_skills = Path(__file__).resolve().parents[1] / "skills"
+    skills_copy = tmp_path / "skills"
+    shutil.copytree(repo_skills, skills_copy)
+    monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(skills_copy))
+    monkeypatch.setenv("BRIDGE_CLOUD_TRACE_EXPORT", "0")
 
     op_store = InMemoryOperationalStore()
     catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
@@ -3607,6 +3617,12 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver() -> 
     assert payoff["day2_latency_ms"] == 142
     assert payoff["human_touchpoints"] == 0
     assert payoff["escalation_tokens"] == 0
+    assert 'version: "1.1.0"' in (
+        skills_copy / "loan-payoff-statement" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert 'version: "1.0.0"' in (
+        repo_skills / "loan-payoff-statement" / "SKILL.md"
+    ).read_text(encoding="utf-8")
 
     # 6. Reset returns state to Beat 0
     rst_resp = client.post("/v1/demo/consolidation-collab/reset")

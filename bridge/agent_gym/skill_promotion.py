@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from typing import Any
 
@@ -11,6 +12,13 @@ from bridge.agent_gym.models import (
     SkillRevisionRecord,
 )
 from bridge.telemetry import trace_step
+
+DEFAULT_CEILING_NOTE = "any item above ceiling escalates to human review"
+DEFAULT_EXACT_MATCH_CONDITION = (
+    "Extracted fields and supporting source citations must satisfy all "
+    "canonical schema and deterministic reconciliation checks"
+)
+DEFAULT_FALLBACK_TARGET = "human review triage"
 
 
 def resolve_compiled_schema_json(
@@ -67,9 +75,24 @@ def render_compiled_skill_markdown(
     policy_ceiling_usd: str,
     skill_urn: str,
     target_state: str,
+    ceiling_note: str = DEFAULT_CEILING_NOTE,
+    exact_match_condition: str = DEFAULT_EXACT_MATCH_CONDITION,
+    fallback_target: str = DEFAULT_FALLBACK_TARGET,
+    guardrail_bullets: list[str] | None = None,
 ) -> str:
     """Render the governed `SKILL.md` document with explicit policy guardrails (`Decision 20`)."""
     rules_block = "\n".join(rule_bullets)
+    resolved_guardrails = (
+        guardrail_bullets
+        if guardrail_bullets is not None
+        else [
+            f"- **Amount Ceiling:** `<= ${policy_ceiling_usd}` USD ({ceiling_note})",
+            f"- **Exact Match Condition:** {exact_match_condition}",
+            f"- **Out-of-Policy Fallback:** Route all non-matching or over-ceiling items to {fallback_target}",
+            "- **Continuous Verification:** Sampled Step-2 `AI.GENERATE_TABLE` audit over skill-approved outcomes",
+        ]
+    )
+    guardrails_block = "\n".join(resolved_guardrails)
     return (
         f"---\n"
         f"name: {doctype}\n"
@@ -92,10 +115,7 @@ def render_compiled_skill_markdown(
         f"## Distilled Domain Precedence Rules (Compiled via Harness Evolve)\n"
         f"{rules_block}\n\n"
         f"## Policy Guardrails & Auto-Approval Boundaries\n"
-        f"- **Amount Ceiling:** `<= ${policy_ceiling_usd}` USD (any wire above ceiling escalates to human review)\n"
-        f"- **Exact Match Condition:** Wire memo must name the exact facility number + `'PAID IN FULL'` / `'FINAL PAYOFF'` and match balance to the cent\n"
-        f"- **Out-of-Policy Fallback:** Route all non-matching or over-ceiling items to `/overwatch` human triage\n"
-        f"- **Continuous Verification:** Sampled Step-2 `AI.GENERATE_TABLE` audit over skill-approved outcomes\n\n"
+        f"{guardrails_block}\n\n"
         f"## Runtime Execution Contract & Lineage\n"
         f"- **Skill URN:** `{skill_urn}`\n"
         f"- **Active Revision:** `{revision_id}` (parent: `{parent_revision_id}`, state: `{target_state}`)\n"
@@ -152,9 +172,29 @@ def execute_skill_promotion(
             registry = get_adapter(
                 Port.skill_registry, resolve_mode(Port.skill_registry)
             )
-            assets: dict[str, str] = {}
+            assets: dict[str, str] = {
+                "assets/lineage.json": json.dumps(
+                    {
+                        "skill_name": skill_name,
+                        "skill_urn": promoted.skill_urn,
+                        "revision_id": promoted.revision_id,
+                        "parent_revision_id": promoted.parent_revision_id,
+                        "version": promoted.version,
+                        "target_state": promoted.target_state,
+                        "compiled_by_model": promoted.compiled_by_model,
+                        "workhorse_model": promoted.workhorse_model,
+                        "compiled_rule_ids": list(promoted.compiled_rule_ids),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+            }
             if promoted.assets_schema_json:
                 assets["assets/schema.json"] = promoted.assets_schema_json
+            with contextlib.suppress(KeyError, ValueError, OSError):
+                assets["assets/validation.yaml"] = registry.read_asset(
+                    skill_name, "assets/validation.yaml"
+                )
             registry.install_skill(skill_name, promoted.skill_markdown, assets)
         span.set_attribute("skill_version", promoted.version)
         span.set_attribute("docubridge.active_revision_id", promoted.revision_id)

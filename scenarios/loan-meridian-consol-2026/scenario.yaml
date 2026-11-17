@@ -753,6 +753,9 @@ stage:
               issuer_pattern: EquipLease*
               install_to_port: true
               policy_ceiling_usd: "100000.00"
+              ceiling_note: "any wire above ceiling escalates to human review"
+              exact_match_condition: "Wire memo must name the exact facility number + `'PAID IN FULL'` / `'FINAL PAYOFF'` and match balance to the cent"
+              fallback_target: "`/overwatch` human triage"
             day2:
               context_prefix: ctx-apex-consol-day2
               document:

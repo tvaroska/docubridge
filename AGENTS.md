@@ -40,11 +40,11 @@ scripts/    local run-*.sh hosts + _dev-env.sh; deploy.sh / parity.sh (live GCP 
 
 - **Isolation & Declarative AST Invariants (`specs/ast.rules.yaml` + `tests/test_isolation_guard.py`):** `bridge/` **never imports** `agents/` or `examples/`, `examples/` **never imports** `bridge/` or `agents/`, and non-test code never imports `sqlalchemy.orm`, calls `subprocess.*(..., shell=True)`, or passes dynamic f-strings to `.execute()`. Both import `contract/`. Enforced in `<30ms` via `ast-grep scan --rule specs/ast.rules.yaml` (with declarative positive/negative controls verified in `tests/test_repo_hygiene.py`).
 - **Ports & Adapters (`bridge/ports/`):** Every managed-service boundary across all 14 boundaries (`sessions`, `task_store`, `exchange_store`, `skill_registry`, `memory_bank`, `scheduler`, `a2a_client`, `extraction`, `email_ingress`, `audit_vault`, `operational_store`, `action_inbox`, `agent_gym`, `knowledge_catalog`) resolves through `resolve_port_mode(port)` (`BRIDGE_PORT_<NAME>` → `BRIDGE_PORT_MODE` → `local`) and `get_port_adapter(port, mode)`, decomposed into `bridge/ports/local/{stores,services,enterprise,__init__}.py` and `bridge/ports/gcp/{common,stores,services,enterprise,__init__}.py`, and is exercised by shared parametrized tests (`@pytest.mark.port`, `adapter` fixture over `("local","gcp")`, GCP gated on `BRIDGE_TEST_GCP`). Parity is **terminal-outcome**, never ledger-identical. Legacy `seams` terminology is permanently removed.
-- **Skill-Name Literal Guard (`test_core_names_no_skill`):** `tests/test_isolation_guard.py` scans every Python AST string literal in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring literal equals an installed folder name in `skills/` (`address-proof`, `gov-id`, `utility-bill`, `benefits-procurement`, `benefits-quote`, `benefits-rfp`, `commercial-loan-underwriting`, `trid-closing-disclosure`, `cre-credit-agreement`, `mai-appraisal`, `commercial-property-quote`). Never hardcode an installed skill folder name inside `bridge/` core modules.
+- **Skill-Name Literal Guard (`test_core_names_no_skill`):** `tests/test_isolation_guard.py` scans every Python AST string literal in `bridge/` (outside `bridge/demos/`) and fails if any non-docstring literal equals an installed folder name in `skills/` (`address-proof`, `gov-id`, `utility-bill`, `benefits-procurement`, `benefits-quote`, `benefits-rfp`, `commercial-loan-underwriting`, `trid-closing-disclosure`, `cre-credit-agreement`, `mai-appraisal`, `commercial-property-quote`, `loan-payoff-statement`). Never hardcode an installed skill folder name inside `bridge/` core modules.
 
 ## 3. Planning Workflow (gen-3) & Verification Ladder
 
-This project uses a roadmap-first planning workflow managed through slash commands.
+This project uses a roadmap-first planning workflow.
 Live milestone status lives in [`docs/roadmap.md`](docs/roadmap.md) (with an ephemeral root `TODO.md` created only when an active sprint requires granular task tracking); `spec/` and `design/` stay status-free.
 
 ### Layout
@@ -61,30 +61,23 @@ Live milestone status lives in [`docs/roadmap.md`](docs/roadmap.md) (with an eph
 
 Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL.md` (plus optional `TODO.md` during active sprints).
 
-### Commands & Checkbox States
+### Checkbox States & Task IDs
 
-- `/open` — top 3 open tasks (surfaces `- [!]` failed items)
-- `/implement {task-id}` — implement, run the verification ladder, archive
-- `/new-task` — add a critical issue to Sprint 0
-- `/new-feature` — define a feature; writes requirements to `spec/`
-- `/replan` — sprint/phase transition; runs the T3 CUJ gate
-- `/verify [cuj-id]` — run CUJ simulation(s) on demand
-- `/status` — planning summary + live progress
 - Checkbox states: `- [ ]` open · `- [x]` done · `- [!]` attempted-but-failed (awaiting follow-up).
 - Task ID format: native `P<phase>-<seq>` scheme (e.g. `P1-3`), grouped under phase headings in [`docs/roadmap.md`](docs/roadmap.md) (or an ephemeral root `TODO.md` during active sprints) with `<!-- Counters: p0=N p1=N ... -->` (see `DECISIONS.md`).
 
 ### Verification Ladder
 
-- **T1 (every `/implement` — gates the commit):**
+- **T1 (every task — gates the commit):**
   - Lint: `uv run ruff check .` (must pass with 0 errors).
   - Unit & Enterprise Suite: `uv run pytest` (including `tests/test_enterprise_data_architecture.py`, `tests/test_isolation_guard.py`, `tests/test_service_wiring_guard.py`, `tests/test_gemini_extraction.py`).
   - Terraform Plan-Time Tests: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (46 `run` blocks across 13 `.tftest.hcl` files, credential-free).
-- **T2 (every `/implement` — gates flipping `- [x]`):** exercise the artifact against the task's own acceptance criteria. Files existing / build green is NOT done.
-- **T3 (phase-close via `/replan` + on-demand via `/verify`):** CUJ simulation against the eval corpus. The Address eval corpus (`wiki/evals/address/`) is the oracle (`expected.json` + `timeline.json`).
+- **T2 (every task — gates flipping `- [x]`):** exercise the artifact against the task's own acceptance criteria. Files existing / build green is NOT done.
+- **T3 (phase-close + on-demand verification):** CUJ simulation against the eval corpus. The Address eval corpus (`wiki/evals/address/`) is the oracle (`expected.json` + `timeline.json`).
 
 ### CRITICAL Escalation, Task Workflow & Data Discipline
 
-- Any task touching a path in `CRITICAL.md` auto-escalates: stronger model + mandatory review before commit. `spec/` is protected — agents PROPOSE changes to spec (`DECISIONS.md`), never edit it during `/implement`.
+- Any task touching a path in `CRITICAL.md` auto-escalates: stronger model + mandatory review before commit. `spec/` is protected — agents PROPOSE changes to spec (`DECISIONS.md`), never edit it unilaterally during task implementation.
 - Each task: implement → `uv run pytest && uv run ruff check .` green → flip its `- [ ]` to `- [x]` in [`docs/roadmap.md`](docs/roadmap.md) (or active `TODO.md`) → commit path-scoped on the current branch (do not push). Match the style, naming, and port/adapter idioms of the surrounding code.
 - **Synthetic data only, no real PII.** The eval party "Jordan Lee" is synthetic.
 

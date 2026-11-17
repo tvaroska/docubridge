@@ -636,3 +636,56 @@ def test_live_gemini_multimodal_pdf_extraction_with_injected_client(
     assert "x-docubridge-trace-id" in cors_resp.headers.get(
         "access-control-expose-headers", ""
     )
+
+
+def test_render_compiled_skill_markdown_defaults_are_doctype_neutral() -> None:
+    """Compiled skill markdown uses doctype-neutral guardrails unless scenario overrides are supplied."""
+    from bridge.agent_gym.skill_promotion import render_compiled_skill_markdown
+
+    default_md = render_compiled_skill_markdown(
+        doctype="trid-closing-disclosure",
+        semver="1.1.0",
+        skill_version="v1.1.0",
+        revision_id="rev-v1-1-test0001",
+        parent_revision_id="rev-v1-0-baseline",
+        sorted_rule_ids=("rule-0001",),
+        rule_bullets=[
+            "- **[rule-0001 · extraction_hint]** (* / `origination_fee`): Prefer executed addendum."
+        ],
+        policy_ceiling_usd="100000.00",
+        skill_urn="urn:skill:projects-test:locations:global:private-trid-closing-disclosure",
+        target_state="ACTIVE",
+    )
+    assert "Wire memo" not in default_md
+    assert "PAID IN FULL" not in default_md
+    assert "/overwatch" not in default_md
+    assert "human review triage" in default_md
+
+    gym = InMemoryAgentGymEngine()
+    compiled = gym.compile_rules_to_skill(
+        doctype="trid-closing-disclosure",
+        install_to_port=False,
+    )
+    assert "Wire memo" not in compiled["skill_markdown"]
+    assert "/overwatch" not in compiled["skill_markdown"]
+
+    custom_md = render_compiled_skill_markdown(
+        doctype="trid-closing-disclosure",
+        semver="1.1.0",
+        skill_version="v1.1.0",
+        revision_id="rev-v1-1-test0002",
+        parent_revision_id="rev-v1-0-baseline",
+        sorted_rule_ids=("rule-0001",),
+        rule_bullets=[
+            "- **[rule-0001 · extraction_hint]** (* / `origination_fee`): Prefer executed addendum."
+        ],
+        policy_ceiling_usd="50000.00",
+        skill_urn="urn:skill:projects-test:locations:global:private-trid-closing-disclosure",
+        target_state="DRAFT",
+        ceiling_note="any fee above ceiling escalates",
+        exact_match_condition="Schedule B row must match signed addendum total",
+        fallback_target="senior closer queue",
+    )
+    assert "any fee above ceiling escalates" in custom_md
+    assert "Schedule B row must match signed addendum total" in custom_md
+    assert "senior closer queue" in custom_md
