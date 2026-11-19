@@ -6,7 +6,7 @@ design in [`design/`](../design/bridge.md); this page is ops only.
 ## One command
 
 ```bash
-scripts/run-all.sh          # five Python hosts + four Vite apps; Ctrl-C tears it down
+scripts/run-all.sh          # Bridge Python hosts (plus optional console) + four Vite apps; Ctrl-C tears it down
 ```
 
 Or a single surface at a time — each `scripts/run-<surface>.sh` starts just that host,

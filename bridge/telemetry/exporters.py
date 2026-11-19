@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 TRACER_NAME = "docubridge.enterprise"
 _MAX_BUFFER_SPANS = 2000
 DEFAULT_OTLP_TRACES_ENDPOINT = "https://telemetry.googleapis.com/v1/traces"
-DEFAULT_GENAI_PAYLOAD_BUCKET_URI = "gs://btv-scratch-01-genai-payloads/"
+DEFAULT_GENAI_PAYLOAD_BUCKET_URI = "gs://docubridge-showcase-genai-payloads/"
 
 
 def _ns_to_iso8601(ns: int | None) -> str:
@@ -132,7 +132,7 @@ def _resolve_otlp_traces_endpoint(explicit_endpoint: str | None = None) -> str:
 
 def configure_genai_telemetry_env(project_id: str | None = None) -> dict[str, str]:
     """Configure environment defaults for `opentelemetry-instrumentation-google-genai`."""
-    resolved_project = project_id or _resolve_gcp_project() or "btv-scratch-01"
+    resolved_project = project_id or _resolve_gcp_project() or "docubridge-showcase"
     default_upload_path = f"gs://{resolved_project}-genai-payloads/"
     defaults = {
         "OTEL_SEMCONV_STABILITY_OPT_IN": "gen_ai_latest_experimental",

@@ -335,7 +335,7 @@ def compute_trace_analytics(
 def _build_sql_trace_evaluation(
     *,
     spans: list[dict[str, Any]],
-    bq_proj: str = "btv-scratch-01",
+    bq_proj: str = "docubridge-showcase",
     bq_ds: str = DEFAULT_EVAL_DATASET,
     bq_tbl: str = DEFAULT_SPANS_VIEW,
 ) -> dict[str, Any]:

@@ -9,7 +9,7 @@ Examples:
     # Onboard the Address Proof use-case agent against a remote Cloud Run DocuBridge service:
     uv run python scripts/onboard-use-case.py \\
         --manifest agents/address/onboarding/manifest.yaml \\
-        --bridge-url https://bridge-883686070419.us-central1.run.app
+        --bridge-url https://docubridge-showcase-bridge-100000000000.us-central1.run.app
 """
 
 from __future__ import annotations

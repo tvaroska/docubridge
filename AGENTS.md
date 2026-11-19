@@ -1,9 +1,9 @@
 # AGENTS.md — A2A Document Bridge Build Conventions & Operational Lessons
 
-Clean-slate build (`~/projects/docubridge`). Requirements (THE WHAT) live in
+Clean-slate build (`docubridge`). Requirements (THE WHAT) live in
 [`spec/`](spec/cujs.md) (forkable, status-free, protected); design (THE HOW) is
 [`design/`](design/bridge.md) (status-free); live roadmap + milestone status is
-[`docs/roadmap.md`](docs/roadmap.md) (an ephemeral root `TODO.md` can be created when an active sprint requires granular task tracking); the feature catalog is [`docs/features.md`](docs/features.md).
+[`docs/roadmap.md`](docs/roadmap.md); the feature catalog is [`docs/features.md`](docs/features.md).
 
 ## 1. Toolchain
 
@@ -24,9 +24,9 @@ Clean-slate build (`~/projects/docubridge`). Requirements (THE WHAT) live in
 ```
 spec/       THE WHAT — requirements (cujs, standards, demos/, open-questions); forkable, protected
 design/     THE HOW — bridge.md → five areas: model, edges, knowledge-model, runtime, architecture (source of truth)
-contract/   shared Pydantic wire types — the ONLY package both bridge/ and agents/ import
-bridge/     the reusable Bridge CORE — NEVER imports agents/
-agents/     service-agent consumers + demo drivers (Address, Benefits carriers, console)
+contract/   shared Pydantic wire types — the ONLY package consumers import from this repo
+bridge/     the reusable Bridge CORE — NEVER imports examples/ or external consumer agents
+examples/   minimal wire-only A2A consumer (consume_bridge.py); full ADK/LangGraph consumers live in companion docubridge-examples
 catalog/    OKF doctype bundles (catalog/doctypes/*.okf.md) — canonical field schemas; skills/<doctype>/assets/schema.json is generated from them
 skills/     Agent Skills the Bridge loads at runtime (process = how to collect; doctype = the installable unit pointing at its bundle)
 demo/       5-scene Enterprise Showcase Console (enterprise-demo.html) + GCP video recorder
@@ -45,13 +45,13 @@ scripts/    local run-*.sh hosts + _dev-env.sh; deploy.sh / parity.sh (live GCP 
 ## 3. Planning Workflow (gen-3) & Verification Ladder
 
 This project uses a roadmap-first planning workflow.
-Live milestone status lives in [`docs/roadmap.md`](docs/roadmap.md) (with an ephemeral root `TODO.md` created only when an active sprint requires granular task tracking); `spec/` and `design/` stay status-free.
+Live milestone status lives in [`docs/roadmap.md`](docs/roadmap.md); `spec/` and `design/` stay status-free.
 
 ### Layout
 
 | Path | Purpose |
 |------|---------|
-| [`docs/roadmap.md`](docs/roadmap.md) | Milestones + live status (an ephemeral root `TODO.md` can be created when an active sprint requires granular task tracking) |
+| [`docs/roadmap.md`](docs/roadmap.md) | Milestones + live status (sole planning tracker; no root `TODO.md`) |
 | `DECISIONS.md` | Append-only decision/learning log (committed) |
 | `CRITICAL.md` | Registry of protected/sensitive paths (auto-escalate) |
 | `spec/` | THE WHAT — requirements. Forkable, status-free, **protected**. `cujs.md`, `standards.md`, `demos/*.md`, `open-questions.md` |
@@ -59,12 +59,12 @@ Live milestone status lives in [`docs/roadmap.md`](docs/roadmap.md) (with an eph
 | `docs/` | Planning/ops — `roadmap.md`, `features.md`, `upstream-adk-issues.md` |
 | `wiki/evals/` | The eval corpus (Address + Benefits oracles) — a runtime fixture, referenced by code + tests |
 
-Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL.md` (plus optional `TODO.md` during active sprints).
+Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL.md`.
 
 ### Checkbox States & Task IDs
 
 - Checkbox states: `- [ ]` open · `- [x]` done · `- [!]` attempted-but-failed (awaiting follow-up).
-- Task ID format: native `P<phase>-<seq>` scheme (e.g. `P1-3`), grouped under phase headings in [`docs/roadmap.md`](docs/roadmap.md) (or an ephemeral root `TODO.md` during active sprints) with `<!-- Counters: p0=N p1=N ... -->` (see `DECISIONS.md`).
+- Task ID format: native `P<phase>-<seq>` scheme (e.g. `P1-3`), grouped under phase headings in [`docs/roadmap.md`](docs/roadmap.md) (see `DECISIONS.md`).
 
 ### Verification Ladder
 
@@ -78,7 +78,7 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
 ### CRITICAL Escalation, Task Workflow & Data Discipline
 
 - Any task touching a path in `CRITICAL.md` auto-escalates: stronger model + mandatory review before commit. `spec/` is protected — agents PROPOSE changes to spec (`DECISIONS.md`), never edit it unilaterally during task implementation.
-- Each task: implement → `uv run pytest && uv run ruff check .` green → flip its `- [ ]` to `- [x]` in [`docs/roadmap.md`](docs/roadmap.md) (or active `TODO.md`) → commit path-scoped on the current branch (do not push). Match the style, naming, and port/adapter idioms of the surrounding code.
+- Each task: implement → `uv run pytest && uv run ruff check .` green → flip its `- [ ]` to `- [x]` in [`docs/roadmap.md`](docs/roadmap.md) → commit path-scoped on the current branch (do not push). Match the style, naming, and port/adapter idioms of the surrounding code.
 - **Synthetic data only, no real PII.** The eval party "Jordan Lee" is synthetic.
 
 ## 4. Hard-Won Lessons Learned & Gotchas (Enterprise Data Architecture, Agent Gym & GCP Deploy)

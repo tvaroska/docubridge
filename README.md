@@ -98,7 +98,7 @@ Behind the enterprise console, the reusable Bridge core mediates four canonical 
 
 | Gemini platform Pillar | Capabilities Demonstrated in DocuBridge | Key Modules |
 | :--- | :--- | :--- |
-| **1. BUILD** | Single-turn and resumable ADK `LlmAgent`s (`google-adk`), `SKILL.md` runtime skill registry, A2A JSON-RPC + SSE edge, A2UI v0.9 declarative surfaces, cross-framework ADK and LangGraph interop | `bridge/agent.py`, `bridge/edge/`, `skills/`, `agents/` |
+| **1. BUILD** | Single-turn and resumable ADK `LlmAgent`s (`google-adk`), `SKILL.md` runtime skill registry, A2A JSON-RPC + SSE edge, A2UI v0.9 declarative surfaces, cross-framework ADK and LangGraph interop | `bridge/agent.py`, `bridge/edge/`, `skills/`, `examples/` |
 | **2. GOVERN** | Gemini platform **Agent Registry** (`urn:agent`, `urn:mcp`, `urn:endpoint`, `urn:skill` + content-addressed `SkillRevisionRecord`), **Agent Gateway** (`CLIENT_TO_AGENT` Model Armor + Cloud DLP, `AGENT_TO_ANYWHERE` IAM v3 CEL), and **SPIFFE JWT-SVID + Human OBO** least-privilege intersection (`Agent ∩ User`) | `bridge/identity.py`, `bridge/agent_gym/registry_gateway.py`, `bridge/knowledge_catalog/` |
 | **3. SCALE** | **6-Zone Enterprise Data Architecture**: Edge PII redaction, 7-year WORM Cloud Storage Audit Vault (`if_generation_match=0`), deterministic `Decimal` Consolidation Engine, audit-preserving SQL Operational Store (`recorded_at` by `effective_from`), Role-Based Views, and watermarked BigQuery Open Iceberg sync | `bridge/vault.py`, `bridge/operational_store/`, `bridge/sql_runtime.py`, `terraform/` |
 | **4. OPTIMIZE** | **Calibration**: Schema Refinery evolves the ontology and Agent Gym evolves the skills (SME feedback, 3-Tier evaluation gate, `SKILL.md` compilation, Programmable Trust dial), Two-Sided Oversight (`RSR >= 0.80` anti-rubber-stamping), and **BigQuery `Rule 0` SQL Trace Evaluation** (`v_step1_trace_eval` / `v_trace_sql_evaluation` + `AI.GENERATE_TABLE` + Rogan-Gladen debiasing) | `bridge/agent_gym/`, `bridge/telemetry/`, `terraform/modules/telemetry/` |
@@ -113,7 +113,7 @@ Credential-free. Every port across all 14 hexagonal boundaries (`sessions`, `tas
 uv sync
 pnpm install
 
-scripts/run-all.sh          # five Python hosts + four Vite apps; Ctrl-C tears it down
+scripts/run-all.sh          # four Bridge Python hosts (plus optional console) + four Vite apps; Ctrl-C tears it down
 ```
 
 The RFP demo is a separate host (`:8010`); see [docs/local-dev.md](docs/local-dev.md#rfp-demo-host).
@@ -123,17 +123,19 @@ The unified showcase runner (`scripts/run-showcase.sh`, `:8011`) boots one core 
 | :--- | :--- | :--- |
 | Enterprise Showcase Console (`/demo`) | http://localhost:8003/demo | 5-scene interactive walkthrough (Banking, Mortgage & Insurance) |
 | Provider portal | http://localhost:5173 | External party upload & A2UI Path-B host |
-| Agent console | http://localhost:5174 | Calling service agent session & turn viewer |
+| Agent console | http://localhost:5174 | Calling service agent session & turn viewer (backend host lives in companion `docubridge-examples`) |
 | Ops dashboard | http://localhost:5175 | Operator read-model, HITL/escalation queues & RFP board |
 | Time-warp | http://localhost:5176 | Virtual SLA clock control (`overdue`, `reminder`, `escalated`) |
 | A2A edge | http://localhost:8000 | Agent Card at `/.well-known/agent-card.json` |
 
-A scriptable Address run (with the A2A edge up):
+A scriptable A2A Collect round-trip (with the A2A edge up via `scripts/run-core.sh`):
 
 ```bash
-uv run python -m agents.address \
-  --card-url http://localhost:8000/.well-known/agent-card.json
+uv run python examples/a2a_consumer/consume_bridge.py http://localhost:8000/ \
+  --process address-proof --doc gov-id-clean=images/gov-id-clean.svg
 ```
+
+Full multi-service ADK and LangGraph consumer/carrier agents live in the companion `docubridge-examples` repository; see [docs/consume-over-a2a.md](docs/consume-over-a2a.md) for the downstream A2A consumer contract.
 
 Port map and environment variable index: [docs/local-dev.md](docs/local-dev.md) and [`.env.example`](.env.example).
 
@@ -147,7 +149,7 @@ pnpm --filter "!@docubridge/e2e" -r test
 terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test
 ```
 
-- **100% Static Type & Docstring Enforcement:** `ruff check` enforces `ANN001`, `ANN201`, and `ANN202` across all `bridge/`, `contract/`, and `agents/` modules alongside `>=90%` test coverage.
+- **100% Static Type & Docstring Enforcement:** `ruff check` enforces `ANN001`, `ANN201`, and `ANN202` across all `bridge/` and `contract/` modules alongside `>=90%` test coverage.
 - **Google Cloud Build CI/CD:** Continuous integration and container builds run natively on **Google Cloud Build** via [`cloudbuild.yaml`](cloudbuild.yaml) (a 4-track parallel DAG running Python lint + sharded `pytest -n 4` + `>=90%` coverage gate, all 5 frontend workspaces, `terraform test`, and BuildKit image caching before pushing to Artifact Registry). Full substrate deployment is [`scripts/deploy.sh`](scripts/deploy.sh) / [`scripts/parity.sh`](scripts/parity.sh); see [docs/features/gcp-deployment.md](docs/features/gcp-deployment.md).
 
 ## Where This Breaks / Known Limitations
@@ -166,9 +168,9 @@ DECISIONS.md architectural decision records (ADR-01 through ADR-15) & milestone 
 BANKING.md  5-scene Enterprise Showcase architecture & walkthrough (Banking, Mortgage, Insurance)
 docs/       feature catalog, demo click-path, roadmap (the only place status lives), local-dev, upstream ADK issues
 wiki/evals/ the eval corpus (Address + Benefits oracles), a runtime fixture
-contract/   shared Pydantic wire types, the ONLY package both bridge/ and agents/ import
-bridge/     the reusable core (NEVER imports agents/)
-agents/     service-agent consumers + demo drivers (Address, Benefits ADK & LangGraph carriers)
+contract/   shared Pydantic wire types, the ONLY package consumers import from this repo
+bridge/     the reusable core (NEVER imports examples/ or external consumer agents)
+examples/   minimal wire-only A2A consumer (consume_bridge.py); full ADK/LangGraph consumers live in docubridge-examples
 skills/     Agent Skills the Bridge loads at runtime
 demo/       5-scene Enterprise Showcase Console (enterprise-demo.{html,css,js})
 frontend/   four React/Vite apps (portal, console, dashboard, timewarp) + shared lib + e2e
@@ -177,7 +179,7 @@ tests/      shared port suite (local + gcp) + enterprise architecture + golden r
 scripts/    local run-*.sh hosts + deploy.sh / parity.sh (deployed path)
 ```
 
-`bridge/` never imports `agents/`, and `agents/` never imports `bridge/`. Declarative AST isolation-guard rules (`specs/ast.rules.yaml` and `tests/test_isolation_guard.py`) enforce both directions.
+`bridge/` never imports `examples/` (or external `agents/`), and `examples/` never imports `bridge/`. Declarative AST isolation-guard rules (`specs/ast.rules.yaml` and `tests/test_isolation_guard.py`) enforce both directions.
 
 ## Documentation Index
 

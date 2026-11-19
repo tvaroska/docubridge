@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Bring up the whole local demo stack: the five Python hosts (8000-8004) plus the four
+# Bring up the whole local demo stack: the Bridge Python hosts (8000, 8001, 8003, 8004,
+# plus optional console on 8002 if scripts/run-console.sh is present) plus the four
 # Vite apps (5173-5176), each app pointed at its host. Ctrl-C tears the group down.
 # Port map + caveats: docs/local-dev.md. Env index: .env.example.
 # Each host here holds its own store; the one-process, one-card, one-dashboard showcase
@@ -20,8 +21,13 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 for svc in core portal console ops timewarp; do
+  script="${REPO_ROOT}/scripts/run-${svc}.sh"
+  if [[ ! -f "${script}" ]]; then
+    echo "Skipping optional ${svc} host (scripts/run-${svc}.sh not present; consumer console lives in docubridge-examples)."
+    continue
+  fi
   echo "Starting ${svc} host..."
-  bash "${REPO_ROOT}/scripts/run-${svc}.sh" &
+  bash "${script}" &
   pids+=("$!")
 done
 

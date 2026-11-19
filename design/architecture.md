@@ -75,7 +75,7 @@ docubridge/
 └── catalog/doctypes/ OKF doctype bundles — canonical field schemas, contrastive descriptions, ontology edges (design/ontology.md)
 ```
 
-**Design vs. planning.** `design/` is the design source of truth (status-free), and `spec/` holds forkable requirements. Sequencing lives outside them: `docs/features.md` (the feature catalog) and `docs/roadmap.md` (milestones + live status; an ephemeral root `TODO.md` may be created during an active sprint). These reference `design/`; it does not depend on them.
+**Design vs. planning.** `design/` is the design source of truth (status-free), and `spec/` holds forkable requirements. Sequencing lives outside them: `docs/features.md` (the feature catalog) and `docs/roadmap.md` (milestones + live status). These reference `design/`; it does not depend on them.
 
 **The load-bearing invariant:** `bridge/` **never imports** `agents/` ([shared contract types](adk.md)). The core is a reusable artifact; the agents consume it. Both may import `contract/` (the shared third package) — that is the only permitted cross-link. Parity of logic that must agree across the two (canonicalization, disposition, `is_satisfied`) is held by the **shared port suite + an isolation-guard test**, never by import.
 

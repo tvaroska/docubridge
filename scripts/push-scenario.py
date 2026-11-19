@@ -138,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--bucket",
         required=True,
-        help="Destination Cloud Storage bucket or gs:// prefix (e.g. gs://btv-scratch-01-bridge-scenarios/).",
+        help="Destination Cloud Storage bucket or gs:// prefix (e.g. gs://docubridge-showcase-bridge-scenarios/).",
     )
     parser.add_argument(
         "--reload-url",

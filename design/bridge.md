@@ -37,4 +37,4 @@ Five areas, each one page, each answering one question before it links deeper:
 
 Requirements live in [`spec/`](../spec/cujs.md) (the CUJ catalog, the [standardization rings](../spec/standards.md), the [demo suite](../spec/demos/demo-suite.md), [open questions](../spec/open-questions.md)).
 
-> Planning artifacts live **outside `design/`** (design is `design/`'s job; sequencing is not): the feature catalog at `docs/features.md` and the milestones + live status at `docs/roadmap.md` (an ephemeral root `TODO.md` may be created during an active sprint). Forkable requirements live in `spec/`.
+> Planning artifacts live **outside `design/`** (design is `design/`'s job; sequencing is not): the feature catalog at `docs/features.md` and the milestones + live status at `docs/roadmap.md`. Forkable requirements live in `spec/`.
