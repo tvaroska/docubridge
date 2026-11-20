@@ -113,6 +113,11 @@ output "spiffe_svid_secret_id" {
   value       = module.secrets.spiffe_svid_secret_id
 }
 
+output "shared_bucket_name" {
+  description = "Shared single-bucket GCS name (gs://<project_id>) when single_bucket_mode = true (\"\" in multi-bucket mode)."
+  value       = module.gcs.shared_bucket_name
+}
+
 # GCS surface (P7-3) — the bucket names the runtime reads as BRIDGE_SKILLS_BUCKET /
 # BRIDGE_ARTIFACT_BUCKET (plain envs; bucket names are not secrets).
 output "skills_bucket_name" {
@@ -120,9 +125,19 @@ output "skills_bucket_name" {
   value       = module.gcs.skills_bucket_name
 }
 
+output "skills_prefix" {
+  description = "Object prefix inside the Skill Registry bucket (\"skills\" in single_bucket_mode, \"\" otherwise)."
+  value       = module.gcs.skills_prefix
+}
+
 output "artifacts_bucket_name" {
   description = "The Artifacts GCS bucket name (BRIDGE_ARTIFACT_BUCKET runtime env; GcsArtifactService + signed URLs)."
   value       = module.gcs.artifacts_bucket_name
+}
+
+output "artifacts_prefix" {
+  description = "Object prefix for ADK GcsArtifactService (\"document_bridge\" in single_bucket_mode, \"\" otherwise)."
+  value       = module.gcs.artifacts_prefix
 }
 
 output "audit_vault_bucket_name" {
@@ -130,9 +145,19 @@ output "audit_vault_bucket_name" {
   value       = module.gcs.audit_vault_bucket_name
 }
 
+output "audit_vault_prefix" {
+  description = "Object prefix inside the WORM Audit Vault bucket (\"audit-vault\" in single_bucket_mode when enabled, \"\" otherwise)."
+  value       = module.gcs.audit_vault_prefix
+}
+
 output "scenarios_bucket_name" {
-  description = "The Cloud Storage Scenarios bucket name (BRIDGE_SCENARIOS_DIR=gs://<bucket>/)."
+  description = "The Cloud Storage Scenarios bucket name (BRIDGE_SCENARIOS_DIR on runtime services)."
   value       = module.gcs.scenarios_bucket_name
+}
+
+output "scenarios_prefix" {
+  description = "Object prefix inside the Scenarios bucket (\"scenarios\" in single_bucket_mode, \"\" otherwise)."
+  value       = module.gcs.scenarios_prefix
 }
 
 # Cloud Tasks surface (P7-4) — the queue the runtime injects as BRIDGE_TASKS_QUEUE
@@ -202,6 +227,11 @@ output "email_bucket_name" {
   value       = module.gcs.email_bucket_name
 }
 
+output "email_prefix" {
+  description = "Object prefix inside the email landing bucket (\"email\" in single_bucket_mode when enabled, \"\" otherwise)."
+  value       = module.gcs.email_prefix
+}
+
 output "email_webhook_email" {
   description = "The email intake webhook SA email (\"\" when disabled)."
   value       = module.iam.email_webhook_email
@@ -237,6 +267,11 @@ output "telemetry_obs_logs_dataset_id" {
 output "telemetry_genai_payloads_bucket_name" {
   description = "Cloud Storage bucket name for GenAI completion hook JSONL payloads (\"\" when disabled)."
   value       = module.telemetry.genai_payloads_bucket_name
+}
+
+output "telemetry_genai_payloads_upload_base_path" {
+  description = "gs:// base URI for GenAI completion hook JSONL payloads (\"\" when disabled)."
+  value       = module.telemetry.genai_payloads_upload_base_path
 }
 
 output "telemetry_completions_table_fqn" {

@@ -30,5 +30,5 @@ output "portal_url" {
     VITE_PORTAL_URL build env at deploy (P7-9), mirroring the gateway module's
     gateway_url.
   EOT
-  value       = length(var.ssl_domains) > 0 ? "https://${var.ssl_domains[0]}/" : ""
+  value       = local.provision_frontend && length(var.ssl_domains) > 0 ? "https://${var.ssl_domains[0]}/" : ""
 }

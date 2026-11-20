@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docubridge"
-version = "1.14.0"
+version = "1.15.0"
 description = "Governed A2A document mediation engine: separate page-anchored evidence and deterministic Rule 0 conflict resolution from caller policy, with 0.0% regression skill calibration."
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -26,7 +26,6 @@ dependencies = [
     "aiosqlite>=0.20",
     # P5-1 (PROA-1): bridge/sla.py parses policy.yaml at runtime (not just dev).
     "pyyaml>=6",
-    "langgraph>=1.2,<2",
 ]
 
 [project.scripts]
@@ -38,10 +37,14 @@ bridge-serve = "bridge.edge.server:serve_container"
 # Runtime deps are added per-phase as tasks introduce them
 # (google-adk, a2a-sdk, fastapi, sqlalchemy+aiosqlite, ...).
 dev = [
+    "ast-grep-cli>=0.35",
     "pytest>=8",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.8.0",
     "pyyaml",
     "ruff>=0.16,<0.17",
+    "sqlglot>=25.0.0",
 ]
 # GCP port runtime deps, installed by the P7-9 provisioned run (BRIDGE_TEST_GCP=1):
 #   - asyncpg: the async Postgres driver for the Cloud SQL shared-store adapters
@@ -127,6 +130,7 @@ packages = ["contract", "bridge"]
 
 [tool.uv]
 package = false
+required-version = ">=0.12.24"
 
 [[tool.uv.index]]
 name = "pypi"

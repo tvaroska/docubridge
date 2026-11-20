@@ -172,9 +172,25 @@ def test_audit_vault_port_local_and_gcp_adapters(adapter: PortMode, monkeypatch)
 
     # GCP mode builds GcpAuditVaultStore when BRIDGE_VAULT_BUCKET is configured
     monkeypatch.setenv("BRIDGE_VAULT_BUCKET", "docubridge-test-vault-bucket")
+    monkeypatch.delenv("BRIDGE_VAULT_PREFIX", raising=False)
+    monkeypatch.delenv("BRIDGE_VAULT_RETENTION_DAYS", raising=False)
+    monkeypatch.delenv("BRIDGE_VAULT_RETENTION_MODE", raising=False)
     gcp_vault = vault_from_env()
     assert isinstance(gcp_vault, GcpAuditVaultStore)
     assert gcp_vault.bucket_name == "docubridge-test-vault-bucket"
+    assert gcp_vault.prefix == ""
+
+    # Single-bucket prefix + per-object retention env vars wire through Port.audit_vault
+    monkeypatch.setenv("BRIDGE_VAULT_BUCKET", "docubridge-shared-bucket")
+    monkeypatch.setenv("BRIDGE_VAULT_PREFIX", "audit-vault")
+    monkeypatch.setenv("BRIDGE_VAULT_RETENTION_DAYS", "2555")
+    monkeypatch.setenv("BRIDGE_VAULT_RETENTION_MODE", "Locked")
+    scoped_vault = vault_from_env()
+    assert isinstance(scoped_vault, GcpAuditVaultStore)
+    assert scoped_vault.bucket_name == "docubridge-shared-bucket"
+    assert scoped_vault.prefix == "audit-vault"
+    assert scoped_vault.retention_days == 2555
+    assert scoped_vault.retention_mode == "Locked"
 
 
 @pytest.mark.port("operational_store")

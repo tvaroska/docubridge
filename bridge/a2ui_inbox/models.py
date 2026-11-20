@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from bridge.a2ui_inbox.catalogs import (
     A2UI_V09_MIME_TYPE,
@@ -96,6 +98,45 @@ class InboxAuditRecord(BaseModel):
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+def coerce_decimal_amount(
+    value: Decimal | str | int | float | None,
+    *,
+    field_name: str = "amount",
+    allow_negative: bool = False,
+) -> Decimal | None:
+    """Coerce an optional monetary limit or transfer amount into an exact finite ``Decimal``."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid {field_name}: boolean values are not numeric.")
+    if isinstance(value, Decimal):
+        parsed = value
+    elif isinstance(value, int):
+        parsed = Decimal(value)
+    elif isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"Invalid {field_name}: must be a finite number.")
+        parsed = Decimal(str(value))
+    elif isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        normalized = cleaned.lstrip("$").replace(",", "").strip()
+        try:
+            parsed = Decimal(normalized)
+        except InvalidOperation as exc:
+            raise ValueError(f"Invalid {field_name}: {value!r}.") from exc
+    else:
+        raise ValueError(
+            f"Invalid {field_name}: unsupported type {type(value).__name__}."
+        )
+    if not parsed.is_finite():
+        raise ValueError(f"Invalid {field_name}: must be a finite Decimal.")
+    if not allow_negative and parsed < Decimal("0"):
+        raise ValueError(f"Invalid {field_name}: cannot be negative.")
+    return parsed
+
+
 class ActionInboxItem(BaseModel):
     """Stateful A2UI v0.9 Action Progress & HITL Inbox item."""
 
@@ -121,12 +162,17 @@ class ActionInboxItem(BaseModel):
     steps: list[ActionProgressStep] = Field(default_factory=list)
     initial_data_model: dict[str, Any] = Field(default_factory=dict)
     current_data_model: dict[str, Any] = Field(default_factory=dict)
-    max_approval_amount: float | None = None
+    max_approval_amount: Decimal | None = None
     blind_pre_commitment: bool = False
     ontology_revision_id: str = "ont-rev-v1-1-baseline"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     delta_history: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("max_approval_amount", mode="before")
+    @classmethod
+    def _validate_max_approval_amount(cls, value: Any) -> Decimal | None:
+        return coerce_decimal_amount(value, field_name="max_approval_amount")
 
 
 class A2uiClientActionRequest(BaseModel):

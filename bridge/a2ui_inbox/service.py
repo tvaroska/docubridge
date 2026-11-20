@@ -21,6 +21,7 @@ from bridge.a2ui_inbox.models import (
     A2aDataPart,
     ActionInboxItem,
     ActionProgressStep,
+    coerce_decimal_amount,
 )
 from bridge.knowledge_catalog import (
     CatalogRole,
@@ -187,10 +188,15 @@ def build_action_progress_surface(
             approval_children.append("resolution_picker")
 
         if "transfer" in item.current_data_model and is_internal:
-            max_amt = int(
+            raw_max = (
                 item.max_approval_amount
-                or item.current_data_model["transfer"].get("requestedAmount", 100000)
+                if item.max_approval_amount is not None
+                else item.current_data_model["transfer"].get("requestedAmount", 100000)
             )
+            max_amt_dec = coerce_decimal_amount(
+                raw_max, field_name="max_approval_amount"
+            )
+            max_amt = int(max_amt_dec) if max_amt_dec is not None else 100000
             components.append(
                 {
                     "id": "amount_slider",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Coroutine
+from decimal import Decimal
 from typing import Any
 
 from bridge.a2ui_inbox.catalogs import (
@@ -265,7 +266,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         actor_role: CatalogRole,
         channel: DeliveryChannel,
         agent_spiffe_id: str | None = None,
-        principal_max_approval_amount: float | None = None,
+        principal_max_approval_amount: Decimal | str | int | None = None,
         close_outcome_on_resolve: bool = True,
     ) -> dict[str, Any]:
         """Resolve a SQL-backed action inbox item and persist both the item and audit record."""

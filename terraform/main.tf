@@ -131,19 +131,21 @@ module "secrets" {
 module "gcs" {
   source = "./modules/gcs"
 
-  project_id             = var.project_id
-  name_prefix            = var.service_name
-  location               = var.region
-  service_account_member = module.iam.bridge_runtime_member
-  retention_days         = var.artifact_retention_days
-  seed_skills            = var.seed_skills
-  labels                 = var.labels
-  # Email intake (S0-arch-13): the gated landing bucket — webhook objectCreator only,
-  # runtime objectViewer + objectCreator, lifecycle Delete after email_retention_days.
-  enable_email_ingress = var.enable_email_ingress
-  email_webhook_member = module.iam.email_webhook_member
-  email_retention_days = var.email_retention_days
-  # Enterprise Data Architecture — Cloud Storage Audit Vault (Zone 3 WORM store).
+  project_id                          = var.project_id
+  name_prefix                         = var.service_name
+  location                            = var.region
+  service_account_member              = module.iam.bridge_runtime_member
+  retention_days                      = var.artifact_retention_days
+  payload_retention_days              = var.payload_retention_days
+  seed_skills                         = var.seed_skills
+  single_bucket_mode                  = var.single_bucket_mode
+  create_shared_bucket                = var.create_shared_bucket
+  shared_bucket_name                  = var.shared_bucket_name
+  force_destroy_shared_bucket         = !var.deletion_protection
+  labels                              = var.labels
+  enable_email_ingress                = var.enable_email_ingress
+  email_webhook_member                = module.iam.email_webhook_member
+  email_retention_days                = var.email_retention_days
   enable_audit_vault                  = var.enable_audit_vault
   vault_retention_days                = var.vault_retention_days
   lock_audit_vault_retention          = var.lock_audit_vault_retention
@@ -167,59 +169,58 @@ module "tasks" {
 module "telemetry" {
   source = "./modules/telemetry"
 
-  project_id             = var.project_id
-  region                 = var.region
-  enable_telemetry_bq    = var.enable_telemetry_bq
-  service_account_member = module.iam.bridge_runtime_member
-  deletion_protection    = var.deletion_protection
-  labels                 = var.labels
+  project_id                              = var.project_id
+  region                                  = var.region
+  enable_telemetry_bq                     = var.enable_telemetry_bq
+  single_bucket_mode                      = var.single_bucket_mode
+  shared_bucket_name                      = module.gcs.shared_bucket_name
+  payload_retention_days                  = var.payload_retention_days
+  create_eval_dataset                     = var.create_eval_dataset
+  eval_dataset_id                         = var.eval_dataset_id
+  create_vertex_connection                = var.create_vertex_connection
+  vertex_connection_id                    = var.vertex_connection_id
+  vertex_connection_service_account_email = var.vertex_connection_service_account_email
+  create_shared_bucket_lister_role        = false
+  shared_bucket_lister_role_name          = module.gcs.shared_bucket_lister_role_name
+  service_account_member                  = module.iam.bridge_runtime_member
+  deletion_protection                     = var.deletion_protection
+  labels                                  = var.labels
 }
 
 module "runtime" {
   source = "./modules/runtime"
 
-  project_id            = var.project_id
-  region                = var.region
-  service_name          = var.service_name
-  kyc_service_name      = var.kyc_service_name
-  rfp_service_name      = var.rfp_service_name
-  meridian_service_name = var.meridian_service_name
-  container_image       = var.container_image
-  enable_gateway        = var.enable_gateway
-  service_account_email = module.iam.bridge_runtime_email
-  vpc_network           = module.network.network_id
-  egress_subnet         = module.network.internal_subnet_id
-  # Inject the DB DSN as the DATABASE_URL secret env (P7-2). The Bridge connects to
-  # Cloud SQL over the private-IP VPC path, never an HTTP hop (DECISIONS.md 2026-08-24).
-  db_url_secret_id      = module.secrets.secret_id
-  spiffe_svid_secret_id = module.secrets.spiffe_svid_secret_id
-  # GCS bucket NAMES as plain envs (P7-3) — not secrets, so plain env not
-  # secret_key_ref. Select the GCS skill registry + GcsArtifactService/signed-URL path.
-  skills_bucket    = module.gcs.skills_bucket_name
-  artifacts_bucket = module.gcs.artifacts_bucket_name
-  vault_bucket     = module.gcs.audit_vault_bucket_name
-  scenarios_bucket = module.gcs.scenarios_bucket_name
-  # Cloud Tasks scheduler wiring (P7-4) as plain envs (a queue path / SA email are
-  # not secrets). The follow-up callback URL is the runtime's OWN service_uri — a
-  # Terraform self-reference cycle, so it is injected out-of-band at deploy (P7-9)
-  # via var.followup_callback_url (default "" = no env at plan time), exactly as the
-  # DB DSN VALUE is. Do NOT wire module.runtime.service_uri back into module.runtime.
-  tasks_queue_path      = module.tasks.queue_path
-  runtime_sa_email      = module.iam.bridge_runtime_email
-  followup_callback_url = var.followup_callback_url
-  # The Gateway-authorized public URL as the BRIDGE_PUBLIC_URL plain env (P7-5) —
-  # the served Agent Card advertises this origin so a consumer's RemoteA2aAgent
-  # passes the adk >=2.7 same-origin card validation (DECISIONS.md P7-5). When
-  # enable_gateway = true and ssl_domains is non-empty, default to https://<ssl_domains[0]>/
-  # so a single terraform apply wires the gateway origin with no second phase.
-  public_url = var.public_url != "" ? var.public_url : (var.enable_gateway && length(var.ssl_domains) > 0 ? "https://${var.ssl_domains[0]}/" : "")
-  # Email intake (S0-arch-13, design/email-intake.md): the processor envs (bucket,
-  # mailbox, token-key secret_key_ref — on the RFP board service) + the gated
-  # webhook-only service and its allUsers invoker (a deliberate trust-boundary
-  # exception — see modules/runtime). Every value is "" / false by default, so the
-  # default plan is unchanged.
+  project_id                   = var.project_id
+  region                       = var.region
+  service_name                 = var.service_name
+  kyc_service_name             = var.kyc_service_name
+  rfp_service_name             = var.rfp_service_name
+  meridian_service_name        = var.meridian_service_name
+  container_image              = var.container_image
+  enable_gateway               = var.enable_gateway
+  service_account_email        = module.iam.bridge_runtime_email
+  vpc_network                  = module.network.network_id
+  egress_subnet                = module.network.internal_subnet_id
+  db_url_secret_id             = module.secrets.secret_id
+  spiffe_svid_secret_id        = module.secrets.spiffe_svid_secret_id
+  single_bucket_mode           = var.single_bucket_mode
+  skills_bucket                = module.gcs.skills_bucket_name
+  skills_prefix                = module.gcs.skills_prefix
+  artifacts_bucket             = module.gcs.artifacts_bucket_name
+  vault_bucket                 = module.gcs.audit_vault_bucket_name
+  vault_prefix                 = module.gcs.audit_vault_prefix
+  vault_retention_days         = var.single_bucket_mode && var.enable_audit_vault ? var.vault_retention_days : 0
+  vault_retention_mode         = var.single_bucket_mode && var.enable_audit_vault ? (var.lock_audit_vault_retention ? "Locked" : "Unlocked") : ""
+  scenarios_bucket             = module.gcs.scenarios_bucket_name
+  scenarios_prefix             = module.gcs.scenarios_prefix
+  genai_upload_base_path       = var.single_bucket_mode ? "gs://${module.gcs.shared_bucket_name}/genai-payloads/" : ""
+  tasks_queue_path             = module.tasks.queue_path
+  runtime_sa_email             = module.iam.bridge_runtime_email
+  followup_callback_url        = var.followup_callback_url
+  public_url                   = var.public_url != "" ? var.public_url : (var.enable_gateway && length(var.ssl_domains) > 0 ? "https://${var.ssl_domains[0]}/" : "")
   enable_email_ingress         = var.enable_email_ingress
   email_bucket                 = module.gcs.email_bucket_name
+  email_prefix                 = module.gcs.email_prefix
   email_mailbox                = var.email_mailbox
   email_token_secret_id        = module.secrets.email_token_secret_id
   email_webhook_sa_email       = module.iam.email_webhook_email
@@ -291,13 +292,14 @@ module "gateway" {
 module "frontend" {
   source = "./modules/frontend"
 
-  project_id      = var.project_id
-  name_prefix     = var.service_name
-  location        = var.region
-  region          = var.region
-  enable_frontend = var.enable_frontend
-  ssl_domains     = var.frontend_ssl_domains
-  labels          = var.labels
+  project_id         = var.project_id
+  name_prefix        = var.service_name
+  location           = var.region
+  region             = var.region
+  single_bucket_mode = var.single_bucket_mode
+  enable_frontend    = var.enable_frontend
+  ssl_domains        = var.frontend_ssl_domains
+  labels             = var.labels
 }
 
 # Landing mail with no deployed drain would fill the bucket until lifecycle deletes it

@@ -15,9 +15,9 @@ from bridge.agent_gym import (
 )
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.operational_store import OperationalStore
-from bridge.user_interaction.auth import (
-    AuthenticationRequiredError,
-    resolve_compound_identity,
+from bridge.user_interaction.demo_session import (
+    mutating_auth_dependency,
+    verified_mutating_identity,
 )
 from bridge.user_interaction.schemas import (
     CompileSkillRequest,
@@ -45,128 +45,99 @@ def register_gym_routes(
     scenario_engine: ScenarioEngine | None = None,
 ) -> None:
     """Register Agent Gym distillation, 3-tier evaluation, skill compilation, and trust dial routes."""
+    gym_internal_auth = mutating_auth_dependency(
+        default_role="broker",
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+        allow_external_roles=False,
+        external_role_error="External roles cannot mutate Agent Gym rules, skills, or trust policies.",
+    )
 
-    @router.post("/v1/gym/signals/from-quarantine")
+    @router.post(
+        "/v1/gym/signals/from-quarantine",
+        dependencies=[gym_internal_auth],
+    )
     def distill_from_quarantine_endpoint(
         request: Request,
         body: DistillQuarantineFixRequest,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Distill a candidate Tribal Knowledge Rule from a single Zone 2 Review Quarantine correction."""
-        try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role,
-                default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
+        del role
+        compound = verified_mutating_identity(request)
+        anchor = (
+            SourceAnchor(
+                page_number=body.page_number,
+                bounding_box=body.bounding_box,
             )
-            if compound.user.role in ("client", "carrier"):
-                raise PermissionError(
-                    f"External role '{compound.user.role}' cannot submit Agent Gym quarantine rules."
-                )
-            anchor = (
-                SourceAnchor(
-                    page_number=body.page_number,
-                    bounding_box=body.bounding_box,
-                )
-                if body.page_number is not None
-                else None
-            )
-            signal, rule = gym.distill_from_quarantine_correction(
-                entity_id=body.entity_id,
-                doc_id=body.doc_id,
-                doctype=body.doctype,
-                issuer=body.issuer,
-                field_path=body.field_path,
-                before_value=body.before_value,
-                after_value=body.after_value,
-                expert_memo=body.expert_memo,
-                actor_principal=compound.user.subject,
-                actor_role=compound.user.role,
-                agent_spiffe_id=compound.agent_spiffe_id,
-                source_anchor=anchor,
-                category=body.category,
-                distinct_entities=tuple(body.distinct_entities),
-                citation_verified=body.citation_verified,
-                review_dwell_ms=body.review_dwell_ms,
-            )
-            return {
-                "signal": signal.model_dump(mode="json"),
-                "candidate_rule": rule.model_dump(mode="json"),
-            }
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+            if body.page_number is not None
+            else None
+        )
+        signal, rule = gym.distill_from_quarantine_correction(
+            entity_id=body.entity_id,
+            doc_id=body.doc_id,
+            doctype=body.doctype,
+            issuer=body.issuer,
+            field_path=body.field_path,
+            before_value=body.before_value,
+            after_value=body.after_value,
+            expert_memo=body.expert_memo,
+            actor_principal=compound.user.subject,
+            actor_role=compound.user.role,
+            agent_spiffe_id=compound.agent_spiffe_id,
+            source_anchor=anchor,
+            category=body.category,
+            distinct_entities=tuple(body.distinct_entities),
+            citation_verified=body.citation_verified,
+            review_dwell_ms=body.review_dwell_ms,
+        )
+        return {
+            "signal": signal.model_dump(mode="json"),
+            "candidate_rule": rule.model_dump(mode="json"),
+        }
 
-    @router.post("/v1/gym/signals/from-inbox/{item_id}")
+    @router.post(
+        "/v1/gym/signals/from-inbox/{item_id}", dependencies=[gym_internal_auth]
+    )
     def distill_from_inbox_endpoint(
-        request: Request,
         item_id: str,
         body: DistillInboxAuditRequest,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Distill a candidate Tribal Knowledge Rule from a Zone 5 A2UI Inbox RFC 6902 patch audit."""
-        try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role,
-                default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
+        del role
+        audits = inbox.list_audit_records(item_id)
+        if not audits:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No InboxAuditRecord found for action item '{item_id}'.",
             )
-            if compound.user.role in ("client", "carrier"):
-                raise PermissionError(
-                    f"External role '{compound.user.role}' cannot distill Agent Gym rules."
-                )
-            audits = inbox.list_audit_records(item_id)
-            if not audits:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No InboxAuditRecord found for action item '{item_id}'.",
-                )
-            latest_audit = audits[-1]
-            signal, rule = gym.distill_from_inbox_audit(
-                latest_audit,
-                doc_id=body.doc_id,
-                doctype=body.doctype,
-                issuer=body.issuer,
-                field_path=body.field_path,
-                category=body.category,
-                distinct_entities=tuple(body.distinct_entities),
-                citation_verified=body.citation_verified,
-                review_dwell_ms=body.review_dwell_ms,
-            )
-            return {
-                "signal": signal.model_dump(mode="json"),
-                "candidate_rule": rule.model_dump(mode="json"),
-            }
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        latest_audit = audits[-1]
+        signal, rule = gym.distill_from_inbox_audit(
+            latest_audit,
+            doc_id=body.doc_id,
+            doctype=body.doctype,
+            issuer=body.issuer,
+            field_path=body.field_path,
+            category=body.category,
+            distinct_entities=tuple(body.distinct_entities),
+            citation_verified=body.citation_verified,
+            review_dwell_ms=body.review_dwell_ms,
+        )
+        return {
+            "signal": signal.model_dump(mode="json"),
+            "candidate_rule": rule.model_dump(mode="json"),
+        }
 
-    @router.post("/v1/gym/rules/{rule_id}/evaluate")
+    @router.post("/v1/gym/rules/{rule_id}/evaluate", dependencies=[gym_internal_auth])
     def evaluate_gym_rule_endpoint(
-        request: Request,
         rule_id: str,
         auto_promote: bool = True,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Run the 3-tier Agent Gym evaluation gate on a candidate rule and promote on zero regression."""
+        del role
         try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role,
-                default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
-            )
-            if compound.user.role in ("client", "carrier"):
-                raise PermissionError(
-                    f"External role '{compound.user.role}' cannot evaluate or promote Agent Gym rules."
-                )
             report = gym.evaluate_candidate_rule(rule_id, auto_promote=auto_promote)
             rule = next(r for r in gym.list_rules() if r.rule_id == rule_id)
             return {
@@ -175,70 +146,36 @@ def register_gym_routes(
             }
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    @router.post("/v1/gym/compile-skill")
+    @router.post("/v1/gym/compile-skill", dependencies=[gym_internal_auth])
     def compile_gym_skill_endpoint(
-        request: Request,
         body: CompileSkillRequest,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Compile promoted Tribal Knowledge Rules into an immutable versioned SKILL.md revision via gemini-4-argon."""
-        try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role,
-                default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
-            )
-            if compound.user.role in ("client", "carrier"):
-                raise PermissionError(
-                    f"External role '{compound.user.role}' cannot compile Agent Gym skills."
-                )
-            return gym.compile_rules_to_skill(
-                doctype=body.doctype,
-                issuer_pattern=body.issuer_pattern,
-            )
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        del role
+        return gym.compile_rules_to_skill(
+            doctype=body.doctype,
+            issuer_pattern=body.issuer_pattern,
+        )
 
-    @router.post("/v1/gym/skills/{skill_name}/rollback")
+    @router.post(
+        "/v1/gym/skills/{skill_name}/rollback", dependencies=[gym_internal_auth]
+    )
     def rollback_gym_skill_endpoint(
         skill_name: str,
-        request: Request,
         body: RollbackSkillRequest | None = None,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Roll back a doctype skill defaultRevision pointer to its parent or target revision."""
-        try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role,
-                default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
-            )
-            if compound.user.role in ("client", "carrier"):
-                raise PermissionError(
-                    f"External role '{compound.user.role}' cannot roll back SkillRevisions."
-                )
-            req = body or RollbackSkillRequest()
-            rev = gym.rollback_skill_revision(
-                skill_name,
-                target_revision_id=req.target_revision_id,
-                reason=req.reason,
-            )
-            return rev.model_dump(mode="json")
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        del role
+        req = body or RollbackSkillRequest()
+        rev = gym.rollback_skill_revision(
+            skill_name,
+            target_revision_id=req.target_revision_id,
+            reason=req.reason,
+        )
+        return rev.model_dump(mode="json")
 
     @router.get("/v1/gym/skills/{skill_name}/revisions")
     def list_gym_skill_revisions_endpoint(skill_name: str) -> dict[str, Any]:
@@ -306,7 +243,18 @@ def register_gym_routes(
             results.append(dumped)
         return results
 
-    @router.post("/v1/gym/trust-policies/{slice_id}/shadow")
+    @router.post(
+        "/v1/gym/trust-policies/{slice_id}/shadow",
+        dependencies=[
+            mutating_auth_dependency(
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+                allow_external_roles=False,
+                external_role_error="External roles cannot record Agent Gym shadow comparisons.",
+            )
+        ],
+    )
     def record_shadow_comparison_endpoint(
         slice_id: str,
         body: RecordShadowComparisonRequest,
@@ -330,7 +278,10 @@ def register_gym_routes(
             "a2ui_messages": build_a2ui_trust_readiness_surface(policy),
         }
 
-    @router.post("/v1/gym/trust-policies/{slice_id}/dial")
+    @router.post(
+        "/v1/gym/trust-policies/{slice_id}/dial",
+        dependencies=[gym_internal_auth],
+    )
     def dial_trust_policy_endpoint(
         request: Request,
         slice_id: str,
@@ -338,14 +289,9 @@ def register_gym_routes(
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Promote or dial back a Programmable Trust slice autonomy level."""
+        del role
+        compound = verified_mutating_identity(request)
         try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role,
-                default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
-            )
             policy = gym.dial_trust_policy(
                 slice_id,
                 target_level=body.target_level,
@@ -364,12 +310,21 @@ def register_gym_routes(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    @router.post("/v1/gym/trust-policies/reset")
+    @router.post(
+        "/v1/gym/trust-policies/reset",
+        dependencies=[
+            mutating_auth_dependency(
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+                allow_external_roles=False,
+                external_role_error="External roles cannot reset Agent Gym trust policies.",
+            )
+        ],
+    )
     def reset_gym_trust_policies_endpoint(
         clear_rules: bool = False,
         reseed_demo: bool = False,

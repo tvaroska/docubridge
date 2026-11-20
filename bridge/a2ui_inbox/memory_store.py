@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from google.adk.flows.llm_flows.functions import (
@@ -22,6 +23,7 @@ from bridge.a2ui_inbox.models import (
     ActionInboxItem,
     ActionProgressStep,
     InboxAuditRecord,
+    coerce_decimal_amount,
     compute_rfc6902_patches,
     default_submission_progress_steps,
 )
@@ -70,7 +72,7 @@ class ActionInboxStore:
         data_model: dict[str, Any] | None = None,
         conflicts: list[FactConflict] | None = None,
         pause_for_review: bool = False,
-        max_approval_amount: float | None = None,
+        max_approval_amount: Decimal | str | int | None = None,
         blind_pre_commitment: bool = False,
         outcome_id: str | None = None,
     ) -> ActionInboxItem:
@@ -112,7 +114,7 @@ class ActionInboxStore:
         actor_role: CatalogRole,
         channel: DeliveryChannel,
         agent_spiffe_id: str | None = None,
-        principal_max_approval_amount: float | None = None,
+        principal_max_approval_amount: Decimal | str | int | None = None,
         close_outcome_on_resolve: bool = True,
     ) -> dict[str, Any]:
         """Resolve an action inbox item with an operator decision, rationale, and signature."""
@@ -150,7 +152,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         data_model: dict[str, Any] | None = None,
         conflicts: list[FactConflict] | None = None,
         pause_for_review: bool = False,
-        max_approval_amount: float | None = None,
+        max_approval_amount: Decimal | str | int | None = None,
         blind_pre_commitment: bool = False,
         outcome_id: str | None = None,
     ) -> ActionInboxItem:
@@ -255,7 +257,9 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 steps=resolved_steps,
                 initial_data_model=copy.deepcopy(initial_model),
                 current_data_model=copy.deepcopy(initial_model),
-                max_approval_amount=max_approval_amount,
+                max_approval_amount=coerce_decimal_amount(
+                    max_approval_amount, field_name="max_approval_amount"
+                ),
                 blind_pre_commitment=blind_pre_commitment,
             )
             initial_delta = build_update_data_model_delta(
@@ -351,7 +355,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         actor_role: CatalogRole,
         channel: DeliveryChannel,
         agent_spiffe_id: str | None = None,
-        principal_max_approval_amount: float | None = None,
+        principal_max_approval_amount: Decimal | str | int | None = None,
         close_outcome_on_resolve: bool = True,
     ) -> dict[str, Any]:
         """Resolve an in-memory action inbox item with an operator decision and signature."""
@@ -413,22 +417,33 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 candidate_model.setdefault("review", {}).update(action_ctx["review"])
 
             effective_max_limit = item.max_approval_amount
-            if principal_max_approval_amount is not None:
+            coerced_principal_limit = coerce_decimal_amount(
+                principal_max_approval_amount,
+                field_name="principal_max_approval_amount",
+            )
+            if coerced_principal_limit is not None:
                 effective_max_limit = (
-                    min(effective_max_limit, principal_max_approval_amount)
+                    min(effective_max_limit, coerced_principal_limit)
                     if effective_max_limit is not None
-                    else principal_max_approval_amount
+                    else coerced_principal_limit
                 )
             if "transfer" in candidate_model and effective_max_limit is not None:
-                approved_amt = float(
-                    candidate_model["transfer"].get("approvedAmount", 0.0)
+                raw_approved = candidate_model["transfer"].get(
+                    "approvedAmount", Decimal("0")
                 )
+                approved_amt = coerce_decimal_amount(
+                    raw_approved,
+                    field_name="approvedAmount",
+                    allow_negative=True,
+                )
+                if approved_amt is None:
+                    approved_amt = Decimal("0")
                 if approved_amt > effective_max_limit:
                     raise ValueError(
                         f"Approved amount ({approved_amt}) exceeds maximum authority limit "
                         f"({effective_max_limit})."
                     )
-                if approved_amt < 0:
+                if approved_amt < Decimal("0"):
                     raise ValueError("Approved amount cannot be negative.")
 
             patches = compute_rfc6902_patches(item.initial_data_model, candidate_model)

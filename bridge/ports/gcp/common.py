@@ -11,6 +11,7 @@ _LOG = logging.getLogger("bridge.ports.gcp")
 # gcs module -> runtime plain env, NOT a secret_key_ref: a bucket name is not a
 # secret). The deployed registry reaches the app ONLY via this env.
 SKILLS_BUCKET_ENV = "BRIDGE_SKILLS_BUCKET"
+SKILLS_PREFIX_ENV = "BRIDGE_SKILLS_PREFIX"
 
 # The secret env the runtime injects (the P7-2 secrets module -> DATABASE_URL
 # secret_key_ref). The deployed DSN reaches the app ONLY via this env; the
@@ -37,11 +38,55 @@ BRIDGE_GATEWAY_HOST_ENV = "BRIDGE_GATEWAY_HOST"
 # Extraction engine selector (fixture|gemini|docai, P7-6).
 BRIDGE_EXTRACTION_ENGINE_ENV = "BRIDGE_EXTRACTION_ENGINE"
 
-# GCS mailbox landing bucket name (S0-arch-13).
+# GCS mailbox landing bucket name and optional prefix (S0-arch-13).
 EMAIL_BUCKET_ENV = "BRIDGE_EMAIL_BUCKET"
+EMAIL_PREFIX_ENV = "BRIDGE_EMAIL_PREFIX"
 
 # The one async Postgres driver we target (asyncpg — the gcp extra).
 _ASYNC_PG_PREFIX = "postgresql+asyncpg://"
+
+
+def normalize_gcs_prefix(prefix: str | None) -> str:
+    """Normalize an optional GCS object prefix (`""` or `"a/b"` without outer slashes).
+
+    Rejects path-traversal segments (`"."`, `".."`) before any storage I/O.
+    """
+    cleaned = (prefix or "").strip().strip("/")
+    if not cleaned:
+        return ""
+    segments = [seg for seg in cleaned.split("/") if seg]
+    if any(seg in {".", ".."} for seg in segments):
+        raise ValueError(
+            f"invalid GCS object prefix {prefix!r}: path traversal forbidden"
+        )
+    return "/".join(segments)
+
+
+def split_bucket_and_prefix(
+    raw_bucket: str, raw_prefix: str | None = None
+) -> tuple[str, str]:
+    """Split `<bucket>[/<prefix>]` (or `gs://<bucket>[/<prefix>]`) plus an explicit prefix."""
+    cleaned = (raw_bucket or "").strip()
+    if cleaned.startswith("gs://"):
+        cleaned = cleaned[len("gs://") :]
+    cleaned = cleaned.strip("/")
+    bucket, _, embedded = cleaned.partition("/")
+    embedded_norm = normalize_gcs_prefix(embedded)
+    explicit_norm = normalize_gcs_prefix(raw_prefix)
+    if explicit_norm:
+        return bucket, explicit_norm
+    return bucket, embedded_norm
+
+
+def join_gcs_prefix(prefix: str, rel: str) -> str:
+    """Join an optional normalized GCS prefix with a relative object path."""
+    clean_prefix = normalize_gcs_prefix(prefix)
+    clean_rel = rel.lstrip("/")
+    if not clean_prefix:
+        return clean_rel
+    if not clean_rel:
+        return f"{clean_prefix}/"
+    return f"{clean_prefix}/{clean_rel}"
 
 
 def parse_agent_engine_resource(

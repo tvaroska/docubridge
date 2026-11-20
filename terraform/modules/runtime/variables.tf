@@ -96,6 +96,12 @@ variable "skills_bucket" {
   default     = ""
 }
 
+variable "skills_prefix" {
+  type        = string
+  description = "Optional object prefix inside BRIDGE_SKILLS_BUCKET (injected as BRIDGE_SKILLS_PREFIX in single-bucket mode)."
+  default     = ""
+}
+
 variable "artifacts_bucket" {
   type        = string
   description = <<-EOT
@@ -117,9 +123,50 @@ variable "vault_bucket" {
   default     = ""
 }
 
+variable "vault_prefix" {
+  type        = string
+  description = "Optional object prefix inside BRIDGE_VAULT_BUCKET (injected as BRIDGE_VAULT_PREFIX in single-bucket mode)."
+  default     = ""
+}
+
+variable "vault_retention_days" {
+  type        = number
+  description = "Per-object WORM retention duration (days) injected as BRIDGE_VAULT_RETENTION_DAYS when > 0 and vault_bucket is set (used in single-bucket mode with GCS Object Retention)."
+  default     = 0
+}
+
+variable "vault_retention_mode" {
+  type        = string
+  description = "Per-object WORM retention mode (Unlocked or Locked) injected as BRIDGE_VAULT_RETENTION_MODE when non-empty and vault_bucket is set."
+  default     = ""
+
+  validation {
+    condition     = var.vault_retention_mode == "" || contains(["Unlocked", "Locked"], var.vault_retention_mode)
+    error_message = "vault_retention_mode must be empty, Unlocked, or Locked."
+  }
+}
+
 variable "scenarios_bucket" {
   type        = string
-  description = "Scenarios GCS bucket name, injected as BRIDGE_SCENARIOS_DIR=gs://<bucket>/ on Meridian and board services. Empty = repo fallback."
+  description = "Scenarios GCS bucket name, injected as BRIDGE_SCENARIOS_DIR on Meridian and board services. Empty = repo fallback."
+  default     = ""
+}
+
+variable "scenarios_prefix" {
+  type        = string
+  description = "Optional object prefix inside scenarios_bucket (e.g. \"scenarios\" -> gs://<bucket>/scenarios/)."
+  default     = ""
+}
+
+variable "single_bucket_mode" {
+  type        = bool
+  description = "When true, defaults OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH to gs://<project_id>/genai-payloads/ unless genai_upload_base_path is set."
+  default     = false
+}
+
+variable "genai_upload_base_path" {
+  type        = string
+  description = "Optional explicit gs:// base URI for OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH (overrides single/multi-bucket default)."
   default     = ""
 }
 
@@ -182,6 +229,12 @@ variable "enable_email_ingress" {
 variable "email_bucket" {
   type        = string
   description = "The email landing bucket name — BRIDGE_EMAIL_BUCKET plain env on the RFP board service + the webhook; empty = no env."
+  default     = ""
+}
+
+variable "email_prefix" {
+  type        = string
+  description = "Optional object prefix inside BRIDGE_EMAIL_BUCKET (injected as BRIDGE_EMAIL_PREFIX in single-bucket mode)."
   default     = ""
 }
 

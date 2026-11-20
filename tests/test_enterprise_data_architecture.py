@@ -646,15 +646,29 @@ def test_best_practice_p0_stateless_gcp_vault_and_catalog_hydration(
 
 def test_best_practice_p0_a2ui_principal_auth_and_role_spoofing_protection() -> None:
     """P0 #2: Authenticated principal role cannot be spoofed via ?role= query param."""
+    from bridge.identity import SpiffeAuthenticationError
+
     store = InMemoryOperationalStore()
     catalog = InMemoryKnowledgeCatalog(operational_store=store)
     entry = _make_accepted_entry(doc_id="doc-auth-1")
     store.ingest_entry(entry, entity_id="ent-auth-1", context_id="ctx-auth-1")
 
+    def _fake_iap_verifier(token: str) -> dict[str, str]:
+        if token == "iap-client-jwt":
+            return {"email": "client@external.example"}
+        if token == "iap-broker-jwt":
+            return {"email": "jane.broker@docubridge.io"}
+        raise SpiffeAuthenticationError("invalid IAP assertion")
+
     app = build_user_interaction_app(
         operational_store=store,
         knowledge_catalog=catalog,
+        principal_roles={
+            "client@external.example": "client",
+            "jane.broker@docubridge.io": "broker",
+        },
         require_auth=True,
+        oidc_verifier=_fake_iap_verifier,
     )
     client = TestClient(app)
 
@@ -672,20 +686,31 @@ def test_best_practice_p0_a2ui_principal_auth_and_role_spoofing_protection() -> 
     )
     assert resp_raw_spoof.status_code == 401
 
-    # 2. Authenticated external client (via IAP) attempting to spoof ?role=broker -> 403
+    # 1c. Raw unverified X-Goog-Authenticated-User-Email without X-Goog-IAP-JWT-Assertion -> 401
+    resp_iap_spoof = client.get(
+        "/v1/a2ui/gemini_app/ent-auth-1",
+        headers={
+            "X-Goog-Authenticated-User-Email": "accounts.google.com:jane.broker@docubridge.io"
+        },
+    )
+    assert resp_iap_spoof.status_code == 401
+
+    # 2. Cryptographically verified external client (via IAP) attempting to spoof ?role=broker -> 403
     resp_spoof = client.get(
         "/v1/a2ui/gemini_app/ent-auth-1?role=broker",
         headers={
-            "X-Goog-Authenticated-User-Email": "accounts.google.com:client@external.example"
+            "X-Goog-IAP-JWT-Assertion": "iap-client-jwt",
+            "X-Goog-Authenticated-User-Email": "accounts.google.com:client@external.example",
         },
     )
     assert resp_spoof.status_code == 403
 
-    # 3. Authenticated internal broker email via IAP header succeeds
+    # 3. Cryptographically verified internal broker email with explicit role mapping succeeds
     resp_iap = client.get(
         "/v1/a2ui/gemini_app/ent-auth-1",
         headers={
-            "X-Goog-Authenticated-User-Email": "accounts.google.com:jane.broker@docubridge.io"
+            "X-Goog-IAP-JWT-Assertion": "iap-broker-jwt",
+            "X-Goog-Authenticated-User-Email": "accounts.google.com:jane.broker@docubridge.io",
         },
     )
     assert resp_iap.status_code == 200

@@ -49,6 +49,7 @@ CatalogRoleLiteral = Literal[
     "carrier",
 ]
 DeliveryChannelLiteral = Literal["gemini_app", "custom_web"]
+AuthViaLiteral = Literal["jwt", "cookie", "iap", "header", "query_dev"]
 
 DEFAULT_SPIFFE_TRUST_DOMAIN = "agents.docubridge.io"
 SPIFFE_TRUST_DOMAIN_ENV = "BRIDGE_SPIFFE_TRUST_DOMAIN"
@@ -233,7 +234,8 @@ class UserPrincipal(BaseModel):
     allowed_entities: tuple[str, ...] = ()
     carrier_slug: str | None = None
     max_approval_amount: Decimal | None = None
-    authenticated_via: Literal["jwt", "iap", "header", "query_dev"] = "query_dev"
+    authenticated_via: AuthViaLiteral = "query_dev"
+    scope: str | None = None
 
     def effective_approval_limit(self) -> Decimal:
         """Return the maximum monetary approval limit granted to this user principal."""
@@ -267,15 +269,15 @@ def _b64url_decode(segment: str) -> bytes:
 
 
 def _resolve_svid_signing_secret(secret: str | None = None) -> str:
-    """Resolve the SPIFFE SVID HMAC signing secret; refuse hardcoded dev fallback on GCP."""
+    """Resolve the SPIFFE SVID HMAC signing secret; refuse dev fallback under K_SERVICE or GCP."""
     if secret and secret.strip():
         return secret.strip()
-    env_secret = os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip()
-    if env_secret:
+    if env_secret := os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip():
         return env_secret
-    if os.environ.get("BRIDGE_PORT_MODE", "").strip().lower() == "gcp":
+    port_mode = os.environ.get("BRIDGE_PORT_MODE", "").strip().lower()
+    if os.environ.get("K_SERVICE", "").strip() or port_mode == "gcp":
         raise SpiffeAuthenticationError(
-            f"{SPIFFE_SVID_SECRET_ENV} must be configured when BRIDGE_PORT_MODE=gcp; "
+            f"{SPIFFE_SVID_SECRET_ENV} must be configured under K_SERVICE or BRIDGE_PORT_MODE=gcp; "
             "refusing fallback to DEFAULT_DEV_SVID_SECRET."
         )
     return DEFAULT_DEV_SVID_SECRET
@@ -773,15 +775,17 @@ def filter_quotes_for_principal(
 
 
 def parse_decimal_header(raw: str | None) -> Decimal | None:
-    """Parse an optional HTTP header string into a non-negative Decimal amount."""
+    """Parse an optional HTTP header string into a finite non-negative Decimal amount."""
     if not raw or not raw.strip():
         return None
+    msg = f"Invalid numeric approval limit '{raw}'."
     try:
-        return Decimal(raw.strip())
+        parsed = Decimal(raw.strip())
     except InvalidOperation as exc:
-        raise SpiffeAuthenticationError(
-            f"Invalid numeric approval limit '{raw}'."
-        ) from exc
+        raise SpiffeAuthenticationError(msg) from exc
+    if not parsed.is_finite() or parsed < Decimal("0"):
+        raise SpiffeAuthenticationError(msg)
+    return parsed
 
 
 def mint_user_token(
@@ -792,11 +796,12 @@ def mint_user_token(
     allowed_entities: tuple[str, ...] = (),
     carrier_slug: str | None = None,
     max_approval_amount: Decimal | str | None = None,
+    scope: str | None = None,
     ttl_seconds: int = 3600,
     secret: str | None = None,
     now_epoch: int | None = None,
 ) -> str:
-    """Mint a signed HS256 user JWT token for `X-Bridge-User-Token`."""
+    """Mint a signed HS256 user JWT token for `X-Bridge-User-Token` or `bridge_session` cookie."""
     now = int(now_epoch if now_epoch is not None else time.time())
     header = {"alg": "HS256", "typ": "JWT"}
     payload: dict[str, Any] = {
@@ -813,6 +818,8 @@ def mint_user_token(
         payload["carrier_slug"] = carrier_slug
     if max_approval_amount is not None:
         payload["max_approval_amount"] = str(max_approval_amount)
+    if scope:
+        payload["scope"] = scope
     h_b64 = _b64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     p_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signing_input = f"{h_b64}.{p_b64}".encode("ascii")

@@ -4,15 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
 from bridge.agent_gym import AgentGymEngine
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.operational_store import OperationalStore
-from bridge.user_interaction.auth import (
-    AuthenticationRequiredError,
-    resolve_compound_identity,
-)
+from bridge.user_interaction.demo_session import mutating_auth_dependency
 from bridge.user_interaction.schemas import (
     CreateBindingRequest,
     EvaluateGatewayRouteRequest,
@@ -61,60 +58,43 @@ def register_registry_and_catalog_routes(
         """List all explicit source-to-target authentication bindings in the Agent Registry."""
         return gym.get_registry_catalog()["agent_registry"]["bindings"]
 
-    @router.post("/v1/registry/services")
+    registry_internal_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+            external_role_error="External roles cannot mutate Agent Registry or evaluate internal gateway routes.",
+        )
+    ]
+
+    @router.post("/v1/registry/services", dependencies=registry_internal_deps)
     def register_registry_service_endpoint(
-        request: Request,
         body: RegisterServiceRequest,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Register a writable Service resource in Agent Registry projecting onto AGENT, MCP_SERVER, or ENDPOINT."""
-        try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role,
-                default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
-            )
-            if compound.user.role in ("client", "carrier"):
-                raise PermissionError(
-                    f"External role '{compound.user.role}' cannot register Agent Registry services."
-                )
-            return gym.register_registry_service(
-                service_id=body.service_id,
-                display_name=body.display_name,
-                component_type=body.component_type,
-                spec_type=body.spec_type,
-                target_uri=body.target_uri,
-                location=body.location,
-                agent_principal=body.agent_principal,
-                tools=body.tools,
-                data_resources=body.data_resources,
-            )
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        del role
+        return gym.register_registry_service(
+            service_id=body.service_id,
+            display_name=body.display_name,
+            component_type=body.component_type,
+            spec_type=body.spec_type,
+            target_uri=body.target_uri,
+            location=body.location,
+            agent_principal=body.agent_principal,
+            tools=body.tools,
+            data_resources=body.data_resources,
+        )
 
-    @router.post("/v1/registry/bindings")
+    @router.post("/v1/registry/bindings", dependencies=registry_internal_deps)
     def create_registry_binding_endpoint(
-        request: Request,
         body: CreateBindingRequest,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Create an explicit Agent Registry Binding enforcing hierarchical resource names over URNs."""
+        del role
         try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role,
-                default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
-            )
-            if compound.user.role in ("client", "carrier"):
-                raise PermissionError(
-                    f"External role '{compound.user.role}' cannot create Agent Registry bindings."
-                )
             return gym.create_registry_binding(
                 binding_id=body.binding_id,
                 source_agent=body.source_agent,
@@ -126,17 +106,23 @@ def register_registry_and_catalog_routes(
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     @router.get("/v1/gateway/status")
     def get_gateway_status_endpoint() -> dict[str, Any]:
         """Return the Gemini platform Agent Gateway and IAM v3 Unified Access Policy control-plane status."""
         return gym.get_gateway_catalog()
 
-    @router.post("/v1/gateway/evaluate-route")
+    @router.post(
+        "/v1/gateway/evaluate-route",
+        dependencies=[
+            mutating_auth_dependency(
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+                allow_external_roles=False,
+            )
+        ],
+    )
     def evaluate_gateway_route_endpoint(
         body: EvaluateGatewayRouteRequest,
     ) -> dict[str, Any]:

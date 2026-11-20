@@ -19,16 +19,37 @@ class GcpAuditVault(AuditVaultPort):
     """GCP `audit_vault` adapter (Zone 3) — Cloud Storage write-once WORM Audit Vault."""
 
     def __init__(
-        self, bucket_name: str | None = None, *, storage_client: Any = None
+        self,
+        bucket_name: str | None = None,
+        *,
+        prefix: str | None = None,
+        retention_days: int | None = None,
+        retention_mode: str | None = None,
+        storage_client: Any = None,
     ) -> None:
         self._bucket_name = bucket_name
+        self._prefix = prefix
+        self._retention_days = retention_days
+        self._retention_mode = retention_mode
         self._storage_client = storage_client
 
     def build_vault(
-        self, bucket_name: str | None = None, *, storage_client: Any = None
+        self,
+        bucket_name: str | None = None,
+        *,
+        prefix: str | None = None,
+        retention_days: int | None = None,
+        retention_mode: str | None = None,
+        storage_client: Any = None,
     ) -> Any:
         """Construct a Cloud Storage-backed :class:`GcpAuditVaultStore` (refuses in-memory fallback)."""
-        from bridge.vault import VAULT_BUCKET_ENV, GcpAuditVaultStore
+        from bridge.vault import (
+            VAULT_BUCKET_ENV,
+            VAULT_PREFIX_ENV,
+            VAULT_RETENTION_DAYS_ENV,
+            VAULT_RETENTION_MODE_ENV,
+            GcpAuditVaultStore,
+        )
 
         bucket = (
             bucket_name or self._bucket_name or os.environ.get(VAULT_BUCKET_ENV, "")
@@ -38,7 +59,36 @@ class GcpAuditVault(AuditVaultPort):
                 f"GCP port mode requires {VAULT_BUCKET_ENV} for AuditVaultStore; "
                 "refusing an in-memory fallback (the session-affinity trap)."
             )
-        return GcpAuditVaultStore(bucket, client=storage_client or self._storage_client)
+        resolved_prefix = prefix if prefix is not None else self._prefix
+        if resolved_prefix is None:
+            stripped = bucket.removeprefix("gs://").strip("/")
+            if "/" not in stripped:
+                env_prefix = os.environ.get(VAULT_PREFIX_ENV, "").strip()
+                resolved_prefix = env_prefix or None
+        resolved_days = (
+            retention_days if retention_days is not None else self._retention_days
+        )
+        if resolved_days is None:
+            raw_days = os.environ.get(VAULT_RETENTION_DAYS_ENV, "").strip()
+            if raw_days:
+                try:
+                    resolved_days = int(raw_days)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"{VAULT_RETENTION_DAYS_ENV} must be a positive integer, got {raw_days!r}"
+                    ) from exc
+        resolved_mode = (
+            retention_mode if retention_mode is not None else self._retention_mode
+        )
+        if resolved_mode is None:
+            resolved_mode = os.environ.get(VAULT_RETENTION_MODE_ENV, "").strip() or None
+        return GcpAuditVaultStore(
+            bucket,
+            prefix=resolved_prefix,
+            retention_days=resolved_days,
+            retention_mode=resolved_mode,
+            client=storage_client or self._storage_client,
+        )
 
 
 class GcpOperationalStore(OperationalStorePort):

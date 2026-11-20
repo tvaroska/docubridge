@@ -112,7 +112,42 @@ variable "agent_registry_service_agent_member" {
 
 variable "seed_skills" {
   type        = bool
-  description = "Upload repository skills/ files into the Skill Registry bucket during apply (default false so DocuBridge deploys empty until use-case agents onboard)."
+  description = "Deprecated no-op in HCL (skill files are synced via gcloud storage rsync in scripts/deploy.sh, keeping zero bucket_object resources in Terraform)."
+  default     = false
+}
+
+variable "single_bucket_mode" {
+  type        = bool
+  description = "Consolidate skills/, document_bridge/, scenarios/, email/, audit-vault/, and genai-payloads/ into a single shared bucket (gs://<project_id>) with per-object retention, prefix-scoped lifecycle Delete rules, and CEL IAM prefix conditions."
+  default     = false
+}
+
+variable "create_shared_bucket" {
+  type        = bool
+  description = "When single_bucket_mode = true: true creates gs://<project_id> (standalone install on a cold GCP project); false adopts an existing shared bucket via data.google_storage_bucket (co-located install)."
+  default     = true
+}
+
+variable "shared_bucket_name" {
+  type        = string
+  description = "Optional override for the shared bucket name in single_bucket_mode (defaults to var.project_id)."
+  default     = ""
+}
+
+variable "payload_retention_days" {
+  type        = number
+  description = "Lifecycle Delete age (days) for the genai-payloads/ prefix on the shared bucket in single_bucket_mode."
+  default     = 90
+
+  validation {
+    condition     = var.payload_retention_days >= 1
+    error_message = "payload_retention_days must be at least 1."
+  }
+}
+
+variable "force_destroy_shared_bucket" {
+  type        = bool
+  description = "Allow Terraform destroy of the shared bucket when non-empty (false in prod; may be disabled in dev/staging)."
   default     = false
 }
 

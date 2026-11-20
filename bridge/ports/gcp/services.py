@@ -23,7 +23,12 @@ from .common import (
     BRIDGE_RUNTIME_SA_EMAIL_ENV,
     BRIDGE_TASKS_QUEUE_ENV,
     EMAIL_BUCKET_ENV,
+    EMAIL_PREFIX_ENV,
     SKILLS_BUCKET_ENV,
+    SKILLS_PREFIX_ENV,
+    join_gcs_prefix,
+    normalize_gcs_prefix,
+    split_bucket_and_prefix,
 )
 
 
@@ -32,17 +37,22 @@ def _resolve_bucket(
 ) -> str:
     """Resolve the Skill Registry GCS bucket: `bucket_name` arg wins, else env.
 
-    Raises `RuntimeError` when neither is set — the gcp adapter REFUSES a silent
-    fallback (mirrors `_resolve_dsn`; a misconfigured registry must fail loud, not
-    quietly serve an empty/wrong bucket).
+    Accepts `<bucket>`, `<bucket>/<prefix>`, or `gs://<bucket>[/<prefix>]` and
+    returns the raw GCS bucket name. Raises `RuntimeError` when neither is set.
     """
-    name = (bucket_name or os.environ.get(env, "")).strip()
-    if not name:
+    raw = (bucket_name or os.environ.get(env, "")).strip()
+    if not raw:
         raise RuntimeError(
             f"GCP skill_registry requires a GCS bucket ({env} env or bucket_name=); "
             "refusing a silent fallback."
         )
-    return name
+    bucket, _ = split_bucket_and_prefix(raw)
+    if not bucket:
+        raise RuntimeError(
+            f"GCP skill_registry requires a GCS bucket ({env} env or bucket_name=); "
+            "refusing a silent fallback."
+        )
+    return bucket
 
 
 def _validate_skill_paths(name: str, rels: Any) -> None:
@@ -77,8 +87,21 @@ class GcpSkillRegistry(SkillRegistryPort):
     local->gcp is a no-op for the Agent Card.
     """
 
-    def __init__(self, bucket_name: str | None = None) -> None:
+    def __init__(
+        self, bucket_name: str | None = None, *, prefix: str | None = None
+    ) -> None:
         self._bucket_name = bucket_name
+        self._prefix = prefix
+
+    def _effective_prefix(self) -> str:
+        if self._prefix is not None:
+            return normalize_gcs_prefix(self._prefix)
+        raw = (self._bucket_name or os.environ.get(SKILLS_BUCKET_ENV, "")).strip()
+        if raw:
+            _, embedded = split_bucket_and_prefix(raw)
+            if embedded:
+                return embedded
+        return normalize_gcs_prefix(os.environ.get(SKILLS_PREFIX_ENV, ""))
 
     def _bucket(self) -> Any:
         name = _resolve_bucket(self._bucket_name)
@@ -87,25 +110,33 @@ class GcpSkillRegistry(SkillRegistryPort):
         return Client().bucket(name)
 
     def list_skills(self) -> list[Any]:
-        """List all skill packages discovered in the Cloud Storage skills bucket."""
+        """List all skill packages discovered in the Cloud Storage skills bucket or prefix."""
         import tempfile
         from pathlib import Path
 
         from bridge.edge.skills import listed_skill_meta
 
+        base = join_gcs_prefix(self._effective_prefix(), "")
         bucket = self._bucket()
+        blobs = bucket.list_blobs(prefix=base) if base else bucket.list_blobs()
         have_skill_md: set[str] = set()
-        for blob in bucket.list_blobs():
-            parts = blob.name.split("/", 1)
+        for blob in blobs:
+            if base:
+                if not blob.name.startswith(base):
+                    continue
+                rel_name = blob.name[len(base) :]
+            else:
+                rel_name = blob.name
+            parts = rel_name.split("/", 1)
             if len(parts) < 2:
                 continue
-            if blob.name == f"{parts[0]}/SKILL.md":
+            if rel_name == f"{parts[0]}/SKILL.md":
                 have_skill_md.add(parts[0])
         metas = []
         for name in sorted(have_skill_md):
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / name
-                _download_prefix(bucket, f"{name}/", dest)
+                _download_prefix(bucket, f"{base}{name}/", dest)
                 meta = listed_skill_meta(dest)
             if meta is not None:
                 metas.append(meta)
@@ -118,10 +149,12 @@ class GcpSkillRegistry(SkillRegistryPort):
 
         from bridge.edge.skills import skill_meta_from_dir
 
+        _validate_skill_paths(name, [])
+        base = join_gcs_prefix(self._effective_prefix(), "")
         bucket = self._bucket()
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / name
-            _download_prefix(bucket, f"{name}/", dest)
+            _download_prefix(bucket, f"{base}{name}/", dest)
             if not (dest / "SKILL.md").exists():
                 raise KeyError(name)
             return skill_meta_from_dir(dest)
@@ -129,7 +162,7 @@ class GcpSkillRegistry(SkillRegistryPort):
     def install_skill(
         self, name: str, skill_md: str, assets: dict[str, str] | None = None
     ) -> Any:
-        """Upload and register a skill directory into the Cloud Storage skills bucket."""
+        """Upload and register a skill directory into the Cloud Storage skills bucket or prefix."""
         import tempfile
         from pathlib import Path
 
@@ -137,19 +170,21 @@ class GcpSkillRegistry(SkillRegistryPort):
 
         _validate_skill_paths(name, assets or {})
         validate_skill_upload(name, skill_md, assets)
+        base = join_gcs_prefix(self._effective_prefix(), "")
         bucket = self._bucket()
-        bucket.blob(f"{name}/SKILL.md").upload_from_string(skill_md)
+        bucket.blob(f"{base}{name}/SKILL.md").upload_from_string(skill_md)
         for rel, content in (assets or {}).items():
-            bucket.blob(f"{name}/{rel}").upload_from_string(content)
+            bucket.blob(f"{base}{name}/{rel}").upload_from_string(content)
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp) / name
-            _download_prefix(bucket, f"{name}/", dest)
+            _download_prefix(bucket, f"{base}{name}/", dest)
             return skill_meta_from_dir(dest)
 
     def read_asset(self, name: str, rel: str) -> str:
         """Read a raw asset file belonging to an installed skill package."""
         _validate_skill_paths(name, [rel])
-        blob = self._bucket().blob(f"{name}/{rel}")
+        base = join_gcs_prefix(self._effective_prefix(), "")
+        blob = self._bucket().blob(f"{base}{name}/{rel}")
         if not blob.exists():
             raise KeyError(f"{name}/{rel}")
         return blob.download_as_text()
@@ -547,19 +582,41 @@ class GcpExtraction(ExtractionPort):
 
 
 class GcpEmailIngress(EmailIngressPort):
-    """GCP `email_ingress` adapter (S0-arch-13) — a GCS landing bucket."""
+    """GCP `email_ingress` adapter (S0-arch-13) — a GCS landing bucket or prefix."""
 
-    def __init__(self, bucket_name: str | None = None) -> None:
+    def __init__(
+        self, bucket_name: str | None = None, *, prefix: str | None = None
+    ) -> None:
         self._bucket_name = bucket_name
+        self._prefix = prefix
 
     def _name(self) -> str:
-        name = (self._bucket_name or os.environ.get(EMAIL_BUCKET_ENV, "")).strip()
-        if not name:
+        raw = (self._bucket_name or os.environ.get(EMAIL_BUCKET_ENV, "")).strip()
+        if not raw:
             raise RuntimeError(
                 f"GCP email_ingress requires a GCS bucket ({EMAIL_BUCKET_ENV} env or "
                 "bucket_name=); refusing a silent fallback."
             )
-        return name
+        bucket, _ = split_bucket_and_prefix(raw)
+        if not bucket:
+            raise RuntimeError(
+                f"GCP email_ingress requires a GCS bucket ({EMAIL_BUCKET_ENV} env or "
+                "bucket_name=); refusing a silent fallback."
+            )
+        return bucket
+
+    def _effective_prefix(self) -> str:
+        if self._prefix is not None:
+            return normalize_gcs_prefix(self._prefix)
+        raw = (self._bucket_name or os.environ.get(EMAIL_BUCKET_ENV, "")).strip()
+        if raw:
+            _, embedded = split_bucket_and_prefix(raw)
+            if embedded:
+                return embedded
+        return normalize_gcs_prefix(os.environ.get(EMAIL_PREFIX_ENV, ""))
+
+    def _object_key(self, rel: str) -> str:
+        return join_gcs_prefix(self._effective_prefix(), rel)
 
     def _bucket(self) -> Any:
         name = self._name()
@@ -586,22 +643,25 @@ class GcpEmailIngress(EmailIngressPort):
     def land(self, key: str, raw: bytes) -> bool:
         """Persist an inbound raw MIME email message into the Cloud Storage ingress prefix."""
         validate_landing_key(key)
-        blob = self._bucket().blob(f"inbox/{key}.eml")
+        obj_key = self._object_key(f"inbox/{key}.eml")
+        blob = self._bucket().blob(obj_key)
         return self._create_only(blob, raw, "message/rfc822")
 
     def pending(self) -> list[str]:
         """List message IDs currently waiting in the pending ingress prefix."""
         import re
 
+        processed_prefix = self._object_key("processed/")
+        inbox_prefix = self._object_key("inbox/")
         bucket = self._bucket()
         done = {
-            blob.name[len("processed/") : -len(".json")]
-            for blob in bucket.list_blobs(prefix="processed/")
+            blob.name[len(processed_prefix) : -len(".json")]
+            for blob in bucket.list_blobs(prefix=processed_prefix)
             if blob.name.endswith(".json")
         }
         rows = []
-        for blob in bucket.list_blobs(prefix="inbox/"):
-            rel = blob.name[len("inbox/") :]
+        for blob in bucket.list_blobs(prefix=inbox_prefix):
+            rel = blob.name[len(inbox_prefix) :]
             key = rel.removesuffix(".eml")
             if not rel.endswith(".eml") or not re.fullmatch(EMAIL_KEY_PATTERN, key):
                 _LOG.warning(
@@ -616,7 +676,8 @@ class GcpEmailIngress(EmailIngressPort):
     def read(self, key: str) -> bytes:
         """Read the raw MIME bytes for a pending or processed ingress message ID."""
         validate_landing_key(key)
-        blob = self._bucket().blob(f"inbox/{key}.eml")
+        obj_key = self._object_key(f"inbox/{key}.eml")
+        blob = self._bucket().blob(obj_key)
         if not blob.exists():
             raise KeyError(key)
         return blob.download_as_bytes()
@@ -627,7 +688,7 @@ class GcpEmailIngress(EmailIngressPort):
         """Upload an extracted MIME attachment to the Cloud Storage attachment prefix."""
         validate_landing_key(key)
         validate_attachment_slot(index, filename)
-        name = f"attachments/{key}/{index}/{filename}"
+        name = self._object_key(f"attachments/{key}/{index}/{filename}")
         bucket = self._bucket()
         self._create_only(bucket.blob(name), data, mime_type)
         return f"gs://{bucket.name}/{name}"
@@ -637,7 +698,8 @@ class GcpEmailIngress(EmailIngressPort):
         import json
 
         validate_landing_key(key)
-        blob = self._bucket().blob(f"processed/{key}.json")
+        obj_key = self._object_key(f"processed/{key}.json")
+        blob = self._bucket().blob(obj_key)
         body = json.dumps(outcome, sort_keys=True).encode()
         return self._create_only(blob, body, "application/json")
 
@@ -646,7 +708,8 @@ class GcpEmailIngress(EmailIngressPort):
         import json
 
         validate_landing_key(key)
-        blob = self._bucket().blob(f"processed/{key}.json")
+        obj_key = self._object_key(f"processed/{key}.json")
+        blob = self._bucket().blob(obj_key)
         if not blob.exists():
             return None
         return json.loads(blob.download_as_bytes())

@@ -49,11 +49,17 @@ locals {
   # The per-app Meridian service (bridge-meridian, App Hub: meridian-loan-consolidation).
   meridian_service_name = var.meridian_service_name
   meridian_service_url  = "https://${local.meridian_service_name}-${data.google_project.this.number}.${var.region}.run.app"
-  genai_upload_base     = "gs://${var.project_id}-genai-payloads/"
-  scenarios_dir_uri     = var.scenarios_bucket != "" ? "gs://${var.scenarios_bucket}/" : ""
-  default_fnb_url       = var.port_mode == "gcp" ? "https://${var.project_id}-fnb-${data.google_project.this.number}.${var.region}.run.app" : ""
-  default_carrier_a_url = var.port_mode == "gcp" ? "https://${var.project_id}-carrier-a-${data.google_project.this.number}.${var.region}.run.app" : ""
-  default_carrier_b_url = var.port_mode == "gcp" ? "https://${var.project_id}-carrier-b-${data.google_project.this.number}.${var.region}.run.app" : ""
+  genai_upload_base = var.genai_upload_base_path != "" ? var.genai_upload_base_path : (
+    var.single_bucket_mode ? "gs://${var.project_id}/genai-payloads/" : "gs://${var.project_id}-genai-payloads/"
+  )
+  scenarios_dir_uri = var.scenarios_bucket != "" ? (
+    var.scenarios_prefix != "" ? "gs://${var.scenarios_bucket}/${trim(var.scenarios_prefix, "/")}/" : "gs://${var.scenarios_bucket}/"
+  ) : ""
+  vault_retention_days_env = var.vault_bucket != "" && var.vault_retention_days > 0 ? tostring(var.vault_retention_days) : ""
+  vault_retention_mode_env = var.vault_bucket != "" && var.vault_retention_mode != "" ? var.vault_retention_mode : ""
+  default_fnb_url          = var.port_mode == "gcp" ? "https://${var.project_id}-fnb-${data.google_project.this.number}.${var.region}.run.app" : ""
+  default_carrier_a_url    = var.port_mode == "gcp" ? "https://${var.project_id}-carrier-a-${data.google_project.this.number}.${var.region}.run.app" : ""
+  default_carrier_b_url    = var.port_mode == "gcp" ? "https://${var.project_id}-carrier-b-${data.google_project.this.number}.${var.region}.run.app" : ""
 
   board_plain_env = {
     BRIDGE_RFP_PROCESS                                 = var.rfp_process
@@ -62,7 +68,11 @@ locals {
     BRIDGE_PORT_MODE                                   = var.port_mode
     BRIDGE_ARTIFACT_BUCKET                             = var.artifacts_bucket
     BRIDGE_VAULT_BUCKET                                = var.vault_bucket
+    BRIDGE_VAULT_PREFIX                                = var.vault_prefix
+    BRIDGE_VAULT_RETENTION_DAYS                        = local.vault_retention_days_env
+    BRIDGE_VAULT_RETENTION_MODE                        = local.vault_retention_mode_env
     BRIDGE_SKILLS_BUCKET                               = var.skills_bucket
+    BRIDGE_SKILLS_PREFIX                               = var.skills_prefix
     BRIDGE_SCENARIOS_DIR                               = local.scenarios_dir_uri
     BRIDGE_CARRIER_A_URL                               = local.default_carrier_a_url
     BRIDGE_CARRIER_B_URL                               = local.default_carrier_b_url
@@ -81,6 +91,7 @@ locals {
     BRIDGE_VERTEX_LOCATION                             = var.port_mode == "gcp" ? var.vertex_location : ""
     BRIDGE_PUBLIC_URL                                  = local.effective_public_url
     BRIDGE_EMAIL_BUCKET                                = var.email_bucket
+    BRIDGE_EMAIL_PREFIX                                = var.email_prefix
     BRIDGE_EMAIL_MAILBOX                               = var.email_mailbox
     BRIDGE_EMAIL_DRAIN_INTERVAL                        = "0"
     OTEL_SERVICE_NAME                                  = local.board_service_name
@@ -100,7 +111,11 @@ locals {
     BRIDGE_PORT_MODE                                   = var.port_mode
     BRIDGE_ARTIFACT_BUCKET                             = var.artifacts_bucket
     BRIDGE_VAULT_BUCKET                                = var.vault_bucket
+    BRIDGE_VAULT_PREFIX                                = var.vault_prefix
+    BRIDGE_VAULT_RETENTION_DAYS                        = local.vault_retention_days_env
+    BRIDGE_VAULT_RETENTION_MODE                        = local.vault_retention_mode_env
     BRIDGE_SKILLS_BUCKET                               = var.skills_bucket
+    BRIDGE_SKILLS_PREFIX                               = var.skills_prefix
     BRIDGE_SCENARIOS_DIR                               = local.scenarios_dir_uri
     BRIDGE_FNB_AGENT_URL                               = local.default_fnb_url
     BRIDGE_EXTRACTION_ENGINE                           = var.extraction_engine
@@ -197,6 +212,14 @@ resource "google_cloud_run_v2_service" "bridge" {
       }
 
       dynamic "env" {
+        for_each = var.skills_prefix != "" ? [1] : []
+        content {
+          name  = "BRIDGE_SKILLS_PREFIX"
+          value = var.skills_prefix
+        }
+      }
+
+      dynamic "env" {
         for_each = var.artifacts_bucket != "" ? [1] : []
         content {
           name  = "BRIDGE_ARTIFACT_BUCKET"
@@ -209,6 +232,30 @@ resource "google_cloud_run_v2_service" "bridge" {
         content {
           name  = "BRIDGE_VAULT_BUCKET"
           value = var.vault_bucket
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.vault_prefix != "" ? [1] : []
+        content {
+          name  = "BRIDGE_VAULT_PREFIX"
+          value = var.vault_prefix
+        }
+      }
+
+      dynamic "env" {
+        for_each = local.vault_retention_days_env != "" ? [1] : []
+        content {
+          name  = "BRIDGE_VAULT_RETENTION_DAYS"
+          value = local.vault_retention_days_env
+        }
+      }
+
+      dynamic "env" {
+        for_each = local.vault_retention_mode_env != "" ? [1] : []
+        content {
+          name  = "BRIDGE_VAULT_RETENTION_MODE"
+          value = local.vault_retention_mode_env
         }
       }
 
@@ -497,6 +544,13 @@ resource "google_cloud_run_v2_service" "email_webhook" {
       env {
         name  = "BRIDGE_EMAIL_BUCKET"
         value = var.email_bucket
+      }
+      dynamic "env" {
+        for_each = var.email_prefix != "" ? [1] : []
+        content {
+          name  = "BRIDGE_EMAIL_PREFIX"
+          value = var.email_prefix
+        }
       }
       env {
         name  = "BRIDGE_EMAIL_MAILBOX"

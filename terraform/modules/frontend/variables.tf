@@ -21,6 +21,12 @@ variable "region" {
   default     = "us-central1"
 }
 
+variable "single_bucket_mode" {
+  type        = bool
+  description = "When true, extra frontend buckets (-portal, -console, -dashboard) are forbidden; SPAs are served directly from Cloud Run instead of dedicated GCS buckets."
+  default     = false
+}
+
 variable "enable_frontend" {
   type        = bool
   description = <<-EOT
@@ -29,9 +35,14 @@ variable "enable_frontend" {
     default is empty. When true it provisions the external-zone portal (public GCS
     bucket behind an external HTTPS LB + Cloud CDN) and the internal-zone console +
     dashboard staging buckets (private). Mirrors the gateway module's enable_gateway
-    (design/zones.md).
+    (design/zones.md). Cannot be combined with single_bucket_mode = true.
   EOT
   default     = false
+
+  validation {
+    condition     = !(var.enable_frontend && var.single_bucket_mode)
+    error_message = "enable_frontend cannot be true when single_bucket_mode = true (refusing to provision extra -portal/-console/-dashboard buckets)."
+  }
 }
 
 variable "ssl_domains" {

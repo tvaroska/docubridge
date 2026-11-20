@@ -313,11 +313,13 @@ def test_four_sql_stores_share_one_dsn_runtime_and_engine(tmp_path: Path) -> Non
 
 
 def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
-    """``Dockerfile`` runs as non-root and ``cloudbuild.yaml`` uses a parallel DAG."""
+    """``Dockerfile`` runs as non-root with HEALTHCHECK and ``cloudbuild.yaml`` uses a parallel DAG."""
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "USER appuser" in dockerfile
     assert "COPY agents/" not in dockerfile
-    assert "ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim" in dockerfile
+    assert "ghcr.io/astral-sh/uv:0.12.24-python3.12-bookworm-slim" in dockerfile
+    assert "HEALTHCHECK " in dockerfile
+    assert "/.well-known/agent-card.json" in dockerfile
 
     cb = yaml.safe_load((REPO_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8"))
     steps = {s["id"]: s for s in cb["steps"]}
@@ -332,6 +334,18 @@ def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
         assert steps[root_step].get("waitFor") == ["-"], (
             f"{root_step} must start at t=0 with waitFor: ['-']"
         )
+
+    for py_step in (
+        "python-env-and-lint",
+        "python-core-and-enterprise-tests",
+        "python-agent-and-golden-tests",
+        "python-coverage-gate",
+    ):
+        assert (
+            steps[py_step]["name"]
+            == "ghcr.io/astral-sh/uv:0.12.24-python3.12-bookworm-slim"
+        )
+    assert "uv pip install" not in " ".join(steps["python-env-and-lint"]["args"])
 
     # Both Python test shards fan out in parallel after python-env-and-lint.
     assert steps["python-core-and-enterprise-tests"]["waitFor"] == [
@@ -348,14 +362,33 @@ def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
     assert "--fail-under=90" in " ".join(cov_step["args"])
     assert "bridge-serve" in dockerfile
 
-    # Docker build runs in parallel with test suites; push waits for all gates.
+    # Docker build runs in parallel with test suites; Trivy scans before push waits for all gates.
     assert steps["docker-build-image"]["waitFor"] == ["resolve-git-metadata"]
+    trivy_step = steps["trivy-vulnerability-scan"]
+    assert trivy_step["waitFor"] == ["docker-build-image"]
+    trivy_args = " ".join(trivy_step["args"])
+    assert "aquasec/trivy:0.58.1" in trivy_args
+    assert "--pkg-types os,library" in trivy_args
+    assert "--exit-code 1" in trivy_args
     assert set(steps["docker-push-image"]["waitFor"]) == {
         "docker-build-image",
+        "trivy-vulnerability-scan",
         "python-coverage-gate",
         "frontend-tests-and-typecheck",
         "terraform-plan-tests",
     }
+
+    pyproject = tomllib.loads(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    assert pyproject["tool"]["uv"]["required-version"] == ">=0.12.24"
+    deps = pyproject["project"]["dependencies"]
+    assert not any(d.lower().startswith("langgraph") for d in deps)
+    dev_deps = pyproject["project"]["optional-dependencies"]["dev"]
+    for required_dev in ("pytest-cov", "pytest-xdist", "ast-grep-cli"):
+        assert any(d.lower().startswith(required_dev) for d in dev_deps), (
+            f"{required_dev} missing from pyproject.toml [dev]"
+        )
 
 
 def test_secondary_docs_list_all_13_hexagonal_ports() -> None:

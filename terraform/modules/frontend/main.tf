@@ -35,10 +35,14 @@
 # Every resource is gated on var.enable_frontend (count / for_each), so when the
 # frontend is disabled (the credential-free default) this module creates nothing.
 
+locals {
+  provision_frontend = var.enable_frontend && !var.single_bucket_mode
+}
+
 # Portal bucket — EXTERNAL zone, PUBLIC by design (see header). SPA client-side
 # routing falls back to index.html on a 404 (website block).
 resource "google_storage_bucket" "portal" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   project  = var.project_id
   name     = "${var.name_prefix}-portal"
@@ -59,7 +63,7 @@ resource "google_storage_bucket" "portal" {
 # internal serving is a follow-up (see header). website block is harmless on a
 # private bucket and keeps the SPA fallback ready for the internal serving surface.
 resource "google_storage_bucket" "console" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   project  = var.project_id
   name     = "${var.name_prefix}-console"
@@ -78,7 +82,7 @@ resource "google_storage_bucket" "console" {
 # Dashboard bucket — INTERNAL zone, PRIVATE staging bucket (never public). Same
 # posture as the console bucket; live internal serving is a follow-up (see header).
 resource "google_storage_bucket" "dashboard" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   project  = var.project_id
   name     = "${var.name_prefix}-dashboard"
@@ -98,7 +102,7 @@ resource "google_storage_bucket" "dashboard" {
 # design so the LB backend bucket can serve its assets to anonymous users. The
 # internal-zone console + dashboard buckets get NO such grant (they stay private).
 resource "google_storage_bucket_iam_member" "portal_public_read" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   bucket = google_storage_bucket.portal[0].name
   role   = "roles/storage.objectViewer"
@@ -112,7 +116,7 @@ resource "google_storage_bucket_iam_member" "portal_public_read" {
 
 # Backend bucket → the public portal bucket, with Cloud CDN enabled.
 resource "google_compute_backend_bucket" "portal" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   project     = var.project_id
   name        = "${var.name_prefix}-portal-backend"
@@ -122,7 +126,7 @@ resource "google_compute_backend_bucket" "portal" {
 
 # URL map → default backend bucket.
 resource "google_compute_url_map" "portal" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   project         = var.project_id
   name            = "${var.name_prefix}-portal-urlmap"
@@ -132,7 +136,7 @@ resource "google_compute_url_map" "portal" {
 # Google-managed SSL certificate — gated on non-empty ssl_domains (the domains may
 # not be known at plan time; the LB URL is then injected out-of-band at deploy).
 resource "google_compute_managed_ssl_certificate" "portal" {
-  count = var.enable_frontend && length(var.ssl_domains) > 0 ? 1 : 0
+  count = local.provision_frontend && length(var.ssl_domains) > 0 ? 1 : 0
 
   project = var.project_id
   name    = "${var.name_prefix}-portal-cert"
@@ -144,7 +148,7 @@ resource "google_compute_managed_ssl_certificate" "portal" {
 
 # Target HTTPS proxy → url map (+ managed cert when domains are set).
 resource "google_compute_target_https_proxy" "portal" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   project          = var.project_id
   name             = "${var.name_prefix}-portal-https-proxy"
@@ -154,7 +158,7 @@ resource "google_compute_target_https_proxy" "portal" {
 
 # The LB anycast IP.
 resource "google_compute_global_address" "portal" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   project = var.project_id
   name    = "${var.name_prefix}-portal-lb-ip"
@@ -163,7 +167,7 @@ resource "google_compute_global_address" "portal" {
 # External HTTPS forwarding rule (port 443) → proxy + address. The public ingress
 # entry point for the external-zone portal.
 resource "google_compute_global_forwarding_rule" "portal" {
-  count = var.enable_frontend ? 1 : 0
+  count = local.provision_frontend ? 1 : 0
 
   project               = var.project_id
   name                  = "${var.name_prefix}-portal-https-fr"

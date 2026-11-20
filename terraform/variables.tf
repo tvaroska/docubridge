@@ -114,7 +114,7 @@ variable "spiffe_svid_secret_data" {
 
 variable "seed_skills" {
   type        = bool
-  description = "Upload repository skills/ files into the Skill Registry GCS bucket during terraform apply (default false so DocuBridge starts empty on its own)."
+  description = "When true, scripts/deploy.sh syncs repository skills/ into the Skill Registry bucket/prefix via gcloud storage rsync (zero bucket_object resources in HCL) and disables empty_catalog_on_start."
   default     = false
 }
 
@@ -220,8 +220,13 @@ variable "public_url" {
 # resource on it, mirroring enable_gateway).
 variable "enable_frontend" {
   type        = bool
-  description = "Whether the deployed frontend buckets + external portal LB are provisioned (P7-7). Default off keeps the credential-free plan empty."
+  description = "Whether the deployed frontend buckets + external portal LB are provisioned (P7-7). Default off keeps the credential-free plan empty. Cannot be true when single_bucket_mode = true."
   default     = false
+
+  validation {
+    condition     = !(var.enable_frontend && var.single_bucket_mode)
+    error_message = "enable_frontend cannot be true when single_bucket_mode = true (refusing to provision extra -portal/-console/-dashboard buckets)."
+  }
 }
 
 variable "frontend_ssl_domains" {
@@ -425,6 +430,60 @@ variable "default_demo_domain" {
   type        = string
   description = "Optional default showcase domain for /demo and /console (banking | mortgage | insurance), injected as BRIDGE_DEFAULT_DEMO_DOMAIN. Empty = banking default."
   default     = ""
+}
+
+variable "single_bucket_mode" {
+  type        = bool
+  description = "Consolidate all GCS prefixes (skills/, document_bridge/, scenarios/, email/, audit-vault/, genai-payloads/) into one shared bucket gs://<project_id> with per-object retention, prefix-scoped lifecycle rules, and CEL IAM prefix conditions."
+  default     = false
+}
+
+variable "create_shared_bucket" {
+  type        = bool
+  description = "When single_bucket_mode = true: true creates gs://<project_id> (standalone install on a cold GCP project); false adopts an existing shared bucket via data.google_storage_bucket (co-located install)."
+  default     = true
+}
+
+variable "shared_bucket_name" {
+  type        = string
+  description = "Optional override for the shared bucket name in single_bucket_mode (defaults to var.project_id)."
+  default     = ""
+}
+
+variable "create_eval_dataset" {
+  type        = bool
+  description = "When enable_telemetry_bq = true: true creates the BigQuery agent_eval dataset (standalone install); false adopts an existing dataset via data.google_bigquery_dataset (co-located install)."
+  default     = true
+}
+
+variable "eval_dataset_id" {
+  type        = string
+  description = "BigQuery dataset ID for evaluation views and BigLake completions table."
+  default     = "agent_eval"
+}
+
+variable "create_vertex_connection" {
+  type        = bool
+  description = "When enable_telemetry_bq = true: true creates the US vertex_ai_connection BigQuery Cloud Resource connection (standalone install); false references the existing connection without colliding (co-located install)."
+  default     = true
+}
+
+variable "vertex_connection_id" {
+  type        = string
+  description = "BigQuery Cloud Resource connection ID for BigLake external tables and AI.GENERATE_TABLE."
+  default     = "vertex_ai_connection"
+}
+
+variable "vertex_connection_service_account_email" {
+  type        = string
+  description = "Optional existing BigLake connection service account email used to grant prefix-scoped genai-payloads/ objectViewer when create_vertex_connection = false."
+  default     = ""
+}
+
+variable "payload_retention_days" {
+  type        = number
+  description = "Lifecycle Delete age (days) for GenAI completion payload JSONL objects in Cloud Storage."
+  default     = 90
 }
 
 

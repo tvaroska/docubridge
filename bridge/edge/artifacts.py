@@ -207,17 +207,46 @@ def scoped_uri(base_url: str, *, context_id: str, filename: str, version: int) -
     return f"{base}{ARTIFACTS_PREFIX}/{ctx}/{name}?v={version}"
 
 
+def _parse_artifact_bucket(raw: str) -> tuple[str, str]:
+    """Parse `<bucket>`, `gs://<bucket>`, or `<bucket>/document_bridge` for ADK GCS storage.
+
+    ADK ``GcsArtifactService`` always stores session artifacts under the top-level
+    ``document_bridge/{user_id}/{session_id}/{filename}/{version}`` prefix, so both
+    ``<bucket>`` and ``<bucket>/document_bridge`` resolve to the same bucket without
+    double-prefixing. Any other prefix is rejected loudly so the store, signed URLs,
+    and single-bucket GCS lifecycle/IAM rules cannot drift.
+    """
+    cleaned = (raw or "").strip()
+    if cleaned.startswith("gs://"):
+        cleaned = cleaned[len("gs://") :]
+    cleaned = cleaned.strip("/")
+    bucket, _, embedded = cleaned.partition("/")
+    prefix = "/".join(seg for seg in embedded.strip("/").split("/") if seg)
+    if any(seg in {".", ".."} for seg in prefix.split("/") if seg):
+        raise ValueError(
+            f"invalid {ARTIFACT_BUCKET_ENV} prefix {prefix!r}: path traversal forbidden"
+        )
+    if prefix and prefix != APP_NAME:
+        raise ValueError(
+            f"{ARTIFACT_BUCKET_ENV} prefix {prefix!r} is incompatible with ADK "
+            f"GcsArtifactService (objects always live under '{APP_NAME}/'); "
+            f"use '{bucket}' or '{bucket}/{APP_NAME}'."
+        )
+    return bucket, prefix
+
+
 def build_artifact_store() -> BaseArtifactService:
     """Build the artifact store from env: GCS on deploy, in-memory locally (P7-3).
 
-    Returns ``GcsArtifactService(bucket_name=$BRIDGE_ARTIFACT_BUCKET)`` when the env
-    is set (lazy import — importing this module pulls no ``google.cloud`` client),
-    else ``InMemoryArtifactService``. This is the native backend swap point (not a
-    port, Decision 1). Callers keep the injectable ``param or build_artifact_store()``
-    idiom so an explicit store still wins (the P7-8 wiring-guard contract).
+    Returns ``GcsArtifactService(bucket_name=...)`` when ``BRIDGE_ARTIFACT_BUCKET``
+    is set (accepting ``<bucket>``, ``gs://<bucket>``, or ``<bucket>/document_bridge``;
+    ADK always writes under ``document_bridge/{user_id}/{session_id}/{filename}/{version}``),
+    else ``InMemoryArtifactService``. Callers keep the injectable
+    ``param or build_artifact_store()`` idiom so an explicit store still wins.
     """
-    bucket = os.environ.get(ARTIFACT_BUCKET_ENV, "").strip()
-    if bucket:
+    raw = os.environ.get(ARTIFACT_BUCKET_ENV, "").strip()
+    if raw:
+        bucket, _ = _parse_artifact_bucket(raw)
         from google.adk.artifacts import GcsArtifactService
 
         return GcsArtifactService(bucket_name=bucket)
@@ -232,9 +261,9 @@ def _adk_gcs_blob_path(
     """The ADK ``GcsArtifactService`` object path for a session-scoped artifact.
 
     Mirrors ADK's ``_get_blob_name`` for a non-``user:``-namespaced filename:
-    ``{app}/{user_id}/{session_id}/{filename}/{version}`` (session_id == the
-    exchange ``context_id``). Kept in lockstep with the store so the signed URL
-    points at the exact object ``save_artifact`` wrote.
+    ``document_bridge/{user_id}/{session_id}/{filename}/{version}`` (session_id ==
+    the exchange ``context_id``). Kept in lockstep with the store and single-bucket
+    ``document_bridge/`` lifecycle/IAM prefix rules.
     """
     return f"{APP_NAME}/{user_id}/{context_id}/{filename}/{version}"
 
@@ -242,18 +271,22 @@ def _adk_gcs_blob_path(
 def gcs_signer(bucket_name: str) -> Signer:
     """Return a :data:`Signer` that mints a V4 GCS signed URL for one blob (P7-3).
 
+    Accepts ``<bucket>``, ``gs://<bucket>``, or ``<bucket>/document_bridge`` and
+    always signs ``document_bridge/{user_id}/{context_id}/{filename}/{version}``.
     On Cloud Run the signing uses IAM SignBlob via the ``bridge-runtime`` SA's
     existing self-scoped ``serviceAccountTokenCreator`` grant (P7-1) — no private
     key, no new IAM. The client is imported lazily (module import stays dep-free).
     """
     from datetime import timedelta
 
+    resolved_bucket, _ = _parse_artifact_bucket(bucket_name)
+
     def _sign(context_id: str, filename: str, user_id: str, version: int | None) -> str:
         from google.cloud.storage import Client
 
         blob = (
             Client()
-            .bucket(bucket_name)
+            .bucket(resolved_bucket)
             .blob(_adk_gcs_blob_path(user_id, context_id, filename, version or 0))
         )
         return blob.generate_signed_url(

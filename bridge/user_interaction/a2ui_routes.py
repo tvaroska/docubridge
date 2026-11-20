@@ -37,6 +37,10 @@ from bridge.user_interaction.auth import (
     AuthenticationRequiredError,
     resolve_compound_identity,
 )
+from bridge.user_interaction.demo_session import (
+    mutating_auth_dependency,
+    verified_mutating_identity,
+)
 from bridge.user_interaction.schemas import (
     AdvanceActionStepRequest,
     CreateActionProgressRequest,
@@ -57,6 +61,32 @@ def register_a2ui_routes(
 ) -> None:
     """Register A2UI v0.9 catalog, Action Inbox, SSE, and role-based surface routes."""
 
+    def _channel_default_role(req: Request) -> CatalogRole:
+        ch = (req.query_params.get("channel") or "gemini_app").strip()
+        return "broker" if ch == "gemini_app" else "client"
+
+    inbox_create_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=True,
+        )
+    ]
+    progress_auth = mutating_auth_dependency(
+        default_role="broker",
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+        allow_external_roles=False,
+        external_role_error="External roles cannot mutate Action Inbox progress steps.",
+    )
+    governance_action_auth = mutating_auth_dependency(
+        default_role_fn=_channel_default_role,
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+        allow_external_roles=True,
+    )
+
     @router.get("/v1/a2ui/catalogs/{catalog_name}")
     def get_a2ui_catalog_schema(catalog_name: str) -> dict[str, Any]:
         """Return the security-zone-isolated A2UI v0.9 widget catalog schema (enterprise or portal)."""
@@ -68,7 +98,7 @@ def register_a2ui_routes(
             status_code=404, detail=f"Unknown A2UI catalog '{catalog_name}'."
         )
 
-    @router.post("/v1/a2ui/inbox/actions")
+    @router.post("/v1/a2ui/inbox/actions", dependencies=inbox_create_deps)
     def create_tracked_action(
         request: Request,
         body: CreateActionProgressRequest,
@@ -79,9 +109,11 @@ def register_a2ui_routes(
         try:
             compound = resolve_compound_identity(
                 request,
-                query_role=role or body.assigned_role,
+                query_role=role,
+                default_role=body.assigned_role,
                 principal_roles=principal_roles,
                 require_auth=require_auth,
+                require_mutating=True,
             )
             resolved_role = compound.user.role
             authorize_entity_access(compound.user, body.entity_id)
@@ -161,7 +193,8 @@ def register_a2ui_routes(
             )
             compound = resolve_compound_identity(
                 request,
-                query_role=role or default_role,
+                query_role=role,
+                default_role=default_role,
                 principal_roles=principal_roles,
                 require_auth=require_auth,
             )
@@ -225,7 +258,8 @@ def register_a2ui_routes(
             )
             compound = resolve_compound_identity(
                 request,
-                query_role=role or default_role,
+                query_role=role,
+                default_role=default_role,
                 principal_roles=principal_roles,
                 require_auth=require_auth,
             )
@@ -264,13 +298,23 @@ def register_a2ui_routes(
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    @router.post("/v1/a2ui/inbox/items/{item_id}/progress")
+    @router.post(
+        "/v1/a2ui/inbox/items/{item_id}/progress",
+        dependencies=[progress_auth],
+    )
     def update_inbox_action_step(
+        request: Request,
         item_id: str,
         body: AdvanceActionStepRequest,
+        role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Advance a single milestone step on an active Action Inbox item and emit an updateDataModel delta."""
+        del role
+        compound = verified_mutating_identity(request)
         try:
+            existing = inbox.get_item(item_id)
+            if existing is not None:
+                authorize_entity_access(compound.user, existing.entity_id)
             item, delta = inbox.advance_step(
                 item_id,
                 step_id=body.step_id,
@@ -287,6 +331,8 @@ def register_a2ui_routes(
             }
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     @router.get("/v1/a2ui/inbox/items/{item_id}/events")
     def stream_inbox_action_events(
@@ -307,7 +353,8 @@ def register_a2ui_routes(
             )
             compound = resolve_compound_identity(
                 request,
-                query_role=role or default_role,
+                query_role=role,
+                default_role=default_role,
                 principal_roles=principal_roles,
                 require_auth=require_auth,
             )
@@ -332,7 +379,10 @@ def register_a2ui_routes(
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    @router.post("/v1/a2ui/inbox/items/{item_id}/action")
+    @router.post(
+        "/v1/a2ui/inbox/items/{item_id}/action",
+        dependencies=[governance_action_auth],
+    )
     def submit_inbox_governance_action(
         request: Request,
         item_id: str,
@@ -341,25 +391,13 @@ def register_a2ui_routes(
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Submit a 4+1 human governance verb (accept, edit_and_approve, respond, reject, escalate) on an inbox item."""
+        del role
+        compound = verified_mutating_identity(request)
         try:
-            default_role: CatalogRole = (
-                "broker" if channel == "gemini_app" else "client"
-            )
-            compound = resolve_compound_identity(
-                request,
-                query_role=role or default_role,
-                principal_roles=principal_roles,
-                require_auth=require_auth,
-            )
             resolved_role = compound.user.role
             item = inbox.get_item(item_id)
             if item is not None:
                 authorize_entity_access(compound.user, item.entity_id)
-            principal_max = (
-                float(compound.user.max_approval_amount)
-                if compound.user.max_approval_amount is not None
-                else None
-            )
             return inbox.resolve_action(
                 item_id,
                 action_request=body,
@@ -367,7 +405,7 @@ def register_a2ui_routes(
                 actor_role=resolved_role,
                 channel=channel,
                 agent_spiffe_id=compound.agent_spiffe_id,
-                principal_max_approval_amount=principal_max,
+                principal_max_approval_amount=compound.user.max_approval_amount,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

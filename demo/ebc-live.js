@@ -27,8 +27,30 @@
       .replace(/"/g, "&quot;");
   }
 
+  var demoPasscode = "";
+
+  window.unlockDemoSession = async function (persona, passcode) {
+    var code = passcode !== undefined ? passcode : (demoPasscode || window.prompt("Enter demo passcode to unlock interactive session:", ""));
+    if (!code) return false;
+    var resp = await fetch(apiUrl("/v1/auth/demo-session"), {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passcode: code, persona: persona || "underwriter" }),
+    });
+    if (!resp.ok) return false;
+    demoPasscode = code;
+    return true;
+  };
+
   async function apiRequest(path, options) {
-    var resp = await fetch(apiUrl(path), options || {});
+    var opts = Object.assign({ credentials: "same-origin" }, options || {});
+    var resp = await fetch(apiUrl(path), opts);
+    if ((resp.status === 401 || resp.status === 403) && opts.method && opts.method !== "GET" && path.indexOf("/v1/auth/") !== 0) {
+      if (await window.unlockDemoSession("underwriter")) {
+        resp = await fetch(apiUrl(path), opts);
+      }
+    }
     var traceId = resp.headers.get("x-docubridge-trace-id");
     if (traceId) {
       var traceEl = document.getElementById("live-trace-id");

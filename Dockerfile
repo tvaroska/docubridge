@@ -12,7 +12,7 @@
 # is a uv "virtual" project — deps are synced, the source is not installed as a
 # wheel, so __file__ stays in the tree and the corpus resolves).
 # uv provides the reproducible dependency sync on top of python:3.12-slim-bookworm.
-FROM ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+FROM ghcr.io/astral-sh/uv:0.12.24-python3.12-bookworm-slim
 
 # Run as a non-root system user (UID 10001) per Google Cloud container security standards.
 RUN groupadd --system --gid 10001 appuser && \
@@ -55,6 +55,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER appuser
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/.well-known/agent-card.json', timeout=3).read()"]
 
 # `bridge-serve` invokes `bridge.edge.server:serve_container`, binding 0.0.0.0:$PORT
 # and advertising BRIDGE_PUBLIC_URL on the served Agent Card (P7-5).

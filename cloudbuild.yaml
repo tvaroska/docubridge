@@ -1,7 +1,7 @@
 # Google Cloud Build pipeline for A2A Document Bridge (docubridge)
 #
 # Executes a maximally parallel DAG on E2_HIGHCPU_8:
-#   - Track A (t=0): resolve-git-metadata -> docker-build-image (BuildKit layer cache)
+#   - Track A (t=0): resolve-git-metadata -> docker-build-image -> trivy-vulnerability-scan
 #   - Track B (t=0): python-env-and-lint (uv + ruff check + ruff format --check)
 #                    -> parallel python-core-and-enterprise-tests + python-agent-and-golden-tests
 #                    -> python-coverage-gate (combines shards, enforces >=90% coverage)
@@ -52,7 +52,7 @@ steps:
   # 2a. Sync Python Virtualenv + Ruff Lint & Format Check (t=0)               #
   # ------------------------------------------------------------------------- #
   - id: python-env-and-lint
-    name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+    name: ghcr.io/astral-sh/uv:0.12.24-python3.12-bookworm-slim
     waitFor: ["-"]
     entrypoint: bash
     env:
@@ -63,8 +63,8 @@ steps:
       - -c
       - |
         set -euo pipefail
+        uv lock --check --offline --no-config
         uv sync --frozen --extra dev --extra gcp --no-install-project
-        uv pip install "pytest-cov==7.0.0" "pytest-xdist==3.8.0" "ast-grep-cli>=0.35"
         /workspace/.venv/bin/ast-grep scan --rule /workspace/specs/ast.rules.yaml
         /workspace/.venv/bin/ruff check .
         /workspace/.venv/bin/ruff format --check .
@@ -73,7 +73,7 @@ steps:
   # 2b. Python Core, Port, Isolation & Enterprise Data Suite (Shard 1)        #
   # ------------------------------------------------------------------------- #
   - id: python-core-and-enterprise-tests
-    name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+    name: ghcr.io/astral-sh/uv:0.12.24-python3.12-bookworm-slim
     waitFor: ["python-env-and-lint"]
     entrypoint: bash
     env:
@@ -94,7 +94,7 @@ steps:
   # 2c. Python Multi-Agent ADK/A2A Golden, Conformance & Perf Suite (Shard 2) #
   # ------------------------------------------------------------------------- #
   - id: python-agent-and-golden-tests
-    name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+    name: ghcr.io/astral-sh/uv:0.12.24-python3.12-bookworm-slim
     waitFor: ["python-env-and-lint"]
     entrypoint: bash
     env:
@@ -115,7 +115,7 @@ steps:
   # 2d. Combine Coverage Shards & Enforce >=90% Coverage Gate                 #
   # ------------------------------------------------------------------------- #
   - id: python-coverage-gate
-    name: ghcr.io/astral-sh/uv:0.6-python3.12-bookworm-slim
+    name: ghcr.io/astral-sh/uv:0.12.24-python3.12-bookworm-slim
     waitFor:
       - python-core-and-enterprise-tests
       - python-agent-and-golden-tests
@@ -189,12 +189,40 @@ steps:
           .
 
   # ------------------------------------------------------------------------- #
-  # 5b. Push Production Runtime Image (Gated on All Verification Tracks)      #
+  # 5b. Blocking Trivy Container Vulnerability Scan (OS + Python Libraries)   #
+  # ------------------------------------------------------------------------- #
+  - id: trivy-vulnerability-scan
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["docker-build-image"]
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        SHA="$$(cat /workspace/.resolved_sha)"
+        if [ -n "${_IMAGE}" ]; then
+          TARGET_IMAGE="${_IMAGE}"
+        else
+          TARGET_IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:$${SHA}"
+        fi
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:0.58.1 image \
+          --scanners vuln \
+          --pkg-types os,library \
+          --severity HIGH,CRITICAL \
+          --ignore-unfixed \
+          --exit-code 1 \
+          "$${TARGET_IMAGE}"
+
+  # ------------------------------------------------------------------------- #
+  # 5c. Push Production Runtime Image (Gated on All Verification Tracks)      #
   # ------------------------------------------------------------------------- #
   - id: docker-push-image
     name: gcr.io/cloud-builders/docker
     waitFor:
       - docker-build-image
+      - trivy-vulnerability-scan
       - python-coverage-gate
       - frontend-tests-and-typecheck
       - terraform-plan-tests

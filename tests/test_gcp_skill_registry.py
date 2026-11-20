@@ -204,3 +204,19 @@ def test_importing_gcp_pkg_does_not_import_storage():
 
     assert "bridge.ports.gcp" in sys.modules
     assert "google.cloud.storage" not in sys.modules
+
+
+def test_skill_registry_honors_single_bucket_prefix(monkeypatch):
+    """GcpSkillRegistry scopes list/get/install/read_asset under <prefix>/ when configured."""
+    reg = GcpSkillRegistry("shared-project-bucket/skills")
+    fake = FakeBucket()
+    fake.objects["audit-vault/vault/ctx/doc/v1/doc.pdf"] = b"%PDF-other"
+    monkeypatch.setattr(reg, "_bucket", lambda: fake)
+
+    meta = reg.install_skill("pay-stub", _SKILL_MD, assets={"schema.json": '{"ok": 1}'})
+    assert meta.name == "pay-stub"
+    assert "skills/pay-stub/SKILL.md" in fake.objects
+    assert "skills/pay-stub/schema.json" in fake.objects
+    assert [s.name for s in reg.list_skills()] == ["pay-stub"]
+    assert reg.get_skill("pay-stub").name == "pay-stub"
+    assert reg.read_asset("pay-stub", "schema.json") == '{"ok": 1}'

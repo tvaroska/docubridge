@@ -34,7 +34,7 @@ import abc
 import hashlib
 import os
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -45,6 +45,10 @@ from contract.extraction import ExtractionResult, SourceAnchor
 from contract.wire import LedgerEntry
 
 VAULT_BUCKET_ENV = "BRIDGE_VAULT_BUCKET"
+VAULT_PREFIX_ENV = "BRIDGE_VAULT_PREFIX"
+VAULT_RETENTION_DAYS_ENV = "BRIDGE_VAULT_RETENTION_DAYS"
+VAULT_RETENTION_MODE_ENV = "BRIDGE_VAULT_RETENTION_MODE"
+VALID_RETENTION_MODES: frozenset[str] = frozenset({"Unlocked", "Locked"})
 
 # Patterns for inline personal data scrubbing in free-text fields and snippets.
 _SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
@@ -205,18 +209,115 @@ class VaultRecord(BaseModel):
     retention_locked: bool = True
 
 
-def _vault_object_key(context_id: str, doc_id: str, version: int, filename: str) -> str:
-    safe_name = os.path.basename(filename) or doc_id
-    return f"vault/{context_id}/{doc_id}/v{version}/{safe_name}"
+def _normalize_vault_prefix(prefix: str | None) -> str:
+    cleaned = (prefix or "").strip().strip("/")
+    if not cleaned:
+        return ""
+    segments = [seg for seg in cleaned.split("/") if seg]
+    if any(seg in {".", ".."} for seg in segments):
+        raise ValueError(
+            f"invalid Audit Vault GCS prefix {prefix!r}: path traversal forbidden"
+        )
+    return "/".join(segments)
 
 
-def _vault_version_prefix(context_id: str, doc_id: str, version: int) -> str:
-    return f"vault/{context_id}/{doc_id}/v{version}/"
+def _parse_vault_bucket_and_prefix(
+    raw_bucket: str, raw_prefix: str | None = None
+) -> tuple[str, str]:
+    cleaned = (raw_bucket or "").strip()
+    if cleaned.startswith("gs://"):
+        cleaned = cleaned[len("gs://") :]
+    cleaned = cleaned.strip("/")
+    bucket, _, embedded = cleaned.partition("/")
+    embedded_norm = _normalize_vault_prefix(embedded)
+    if raw_prefix is not None:
+        return bucket, _normalize_vault_prefix(raw_prefix)
+    return bucket, embedded_norm
+
+
+def _validate_vault_segment(value: str, label: str) -> str:
+    """Reject empty, slash-bearing, or dot-traversal vault path segments before storage I/O."""
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.strip() != value
+        or value in {".", ".."}
+        or "/" in value
+        or "\\" in value
+    ):
+        raise ValueError(
+            f"invalid vault {label} {value!r}: must be a single path segment without slashes or traversal"
+        )
+    return value
+
+
+def _vault_object_key(
+    context_id: str,
+    doc_id: str,
+    version: int,
+    filename: str,
+    *,
+    prefix: str = "",
+) -> str:
+    ctx = _validate_vault_segment(context_id, "context_id")
+    doc = _validate_vault_segment(doc_id, "doc_id")
+    raw_base = os.path.basename((filename or "").replace("\\", "/")) or doc
+    safe_name = _validate_vault_segment(raw_base, "filename")
+    rel = f"vault/{ctx}/{doc}/v{version}/{safe_name}"
+    clean_prefix = _normalize_vault_prefix(prefix)
+    return f"{clean_prefix}/{rel}" if clean_prefix else rel
+
+
+def _vault_version_prefix(
+    context_id: str,
+    doc_id: str,
+    version: int,
+    *,
+    prefix: str = "",
+) -> str:
+    ctx = _validate_vault_segment(context_id, "context_id")
+    doc = _validate_vault_segment(doc_id, "doc_id")
+    rel = f"vault/{ctx}/{doc}/v{version}/"
+    clean_prefix = _normalize_vault_prefix(prefix)
+    return f"{clean_prefix}/{rel}" if clean_prefix else rel
 
 
 _VAULT_KEY_RE = re.compile(
     r"^vault/(?P<context_id>[^/]+)/(?P<doc_id>[^/]+)/v(?P<version>\d+)/(?P<filename>.+)$"
 )
+
+
+def _match_vault_key(blob_name: str, *, prefix: str = "") -> re.Match[str] | None:
+    clean_prefix = _normalize_vault_prefix(prefix)
+    if clean_prefix:
+        expected = f"{clean_prefix}/"
+        if not blob_name.startswith(expected):
+            return None
+        rel = blob_name[len(expected) :]
+    else:
+        rel = blob_name
+    return _VAULT_KEY_RE.match(rel)
+
+
+def _apply_blob_retention(blob: Any, *, mode: str, retain_until_time: datetime) -> bool:
+    """Apply per-object GCS Object Retention onto ``blob`` prior to upload when supported."""
+    if not hasattr(blob, "retention"):
+        return False
+    ret = getattr(blob, "retention", None)
+    if ret is not None and hasattr(ret, "mode") and hasattr(ret, "retain_until_time"):
+        ret.mode = mode
+        ret.retain_until_time = retain_until_time
+        return True
+    rfc3339 = retain_until_time.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if isinstance(ret, dict):
+        ret["mode"] = mode
+        ret["retainUntilTime"] = rfc3339
+        return True
+    try:
+        blob.retention = {"mode": mode, "retainUntilTime": rfc3339}
+        return True
+    except AttributeError:
+        return False
 
 
 class AuditVaultStore(abc.ABC):
@@ -322,13 +423,33 @@ class InMemoryAuditVaultStore(AuditVaultStore):
 
 
 class GcpAuditVaultStore(AuditVaultStore):
-    """Cloud Storage Audit Vault adapter using ``if_generation_match=0`` (write-once)."""
+    """Cloud Storage Audit Vault adapter using ``if_generation_match=0`` and optional per-object retention."""
 
-    def __init__(self, bucket_name: str, *, client: Any = None) -> None:
-        bucket = (bucket_name or "").strip()
+    def __init__(
+        self,
+        bucket_name: str,
+        *,
+        prefix: str | None = None,
+        retention_days: int | None = None,
+        retention_mode: str | None = None,
+        client: Any = None,
+    ) -> None:
+        bucket, resolved_prefix = _parse_vault_bucket_and_prefix(bucket_name, prefix)
         if not bucket:
             raise ValueError("GcpAuditVaultStore requires a non-empty bucket_name")
+        if retention_days is not None and (
+            isinstance(retention_days, bool) or retention_days < 1
+        ):
+            raise ValueError("retention_days must be a positive integer")
+        resolved_mode = (retention_mode or "").strip() or "Unlocked"
+        if resolved_mode not in VALID_RETENTION_MODES:
+            raise ValueError(
+                f"invalid retention_mode {retention_mode!r}: expected 'Unlocked' or 'Locked'"
+            )
         self.bucket_name = bucket
+        self.prefix = resolved_prefix
+        self.retention_days = retention_days
+        self.retention_mode = resolved_mode
         self._client = client
         self._index: dict[tuple[str, str, int], VaultRecord] = {}
 
@@ -350,16 +471,22 @@ class GcpAuditVaultStore(AuditVaultStore):
         mime_type: str = "application/pdf",
         locked_at: datetime | None = None,
     ) -> VaultRecord:
-        """Write an immutable object to Cloud Storage with write-once precondition (`if_generation_match=0`) and object metadata."""
+        """Write an immutable object to Cloud Storage with write-once precondition (`if_generation_match=0`) and optional per-object retention."""
         key = (context_id, doc_id, version)
         if key in self._index:
             raise VaultImmutabilityError(
                 f"vault object {context_id}/{doc_id}/v{version} is already locked"
             )
-        obj_path = _vault_object_key(context_id, doc_id, version, filename)
+        obj_path = _vault_object_key(
+            context_id, doc_id, version, filename, prefix=self.prefix
+        )
         bucket = self._get_bucket()
         existing_blobs = list(
-            bucket.list_blobs(prefix=_vault_version_prefix(context_id, doc_id, version))
+            bucket.list_blobs(
+                prefix=_vault_version_prefix(
+                    context_id, doc_id, version, prefix=self.prefix
+                )
+            )
         )
         if existing_blobs:
             raise VaultImmutabilityError(
@@ -369,8 +496,14 @@ class GcpAuditVaultStore(AuditVaultStore):
         locked_ts = locked_at or datetime.now(UTC)
         digest = hashlib.sha256(data).hexdigest()
         safe_filename = os.path.basename(filename) or doc_id
+        retain_until: datetime | None = None
+        if self.retention_days is not None:
+            retain_until = locked_ts + timedelta(days=self.retention_days)
+            _apply_blob_retention(
+                blob, mode=self.retention_mode, retain_until_time=retain_until
+            )
         if hasattr(blob, "metadata"):
-            blob.metadata = {
+            metadata = {
                 "context_id": context_id,
                 "doc_id": doc_id,
                 "version": str(version),
@@ -380,6 +513,12 @@ class GcpAuditVaultStore(AuditVaultStore):
                 "size_bytes": str(len(data)),
                 "locked_at": locked_ts.isoformat(),
             }
+            if retain_until is not None:
+                metadata["retention_mode"] = self.retention_mode
+                metadata["retain_until_time"] = (
+                    retain_until.astimezone(UTC).isoformat().replace("+00:00", "Z")
+                )
+            blob.metadata = metadata
         try:
             blob.upload_from_string(data, content_type=mime_type, if_generation_match=0)
         except Exception as exc:
@@ -403,7 +542,7 @@ class GcpAuditVaultStore(AuditVaultStore):
 
     def _record_from_blob(self, blob: Any) -> VaultRecord | None:
         """Reconstruct a ``VaultRecord`` from a GCS blob across stateless replicas."""
-        match = _VAULT_KEY_RE.match(getattr(blob, "name", ""))
+        match = _match_vault_key(getattr(blob, "name", ""), prefix=self.prefix)
         if not match:
             return None
         context_id = match["context_id"]
@@ -449,7 +588,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         key = (context_id, doc_id, version)
         if key in self._index:
             return self._index[key]
-        prefix = _vault_version_prefix(context_id, doc_id, version)
+        prefix = _vault_version_prefix(context_id, doc_id, version, prefix=self.prefix)
         for blob in self._get_bucket().list_blobs(prefix=prefix):
             rec = self._record_from_blob(blob)
             if rec is not None:
@@ -459,15 +598,20 @@ class GcpAuditVaultStore(AuditVaultStore):
     def read_bytes(self, context_id: str, doc_id: str, version: int = 1) -> bytes:
         """Download the locked raw document bytes for a vault ID from Cloud Storage."""
         rec = self.get_record(context_id, doc_id, version)
-        obj_path = _vault_object_key(context_id, doc_id, version, rec.filename)
+        obj_path = _vault_object_key(
+            context_id, doc_id, version, rec.filename, prefix=self.prefix
+        )
         blob = self._get_bucket().blob(obj_path)
         return blob.download_as_bytes()
 
     def list_records(self, context_id: str | None = None) -> list[VaultRecord]:
         """List locked vault audit records from Cloud Storage blob metadata, optionally filtered by exchange ID."""
-        prefix = f"vault/{context_id}/" if context_id is not None else "vault/"
-        for blob in self._get_bucket().list_blobs(prefix=prefix):
-            key_match = _VAULT_KEY_RE.match(getattr(blob, "name", ""))
+        if context_id is not None:
+            _validate_vault_segment(context_id, "context_id")
+        rel_prefix = f"vault/{context_id}/" if context_id is not None else "vault/"
+        list_prefix = f"{self.prefix}/{rel_prefix}" if self.prefix else rel_prefix
+        for blob in self._get_bucket().list_blobs(prefix=list_prefix):
+            key_match = _match_vault_key(getattr(blob, "name", ""), prefix=self.prefix)
             if key_match:
                 k = (
                     key_match["context_id"],

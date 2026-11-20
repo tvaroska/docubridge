@@ -7,13 +7,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 
 from bridge.a2ui_inbox import ActionInboxStore
-from bridge.knowledge_catalog import KnowledgeCatalog
+from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.refinery import (
     SchemaRefineryEngine,
     UseCaseOnboardingManifest,
     onboard_use_case,
     schema_refinery_from_env,
 )
+from bridge.user_interaction.demo_session import mutating_auth_dependency
 from bridge.user_interaction.schemas import (
     OnboardDoctypeRequest,
     PromoteRefineryProposalRequest,
@@ -27,12 +28,22 @@ def register_refinery_routes(
     catalog: KnowledgeCatalog,
     inbox: ActionInboxStore | None = None,
     schema_refinery: SchemaRefineryEngine | None = None,
+    principal_roles: dict[str, CatalogRole] | None = None,
+    require_auth: bool = False,
 ) -> None:
     """Mount ``/v1/refinery/*`` routes onto the Zone 5 API router."""
     refinery = schema_refinery_from_env(
         schema_refinery,
         knowledge_catalog=catalog,
     )
+    mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
 
     @router.get("/v1/refinery/revisions")
     def get_refinery_revisions(
@@ -54,7 +65,7 @@ def register_refinery_routes(
             "assay_reports": [rep.model_dump(mode="json") for rep in reports],
         }
 
-    @router.post("/v1/refinery/assay")
+    @router.post("/v1/refinery/assay", dependencies=mutating_deps)
     def post_refinery_assay(body: RunRefineryAssayRequest) -> dict[str, Any]:
         """Run bimodal field sparsity detection & the 3-Tier Refinery Assay Gate."""
         cluster_a = set(body.cluster_a_fields) if body.cluster_a_fields else None
@@ -71,7 +82,7 @@ def register_refinery_routes(
             "candidate_revision": candidate_rev.model_dump(mode="json"),
         }
 
-    @router.post("/v1/refinery/onboard")
+    @router.post("/v1/refinery/onboard", dependencies=mutating_deps)
     def post_refinery_onboard(body: OnboardDoctypeRequest) -> dict[str, Any]:
         """Induce a candidate DRAFT doctype + `.okf.md` bundle from 1-5 examples and run the 3-Tier Assay Gate."""
         try:
@@ -90,7 +101,7 @@ def register_refinery_routes(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return result.model_dump(mode="json")
 
-    @router.post("/v1/refinery/onboard-use-case")
+    @router.post("/v1/refinery/onboard-use-case", dependencies=mutating_deps)
     def post_refinery_onboard_use_case(
         body: UseCaseOnboardingManifest,
     ) -> dict[str, Any]:
@@ -104,7 +115,7 @@ def register_refinery_routes(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return result.model_dump(mode="json")
 
-    @router.post("/v1/refinery/promote")
+    @router.post("/v1/refinery/promote", dependencies=mutating_deps)
     def post_refinery_promote(body: PromoteRefineryProposalRequest) -> dict[str, Any]:
         """Promote an assay-passed proposal into a new active OntologyRevision."""
         try:
@@ -129,7 +140,7 @@ def register_refinery_routes(
             "revisions": [r.model_dump(mode="json") for r in refinery.list_revisions()],
         }
 
-    @router.post("/v1/refinery/reset")
+    @router.post("/v1/refinery/reset", dependencies=mutating_deps)
     def post_refinery_reset() -> dict[str, Any]:
         """Reset Schema Refinery proposals and Zone 6 Ontology Graph back to v1.1 baseline."""
         baseline = refinery.reset()

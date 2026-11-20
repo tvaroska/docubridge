@@ -40,6 +40,42 @@ locals {
       description  = "External-tagged counterparty A2A agents (excluded from internal FinOps model spend)."
     }
   }
+
+  genai_payloads_bucket_name = var.enable_telemetry_bq ? (
+    var.single_bucket_mode
+    ? (var.shared_bucket_name != "" ? var.shared_bucket_name : var.project_id)
+    : google_storage_bucket.genai_payloads[0].name
+  ) : ""
+
+  genai_payloads_upload_base_path = var.enable_telemetry_bq ? (
+    var.single_bucket_mode
+    ? "gs://${local.genai_payloads_bucket_name}/genai-payloads/"
+    : "gs://${local.genai_payloads_bucket_name}/"
+  ) : ""
+
+  completions_source_uri = var.enable_telemetry_bq ? (
+    var.single_bucket_mode
+    ? "gs://${local.genai_payloads_bucket_name}/genai-payloads/*.jsonl"
+    : "gs://${local.genai_payloads_bucket_name}/*.jsonl"
+  ) : ""
+
+  eval_dataset_id = var.enable_telemetry_bq ? (
+    var.create_eval_dataset
+    ? google_bigquery_dataset.agent_eval[0].dataset_id
+    : data.google_bigquery_dataset.agent_eval[0].dataset_id
+  ) : ""
+
+  vertex_connection_name = var.enable_telemetry_bq ? (
+    var.create_vertex_connection
+    ? google_bigquery_connection.vertex_ai[0].name
+    : "projects/${var.project_id}/locations/${var.vertex_connection_location}/connections/${var.vertex_connection_id}"
+  ) : ""
+
+  vertex_connection_sa_email = var.enable_telemetry_bq ? (
+    var.create_vertex_connection
+    ? google_bigquery_connection.vertex_ai[0].cloud_resource[0].service_account_id
+    : var.vertex_connection_service_account_email
+  ) : ""
 }
 
 resource "google_project_service" "observability_apis" {
@@ -79,7 +115,7 @@ resource "google_logging_linked_dataset" "obs_logs" {
 }
 
 resource "google_storage_bucket" "genai_payloads" {
-  count = var.enable_telemetry_bq ? 1 : 0
+  count = var.enable_telemetry_bq && !var.single_bucket_mode ? 1 : 0
 
   project                     = var.project_id
   name                        = "${var.project_id}-genai-payloads"
@@ -102,33 +138,69 @@ resource "google_storage_bucket" "genai_payloads" {
 resource "google_storage_bucket_iam_member" "genai_payloads_creator" {
   count = var.enable_telemetry_bq ? 1 : 0
 
-  bucket = google_storage_bucket.genai_payloads[0].name
+  bucket = local.genai_payloads_bucket_name
   role   = "roles/storage.objectCreator"
   member = var.service_account_member
+
+  dynamic "condition" {
+    for_each = var.single_bucket_mode ? [1] : []
+    content {
+      title       = "genai_payloads_prefix_creator"
+      description = "Scope GenAI completion hook creator writes to the genai-payloads/ prefix."
+      expression  = "resource.name.startsWith(\"projects/_/buckets/${local.genai_payloads_bucket_name}/objects/genai-payloads/\")"
+    }
+  }
 }
 
 resource "google_bigquery_connection" "vertex_ai" {
-  count = var.enable_telemetry_bq ? 1 : 0
+  count = var.enable_telemetry_bq && var.create_vertex_connection ? 1 : 0
 
   project       = var.project_id
-  location      = "US"
-  connection_id = "vertex_ai_connection"
+  location      = var.vertex_connection_location
+  connection_id = var.vertex_connection_id
   friendly_name = "DocuBridge Vertex AI & BigLake Connection"
   description   = "Cloud resource connection for BigLake external tables and AI.GENERATE_TABLE."
 
   cloud_resource {}
 }
 
-resource "google_storage_bucket_iam_member" "genai_payloads_biglake_viewer" {
-  count = var.enable_telemetry_bq ? 1 : 0
+resource "google_project_iam_custom_role" "genai_payloads_object_lister" {
+  count = var.enable_telemetry_bq && var.single_bucket_mode && var.create_shared_bucket_lister_role && (var.create_vertex_connection || var.vertex_connection_service_account_email != "") ? 1 : 0
 
-  bucket = google_storage_bucket.genai_payloads[0].name
+  project     = var.project_id
+  role_id     = "docubridge_telemetry_gcs_lister"
+  title       = "DocuBridge Telemetry Shared Bucket Lister"
+  description = "Minimal list-only permission (storage.objects.list; zero read/write/delete) for BigLake external table listing in single-bucket mode."
+  permissions = ["storage.objects.list"]
+}
+
+resource "google_storage_bucket_iam_member" "genai_payloads_biglake_lister" {
+  count = var.enable_telemetry_bq && var.single_bucket_mode && (var.create_vertex_connection || var.vertex_connection_service_account_email != "") ? 1 : 0
+
+  bucket = local.genai_payloads_bucket_name
+  role   = var.create_shared_bucket_lister_role ? google_project_iam_custom_role.genai_payloads_object_lister[0].name : var.shared_bucket_lister_role_name
+  member = "serviceAccount:${local.vertex_connection_sa_email}"
+}
+
+resource "google_storage_bucket_iam_member" "genai_payloads_biglake_viewer" {
+  count = var.enable_telemetry_bq && (var.create_vertex_connection || var.vertex_connection_service_account_email != "") ? 1 : 0
+
+  bucket = local.genai_payloads_bucket_name
   role   = "roles/storage.objectViewer"
-  member = "serviceAccount:${google_bigquery_connection.vertex_ai[0].cloud_resource[0].service_account_id}"
+  member = "serviceAccount:${local.vertex_connection_sa_email}"
+
+  dynamic "condition" {
+    for_each = var.single_bucket_mode ? [1] : []
+    content {
+      title       = "genai_payloads_prefix_biglake_viewer"
+      description = "Scope BigLake external table viewer reads strictly to the genai-payloads/ prefix."
+      expression  = "resource.name.startsWith(\"projects/_/buckets/${local.genai_payloads_bucket_name}/objects/genai-payloads/\")"
+    }
+  }
 }
 
 resource "google_project_iam_member" "vertex_connection_aiplatform" {
-  count = var.enable_telemetry_bq ? 1 : 0
+  count = var.enable_telemetry_bq && var.create_vertex_connection ? 1 : 0
 
   project = var.project_id
   role    = "roles/aiplatform.user"
@@ -136,15 +208,22 @@ resource "google_project_iam_member" "vertex_connection_aiplatform" {
 }
 
 resource "google_bigquery_dataset" "agent_eval" {
-  count = var.enable_telemetry_bq ? 1 : 0
+  count = var.enable_telemetry_bq && var.create_eval_dataset ? 1 : 0
 
   project                    = var.project_id
-  dataset_id                 = "agent_eval"
+  dataset_id                 = var.eval_dataset_id
   friendly_name              = "BigQuery Agent Evaluation & Observability Analytics"
   description                = "US multi-region dataset for _AllSpans/_AllLogs compatibility views, BigLake completions, and EVAL-P11 outcome attribution."
   location                   = "US"
   delete_contents_on_destroy = !var.deletion_protection
   labels                     = var.labels
+}
+
+data "google_bigquery_dataset" "agent_eval" {
+  count = var.enable_telemetry_bq && !var.create_eval_dataset ? 1 : 0
+
+  project    = var.project_id
+  dataset_id = var.eval_dataset_id
 }
 
 resource "google_apphub_application" "apps" {
@@ -163,7 +242,7 @@ resource "google_apphub_application" "apps" {
 
 # Zone 4 Lakehouse Analytics — BigQuery dataset + bq_operational_facts_iceberg table
 # matching bridge/operational_store/iceberg_sync.py::BIGQUERY_ICEBERG_DDL, plus the
-# BigLake external table `completions` over gs://<project_id>-genai-payloads/*.jsonl.
+# BigLake external table `completions` over GenAI payload JSONL objects.
 resource "google_bigquery_dataset" "lakehouse" {
   count = var.enable_telemetry_bq ? 1 : 0
 
@@ -189,7 +268,7 @@ resource "google_bigquery_table" "completions" {
   count = var.enable_telemetry_bq ? 1 : 0
 
   project             = var.project_id
-  dataset_id          = google_bigquery_dataset.agent_eval[0].dataset_id
+  dataset_id          = local.eval_dataset_id
   table_id            = "completions"
   description         = "BigLake external table over GenAI completion hook JSONL payloads in Cloud Storage."
   deletion_protection = false
@@ -206,11 +285,14 @@ resource "google_bigquery_table" "completions" {
     autodetect            = false
     ignore_unknown_values = true
     source_format         = "NEWLINE_DELIMITED_JSON"
-    source_uris           = ["gs://${google_storage_bucket.genai_payloads[0].name}/*.jsonl"]
-    connection_id         = google_bigquery_connection.vertex_ai[0].name
+    source_uris           = [local.completions_source_uri]
+    connection_id         = local.vertex_connection_name
   }
 
-  depends_on = [google_storage_bucket_iam_member.genai_payloads_biglake_viewer]
+  depends_on = [
+    google_storage_bucket_iam_member.genai_payloads_biglake_viewer,
+    google_storage_bucket_iam_member.genai_payloads_biglake_lister,
+  ]
 }
 
 resource "google_bigquery_table" "operational_facts_iceberg" {

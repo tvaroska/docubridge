@@ -27,19 +27,19 @@ run "buckets_are_private_versioned_retained_and_scoped" {
 
   # Bucket names track the prefix (input-derived, statically known).
   assert {
-    condition     = google_storage_bucket.skills.name == "bridge-runtime-skills"
+    condition     = google_storage_bucket.skills[0].name == "bridge-runtime-skills"
     error_message = "skills bucket name must be <name_prefix>-skills"
   }
   assert {
-    condition     = google_storage_bucket.artifacts.name == "bridge-runtime-artifacts"
+    condition     = google_storage_bucket.artifacts[0].name == "bridge-runtime-artifacts"
     error_message = "artifacts bucket name must be <name_prefix>-artifacts"
   }
   assert {
-    condition     = google_storage_bucket.scenarios.name == "bridge-runtime-scenarios"
+    condition     = google_storage_bucket.scenarios[0].name == "bridge-runtime-scenarios"
     error_message = "scenarios bucket name must be <name_prefix>-scenarios"
   }
   assert {
-    condition     = google_storage_bucket.scenarios.uniform_bucket_level_access == true && google_storage_bucket.scenarios.public_access_prevention == "enforced"
+    condition     = google_storage_bucket.scenarios[0].uniform_bucket_level_access == true && google_storage_bucket.scenarios[0].public_access_prevention == "enforced"
     error_message = "scenarios bucket must enable UBLA and enforce public access prevention"
   }
   assert {
@@ -49,31 +49,31 @@ run "buckets_are_private_versioned_retained_and_scoped" {
 
   # NEVER public: UBLA on both buckets.
   assert {
-    condition     = google_storage_bucket.skills.uniform_bucket_level_access == true
+    condition     = google_storage_bucket.skills[0].uniform_bucket_level_access == true
     error_message = "skills bucket must enable uniform bucket-level access"
   }
   assert {
-    condition     = google_storage_bucket.artifacts.uniform_bucket_level_access == true
+    condition     = google_storage_bucket.artifacts[0].uniform_bucket_level_access == true
     error_message = "artifacts bucket must enable uniform bucket-level access"
   }
 
   # NEVER public: public access prevention ENFORCED on both buckets.
   assert {
-    condition     = google_storage_bucket.skills.public_access_prevention == "enforced"
+    condition     = google_storage_bucket.skills[0].public_access_prevention == "enforced"
     error_message = "skills bucket must enforce public access prevention (never public)"
   }
   assert {
-    condition     = google_storage_bucket.artifacts.public_access_prevention == "enforced"
+    condition     = google_storage_bucket.artifacts[0].public_access_prevention == "enforced"
     error_message = "artifacts bucket must enforce public access prevention (never public)"
   }
 
   # Versioning on both (ART-1 history / re-authored skill = new version).
   assert {
-    condition     = google_storage_bucket.skills.versioning[0].enabled == true
+    condition     = google_storage_bucket.skills[0].versioning[0].enabled == true
     error_message = "skills bucket must enable versioning"
   }
   assert {
-    condition     = google_storage_bucket.artifacts.versioning[0].enabled == true
+    condition     = google_storage_bucket.artifacts[0].versioning[0].enabled == true
     error_message = "artifacts bucket must enable versioning (ART-1 resubmission history)"
   }
 
@@ -81,7 +81,7 @@ run "buckets_are_private_versioned_retained_and_scoped" {
   # lifecycle_rule / action are SETs (not indexable) — scan for a Delete action.
   assert {
     condition = anytrue([
-      for r in google_storage_bucket.artifacts.lifecycle_rule :
+      for r in google_storage_bucket.artifacts[0].lifecycle_rule :
       anytrue([for a in r.action : a.type == "Delete"])
     ])
     error_message = "artifacts bucket must declare a lifecycle Delete rule (ART-3 retention)"
@@ -102,7 +102,7 @@ run "buckets_are_private_versioned_retained_and_scoped" {
   }
 
   assert {
-    condition     = length(keys(google_storage_bucket_object.skill_files)) == 0
-    error_message = "skills bucket must start empty by default (seed_skills = false) until use-case agents onboard"
+    condition     = length(google_storage_bucket.shared) == 0 && output.skills_prefix == "" && output.scenarios_prefix == ""
+    error_message = "multi-bucket mode must create no shared bucket and emit empty prefix outputs"
   }
 }

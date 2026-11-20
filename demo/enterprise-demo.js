@@ -168,12 +168,28 @@
     if (activeTraceEl) activeTraceEl.textContent = traceId;
   };
 
+  window._demoPasscode = "";
+  window.unlockDemoSession = async function(persona, passcode) {
+    const code = passcode !== undefined ? passcode : (window._demoPasscode || window.prompt("Enter demo passcode to unlock interactive session:", ""));
+    if (!code) return false;
+    const resp = await fetch(window.getApiBase() + "/v1/auth/demo-session", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passcode: code, persona: persona || "underwriter" })
+    });
+    if (!resp.ok) return false;
+    window._demoPasscode = code;
+    return true;
+  };
   window.apiFetch = async function(path, options) {
-    const resp = await fetch(window.getApiBase() + path, options);
-    const traceHdr = resp.headers.get("x-docubridge-trace-id");
-    if (traceHdr) {
-      window.updateTraceBadge(traceHdr);
+    const opts = Object.assign({ credentials: "same-origin" }, options || {});
+    let resp = await fetch(window.getApiBase() + path, opts);
+    if ((resp.status === 401 || resp.status === 403) && opts.method && opts.method !== "GET" && path.indexOf("/v1/auth/") !== 0) {
+      const persona = window.currentPersonaMode === "junior" ? "broker" : "underwriter";
+      if (await window.unlockDemoSession(persona)) resp = await fetch(window.getApiBase() + path, opts);
     }
+    const traceHdr = resp.headers.get("x-docubridge-trace-id");
+    if (traceHdr) window.updateTraceBadge(traceHdr);
     return resp;
   };
 
@@ -756,7 +772,9 @@
   };
 
   window.togglePersona = function() {
-    window.setPersonaMode(window.currentPersonaMode === "senior" ? "junior" : "senior");
+    const next = window.currentPersonaMode === "senior" ? "junior" : "senior";
+    window.setPersonaMode(next);
+    if (window._demoPasscode) window.unlockDemoSession(next === "junior" ? "broker" : "underwriter", window._demoPasscode);
   };
 
   window.handleInboxApprove = async function() {
@@ -780,49 +798,22 @@
     const entityId = window.getActiveEntityId();
     const isLending = window.currentDomain !== "insurance";
     const principal = isLending ? "senior.credit.officer@docubridge.io" : "lead.underwriter@docubridge.io";
+    const hdrs = { "Content-Type": "application/json", "X-Bridge-Role": "underwriter", "X-Bridge-Principal": principal, "X-Bridge-Max-Approval": "25000000.00" };
+    const amt = window.currentDomain === "mortgage" ? 8500.0 : 100000.0;
     try {
       const createResp = await window.apiFetch("/v1/a2ui/inbox/actions?channel=gemini_app&role=underwriter", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Bridge-Role": "underwriter",
-          "X-Bridge-Principal": principal,
-          "X-Bridge-Max-Approval": "25000000.00"
-        },
+        method: "POST", headers: hdrs,
         body: JSON.stringify({
-          entity_id: entityId,
-          title: document.getElementById("inbox-card-heading").textContent,
-          assigned_role: "underwriter",
-          target_view: "v_underwriter_exposure",
-          pause_for_review: true,
-          data_model: {
-            transfer: { approvedAmount: window.currentDomain === "mortgage" ? 8500.0 : 100000.0 },
-            resolution: { selectedValue: window.currentDomain === "mortgage" ? "$4,250.00" : "$50,000.00" }
-          }
+          entity_id: entityId, title: document.getElementById("inbox-card-heading").textContent,
+          assigned_role: "underwriter", target_view: "v_underwriter_exposure", pause_for_review: true,
+          data_model: { transfer: { approvedAmount: amt }, resolution: { selectedValue: window.currentDomain === "mortgage" ? "$4,250.00" : "$50,000.00" } }
         })
       });
       if (createResp.ok) {
         const created = await createResp.json();
         await window.apiFetch(`/v1/a2ui/inbox/items/${created.item_id}/action?channel=gemini_app&role=underwriter`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Bridge-Role": "underwriter",
-            "X-Bridge-Principal": principal,
-            "X-Bridge-Max-Approval": "25000000.00"
-          },
-          body: JSON.stringify({
-            version: "v0.9",
-            action: {
-              name: "edit_and_approve",
-              context: {
-                decision: "edit",
-                transfer: { approvedAmount: window.currentDomain === "mortgage" ? 8500.0 : 100000.0 },
-                resolution: { selectedValue: val },
-                review: { memo: memo }
-              }
-            }
-          })
+          method: "POST", headers: hdrs,
+          body: JSON.stringify({ version: "v0.9", action: { name: "edit_and_approve", context: { decision: "edit", transfer: { approvedAmount: amt }, resolution: { selectedValue: val }, review: { memo: memo } } } })
         });
       }
     } catch (_) {}

@@ -10,7 +10,8 @@
 # 2. `module.secrets` composes the private-IP Cloud SQL DSN from `module.database.private_ip_address`
 #    and creates `google_secret_manager_secret_version` resources for `DATABASE_URL` and
 #    `BRIDGE_SPIFFE_SVID_SECRET` before `module.runtime` provisions Cloud Run.
-# 3. `module.gcs` seeds all `skills/**` files into the Skill Registry bucket during apply.
+# 3. Repository `skills/**` files are synced via `gcloud storage rsync` below (when `SEED_SKILLS=true`),
+#    keeping zero `google_storage_bucket_object` resources in Terraform HCL.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -55,9 +56,14 @@ export TF_VAR_db_password="${DB_PASSWORD}"
 : "${RFP_BOARD_INGRESS:=INGRESS_TRAFFIC_ALL}"
 : "${MIN_INSTANCES:=0}"                     # Scale-to-zero default for scratch/demo stacks
 : "${INVOKER_IAM_DISABLED:=true}"           # --no-invoker-iam-check for Argolis orgs
-: "${ENABLE_AUDIT_VAULT:=true}"             # Provision 7-year WORM GCS Audit Vault bucket
+: "${ENABLE_AUDIT_VAULT:=true}"             # Provision 7-year WORM GCS Audit Vault (per-object retention in single-bucket mode)
 : "${ENABLE_TELEMETRY_BQ:=true}"            # Provision BigQuery OTel spans dataset + SQL eval views
-: "${SEED_SKILLS:=true}"                    # Seed repository skills/ into the Skill Registry bucket
+: "${SINGLE_BUCKET_MODE:=true}"             # Consolidate all GCS prefixes into gs://<project_id>
+: "${CREATE_SHARED_BUCKET:=true}"           # true = standalone cold project; false = adopt existing gs://<project_id>
+: "${CREATE_EVAL_DATASET:=true}"            # true = create agent_eval dataset; false = adopt existing (co-located)
+: "${CREATE_VERTEX_CONNECTION:=true}"       # true = create US vertex_ai_connection; false = reference existing (co-located)
+: "${VERTEX_CONNECTION_SA_EMAIL:=}"         # optional existing BigLake SA email when CREATE_VERTEX_CONNECTION=false
+: "${SEED_SKILLS:=true}"                    # Sync repository skills/ into the Skill Registry bucket/prefix via gcloud storage rsync
 : "${SCENARIOS_ARCHIVE_URI:=}"              # Optional long-term gs:// prefix holding scenarios/ & evals/
 
 echo "==> Enabling required APIs"
@@ -145,12 +151,19 @@ TF_VARS=(
   -var "invoker_iam_disabled=${INVOKER_IAM_DISABLED}"
   -var "enable_audit_vault=${ENABLE_AUDIT_VAULT}"
   -var "enable_telemetry_bq=${ENABLE_TELEMETRY_BQ}"
+  -var "single_bucket_mode=${SINGLE_BUCKET_MODE}"
+  -var "create_shared_bucket=${CREATE_SHARED_BUCKET}"
+  -var "create_eval_dataset=${CREATE_EVAL_DATASET}"
+  -var "create_vertex_connection=${CREATE_VERTEX_CONNECTION}"
   -var "deletion_protection=false"
   -var "tasks_queue_name=${TASKS_QUEUE_NAME}"
   -var "port_mode=gcp"
   -var "extraction_engine=gemini"
   -var "seed_skills=${SEED_SKILLS}"
 )
+if [[ -n "${VERTEX_CONNECTION_SA_EMAIL}" ]]; then
+  TF_VARS+=(-var "vertex_connection_service_account_email=${VERTEX_CONNECTION_SA_EMAIL}")
+fi
 if [[ -n "${SSL_DOMAIN}" ]]; then
   TF_VARS+=(-var "ssl_domains=[\"${SSL_DOMAIN}\"]")
 fi
@@ -173,18 +186,33 @@ EFFECTIVE_EDGE_URL="${GATEWAY_URL:-${RUNTIME_URI}}"
 DB_PRIVATE_IP="$(tf_out db_private_ip)"
 DB_NAME="$(tf_out db_name)"
 DB_USER="$(tf_out db_user)"
-SCENARIOS_BUCKET="$(tf_out scenarios_bucket_name)"
+SKILLS_BUCKET="$(tf_out skills_bucket_name)"
+SKILLS_PREFIX="$(tf_out skills_prefix)"
+if [[ "${SEED_SKILLS}" == "true" && -n "${SKILLS_BUCKET}" ]]; then
+  SKILLS_DEST="gs://${SKILLS_BUCKET}"
+  if [[ -n "${SKILLS_PREFIX}" ]]; then
+    SKILLS_DEST="gs://${SKILLS_BUCKET}/${SKILLS_PREFIX}"
+  fi
+  echo "==> Syncing repository skills/ into ${SKILLS_DEST}"
+  gcloud storage rsync -r "${REPO_ROOT}/skills" "${SKILLS_DEST}"
+fi
 
+SCENARIOS_BUCKET="$(tf_out scenarios_bucket_name)"
+SCENARIOS_PREFIX="$(tf_out scenarios_prefix)"
 if [[ -n "${SCENARIOS_BUCKET}" ]]; then
+  SCENARIOS_DEST="gs://${SCENARIOS_BUCKET}"
+  if [[ -n "${SCENARIOS_PREFIX}" ]]; then
+    SCENARIOS_DEST="gs://${SCENARIOS_BUCKET}/${SCENARIOS_PREFIX}"
+  fi
   if [[ -n "${SCENARIOS_ARCHIVE_URI}" ]]; then
-    echo "==> Hydrating scenarios and eval PDFs from ${SCENARIOS_ARCHIVE_URI%/} into gs://${SCENARIOS_BUCKET}"
-    gcloud storage rsync -r "${SCENARIOS_ARCHIVE_URI%/}/scenarios" "gs://${SCENARIOS_BUCKET}"
-    gcloud storage rsync -r "${SCENARIOS_ARCHIVE_URI%/}/evals" "gs://${SCENARIOS_BUCKET}/evals" || true
+    echo "==> Hydrating scenarios and eval PDFs from ${SCENARIOS_ARCHIVE_URI%/} into ${SCENARIOS_DEST}"
+    gcloud storage rsync -r "${SCENARIOS_ARCHIVE_URI%/}/scenarios" "${SCENARIOS_DEST}"
+    gcloud storage rsync -r "${SCENARIOS_ARCHIVE_URI%/}/evals" "${SCENARIOS_DEST}/evals" || true
   else
-    echo "==> Rendering and uploading scenarios into gs://${SCENARIOS_BUCKET}"
+    echo "==> Rendering and uploading scenarios into ${SCENARIOS_DEST}"
     uv --directory "${REPO_ROOT}" run --no-sync python "${REPO_ROOT}/scripts/push-scenario.py" \
       --project "${PROJECT_ID}" \
-      --bucket "gs://${SCENARIOS_BUCKET}"
+      --bucket "${SCENARIOS_DEST}"
   fi
 fi
 
@@ -242,7 +270,8 @@ cat <<EOF
     Run the deployed-path parity gate:
       BRIDGE_TEST_GCP=1 \\
       BRIDGE_GCP_TEST_DSN='postgresql+asyncpg://${DB_USER}:<DB_PASSWORD>@${DB_PRIVATE_IP}:5432/${DB_NAME}' \\
-      BRIDGE_SKILLS_BUCKET="$(tf_out skills_bucket_name)" \\
+      BRIDGE_SKILLS_BUCKET="${SKILLS_BUCKET}" \\
+      BRIDGE_SKILLS_PREFIX="${SKILLS_PREFIX}" \\
       BRIDGE_TASKS_QUEUE="$(tf_out tasks_queue_path)" \\
       BRIDGE_FOLLOWUP_CALLBACK_URL="${RUNTIME_URI}${CALLBACK_PATH}" \\
       BRIDGE_RUNTIME_SA_EMAIL="$(tf_out bridge_runtime_email)" \\

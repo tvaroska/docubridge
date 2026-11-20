@@ -137,3 +137,16 @@ def test_local_pending_skips_stray_files(monkeypatch, tmp_path):
     (tmp_path / "inbox" / "notes.txt").write_text("stray")
     (tmp_path / "inbox" / ".landing-abc").write_text("torn write")
     assert port.pending() == [key]
+
+
+def test_gcp_email_ingress_prefix_parsing(monkeypatch):
+    from bridge.ports.gcp import GcpEmailIngress
+
+    monkeypatch.delenv("BRIDGE_EMAIL_PREFIX", raising=False)
+    scoped = GcpEmailIngress("shared-project-bucket/email")
+    assert scoped._name() == "shared-project-bucket"
+    assert scoped._object_key("inbox/abc.eml") == "email/inbox/abc.eml"
+
+    monkeypatch.setenv("BRIDGE_EMAIL_PREFIX", "email")
+    env_scoped = GcpEmailIngress("shared-project-bucket")
+    assert env_scoped._object_key("processed/abc.json") == "email/processed/abc.json"

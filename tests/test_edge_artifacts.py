@@ -397,3 +397,8 @@ def test_build_artifact_store_gcs_when_bucket_set(monkeypatch):
     store = build_artifact_store()
     assert isinstance(store, _StubGcs)
     assert built["bucket"] == "my-artifacts-bucket"
+
+    monkeypatch.setenv(ARTIFACT_BUCKET_ENV, "shared-project-bucket/document_bridge")
+    scoped_store = build_artifact_store()
+    assert isinstance(scoped_store, _StubGcs)
+    assert built["bucket"] == "shared-project-bucket"

@@ -14,9 +14,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
+from bridge.knowledge_catalog import CatalogRole
 from bridge.showcase.counterparty_and_fleet import (
     promote_compiled_skill,
     request_a2a_payoff,
@@ -30,6 +31,10 @@ from bridge.showcase.live_extraction import (
 )
 from bridge.showcase.loader import demo_static_root
 from bridge.showcase.pdf_assets import build_pdf_zip, pdf_metadata
+from bridge.user_interaction.demo_session import (
+    issue_viewer_cookie,
+    mutating_auth_dependency,
+)
 from bridge.user_interaction.schemas import (
     AdvanceConsolidationCollabRequest,
     AdvanceSchemaEvolutionCollabRequest,
@@ -240,8 +245,30 @@ def _zip_response(engine: ScenarioEngine, scenario_id: str) -> Response:
     )
 
 
-def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> None:
+def register_scenario_routes(
+    router: APIRouter,
+    *,
+    engine: ScenarioEngine,
+    principal_roles: dict[str, CatalogRole] | None = None,
+    require_auth: bool = False,
+) -> None:
     """Mount generic scenario routes and the legacy aliases onto `router`."""
+    internal_mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
+    borrower_mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=True,
+        )
+    ]
 
     @router.get("/v1/demo/scenarios")
     def list_scenarios_endpoint() -> dict[str, Any]:
@@ -255,7 +282,10 @@ def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> No
         except UnknownScenarioError as exc:
             raise _not_found(scenario_id) from exc
 
-    @router.post("/v1/demo/scenarios/{scenario_id}/advance")
+    @router.post(
+        "/v1/demo/scenarios/{scenario_id}/advance",
+        dependencies=borrower_mutating_deps,
+    )
     def scenario_advance_endpoint(
         scenario_id: str, body: AdvanceScenarioRequest
     ) -> dict[str, Any]:
@@ -266,18 +296,21 @@ def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> No
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    @router.post("/v1/demo/scenarios/{scenario_id}/reset")
+    @router.post(
+        "/v1/demo/scenarios/{scenario_id}/reset",
+        dependencies=internal_mutating_deps,
+    )
     def scenario_reset_endpoint(scenario_id: str) -> dict[str, Any]:
         try:
             return engine.reset(scenario_id).model_dump(mode="json")
         except UnknownScenarioError as exc:
             raise _not_found(scenario_id) from exc
 
-    @router.post("/v1/demo/scenarios/seed")
+    @router.post("/v1/demo/scenarios/seed", dependencies=internal_mutating_deps)
     def scenario_seed_endpoint() -> dict[str, Any]:
         return engine.seed_all()
 
-    @router.post("/v1/demo/scenarios/reload")
+    @router.post("/v1/demo/scenarios/reload", dependencies=internal_mutating_deps)
     def scenario_reload_endpoint() -> dict[str, Any]:
         """Hot-reload scenario manifests and clear cached PDFs from `BRIDGE_SCENARIOS_DIR`."""
         return engine.reload()
@@ -296,25 +329,37 @@ def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> No
     def scenario_pdf_file_endpoint(scenario_id: str, filename: str) -> Response:
         return _serve_pdf(engine, scenario_id, filename)
 
-    @router.post("/v1/demo/scenarios/{scenario_id}/upload-pdf")
+    @router.post(
+        "/v1/demo/scenarios/{scenario_id}/upload-pdf",
+        dependencies=borrower_mutating_deps,
+    )
     def scenario_upload_pdf_endpoint(
         scenario_id: str, body: UploadConsolidationPdfRequest
     ) -> dict[str, Any]:
         return _upload(engine, scenario_id, body)
 
-    @router.post("/v1/demo/scenarios/{scenario_id}/approve-waiver")
+    @router.post(
+        "/v1/demo/scenarios/{scenario_id}/approve-waiver",
+        dependencies=internal_mutating_deps,
+    )
     def scenario_approve_waiver_endpoint(
         scenario_id: str, body: LiveCollabModeRequest
     ) -> dict[str, Any]:
         return _approve_waiver(engine, scenario_id, body)
 
-    @router.post("/v1/demo/scenarios/{scenario_id}/distill-skill")
+    @router.post(
+        "/v1/demo/scenarios/{scenario_id}/distill-skill",
+        dependencies=internal_mutating_deps,
+    )
     def scenario_distill_skill_endpoint(
         scenario_id: str, body: LiveCollabModeRequest
     ) -> dict[str, Any]:
         return _distill_skill(engine, scenario_id, body)
 
-    @router.post("/v1/demo/scenarios/{scenario_id}/request-a2a-payoff")
+    @router.post(
+        "/v1/demo/scenarios/{scenario_id}/request-a2a-payoff",
+        dependencies=internal_mutating_deps,
+    )
     def scenario_request_a2a_payoff_endpoint(
         scenario_id: str, body: RequestA2aPayoffBody
     ) -> dict[str, Any]:
@@ -328,7 +373,10 @@ def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> No
         except UnknownScenarioError as exc:
             raise _not_found(scenario_id) from exc
 
-    @router.post("/v1/demo/scenarios/{scenario_id}/promote-skill")
+    @router.post(
+        "/v1/demo/scenarios/{scenario_id}/promote-skill",
+        dependencies=internal_mutating_deps,
+    )
     def scenario_promote_skill_endpoint(
         scenario_id: str, body: PromoteScenarioSkillBody
     ) -> dict[str, Any]:
@@ -339,7 +387,10 @@ def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> No
         except UnknownScenarioError as exc:
             raise _not_found(scenario_id) from exc
 
-    @router.post("/v1/demo/scenarios/{scenario_id}/run-fleet-deal")
+    @router.post(
+        "/v1/demo/scenarios/{scenario_id}/run-fleet-deal",
+        dependencies=internal_mutating_deps,
+    )
     def scenario_run_fleet_deal_endpoint(
         scenario_id: str, body: RunMeridianFleetDealBody, response: Response
     ) -> dict[str, Any]:
@@ -366,19 +417,30 @@ def register_scenario_routes(router: APIRouter, *, engine: ScenarioEngine) -> No
         response.headers["x-outcome-id"] = outcome_id
         return payload
 
-    _register_legacy_aliases(router, engine)
+    _register_legacy_aliases(
+        router,
+        engine,
+        internal_mutating_deps=internal_mutating_deps,
+        borrower_mutating_deps=borrower_mutating_deps,
+    )
 
 
-def _register_legacy_aliases(router: APIRouter, engine: ScenarioEngine) -> None:
+def _register_legacy_aliases(
+    router: APIRouter,
+    engine: ScenarioEngine,
+    *,
+    internal_mutating_deps: list[Any],
+    borrower_mutating_deps: list[Any],
+) -> None:
     consolidation = ScenarioStageKind.consolidation
     evolution = ScenarioStageKind.schema_evolution
 
-    @router.post("/v1/demo/seed")
+    @router.post("/v1/demo/seed", dependencies=internal_mutating_deps)
     def seed_demo_scenarios_endpoint() -> dict[str, Any]:
         """Seed baseline bi-temporal facts and lineage for every scenario with a `seed` block."""
         return engine.seed_all()
 
-    @router.post("/v1/demo/reset")
+    @router.post("/v1/demo/reset", dependencies=internal_mutating_deps)
     def reset_demo_scenarios_endpoint() -> dict[str, Any]:
         """Reset all live showcase scenarios and close any open outcomes as abandoned."""
         engine.reset_all()
@@ -389,13 +451,19 @@ def _register_legacy_aliases(router: APIRouter, engine: ScenarioEngine) -> None:
         """Current beat state of the default consolidation scenario (legacy alias)."""
         return engine.state(_require(engine, consolidation)).payload
 
-    @router.post("/v1/demo/consolidation-collab/advance")
+    @router.post(
+        "/v1/demo/consolidation-collab/advance",
+        dependencies=borrower_mutating_deps,
+    )
     def advance_consolidation_collab_endpoint(
         body: AdvanceConsolidationCollabRequest,
     ) -> dict[str, Any]:
         return _advance(engine, _require(engine, consolidation), body.beat)
 
-    @router.post("/v1/demo/consolidation-collab/reset")
+    @router.post(
+        "/v1/demo/consolidation-collab/reset",
+        dependencies=internal_mutating_deps,
+    )
     def reset_consolidation_collab_endpoint() -> dict[str, Any]:
         return engine.reset(_require(engine, consolidation)).payload
 
@@ -415,25 +483,37 @@ def _register_legacy_aliases(router: APIRouter, engine: ScenarioEngine) -> None:
     def get_consolidation_pdf_file_endpoint(filename: str) -> Response:
         return _serve_pdf(engine, _require(engine, consolidation), filename)
 
-    @router.post("/v1/demo/consolidation-collab/upload-pdf")
+    @router.post(
+        "/v1/demo/consolidation-collab/upload-pdf",
+        dependencies=borrower_mutating_deps,
+    )
     def upload_consolidation_pdf_endpoint(
         body: UploadConsolidationPdfRequest,
     ) -> dict[str, Any]:
         return _upload(engine, _require(engine, consolidation), body)
 
-    @router.post("/v1/demo/consolidation-collab/approve-waiver")
+    @router.post(
+        "/v1/demo/consolidation-collab/approve-waiver",
+        dependencies=internal_mutating_deps,
+    )
     def approve_consolidation_waiver_endpoint(
         body: LiveCollabModeRequest,
     ) -> dict[str, Any]:
         return _approve_waiver(engine, _require(engine, consolidation), body)
 
-    @router.post("/v1/demo/consolidation-collab/distill-skill")
+    @router.post(
+        "/v1/demo/consolidation-collab/distill-skill",
+        dependencies=internal_mutating_deps,
+    )
     def distill_consolidation_skill_endpoint(
         body: LiveCollabModeRequest,
     ) -> dict[str, Any]:
         return _distill_skill(engine, _require(engine, consolidation), body)
 
-    @router.post("/v1/demo/consolidation-collab/request-a2a-payoff")
+    @router.post(
+        "/v1/demo/consolidation-collab/request-a2a-payoff",
+        dependencies=internal_mutating_deps,
+    )
     def request_consolidation_a2a_payoff_endpoint(
         body: RequestA2aPayoffBody,
     ) -> dict[str, Any]:
@@ -444,7 +524,10 @@ def _register_legacy_aliases(router: APIRouter, engine: ScenarioEngine) -> None:
             mode=body.mode,
         )
 
-    @router.post("/v1/demo/consolidation-collab/promote-skill")
+    @router.post(
+        "/v1/demo/consolidation-collab/promote-skill",
+        dependencies=internal_mutating_deps,
+    )
     def promote_consolidation_skill_endpoint(
         body: PromoteScenarioSkillBody,
     ) -> dict[str, Any]:
@@ -459,25 +542,33 @@ def _register_legacy_aliases(router: APIRouter, engine: ScenarioEngine) -> None:
         """Current schema-evolution state; `?domain=` selects the scenario (legacy alias)."""
         return engine.state(_require(engine, evolution, domain)).payload
 
-    @router.post("/v1/demo/schema-evolution/advance")
+    @router.post(
+        "/v1/demo/schema-evolution/advance",
+        dependencies=borrower_mutating_deps,
+    )
     def post_schema_evolution_advance(
         body: AdvanceSchemaEvolutionCollabRequest,
     ) -> dict[str, Any]:
         return _advance(engine, _require(engine, evolution, body.domain), body.beat)
 
-    @router.post("/v1/demo/schema-evolution/reset")
+    @router.post(
+        "/v1/demo/schema-evolution/reset",
+        dependencies=internal_mutating_deps,
+    )
     def post_schema_evolution_reset(
         domain: str | None = Query(default=None),
     ) -> dict[str, Any]:
         return engine.reset(_require(engine, evolution, domain)).payload
 
-    @router.get("/ebc", response_class=HTMLResponse)
-    def get_ebc_live_console_html() -> HTMLResponse:
+    @router.api_route("/ebc", methods=["GET", "HEAD"], response_class=HTMLResponse)
+    def get_ebc_live_console_html(request: Request) -> HTMLResponse:
         """Serve the split-screen live console for the default consolidation scenario."""
         html_path = demo_static_root() / "ebc-live.html"
         if not html_path.is_file():
             raise HTTPException(status_code=404, detail="Live console not found.")
-        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+        resp = HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+        issue_viewer_cookie(request, resp)
+        return resp
 
     @router.get("/ebc/ebc-live.css")
     def get_ebc_live_console_css() -> Response:

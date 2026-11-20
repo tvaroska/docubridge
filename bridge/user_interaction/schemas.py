@@ -3,14 +3,27 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from bridge.a2ui_inbox import ActionStepStatus, RiskTier
+from bridge.a2ui_inbox.models import coerce_decimal_amount
 from bridge.agent_gym import TribalRuleCategory, TrustAutonomyLevel
 from bridge.knowledge_catalog import CatalogRole
 from contract.extraction import SourceAnchor
+
+DemoPersonaLiteral = Literal["client", "broker", "underwriter"]
+
+
+class DemoSessionRequest(BaseModel):
+    """Request body to exchange ``BRIDGE_DEMO_PASSCODE`` for a signed ``bridge_session`` cookie."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    passcode: str
+    persona: DemoPersonaLiteral = "underwriter"
 
 
 class IngestSubmissionRequest(BaseModel):
@@ -49,8 +62,13 @@ class CreateActionProgressRequest(BaseModel):
     risk_level: RiskTier = "MEDIUM"
     confidence_score: float = Field(default=0.95, ge=0.0, le=1.0)
     pause_for_review: bool = False
-    max_approval_amount: float | None = None
+    max_approval_amount: Decimal | None = None
     data_model: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("max_approval_amount", mode="before")
+    @classmethod
+    def _validate_max_approval_amount(cls, value: Any) -> Decimal | None:
+        return coerce_decimal_amount(value, field_name="max_approval_amount")
 
 
 class AdvanceActionStepRequest(BaseModel):

@@ -19,9 +19,10 @@ from bridge.telemetry.outcome import (
     current_outcome_id,
     start_outcome,
 )
-from bridge.user_interaction.auth import (
-    AuthenticationRequiredError,
-    resolve_compound_identity,
+from bridge.user_interaction.demo_session import (
+    issue_viewer_cookie,
+    mutating_auth_dependency,
+    verified_mutating_identity,
 )
 from bridge.user_interaction.schemas import IngestSubmissionRequest
 from bridge.user_interaction.surfaces import ingest_accepted_submission
@@ -40,20 +41,23 @@ def register_intake_and_demo_routes(
 ) -> None:
     """Register intake, BigQuery CDC sync, and interactive demo routes onto ``router``."""
 
-    @router.post("/v1/intake/ingest")
+    ingest_auth = mutating_auth_dependency(
+        default_role="underwriter",
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+        allow_external_roles=True,
+    )
+
+    @router.post("/v1/intake/ingest", dependencies=[ingest_auth])
     def ingest_submission_endpoint(
         request: Request,
         body: IngestSubmissionRequest,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Ingest a document submission across WORM Vault, Operational Store, Knowledge Catalog, and Agent Gym."""
+        del role
+        compound = verified_mutating_identity(request)
         try:
-            compound = resolve_compound_identity(
-                request,
-                query_role=role or "underwriter",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
-            )
             authorize_entity_access(compound.user, body.entity_id)
             outcome_id = current_outcome_id() or start_outcome(
                 owner=compound.user.subject
@@ -122,8 +126,6 @@ def register_intake_and_demo_routes(
                     t.model_dump(mode="json") for t in res.lineage_traces
                 ],
             }
-        except AuthenticationRequiredError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -139,9 +141,10 @@ def register_intake_and_demo_routes(
         )
         return batch.model_dump(mode="json")
 
-    @router.get("/demo", response_class=HTMLResponse)
-    @router.get("/console", response_class=HTMLResponse)
+    @router.api_route("/demo", methods=["GET", "HEAD"], response_class=HTMLResponse)
+    @router.api_route("/console", methods=["GET", "HEAD"], response_class=HTMLResponse)
     def get_interactive_enterprise_console(
+        request: Request,
         domain: str | None = None,
     ) -> HTMLResponse:
         """Serve the 5-scene interactive Enterprise Showcase HTML console (/demo and /console)."""
@@ -165,7 +168,9 @@ def register_intake_and_demo_routes(
                 html_text = html_text.replace("</head>", f"{inject_script}</head>", 1)
             else:
                 html_text = inject_script + html_text
-        return HTMLResponse(content=html_text)
+        resp = HTMLResponse(content=html_text)
+        issue_viewer_cookie(request, resp)
+        return resp
 
     @router.get("/demo/enterprise-demo.css")
     def get_interactive_enterprise_console_css() -> Response:

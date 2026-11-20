@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from bridge import patha
 from bridge.edge.skills import candidate_doctypes_for
 from bridge.extraction.gemini import REASONING_MODEL, WORKHORSE_MODEL
+from bridge.knowledge_catalog import CatalogRole
 from bridge.showcase.live_extraction import (
     _build_genai_client,
     is_live_gemini_configured,
@@ -25,6 +26,7 @@ from bridge.showcase.live_extraction import (
 from bridge.telemetry import close_outcome, start_outcome, trace_step
 from bridge.telemetry.outcome import inject_outcome_headers, without_outcome_baggage
 from bridge.telemetry.payload_log import emit_trace_payload_log
+from bridge.user_interaction.demo_session import mutating_auth_dependency
 
 if TYPE_CHECKING:
     from bridge.dashboard.board import RfpBoard
@@ -321,12 +323,27 @@ def execute_rfp_procurement_run(
         otel_context.attach(without_outcome_baggage())
 
 
-def mount_rfp_procurement_routes(app: FastAPI, *, rfps: RfpBoard | None = None) -> None:
+def mount_rfp_procurement_routes(
+    app: FastAPI,
+    *,
+    rfps: RfpBoard | None = None,
+    principal_roles: dict[str, CatalogRole] | None = None,
+    require_auth: bool = False,
+) -> None:
     """Mount `POST /v1/rfp/run-procurement` onto the internal dashboard/RFP host."""
+    mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
 
-    @app.post("/v1/rfp/run-procurement")
+    @app.post("/v1/rfp/run-procurement", dependencies=mutating_deps)
     def post_run_rfp_procurement(
-        body: RunRfpProcurementRequest, response: Response
+        body: RunRfpProcurementRequest,
+        response: Response,
     ) -> dict[str, Any]:
         outcome_id, payload = execute_rfp_procurement_run(body=body, rfps=rfps)
         response.headers["x-outcome-id"] = outcome_id
