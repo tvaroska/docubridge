@@ -118,11 +118,11 @@ def test_gm3_tokens_tabular_nums_and_reduced_motion_present() -> None:
 
 
 def test_architecture_card_svg_is_msvg_safe() -> None:
-    """`docs/assets/architecture_card.svg` uses inline `<text>` attributes with zero `<style>`/`<linearGradient>`/`<marker>`."""
+    """`docs/assets/architecture_card.svg` is 16:9, <= 35 visible words, and MSVG-safe."""
     svg_path = REPO_ROOT / "docs" / "assets" / "architecture_card.svg"
     raw = svg_path.read_text(encoding="utf-8")
     root = ET.fromstring(raw)  # noqa: S314 - parsing static repository SVG asset
-    assert root.attrib.get("viewBox") == "0 0 1600 940"
+    assert root.attrib.get("viewBox") == "0 0 1600 900"
 
     def _local(tag: str) -> str:
         return tag.rsplit("}", 1)[-1]
@@ -135,7 +135,13 @@ def test_architecture_card_svg_is_msvg_safe() -> None:
     assert "marker" not in tags
 
     texts = [el for el in root.iter() if _local(el.tag) == "text"]
-    assert len(texts) >= 20
+    assert len(texts) >= 10
+    visible_words = [
+        word for node in texts for word in (node.text or "").split() if word
+    ]
+    assert len(visible_words) <= 35, (
+        f"Hero SVG has {len(visible_words)} visible words (must be <= 35)"
+    )
     for node in texts:
         assert "class" not in node.attrib, f"SVG <text> still uses class: {node.text!r}"
         for attr in ("font-family", "font-size", "font-weight", "fill"):

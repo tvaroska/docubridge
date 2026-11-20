@@ -10,8 +10,10 @@ Clean-slate build (`docubridge`). Requirements (THE WHAT) live in
 - **Python 3.12+**, managed with **uv**. Run the test suite with `uv run pytest`.
   All tests must pass before a task is considered done. Never declare success with a
   failing or convenience-skipped test.
-- **Lint (T1 gate):** `uv run ruff check .` must be clean. Config in `pyproject.toml`
-  (`[tool.ruff]`): select `E4/E7/E9,F,I,UP,B,SIM,ANN001,ANN201,ANN202,RUF`, line-length 88.
+- **Lint & Strict Typing (T1 gate):** `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy --strict contract bridge` must all pass with `0` findings. Config in
+  `pyproject.toml` enables all 16 Ruff rule families (`E4/E7/E9,F,I,UP,B,SIM,C4,PIE,PT,RET,S,BLE,TRY,PLR,ANN,RUF`),
+  line-length 88, and `[tool.mypy] strict = true`.
   `ruff format` owns line width — **E501 is intentionally not lint-enforced** (long prompt
   strings / docstrings). Fix findings or `--fix`; don't blanket-`noqa`. `UP042`/`RUF002` are
   ignored (wire-enum `__str__` semantics; intentional docstring unicode).
@@ -69,9 +71,9 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
 ### Verification Ladder
 
 - **T1 (every task — gates the commit):**
-  - Lint: `uv run ruff check .` (must pass with 0 errors).
+  - Lint & Types: `uv run ruff check . && uv run ruff format --check . && uv run mypy --strict contract bridge` (must pass with 0 errors).
   - Unit & Enterprise Suite: `uv run pytest` (including `tests/test_enterprise_data_architecture.py`, `tests/test_isolation_guard.py`, `tests/test_service_wiring_guard.py`, `tests/test_gemini_extraction.py`).
-  - Terraform Plan-Time Tests: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (46 `run` blocks across 13 `.tftest.hcl` files, credential-free).
+  - Terraform Plan-Time Tests: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform test` (56 `run` blocks across 14 `.tftest.hcl` files, credential-free).
 - **T2 (every task — gates flipping `- [x]`):** exercise the artifact against the task's own acceptance criteria. Files existing / build green is NOT done.
 - **T3 (phase-close + on-demand verification):** CUJ simulation against the eval corpus. The Address eval corpus (`wiki/evals/address/`) is the oracle (`expected.json` + `timeline.json`).
 
@@ -108,6 +110,9 @@ Committed: `spec/`, `design/`, `docs/`, `wiki/evals/`, `DECISIONS.md`, `CRITICAL
    - Whenever `project.version` in `pyproject.toml` is bumped, also update `version = "..."` on the `[[package]] name = "docubridge"` entry in `uv.lock`; otherwise `uv run` detects a lockfile mismatch and attempts to re-resolve dependencies over the network (failing in offline sandboxes).
    - Running `git rm -rf <pkg>` removes tracked `.py` files but leaves untracked `__pycache__/` directories on disk, causing `Path("<pkg>").exists()` checks to remain `True` until `rm -rf <pkg>` is also executed.
    - `bridge.knowledge_catalog.KnowledgeCatalog` is a `typing.Protocol` (cannot be instantiated directly); always instantiate `InMemoryKnowledgeCatalog(operational_store=...)` when binding `CollectExecutor.bind_enterprise_stores(...)` or `build_a2a_app(...)` in local/test runs.
+9. **Single-Bucket `gs://<project-id>` IAM CEL & Per-Object WORM Retention (`P10-4`):**
+   - Never use `api.getAttribute("storage.googleapis.com/objectListPrefix", ...)` in GCS bucket `SetIamPolicy` (`google_storage_bucket_iam_member`) conditions — that attribute is valid only in IAM Credential Access Boundaries and fails with HTTP 400 on bucket policies. Scope read/write roles with `resource.name.startsWith("projects/_/buckets/<bucket>/objects/<prefix>/")` and grant bucket-level listing strictly via a minimal custom role (`storage.objects.list` only, never granted to write-only ingress SAs).
+   - In single-bucket mode (where a bucket-wide retention policy cannot be set without locking sibling prefixes), per-object GCS Object Retention (`blob.retention = ...`) requires explicit `storage.objects.setRetention` permission (`roles/storage.objectCreator` omits it); grant it via a prefix-conditioned custom role scoped solely to the audit vault prefix.
 
 ## 5. Single-Branch Workflow (`main`) & Explicit Demo Project Isolation
 
