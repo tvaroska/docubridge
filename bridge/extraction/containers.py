@@ -30,7 +30,6 @@ from bridge.extraction.ole2_msg import (
     decode_mapi_binary,
     decode_mapi_text,
 )
-from contract.enums import RequirementStatus
 from contract.wire import Requirement
 
 AdvisoryKind = Literal[
@@ -53,7 +52,7 @@ class ReplyItemAdvisory(BaseModel):
     item_key: str
     raw_status: str
     kind: AdvisoryKind
-    recommended_requirement_status: Literal["waived", "required"]
+    recommended_requirement_status: Literal["waiver_recommended", "required"]
     suggested_due_date: str | None = None
     note: str = ""
     source_envelope_id: str | None = None
@@ -183,7 +182,7 @@ def _classify_advisory_row(
         )
     ):
         kind: AdvisoryKind = "attested_carry_forward"
-        req_status: Literal["waived", "required"] = "waived"
+        req_status: Literal["waiver_recommended", "required"] = "waiver_recommended"
     elif any(
         phrase in lower
         for phrase in (
@@ -197,7 +196,7 @@ def _classify_advisory_row(
         )
     ):
         kind = "population_wide_exempt"
-        req_status = "waived"
+        req_status = "waiver_recommended"
     elif any(
         phrase in lower
         for phrase in (
@@ -211,7 +210,7 @@ def _classify_advisory_row(
         )
     ):
         kind = "deferred_external_quote"
-        req_status = "required" if due_date is not None else "waived"
+        req_status = "required" if due_date is not None else "waiver_recommended"
     elif any(
         phrase in lower
         for phrase in (
@@ -308,12 +307,7 @@ def parse_html_reply_advisories(
         "line",
         "coverage",
         "schedule",
-        "status",
-        "disposition",
-        "notes",
-        "comment",
-        "comments",
-    }
+    } | {"status", "disposition", "notes", "comment", "comments"}
     for rows in parser.tables:
         if not rows:
             continue
@@ -346,11 +340,10 @@ def apply_advisories_to_requirements(
     requirements: Sequence[Requirement],
     advisories: Sequence[ReplyItemAdvisory],
 ) -> tuple[list[Requirement], str | None]:
-    """Apply parsed reply-table advisories to Sense-B ``Requirement`` items.
+    """Annotate Sense-B ``Requirement`` items with reply-table advisories (ADR-14 D4).
 
-    Returns ``(updated_requirements, latest_suggested_due_date)`` so a calling Domain
-    Agent can deterministically mark waived items or retain required items with an
-    updated follow-up due date.
+    Never sets ``RequirementStatus.waived`` on Bridge authority; surfaces
+    ``waiver_recommended:<kind>`` for the calling agent to accept or decline.
     """
     by_norm_key: dict[str, ReplyItemAdvisory] = {
         re.sub(r"[^a-z0-9]+", "", adv.item_key.lower()): adv for adv in advisories
@@ -368,25 +361,24 @@ def apply_advisories_to_requirements(
         if matched is None:
             updated.append(req)
             continue
-        new_status = (
-            RequirementStatus.waived
-            if matched.recommended_requirement_status == "waived"
-            else RequirementStatus.required
-        )
+        is_waiver_rec = matched.recommended_requirement_status == "waiver_recommended"
         if matched.suggested_due_date and (
             latest_due is None or matched.suggested_due_date > latest_due
         ):
             latest_due = matched.suggested_due_date
         msg_parts = [matched.raw_status]
+        if is_waiver_rec:
+            msg_parts.insert(0, "waiver recommended")
         if matched.note:
             msg_parts.append(matched.note)
         if matched.suggested_due_date:
             msg_parts.append(f"due {matched.suggested_due_date}")
+        reason = f"waiver_recommended:{matched.kind}" if is_waiver_rec else matched.kind
         updated.append(
             req.model_copy(
                 update={
-                    "status": new_status,
-                    "reason_code": matched.kind,
+                    "status": req.status,
+                    "reason_code": reason,
                     "message": " — ".join(p for p in msg_parts if p),
                 }
             )

@@ -301,67 +301,164 @@ def test_live_a2a_payoff_meridian_fleet_deals_and_rfp_procurement(
 
     def _mock_handler(request: httpx.Request) -> httpx.Response:
         assert "outcome.id" not in request.headers.get("baggage", "")
-        if request.url.path == "/v1/payoff-assertion":
-            body = json.loads(request.content)
+        assert request.headers.get("a2a-version") == "1.0"
+        assert request.url.path in ("/.well-known/agent-card.json", "/")
+        if (
+            request.method == "GET"
+            and request.url.path == "/.well-known/agent-card.json"
+        ):
             return httpx.Response(
                 200,
                 json={
-                    "agent_spiffe_id": "spiffe://agents.fnb.example.com/external/fnb-payoff-agent",
-                    "assertion": {
-                        "fields": {
-                            "doctype": "loan-payoff-statement",
-                            "issuer": "First National Bank",
-                            "key_fields": {
-                                "borrower_name": body["borrower_name"],
-                                "loan_account": body["loan_account"],
-                                "payoff_amount": body["payoff_amount"],
-                                "good_through_date": "2026-11-30",
-                                "per_diem_interest": "$67.73",
-                                "wire_routing_aba": "021000021",
-                                "currency": "USD",
-                            },
-                        },
-                        "overall_confidence": 1.0,
-                        "field_confidence": {
-                            "loan_account": 1.0,
-                            "payoff_amount": 1.0,
-                            "good_through_date": 1.0,
-                            "currency": 1.0,
-                        },
-                        "legible": True,
-                        "flagged_fields": [],
+                    "name": "Mock Counterparty A2A Agent",
+                    "version": "1.0.0",
+                    "supportedInterfaces": [
+                        {
+                            "url": "https://counterparty.test/",
+                            "protocolBinding": "JSONRPC",
+                            "protocolVersion": "1.0",
+                        }
+                    ],
+                    "skills": [
+                        {"id": "loan-payoff-statement", "name": "Payoff"},
+                        {"id": "benefits-quote", "name": "Benefits Quote"},
+                    ],
+                },
+            )
+        rpc = json.loads(request.content)
+        assert rpc["jsonrpc"] == "2.0"
+        assert rpc["method"] == "SendMessage"
+        parts = rpc["params"]["message"]["parts"]
+        body = next(p["data"] for p in parts if "data" in p)
+        if body.get("doctype") == "loan-payoff-statement":
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": rpc["id"],
+                    "result": {
+                        "task": {
+                            "id": "task-fnb-1",
+                            "status": {"state": "TASK_STATE_COMPLETED"},
+                            "artifacts": [
+                                {
+                                    "name": "loan-payoff-statement",
+                                    "parts": [
+                                        {
+                                            "mediaType": "application/json",
+                                            "metadata": {
+                                                "kind": "loan-payoff-statement",
+                                                "agent_spiffe_id": "spiffe://agents.fnb.example.com/external/fnb-payoff-agent",
+                                            },
+                                            "data": {
+                                                "fields": {
+                                                    "doctype": "loan-payoff-statement",
+                                                    "issuer": "First National Bank",
+                                                    "key_fields": {
+                                                        "borrower_name": body[
+                                                            "borrower_name"
+                                                        ],
+                                                        "loan_account": body[
+                                                            "loan_account"
+                                                        ],
+                                                        "payoff_amount": body[
+                                                            "payoff_amount"
+                                                        ],
+                                                        "good_through_date": "2026-11-30",
+                                                        "per_diem_interest": "$67.73",
+                                                        "wire_routing_aba": "021000021",
+                                                        "currency": "USD",
+                                                    },
+                                                },
+                                                "overall_confidence": 1.0,
+                                                "field_confidence": {
+                                                    "loan_account": 1.0,
+                                                    "payoff_amount": 1.0,
+                                                    "good_through_date": 1.0,
+                                                    "currency": 1.0,
+                                                },
+                                                "legible": True,
+                                                "flagged_fields": [],
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
                     },
                 },
             )
-        if request.url.path == "/v1/rfp/quote":
+        if body.get("carrier") == "carrier-a":
             return httpx.Response(
                 200,
                 json={
-                    "assertion": {
-                        "fields": {
-                            "doctype": "benefits-quote",
-                            "issuer": "Carrier A",
-                            "key_fields": {
-                                "currency": "USD",
-                                "language": "en",
-                                "premium": "1200.00",
-                                "deductible": "250.00",
-                                "coverage_limits": "up to 50000",
-                                "exclusions": "none",
-                                "effective_date": "2027-01-01",
-                                "expiry_date": "2027-12-31",
-                            },
-                        },
-                        "overall_confidence": 0.99,
-                        "field_confidence": {"premium": 0.99},
-                        "legible": True,
-                        "flagged_fields": [],
-                    }
+                    "jsonrpc": "2.0",
+                    "id": rpc["id"],
+                    "result": {
+                        "task": {
+                            "id": "task-carrier-a-1",
+                            "status": {"state": "TASK_STATE_COMPLETED"},
+                            "artifacts": [
+                                {
+                                    "name": "benefits-quote",
+                                    "parts": [
+                                        {
+                                            "mediaType": "application/json",
+                                            "metadata": {"kind": "benefits-quote"},
+                                            "data": {
+                                                "fields": {
+                                                    "doctype": "benefits-quote",
+                                                    "issuer": "Carrier A",
+                                                    "key_fields": {
+                                                        "currency": "USD",
+                                                        "language": "en",
+                                                        "premium": "1200.00",
+                                                        "deductible": "250.00",
+                                                        "coverage_limits": "up to 50000",
+                                                        "exclusions": "none",
+                                                        "effective_date": "2027-01-01",
+                                                        "expiry_date": "2027-12-31",
+                                                    },
+                                                },
+                                                "overall_confidence": 0.99,
+                                                "field_confidence": {"premium": 0.99},
+                                                "legible": True,
+                                                "flagged_fields": [],
+                                            },
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    },
                 },
             )
         return httpx.Response(
             200,
-            json={"pdf_uri": "gs://test-bucket/eval-corpus/rfp-quote-b.pdf"},
+            json={
+                "jsonrpc": "2.0",
+                "id": rpc["id"],
+                "result": {
+                    "task": {
+                        "id": "task-carrier-b-1",
+                        "status": {"state": "TASK_STATE_COMPLETED"},
+                        "artifacts": [
+                            {
+                                "name": "benefits-quote",
+                                "parts": [
+                                    {
+                                        "url": "gs://test-bucket/eval-corpus/rfp-quote-b.pdf",
+                                        "mediaType": "application/pdf",
+                                        "metadata": {
+                                            "pdf_uri": "gs://test-bucket/eval-corpus/rfp-quote-b.pdf"
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                },
+            },
         )
 
     transport = httpx.MockTransport(_mock_handler)
@@ -578,7 +675,7 @@ def test_live_gemini_multimodal_pdf_extraction_with_injected_client(
                     "annual_noi": "$312,000.00",
                     "citation_page": 4,
                     "citation_snippet": "Note 6 Schedule of Existing Liabilities ($1.80M)",
-                    "auto_waive_payoff_letter": False,
+                    "recommend_payoff_waiver": False,
                     "liabilities": [
                         {
                             "creditor": "First National Bank",

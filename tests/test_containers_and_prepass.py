@@ -287,9 +287,11 @@ def test_eml_html_reply_advisories_all_five_kinds_and_sense_b_mutation() -> None
 
     by_key = {a.item_key: a for a in res.advisories}
     assert by_key["Vision Plan"].kind == "attested_carry_forward"
-    assert by_key["Vision Plan"].recommended_requirement_status == "waived"
+    assert by_key["Vision Plan"].recommended_requirement_status == "waiver_recommended"
     assert by_key["retiree-medical"].kind == "population_wide_exempt"
-    assert by_key["retiree-medical"].recommended_requirement_status == "waived"
+    assert (
+        by_key["retiree-medical"].recommended_requirement_status == "waiver_recommended"
+    )
     assert by_key["stop-loss-quote"].kind == "deferred_external_quote"
     assert by_key["stop-loss-quote"].suggested_due_date == "2026-12-05"
     assert by_key["stop-loss-quote"].recommended_requirement_status == "required"
@@ -299,16 +301,21 @@ def test_eml_html_reply_advisories_all_five_kinds_and_sense_b_mutation() -> None
 
     reqs = [
         Requirement(item="Vision Plan", status=RequirementStatus.required),
-        Requirement(item="retiree-medical", status=RequirementStatus.required),
+        Requirement(item="retiree-medical", status=RequirementStatus.optional),
         Requirement(item="stop-loss-quote", status=RequirementStatus.required),
-        Requirement(item="claims-loss-runs", status=RequirementStatus.required),
+        Requirement(item="claims-loss-runs", status=RequirementStatus.satisfied),
     ]
     mutated, latest_due = apply_advisories_to_requirements(reqs, res.advisories)
     status_map = {r.item: r.status for r in mutated}
-    assert status_map["Vision Plan"] == RequirementStatus.waived
-    assert status_map["retiree-medical"] == RequirementStatus.waived
+    reason_map = {r.item: r.reason_code for r in mutated}
+    # ADR-14 D4: DocuBridge never sets status='waived' on its own authority and
+    # preserves existing caller statuses (required/optional/satisfied) verbatim.
+    assert status_map["Vision Plan"] == RequirementStatus.required
+    assert reason_map["Vision Plan"] == "waiver_recommended:attested_carry_forward"
+    assert status_map["retiree-medical"] == RequirementStatus.optional
+    assert reason_map["retiree-medical"] == "waiver_recommended:population_wide_exempt"
     assert status_map["stop-loss-quote"] == RequirementStatus.required
-    assert status_map["claims-loss-runs"] == RequirementStatus.required
+    assert status_map["claims-loss-runs"] == RequirementStatus.satisfied
     assert latest_due == "2026-12-05"
     assert parse_html_reply_advisories("no tables here") == ()
 

@@ -261,6 +261,12 @@ def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes(
     assert items["item-5-apex-payoff"]["status"] == "required"
     assert items["item-6-equip-payoff"]["status"] == "required"
     assert items["item-7-internal-loc"]["status"] == "waived"
+    assert items["item-7-internal-loc"]["waiver_authority"] == "calling_agent"
+    assert any(r["item"] == "item-7-internal-loc" for r in p1["waiver_recommendations"])
+    assert any(
+        r["item"] == "item-7-internal-loc" and r["authority"] == "calling_agent"
+        for r in p1["caller_waiver_receipts"]
+    )
 
     p2 = engine.advance(sid, 2).payload
     assert p2["counts"] == {"total": 7, "satisfied": 5, "waived": 1, "required": 1}
@@ -269,14 +275,21 @@ def test_consolidation_scenario_state_advance_reset_match_legacy_outcomes(
     assert p2["cross_doc_discovery"]["wire_amount"] == "$48,210.00"
     assert "PAID IN FULL" in p2["cross_doc_discovery"]["wire_reference"]
     assert p2["underwriter_overwatch"]["status"] == "awaiting_approval"
+    assert any(r["item"] == "item-6-equip-payoff" for r in p2["waiver_recommendations"])
 
     p3 = engine.advance(sid, 3).payload
     assert p3["beat"] == 3 and p3["done"] is True
     assert p3["counts"] == {"total": 7, "satisfied": 5, "waived": 2, "required": 0}
-    assert {i["id"]: i for i in p3["borrower_checklist"]}["item-6-equip-payoff"][
-        "status"
-    ] == ("waived")
+    item6 = {i["id"]: i for i in p3["borrower_checklist"]}["item-6-equip-payoff"]
+    assert item6["status"] == "waived"
+    assert item6["waiver_authority"] == "calling_agent"
+    assert p3["caller_waiver_receipt"]["authority"] == "calling_agent"
     assert p3["underwriter_overwatch"]["status"] == "approved"
+    assert p3["underwriter_overwatch"]["waiver_authority"] == "calling_agent"
+    assert (
+        p3["underwriter_overwatch"]["caller_waiver_receipt_id"]
+        == (p3["caller_waiver_receipt"]["receipt_id"])
+    )
     assert p3["underwriter_overwatch"]["oversight_rsr_score"] == 0.98
     assert p3["underwriter_overwatch"]["review_dwell_ms"] == 4800
     assert p3["underwriter_overwatch"]["inbox_item_id"]

@@ -1,0 +1,73 @@
+schema_version: "1"
+version: "1.0.0"
+process: commercial-loan-underwriting
+description: >-
+  Satisfied by an accepted CRE Credit Agreement (cre-credit-agreement), an
+  independent accepted MAI Appraisal (mai-appraisal) from a distinct issuer
+  within 180 days, an accepted TRID Closing Disclosure (trid-closing-disclosure),
+  and an accepted non-expired Loan Payoff Statement (loan-payoff-statement),
+  with an optional Commercial Property Quote (commercial-property-quote).
+ordering:
+  - cre-credit-agreement
+  - mai-appraisal
+  - trid-closing-disclosure
+  - loan-payoff-statement
+  - commercial-property-quote
+match: all_of
+rules:
+  - id: credit-agreement-primary
+    item: Commercial credit agreement
+    doctype: cre-credit-agreement
+    min_count: 1
+    required_fields:
+      - loan_amount
+      - origination_fee
+      - currency
+      - effective_date
+    priority: 1
+    message: Provide an executed CRE Credit Agreement carrying loan_amount, origination_fee, currency, and effective_date.
+  - id: independent-mai-appraisal
+    item: Independent MAI property appraisal
+    doctype: mai-appraisal
+    min_count: 1
+    recency_days: 180
+    recency_field: valuation_date
+    distinct_issuer_from:
+      - cre-credit-agreement
+    required_fields:
+      - appraised_value
+      - property_address
+      - currency
+      - valuation_date
+    priority: 2
+    message: Provide an independent MAI Appraisal (distinct issuer from the lender, valued within 180 days) with appraised_value and property_address.
+  - id: trid-closing-disclosure-final
+    item: TRID closing disclosure
+    doctype: trid-closing-disclosure
+    min_count: 1
+    required_fields:
+      - loan_amount
+      - origination_fee
+      - currency
+      - effective_date
+    priority: 3
+    message: Provide the final TRID Closing Disclosure with loan_amount, origination_fee, currency, and effective_date.
+  - id: loan-payoff-statements
+    item: Loan payoff statement
+    doctype: loan-payoff-statement
+    min_count: 1
+    not_expired_field: good_through_date
+    required_fields:
+      - loan_account
+      - payoff_amount
+      - good_through_date
+      - currency
+    priority: 4
+    message: Provide current non-expired Loan Payoff Statement(s) carrying loan_account, payoff_amount, good_through_date, and currency.
+  - id: commercial-property-quote-optional
+    item: Commercial property insurance quote
+    doctype: commercial-property-quote
+    required: false
+    min_count: 1
+    priority: 5
+    message: Optional commercial property insurance quote for collateral coverage verification.

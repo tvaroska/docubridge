@@ -521,6 +521,64 @@ class GcpA2AClient(A2AClientPort):
         )
         return OutboundClient(transport)
 
+    def send_message(
+        self,
+        *,
+        endpoint_url: str,
+        payload: dict[str, Any] | None = None,
+        text: str | None = None,
+        expected_skill: str | None = None,
+        context_id: str | None = None,
+        headers: dict[str, str] | None = None,
+        http_client: Any = None,
+        timeout: float = 20.0,
+        gateway_host: str | None = None,
+        id_token_fetcher: Any = None,
+    ) -> Any:
+        """Invoke canonical A2A v1.0 ``SendMessage`` with same-origin reconciliation and OIDC."""
+        from bridge.outbound import send_a2a_message
+
+        reconciler = (
+            (lambda url: reconcile_card_host(url, gateway_host))
+            if gateway_host
+            else None
+        )
+        sa = (self._sa_email or os.environ.get(BRIDGE_RUNTIME_SA_EMAIL_ENV, "")).strip()
+
+        def _auth_headers(target_url: str) -> dict[str, str]:
+            if id_token_fetcher is not None:
+                return {"Authorization": f"Bearer {id_token_fetcher(target_url)}"}
+            if http_client is None and sa and target_url.startswith("https://"):
+                from urllib.parse import urlparse
+
+                import google.auth.transport.requests
+                from google.oauth2 import id_token
+
+                parsed = urlparse(target_url)
+                audience = (
+                    f"{parsed.scheme}://{parsed.netloc}"
+                    if parsed.netloc
+                    else target_url
+                )
+                token = id_token.fetch_id_token(
+                    google.auth.transport.requests.Request(), audience
+                )
+                return {"Authorization": f"Bearer {token}"}
+            return {}
+
+        return send_a2a_message(
+            endpoint_url=endpoint_url,
+            payload=payload,
+            text=text,
+            expected_skill=expected_skill,
+            context_id=context_id,
+            headers=headers,
+            http_client=http_client,
+            timeout=timeout,
+            url_reconciler=reconciler,
+            auth_header_provider=_auth_headers,
+        )
+
 
 # ---------------------------------------------------------------------------
 # extraction (P7-6) — the Gemini extraction engine behind the port

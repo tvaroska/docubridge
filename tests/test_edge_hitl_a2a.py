@@ -809,17 +809,17 @@ async def test_resolution_tolerant_decode_over_wire():
         call_id = _meta(task.status.message)[META_REVIEW_CALL_ID]
         part = ph.new_data_part(
             {
-                "contract_version": "1.5",
+                "contract_version": "1.6",
                 "call_id": call_id,
                 "resolution": "accepted",
                 "message": "OK from a newer reviewer console.",
                 "reviewer": REVIEWER,
-                "review_tool_build": "2027.1",  # unknown to a 1.4 reader
+                "review_tool_build": "2027.1",  # unknown to a 1.5 reader
             }
         )
         part.metadata.CopyFrom(
             ParseDict(
-                {META_KIND: KIND_HUMAN_REVIEW_RESOLUTION, META_CONTRACT_VERSION: "1.5"},
+                {META_KIND: KIND_HUMAN_REVIEW_RESOLUTION, META_CONTRACT_VERSION: "1.6"},
                 struct_pb2.Struct(),
             )
         )

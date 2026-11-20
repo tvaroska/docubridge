@@ -1,0 +1,49 @@
+schema_version: "1"
+version: "1.0.0"
+process: address-proof
+description: >-
+  Satisfied by one accepted unexpired government-issued photo ID (gov-id)
+  showing name, residential address, doc number, issuing authority, and expiry,
+  OR two accepted utility bills (utility-bill) from distinct issuers within
+  the 90-day recency window matching the same service address.
+ordering:
+  - gov-id
+  - utility-bill
+match: any_of
+alternatives:
+  - id: gov-id-branch
+    label: Government-issued photo ID
+    priority: 1
+    rules:
+      - id: gov-id-primary
+        item: Government-issued photo ID
+        doctype: gov-id
+        min_count: 1
+        required_fields:
+          - name
+          - address
+          - doc_number
+          - issuing_authority
+          - expiry
+        not_expired_field: expiry
+        priority: 1
+        message: Provide one unexpired government-issued photo ID showing your current residential address.
+  - id: utility-bill-branch
+    label: Two distinct-issuer utility bills within 90 days
+    priority: 2
+    rules:
+      - id: utility-bill-corroborated
+        item: Utility bill proof of address
+        doctype: utility-bill
+        min_count: 2
+        distinct_issuers: true
+        recency_days: 90
+        recency_field: statement_date
+        required_fields:
+          - name
+          - service_address
+          - statement_date
+        same_value_fields:
+          - service_address
+        priority: 2
+        message: Provide two utility bills from distinct issuers dated within 90 days showing the same service address.

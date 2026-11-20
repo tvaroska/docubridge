@@ -29,13 +29,22 @@ import asyncio
 import logging
 import os
 from collections.abc import Sequence
+from datetime import date, datetime
+from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
 from bridge.collect import project_outstanding
+from bridge.strategy import evaluate_process_sufficiency
 from contract.enums import RequirementStatus
-from contract.wire import LedgerEntry, Requirement, RequirementsList
+from contract.wire import (
+    LedgerEntry,
+    Requirement,
+    RequirementsList,
+    SufficiencyVerdict,
+    WaiverRecommendation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -189,3 +198,37 @@ def resolve_assessor(
         f"invalid satisfaction mode {raw!r} for {SATISFACTION_ENV}; "
         "expected 'off' or 'llm'"
     )
+
+
+def evaluate_turn_sufficiency(
+    process: str,
+    entries: Sequence[LedgerEntry],
+    *,
+    caller_requirements: RequirementsList | None = None,
+    waiver_recommendations: Sequence[WaiverRecommendation] = (),
+    as_of: date | datetime | None = None,
+    skills_dir: Path | None = None,
+    use_registry: bool = True,
+) -> SufficiencyVerdict | None:
+    """Evaluate a turn's ledger deterministically against ``process``'s ``strategy.yaml``.
+
+    Zero models participate (ADR-14 Sense A′). Returns ``None`` when the process
+    skill declares no ``assets/strategy.yaml`` file.
+    """
+    return evaluate_process_sufficiency(
+        process,
+        entries,
+        caller_requirements=caller_requirements,
+        waiver_recommendations=waiver_recommendations,
+        as_of=as_of,
+        skills_dir=skills_dir,
+        use_registry=use_registry,
+    )
+
+
+def sufficiency_to_outstanding(verdict: SufficiencyVerdict) -> RequirementsList:
+    """Project a ``SufficiencyVerdict``'s outstanding items to a ``RequirementsList``.
+
+    ``done`` is ALWAYS ``False`` — DocuBridge never mints Sense-B completeness.
+    """
+    return RequirementsList(requirements=list(verdict.outstanding), done=False)

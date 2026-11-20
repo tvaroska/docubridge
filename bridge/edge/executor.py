@@ -127,7 +127,11 @@ from bridge.edge.wire import (
     status_message_for,
 )
 from bridge.exchange_store import StaleExchangeWrite
-from bridge.satisfaction import SatisfactionAssessor, propose_outstanding
+from bridge.satisfaction import (
+    SatisfactionAssessor,
+    evaluate_turn_sufficiency,
+    propose_outstanding,
+)
 from bridge.telemetry import trace_step
 from bridge.telemetry.outcome import (
     close_outcome,
@@ -602,7 +606,17 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
                 ),
             )
         status = project_collection_status([entry])
-        return ExchangeTurn(context_id=context_id, status=status, terminal=True)
+        sufficiency = evaluate_turn_sufficiency(
+            request.process,
+            [entry],
+            caller_requirements=request.requirements,
+        )
+        return ExchangeTurn(
+            context_id=context_id,
+            status=status,
+            sufficiency=sufficiency,
+            terminal=True,
+        )
 
     async def _emit_turn(
         self,
@@ -619,7 +633,8 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         synthetic one would manufacture progress that didn't happen). The LLM leg
         (``_execute_llm_leg``) does emit WORKING — its model call is genuine work. On
         the completing path a new task opens per round under the same exchange
-        context_id (see agents/address/interceptor.py; D8: not collapsed).
+        context_id (see the reference consumer interceptor in docubridge-examples;
+        D8: not collapsed).
         """
         # 1.x requires a brand-new task's first enqueued event to be a Task,
         # else the server raises InvalidAgentResponseError.

@@ -638,8 +638,8 @@ class TestHumanReviewResolution:
         return payload
 
     def test_contract_version_bumped_for_human_review(self):
-        assert CONTRACT_VERSION == "1.4"
-        assert HumanReviewResolution(**self._payload()).contract_version == "1.4"
+        assert CONTRACT_VERSION == "1.5"
+        assert HumanReviewResolution(**self._payload()).contract_version == "1.5"
 
     def test_human_review_round_trip(self):
         res = HumanReviewResolution(**self._payload(reviewer="alice"))
@@ -655,17 +655,17 @@ class TestHumanReviewResolution:
     def test_human_review_newer_minor_extra_stripped(self):
         res = decode_wire(
             HumanReviewResolution,
-            self._payload(contract_version="1.5", review_tool_build="2027.1"),
+            self._payload(contract_version="1.6", review_tool_build="2027.1"),
         )
         assert res.call_id == "adk-call-1"
-        assert res.contract_version == "1.5"
+        assert res.contract_version == "1.6"
         assert not hasattr(res, "review_tool_build")
 
     def test_human_review_same_minor_extra_rejected(self):
         with pytest.raises(ValidationError):
             decode_wire(
                 HumanReviewResolution,
-                self._payload(contract_version="1.4", review_tool_build="x"),
+                self._payload(contract_version=CONTRACT_VERSION, review_tool_build="x"),
             )
 
     def test_human_review_unknown_resolution_rejected(self):

@@ -561,3 +561,59 @@ def test_newer_minor_turn_with_unknown_entry_key_decodes_tolerantly():
     newer = f"{CONTRACT_MAJOR}.{_minor(CONTRACT_VERSION) + 1}"
     turn = decode_wire(ExchangeTurn, _turn_payload(newer, extra_entry_key=True))
     assert turn.status.entries[0].doc_id == "d"
+
+
+async def test_collector_populates_sufficiency_verdict_and_respects_caller_override():
+    """Collector populates ExchangeTurn.sufficiency deterministically without minting done."""
+    from datetime import date
+
+    from contract.wire import Requirement, RequirementsList
+
+    collector = Collector(FixtureExtractor())
+    request = CollectRequest(process="address-proof")
+    turn_id = await collector.collect(
+        request,
+        documents=[
+            DocumentSubmission(
+                doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg"
+            )
+        ],
+        candidate_doctypes=["gov-id", "utility-bill"],
+        as_of=date(2026, 8, 1),
+    )
+    assert turn_id.sufficiency is not None
+    assert turn_id.sufficiency.satisfied is True
+    assert turn_id.sufficiency.outstanding == []
+    assert turn_id.status.outstanding is not None
+    assert turn_id.status.outstanding.done is False
+    assert turn_id.requirements is None
+
+    # Caller override adding an extra required item wins over base strategy satisfaction.
+    override_req = CollectRequest(
+        process="address-proof",
+        requirements=RequirementsList(
+            requirements=[
+                Requirement(
+                    item="tax-return-2025",
+                    status=RequirementStatus.required,
+                    doctype_hint="tax-return",
+                )
+            ],
+            done=False,
+        ),
+    )
+    turn_override = await collector.collect(
+        override_req,
+        documents=[
+            DocumentSubmission(
+                doc_id="gov-id-clean", artifact_name="images/gov-id-clean.svg"
+            )
+        ],
+        candidate_doctypes=["gov-id", "utility-bill"],
+        as_of=date(2026, 8, 1),
+    )
+    assert turn_override.sufficiency is not None
+    assert turn_override.sufficiency.satisfied is False
+    assert [r.item for r in turn_override.sufficiency.outstanding] == [
+        "tax-return-2025"
+    ]

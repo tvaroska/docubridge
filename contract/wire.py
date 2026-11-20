@@ -6,7 +6,7 @@ from datetime import datetime
 from types import UnionType
 from typing import Any, Literal, Union, get_args, get_origin
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from contract.enums import Disposition, Gate, LifecycleStatus, RequirementStatus
 from contract.extraction import FieldReview, SourceAnchor
@@ -16,8 +16,10 @@ from contract.extraction import FieldReview, SourceAnchor
 # ``tables`` on ``LedgerEntry``; "1.2" = S0-arch-11 RFP collection (``Requirement.party``,
 # ``CollectRequest.requirements`` + ``due_at``); "1.3" = S0-arch-9
 # ``LedgerEntry.overall_confidence`` + ``field_confidence``; "1.4" = S3-edge-6
-# ``HumanReviewResolution`` (a new additive type).
-CONTRACT_VERSION = "1.4"
+# ``HumanReviewResolution`` (a new additive type); "1.5" = ADR-14/P11-1
+# ``ExchangeTurn.sufficiency`` (``SufficiencyVerdict``, ``SufficiencyEvidence``,
+# ``WaiverRecommendation``).
+CONTRACT_VERSION = "1.5"
 
 
 class ArtifactRef(BaseModel):
@@ -128,6 +130,70 @@ class CollectRequest(BaseModel):
     due_at: datetime | None = None
 
 
+class WaiverRecommendation(BaseModel):
+    """Caller-facing waiver recommendation emitted by DocuBridge or a reviewer.
+
+    Per ADR-14 D4, DocuBridge never changes a requirement's state to ``waived`` on
+    its own authority. Recommendations carry grounded evidence/citations so the
+    calling agent can accept (by sending the item back as ``waived``) or decline.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    item: str
+    doctype_hint: str | None = None
+    reason_code: str
+    reason: str
+    source_doc_id: str | None = None
+    citation: str | None = None
+    recommended_by: str | None = None
+
+
+class SufficiencyEvidence(BaseModel):
+    """Per-rule deterministic evaluation evidence inside a ``SufficiencyVerdict``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str
+    satisfied: bool
+    doc_ids: list[str] = []
+    issuers: list[str] = []
+    reason: str
+    field_refs: list[str] = []
+    waiver_recommended: bool = False
+
+
+class SufficiencyVerdict(BaseModel):
+    """Deterministic strategy evaluation verdict (ADR-14 Sense A′).
+
+    DocuBridge evaluates the process skill's declared ``assets/strategy.yaml``
+    together with any caller-supplied ``CollectRequest.requirements`` overrides.
+    Zero models participate; DocuBridge never mints ``done`` and never sets an
+    outstanding item to ``waived``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    satisfied: bool
+    strategy_revision: str
+    evidence: list[SufficiencyEvidence] = []
+    outstanding: list[Requirement] = []
+    waiver_recommendations: list[WaiverRecommendation] = []
+
+    @field_validator("outstanding")
+    @classmethod
+    def _reject_bridge_waived_outstanding(
+        cls, value: list[Requirement]
+    ) -> list[Requirement]:
+        for req in value:
+            if req.status is RequirementStatus.waived:
+                raise ValueError(
+                    "SufficiencyVerdict.outstanding must never contain status='waived'; "
+                    "emit a WaiverRecommendation for the calling agent instead (ADR-14 D4)"
+                )
+        return value
+
+
 class ExchangeTurn(BaseModel):
     """Top-level wire type: the Bridge's per-turn deliverable."""
 
@@ -137,6 +203,7 @@ class ExchangeTurn(BaseModel):
     context_id: str
     status: CollectionStatus
     requirements: RequirementsList | None = None
+    sufficiency: SufficiencyVerdict | None = None
     terminal: bool = Field(
         default=False,
         description=(

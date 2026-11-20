@@ -2,7 +2,7 @@
 
 import abc
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .port import Port
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from bridge.exchange_store import ExchangeStore
     from bridge.knowledge_catalog import KnowledgeCatalog
     from bridge.operational_store import OperationalStore
-    from bridge.outbound import A2AClient
+    from bridge.outbound import A2AClient, A2ASendResult
     from bridge.scheduler import Scheduler
     from bridge.vault import AuditVaultStore
     from contract.extraction import ExtractionResult
@@ -164,6 +164,22 @@ class A2AClientPort(PortABC):
     @abc.abstractmethod
     def build_client(self) -> "A2AClient":
         """Return an outbound A2A client (fake transport locally; Agent Identity at P7)."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def send_message(
+        self,
+        *,
+        endpoint_url: str,
+        payload: dict[str, Any] | None = None,
+        text: str | None = None,
+        expected_skill: str | None = None,
+        context_id: str | None = None,
+        headers: dict[str, str] | None = None,
+        http_client: Any = None,
+        timeout: float = 20.0,
+    ) -> "A2ASendResult":
+        """Discover a peer Agent Card and invoke canonical A2A v1.0 JSON-RPC ``SendMessage``."""
         raise NotImplementedError
 
 

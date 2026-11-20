@@ -12,7 +12,7 @@ Environment: Issues 1–2 first observed on `google-adk` 2.7.0 and re-confirmed 
 
 ## Issue 1 — `RemoteA2aAgent` resume detection breaks inside a `Workflow`
 
-- **Local workaround:** `agents/address/interceptor.py` (`pending_resume_target` + the `resume_stamping_interceptor` send-path `RequestInterceptor`)
+- **Companion consumer workaround (in `docubridge-examples`):** reference consumer `interceptor.py` (`pending_resume_target` + the `resume_stamping_interceptor` send-path `RequestInterceptor`)
 
 ### Summary
 
@@ -61,7 +61,7 @@ it into `RemoteA2aAgent` would let us delete the workaround.
 
 ## Issue 2 — no supported way to decode an A2A `DataPart` from an ADK event stream
 
-- **Local workaround:** `agents/address/wire.py` (`extract_exchange_turn`, splitting on the `_TAG_START`/`_TAG_END` delimiters)
+- **Companion consumer workaround (in `docubridge-examples`):** reference consumer `wire.py` (`extract_exchange_turn`, splitting on the `_TAG_START`/`_TAG_END` delimiters)
 
 ### Summary
 

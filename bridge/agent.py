@@ -86,7 +86,8 @@ def build_document_bridge(model: str | BaseLlm | None = None) -> LlmAgent:
 def build_app(model: str | BaseLlm | None = None, *, is_resumable: bool = True) -> App:
     """Build a stock App with the document_bridge as the root agent.
 
-    Mirrors ``agents/address/app.py::build_address_app``: the ``App`` carries
+    Mirrors the reference consumer App builder in ``docubridge-examples``
+    (``build_address_app``): the ``App`` carries
     ``ResumabilityConfig(is_resumable=True)`` so a ``Runner(app=...)`` can durably
     park on the ``request_human_review`` LongRunningFunctionTool and resume on an
     id-matched FunctionResponse. Resumability lives on the App, not the Runner

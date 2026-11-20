@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
@@ -19,6 +20,7 @@ from bridge.disposition import DispositionVerdict
 from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.ports.protocols import ExtractionPort
 from bridge.signals import dispose_signals, signals_from_result
+from bridge.strategy import evaluate_process_sufficiency
 from bridge.telemetry import trace_step
 from bridge.vault import redact_personal_data
 from contract.enums import Disposition, RequirementStatus
@@ -146,6 +148,7 @@ class Collector:
         documents: list[DocumentSubmission],
         candidate_doctypes: list[str],
         results_out: dict[str, ExtractionResult] | None = None,
+        as_of: date | datetime | None = None,
     ) -> ExchangeTurn:
         """Run one collect turn: extract -> (redact) -> dispose -> project -> (promote).
 
@@ -236,6 +239,12 @@ class Collector:
                         entry = ingested.entry
                     entries.append(entry)
             status = project_collection_status(entries)
+            sufficiency = evaluate_process_sufficiency(
+                request.process,
+                entries,
+                caller_requirements=request.requirements,
+                as_of=as_of,
+            )
             turn_span.set_attribute(
                 "docubridge.accepted_count",
                 sum(1 for e in entries if e.disposition is Disposition.accepted),
@@ -243,9 +252,14 @@ class Collector:
             turn_span.set_attribute(
                 "docubridge.outstanding_count", len(status.outstanding.requirements)
             )
+            if sufficiency is not None:
+                turn_span.set_attribute(
+                    "docubridge.sufficiency_satisfied", sufficiency.satisfied
+                )
         return ExchangeTurn(
             context_id=context_id,
             status=status,
             requirements=None,  # app-owned; the Bridge never supplies it
+            sufficiency=sufficiency,
             terminal=True,  # one-turn completed path (no loop / no park)
         )

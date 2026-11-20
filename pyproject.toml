@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docubridge"
-version = "1.15.0"
+version = "1.16.0"
 description = "Governed A2A document mediation engine: separate page-anchored evidence and deterministic Rule 0 conflict resolution from caller policy, with 0.0% regression skill calibration."
 requires-python = ">=3.12,<3.14"
 dependencies = [

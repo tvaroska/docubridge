@@ -142,7 +142,7 @@
 // Zones (layers) — horizontal bands.
 // ---------------------------------------------------------------------------
 const ZONES = [
-  {id:'consumer', label:'Consumer / Servicer (agents/address)', color:'#1f6feb', y:40,  h:150},
+  {id:'consumer', label:'Consumer / Servicer (docubridge-examples)', color:'#1f6feb', y:40,  h:150},
   {id:'wire',     label:'A2A wire (JSON-RPC over HTTP)',        color:'#a371f7', y:210, h:70},
   {id:'edge',     label:'Bridge edge (bridge/edge)',           color:'#d29922', y:300, h:110},
   {id:'core',     label:'Bridge core (bridge/*)',              color:'#3fb950', y:430, h:110},
@@ -196,8 +196,8 @@ const TYPES = {
 const FLOW = [
   { node:'driver', edge:null, zone:'consumer',
     title:'Initialize the request',
-    file:'agents/address/driver.py::run_collection  ·  wire.py::encode_doc_parts',
-    desc:'The Address driver (an App/Runner host — not an ADK agent) seeds ONE opening message carrying both a scenario marker (for the mock) and the document by-reference (for the real edge). One message, each edge reads what it understands.',
+    file:'docubridge-examples · driver.py::run_collection  ·  wire.py::encode_doc_parts',
+    desc:'The Address driver in companion docubridge-examples (an App/Runner host — not an ADK agent) seeds ONE opening message carrying both a scenario marker (for the mock) and the document by-reference (for the real edge). One message, each edge reads what it understands.',
     code:`<span class=c># one opening message — dual payload</span>
 Message(parts=[
   TextPart(<span class=s>"scenario:path-a-instant"</span>),
@@ -208,7 +208,7 @@ Message(parts=[
 
   { node:'workflow', edge:['driver','workflow','call'], zone:'consumer',
     title:'Start the Workflow graph',
-    file:'agents/address/workflow.py::build_address_workflow',
+    file:'docubridge-examples · workflow.py::build_address_workflow',
     desc:'run_collection builds the conditional cycle START→collect→gate→present on a Runner(node=wf) and kicks it off. Edges from START are unrouted; the gate’s two out-edges are routed.',
     code:`START ──▶ collect ──▶ gate ─<span class=g>done</span>─▶ present
                        └─<span class=k>again</span>─▶ collect
@@ -216,7 +216,7 @@ Message(parts=[
 
   { node:'collect', edge:['workflow','collect','call'], zone:'consumer',
     title:'collect node dials the Bridge',
-    file:'agents/address/collect.py::build_bridge_remote_agent',
+    file:'docubridge-examples · collect.py::build_bridge_remote_agent',
     desc:'The collect node is a plain ADK RemoteA2aAgent. It resolves the Agent Card URL and forwards the session’s message content to the Bridge. rerun_on_resume=True so a parked leg re-dials on resume.',
     code:`RemoteA2aAgent(
   agent_card=<span class=s>"…/.well-known/agent-card.json"</span>,
@@ -319,14 +319,14 @@ Artifact(parts=[DataPart(exchange_turn)],
 
   { node:'reader', edge:['wireback','reader','ret'], zone:'consumer',
     title:'Consumer decodes the turn',
-    file:'agents/address/turn_reader.py',
-    desc:'Back on the consumer side, the collect node’s result is decoded off the shared durable session into a typed ExchangeTurn for the gate to judge.',
+    file:'docubridge-examples · turn_reader.py',
+    desc:'Back on the consumer side (in companion docubridge-examples), the collect node’s result is decoded off the shared durable session into a typed ExchangeTurn for the gate to judge.',
     code:`turn = extract_exchange_turn(session)
 <span class=c># typed ExchangeTurn back in the consumer’s hands</span>` },
 
   { node:'gate', edge:['reader','gate','route'], zone:'consumer',
     title:'Gate: the Sense-B "done" verdict',
-    file:'agents/address/gate.py::is_satisfied / make_gate_node_fn',
+    file:'docubridge-examples · gate.py::is_satisfied / make_gate_node_fn',
     desc:'The authoritative, pure, deterministic done rule — a model never mints "done". One accepted gov-id satisfies the address-proof policy → route "done". Round counter = 1.',
     code:`is_satisfied(status) == <span class=g>True</span>
 ctx.route = <span class=g>"done"</span>
@@ -335,7 +335,7 @@ gate_rounds == <span class=n>1</span>
 
   { node:'present', edge:['gate','present','route'], zone:'consumer',
     title:'Present — terminal outcome',
-    file:'agents/address/workflow.py::present_node_fn',
+    file:'docubridge-examples · workflow.py::present_node_fn',
     desc:'The presenter sets the terminal ExchangeTurn as the graph output and never routes. Terminal state: gov-id-clean accepted, gate auto_approve, satisfied. Identical on the mock and the real edge — parity = terminal outcome.',
     code:`turn.terminal == <span class=n>True</span>
 accepted == [<span class=s>"gov-id-clean"</span>] (doctype gov-id)

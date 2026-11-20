@@ -22,6 +22,8 @@ from bridge import patha
 from bridge.agent_gym.models import _gcp_project_number
 from bridge.extraction.gemini import REASONING_MODEL, WORKHORSE_MODEL
 from bridge.identity import SPIFFE_ID_HEADER, SPIFFE_SVID_HEADER, mint_jwt_svid
+from bridge.outbound import stringify_decimals
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.showcase.engine import ScenarioEngine
 from bridge.showcase.live_extraction import (
     _build_genai_client,
@@ -97,27 +99,47 @@ def _fetch_counterparty_assertion(
     )
 
     if mode == "live" and (endpoint_url or http_client is not None):
-        target = (
-            f"{endpoint_url.rstrip('/')}/v1/payoff-assertion"
-            if endpoint_url
-            else "/v1/payoff-assertion"
+        raw_amount = (
+            requested_amount
+            if requested_amount not in (None, "")
+            else spec.get("expected_amount", "")
         )
-        payload = {
-            "borrower_name": borrower_name,
-            "loan_account": account_ref,
-            "payoff_amount": requested_amount or spec.get("expected_amount", ""),
-            "doctype": spec["doctype"],
-        }
-        if http_client is not None:
-            resp = http_client.post(target, json=payload, headers=outbound_headers)
-        else:
-            with httpx.Client(timeout=15.0) as client:
-                resp = client.post(target, json=payload, headers=outbound_headers)
-        resp.raise_for_status()
-        body = resp.json()
-        assertion = body.get("assertion", body)
+        amount_str = str(raw_amount)
+        payload = stringify_decimals(
+            {
+                "borrower_name": borrower_name,
+                "loan_account": account_ref,
+                "payoff_amount": amount_str,
+                "payoff_amount_decimal": _parse_money(amount_str),
+                "doctype": spec["doctype"],
+            }
+        )
+        a2a_port = get_adapter(Port.a2a_client, resolve_mode(Port.a2a_client))
+        a2a_res = a2a_port.send_message(
+            endpoint_url=endpoint_url,
+            payload=payload,
+            expected_skill=str(spec["doctype"]),
+            context_id=f"payoff:{spec.get('counterparty_id', 'counterparty')}:{account_ref}",
+            headers=outbound_headers,
+            http_client=http_client,
+            timeout=15.0,
+        )
+        found = a2a_res.find_data_part(
+            kind=str(spec["doctype"]), artifact_name=str(spec["doctype"])
+        )
+        if found is None:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Counterparty {spec.get('counterparty_id')!r} A2A SendMessage "
+                    f"returned no structured {spec['doctype']!r} artifact."
+                ),
+            )
+        data_part, _, _ = found
+        assertion = data_part.get("assertion", data_part)
         counterparty_spiffe = str(
-            body.get("agent_spiffe_id") or spec.get("agent_spiffe_id", "")
+            a2a_res.find_metadata_value("agent_spiffe_id")
+            or spec.get("agent_spiffe_id", "")
         )
         return assertion, counterparty_spiffe, True
 

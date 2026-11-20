@@ -56,7 +56,7 @@ _LIVE_EXTRACTION_SCHEMA: dict[str, Any] = {
         "annual_noi": {"type": "STRING"},
         "citation_page": {"type": "INTEGER"},
         "citation_snippet": {"type": "STRING"},
-        "auto_waive_payoff_letter": {"type": "BOOLEAN"},
+        "recommend_payoff_waiver": {"type": "BOOLEAN"},
         "liabilities": {
             "type": "ARRAY",
             "items": {
@@ -101,7 +101,7 @@ _LIVE_EXTRACTION_SCHEMA: dict[str, Any] = {
         "issuer",
         "citation_page",
         "citation_snippet",
-        "auto_waive_payoff_letter",
+        "recommend_payoff_waiver",
         "liabilities",
         "payoff_wires",
     ],
@@ -445,6 +445,7 @@ def _ingest_live_document(
             "highlight_page": cite_page,
             "liabilities_count": len(parsed.get("liabilities") or []),
             "payoff_wires_count": len(wires),
+            "waiver_recommended": bool(parsed.get("recommend_payoff_waiver", False)),
             "summary": str(parsed.get("citation_snippet") or "")[:180],
         },
     )

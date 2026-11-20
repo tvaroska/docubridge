@@ -30,7 +30,7 @@ from bridge.telemetry import (
 )
 from bridge.user_interaction.surfaces import ingest_accepted_submission
 from contract.extraction import SourceAnchor
-from contract.wire import Disposition, Gate, LedgerEntry
+from contract.wire import Disposition, Gate, LedgerEntry, WaiverRecommendation
 
 
 def recompute_counts(state: dict[str, Any]) -> None:
@@ -192,7 +192,12 @@ def patch_state(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any]
 
 @operation("inbox_waiver")
 def inbox_waiver(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any]:
-    """Create + resolve the 1-click A2UI inbox action; exposes `${inbox_item_id}` etc."""
+    """Record a cited reviewer waiver recommendation and calling-agent waiver receipt.
+
+    Per ADR-14 D4, DocuBridge and reviewers only emit a grounded
+    ``WaiverRecommendation``; the calling agent (Sense B) alone accepts the
+    recommendation and records an explicit ``caller_waiver_receipt``.
+    """
     stored_outcome_id = ctx.state.get("outcome_id") or get_current_outcome_id()
     owner = get_current_outcome_owner() or "meridian-loan-consolidation"
     if stored_outcome_id:
@@ -222,6 +227,57 @@ def inbox_waiver(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any
             agent_spiffe_id=resolve.get("agent_spiffe_id"),
             close_outcome_on_resolve=False,
         )
+    rec_spec = ctx.render(params.get("recommendation") or {})
+    recommendation = WaiverRecommendation(
+        item=str(rec_spec.get("item") or action.get("title") or item.item_id),
+        doctype_hint=rec_spec.get("doctype_hint"),
+        reason_code=str(rec_spec.get("reason_code") or "reviewer_waiver_recommended"),
+        reason=str(
+            rec_spec.get("reason")
+            or citation.excerpt
+            or action.get("hint")
+            or "Reviewer recommended waiver based on verified cross-document evidence."
+        ),
+        source_doc_id=citation.doc_id,
+        citation=(
+            f"{citation.document_title} Page {citation.page_number}"
+            if citation.page_number
+            else citation.document_title
+        ),
+        recommended_by=str(
+            rec_spec.get("recommended_by") or resolve["actor_principal"]
+        ),
+    )
+    recs: list[dict[str, Any]] = ctx.state.setdefault("waiver_recommendations", [])
+    rec_payload = recommendation.model_dump(mode="json")
+    recs[:] = [r for r in recs if r.get("item") != rec_payload["item"]]
+    recs.append(rec_payload)
+
+    caller_authority = str(
+        ctx.state.pop("_caller_waiver_authority", None)
+        or rec_spec.get("waiver_authority")
+        or "calling_agent"
+    )
+    receipt_id = f"rcpt-waiver-{result['audit_id']}"
+    receipt = {
+        "receipt_id": receipt_id,
+        "item": recommendation.item,
+        "doctype_hint": recommendation.doctype_hint,
+        "authority": caller_authority,
+        "calling_agent_spiffe_id": resolve.get("agent_spiffe_id")
+        or ctx.manifest.agents.get("underwriter"),
+        "recommended_by": recommendation.recommended_by,
+        "inbox_item_id": item.item_id,
+        "audit_id": result["audit_id"],
+        "decision": result["decision"],
+        "citation": recommendation.citation,
+        "source_doc_id": recommendation.source_doc_id,
+    }
+    ctx.state["caller_waiver_receipt"] = receipt
+    receipts: list[dict[str, Any]] = ctx.state.setdefault("caller_waiver_receipts", [])
+    receipts[:] = [r for r in receipts if r.get("item") != receipt["item"]]
+    receipts.append(receipt)
+
     if stored_outcome_id and not ctx.state.get("_outcome_closed"):
         close_outcome(
             "succeeded",
@@ -233,7 +289,14 @@ def inbox_waiver(ctx: OperationContext, params: dict[str, Any]) -> dict[str, Any
     ctx.vars["inbox_item_id"] = item.item_id
     ctx.vars["audit_id"] = result["audit_id"]
     ctx.vars["decision"] = result["decision"]
-    return {"inbox_item_id": item.item_id, "audit_id": result["audit_id"]}
+    ctx.vars["caller_waiver_receipt_id"] = receipt_id
+    ctx.vars["waiver_authority"] = caller_authority
+    return {
+        "inbox_item_id": item.item_id,
+        "audit_id": result["audit_id"],
+        "waiver_recommendation": rec_payload,
+        "caller_waiver_receipt": receipt,
+    }
 
 
 @operation("gym_distill_and_compile")

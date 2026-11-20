@@ -87,7 +87,7 @@
         <div class="kpi-sub" id="kpi-telemetry">Awaiting real PDF upload · 0 PII leaked</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">SKILL REGISTRY &amp; CONTINUAL LEARNING</div>
+        <div class="kpi-label">SKILL REGISTRY &amp; CONTINUAL LEARNING <span class="status-pill required" id="badge-skill-registry-shim" title="In-process shim; swap for managed Agent Registry / Agent Gateway APIs when GA">SIMULATED IN-PROCESS SHIM</span></div>
         <div class="kpi-val" id="kpi-skill">v1.0.0</div>
         <div class="kpi-sub" id="kpi-skill-sub">loan-payoff-statement · Guided Review</div>
       </div>
@@ -221,6 +221,14 @@
 
         <div id="bq-gates-strip" class="gates-strip"></div>
         <div id="otel-waterfall-box" class="waterfall-box"></div>
+
+        <div id="registry-gateway-panel" class="skill-md-section">
+          <div class="telemetry-header-row">
+            <div class="section-mini-title">AGENT REGISTRY &amp; AGENT GATEWAY CONTROL PLANE</div>
+            <span class="status-pill required" id="badge-registry-gateway-shim" title="In-process catalog and CEL policy shim; not backed by managed Agent Registry or Network Services Agent Gateway APIs">SIMULATED IN-PROCESS SHIM</span>
+          </div>
+          <div class="telemetry-sub" id="registry-gateway-summary">In-process Agent Registry &amp; Agent Gateway policy shim (counterparty calls use live canonical A2A v1.0 SendMessage).</div>
+        </div>
 
         <div class="skill-md-section">
           <div class="section-mini-title">COMPILED AGENT SKILL (`loan-payoff-statement` SKILL.md)</div>

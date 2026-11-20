@@ -18,7 +18,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from bridge import patha
 from bridge.edge.skills import candidate_doctypes_for
 from bridge.extraction.gemini import REASONING_MODEL, WORKHORSE_MODEL
+from bridge.identity import SPIFFE_ID_HEADER, SPIFFE_SVID_HEADER, mint_jwt_svid
 from bridge.knowledge_catalog import CatalogRole
+from bridge.outbound import stringify_decimals
+from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.showcase.live_extraction import (
     _build_genai_client,
     is_live_gemini_configured,
@@ -103,29 +106,46 @@ def execute_rfp_procurement_run(
         carrier_b_endpoint = (
             body.carrier_b_url or os.environ.get("BRIDGE_CARRIER_B_URL", "").strip()
         )
+        source_spiffe = "spiffe://agents.docubridge.io/ingest/docubridge-collector"
         ext_headers = inject_outcome_headers(
-            {"content-type": "application/json"}, is_external=True
+            {
+                "content-type": "application/json",
+                SPIFFE_ID_HEADER: source_spiffe,
+                SPIFFE_SVID_HEADER: mint_jwt_svid(source_spiffe),
+            },
+            is_external=True,
         )
+        a2a_port = get_adapter(Port.a2a_client, resolve_mode(Port.a2a_client))
+        expected_skill = doctypes[0] if doctypes else None
 
         carrier_a_assertion: dict[str, Any] | None = None
         if body.mode == "live" and (carrier_a_endpoint or http_client is not None):
-            target_a = (
-                f"{carrier_a_endpoint.rstrip('/')}/v1/rfp/quote"
-                if carrier_a_endpoint
-                else "/v1/rfp/quote"
+            req_a = stringify_decimals(
+                {
+                    "rfp_id": body.case_id,
+                    "employer_name": body.employer_name,
+                    "plan_year": body.plan_year,
+                    "carrier": "carrier-a",
+                }
             )
-            req_a = {
-                "rfp_id": body.case_id,
-                "employer_name": body.employer_name,
-                "plan_year": body.plan_year,
-            }
-            if http_client is not None:
-                resp_a = http_client.post(target_a, json=req_a, headers=ext_headers)
-            else:
-                with httpx.Client(timeout=20.0) as client:
-                    resp_a = client.post(target_a, json=req_a, headers=ext_headers)
-            resp_a.raise_for_status()
-            data_a = resp_a.json()
+            res_a = a2a_port.send_message(
+                endpoint_url=carrier_a_endpoint,
+                payload=req_a,
+                expected_skill=expected_skill,
+                context_id=f"{body.case_id}:carrier-a",
+                headers=ext_headers,
+                http_client=http_client,
+                timeout=20.0,
+            )
+            found_a = res_a.find_data_part(
+                kind=expected_skill, artifact_name=expected_skill
+            )
+            if found_a is None:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Carrier A A2A SendMessage returned no structured quote artifact.",
+                )
+            data_a, _, _ = found_a
             carrier_a_assertion = data_a.get("assertion", data_a)
         elif body.carrier_a_fallback:
             carrier_a_assertion = dict(body.carrier_a_fallback)
@@ -136,6 +156,7 @@ def execute_rfp_procurement_run(
             )
         if not doctypes and "fields" in carrier_a_assertion:
             doctypes = [str(carrier_a_assertion["fields"].get("doctype", ""))]
+        carrier_b_skill = doctypes[0] if doctypes and doctypes[0] else expected_skill
 
         with trace_step(
             "docubridge.rfp.carrier_a_path_a_validate",
@@ -166,26 +187,43 @@ def execute_rfp_procurement_run(
         pdf_uri = body.carrier_b_pdf_uri or ""
         carrier_b_meta: dict[str, Any] = {}
         if body.mode == "live" and (carrier_b_endpoint or http_client is not None):
-            target_b = (
-                f"{carrier_b_endpoint.rstrip('/')}/v1/rfp/quote-pdf"
-                if carrier_b_endpoint
-                else "/v1/rfp/quote-pdf"
+            req_b = stringify_decimals(
+                {
+                    "rfp_id": body.case_id,
+                    "employer_name": body.employer_name,
+                    "plan_year": body.plan_year,
+                    "carrier": "carrier-b",
+                    "pdf_uri": pdf_uri,
+                    "uncalibrated_argon": uncalibrated_argon,
+                }
             )
-            req_b = {
-                "rfp_id": body.case_id,
-                "employer_name": body.employer_name,
-                "plan_year": body.plan_year,
+            res_b = a2a_port.send_message(
+                endpoint_url=carrier_b_endpoint,
+                payload=req_b,
+                expected_skill=carrier_b_skill,
+                context_id=f"{body.case_id}:carrier-b",
+                headers=ext_headers,
+                http_client=http_client,
+                timeout=25.0,
+            )
+            discovered_uri = (
+                res_b.find_file_uri(mime_type="application/pdf")
+                or res_b.find_file_uri()
+            )
+            if discovered_uri:
+                pdf_uri = discovered_uri
+            pdf_b64 = str(res_b.find_metadata_value("pdf_base64") or "")
+            carrier_b_meta = {
                 "pdf_uri": pdf_uri,
-                "uncalibrated_argon": uncalibrated_argon,
+                "pdf_base64": pdf_b64,
+                "task_id": res_b.task_id,
+                "task_state": res_b.task_state,
             }
-            if http_client is not None:
-                resp_b = http_client.post(target_b, json=req_b, headers=ext_headers)
-            else:
-                with httpx.Client(timeout=25.0) as client:
-                    resp_b = client.post(target_b, json=req_b, headers=ext_headers)
-            resp_b.raise_for_status()
-            carrier_b_meta = resp_b.json()
-            pdf_uri = str(carrier_b_meta.get("pdf_uri") or pdf_uri)
+            found_b = res_b.find_data_part(
+                kind=carrier_b_skill, artifact_name=carrier_b_skill
+            )
+            if found_b is not None:
+                carrier_b_meta["quote_artifact"] = found_b[0]
 
         chosen_model = REASONING_MODEL if uncalibrated_argon else WORKHORSE_MODEL
         source_mode = "PDF_PATH_B_ARGON" if uncalibrated_argon else "PDF_PATH_B_FLASH"

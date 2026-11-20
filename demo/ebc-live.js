@@ -630,7 +630,7 @@
   window.distillSkillDraft = function () { return runDistill(false); };
 
   window.promoteCompiledSkill = async function () {
-    setBusy(true, "Promoting loan-payoff-statement@1.1.0 to Active...", "Writing active revision to Skill Registry...");
+    setBusy(true, "Promoting loan-payoff-statement@1.1.0 to Active...", "Writing active revision to local Skill Registry shim...");
     try {
       var revId = currentState && currentState.agent_gym_payoff && currentState.agent_gym_payoff.skill_revision_id;
       var nextState = await apiRequest("/v1/demo/consolidation-collab/promote-skill", {
@@ -682,20 +682,9 @@
 
       var sumEl = document.getElementById("bq-summary-line");
       if (sumEl) {
-        var totalSpans = Number(
-          analytics.total_spans_analyzed || analytics.total_spans || 0
-        );
-        var savingsPct = Number(
-          sqlEval.estimated_eval_token_savings_pct ||
-            sqlEval.selective_judge_token_savings_pct ||
-            95
-        );
-        sumEl.textContent =
-          "Captured " +
-          totalSpans +
-          " OpenTelemetry spans · Selective Judge Savings: " +
-          savingsPct.toFixed(0) +
-          "%";
+        var totalSpans = Number(analytics.total_spans_analyzed || analytics.total_spans || 0);
+        var savingsPct = Number(sqlEval.estimated_eval_token_savings_pct || sqlEval.selective_judge_token_savings_pct || 95);
+        sumEl.textContent = "Captured " + totalSpans + " OpenTelemetry spans · Selective Judge Savings: " + savingsPct.toFixed(0) + "%";
       }
 
       var gatesEl = document.getElementById("bq-gates-strip");
@@ -721,26 +710,23 @@
         wfEl.innerHTML = spans.length
           ? spans
               .map(function (s) {
-                var rawMod =
-                  s.gen_ai_model ||
-                  (s.attributes && s.attributes["gen_ai.request.model"]) ||
-                  "";
+                var rawMod = s.gen_ai_model || (s.attributes && s.attributes["gen_ai.request.model"]) || "";
                 var modelBadge = rawMod ? formatModelDisplay(rawMod) : "Deterministic Code";
-                return (
-                  '<div class="span-row">' +
-                  "<span>" +
-                  esc(s.span_name || s.name || s.step_name || "span") +
-                  "</span>" +
-                  "<span>" +
-                  esc(modelBadge) +
-                  "</span>" +
-                  '<span style="text-align:right">' +
-                  Number(s.duration_ms || 0).toFixed(1) +
-                  " ms</span></div>"
-                );
+                return '<div class="span-row"><span>' + esc(s.span_name || s.name || s.step_name || "span") + "</span><span>" + esc(modelBadge) + '</span><span style="text-align:right">' + Number(s.duration_ms || 0).toFixed(1) + " ms</span></div>";
               })
               .join("")
           : '<div class="mono-hash">Upload a PDF to stream live OpenTelemetry spans.</div>';
+      }
+
+      var rgEl = document.getElementById("registry-gateway-summary");
+      if (rgEl) {
+        try {
+          var reg = await apiRequest("/v1/registry/catalog");
+          var gw = await apiRequest("/v1/gateway/status");
+          var agentCount = ((reg.agent_registry && reg.agent_registry.agents) || []).length;
+          var gwCount = ((gw.gateways || gw.agent_gateways) || []).length;
+          rgEl.textContent = "SIMULATED IN-PROCESS SHIM · " + agentCount + " registry agents, " + gwCount + " gateway policies (live counterparty A2A v1.0 SendMessage active).";
+        } catch (_rgErr) {}
       }
     } catch (_err) {}
   };

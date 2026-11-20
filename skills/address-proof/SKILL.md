@@ -17,7 +17,7 @@ metadata:
   version: "1.0"
 ---
 
-Bounded Collect. The Bridge classifies each arriving doc against the candidate doctypes, dispositions it (sense A), and chases the delta per `assets/policy.yaml`. Completeness — the OR, the count-to-two, the distinct-issuer check — is the **agent's** sense-B call (`agents/address/gate.py::is_satisfied`), asserted per turn, never enforced here.
+Bounded Collect. The Bridge classifies each arriving doc against the candidate doctypes, dispositions it (sense A), evaluates `assets/strategy.yaml` into `ExchangeTurn.sufficiency` (sense A′), and chases the delta per `assets/policy.yaml`. Completeness — the final `done` decision and any waiver — remains the **calling agent's** sense-B call (e.g. `is_satisfied` in the companion `docubridge-examples` reference consumer), asserted per turn, never enforced here.
 
 ## Satisfaction (prose, advisory)
 One government-issued ID **or** two utility bills from **different** companies.

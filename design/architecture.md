@@ -12,8 +12,8 @@ tags: [bridge, layout]
 
 ```
 docubridge/
-├── contract/        shared Pydantic wire types — the ONLY package both bridge/ and agents/ import
-├── bridge/          the reusable Bridge CORE (the platform showcase) — never imports agents/
+├── contract/        shared Pydantic wire types — the ONLY package shared across bridge/ and external consumers (examples/ and companion docubridge-examples)
+├── bridge/          the reusable Bridge CORE (the platform showcase) — never imports external consumers
 │   ├── edge/        A2A server, Agent Card, executor router, LlmAgent leg, artifact fetch, email webhook
 │   ├── portal/      A2UI Path-B host + carrier checklist
 │   ├── dashboard/   ops read-model + SSE, /rfps API, RFP board host
@@ -33,7 +33,8 @@ docubridge/
 │   ├── calibration.py       threshold corridor + autorater / HITL calibration math
 │   ├── policy.py            disposition-policy loader (process skill `disposition:` block)
 │   ├── doctypes.py          the one reader of a doctype's schema (OKF bundle first, generated `schema.json` second) + ontology slicing
-│   ├── satisfaction.py / satisfaction_llm.py  advisory set-satisfaction proposal (rule / model)
+│   ├── strategy/    declarative `assets/strategy.yaml` loader & deterministic sufficiency evaluator (ADR-14 Sense A′)
+│   ├── satisfaction.py / satisfaction_llm.py  sufficiency bridge + advisory set-satisfaction proposal (rule / model)
 │   ├── patha.py / pathb.py  Path-A validate-only + Path-B extraction graph
 │   ├── offscript.py         off-script intent routing tools
 │   ├── program.py / normalize.py / standard.py / comparison.py / negotiate.py  Benefits fan-out, normalize, gap-flag, compare, negotiate
@@ -51,10 +52,7 @@ docubridge/
 │   ├── telemetry/           End-to-end OpenTelemetry spans, BatchSpanProcessor Cloud Trace v2 & BigQuery
 │   └── user_interaction/    Zone 5/6 FastAPI package (auth, surfaces, demo_seed, schemas, routes)
 ├── demo/            5-scene interactive Enterprise Showcase Console (enterprise-demo.{html,css,js}) + GCP recorder
-├── agents/          service-agent CONSUMERS + demo drivers
-│   ├── address/     the service agent: Workflow, RemoteA2aAgent collect, gate, CLI driver, wake
-│   ├── console/     the Agent Console console_server
-│   └── benefits/    simulated carrier counterparty agents, ADK + LangGraph
+├── examples/        lightweight in-repo A2A consumer quickstarts (full reference consumers live in companion repo `docubridge-examples`)
 ├── skills/          Agent Skills folders the Bridge loads at runtime (doctype + process)
 │   ├── address-proof, gov-id, utility-bill (Address)
 │   ├── benefits-procurement, benefits-quote, benefits-rfp (Benefits & RFP)
@@ -93,16 +91,12 @@ Demo-host glue — seeding synthetic data, naming a demo skill, reading the `wik
 
 Two named exceptions carry a skill-name literal in the core, each allowlisted with its reason: the mock Bridge test double (`bridge/edge/mock.py`, scripted from the Address corpus) and the corpus calibration tool (`bridge/calibration.py`, mapping each corpus file to its label space). An unresolved process (no loaded process skill of that name, or one without `bridge-candidate-doctypes`) gets an empty label space, so every document is rejected `unsupported_doctype`; the core never falls back to another process's doctypes. The RFP-named wire vocabulary (`/rfps`, `RfpCell.product_line`, "carriers" for parties) is the aggregate's API naming, not a binding to any skill.
 
-### `agents/` — consumers & drivers
+### External consumers (`examples/` & companion `docubridge-examples`)
 The [service-agent `Workflow` shape](service-agent-architecture.md): a `RemoteA2aAgent` collect node, a deterministic gate node, a presenter.
 
-`agents/address/` holds the consumer construct: `collect.py` (`build_bridge_remote_agent`, the `RemoteA2aAgent` collect node), `wire.py` (genai-Part → `ExchangeTurn` decode) and `interceptor.py` (resume-stamping `RequestInterceptor`) — the latter two are Ring-3 workarounds tracked in `docs/upstream-adk-issues.md`. The package also includes the gate (`gate.py`, `is_satisfied`), the workflow/app (`workflow.py`, `app.py`), the CLI driver (`driver.py`, `__main__.py`) and the custom push-doorbell receiver (`wake.py`).
+Full reference service-agent consumers were split into the companion `docubridge-examples` repository so `docubridge/` stays purely the reusable mediation platform plus minimal `examples/` quickstarts. In `docubridge-examples`, the Address reference consumer holds the `RemoteA2aAgent` collect node, wire decode, resume-stamping `RequestInterceptor` (Ring-3 workarounds tracked in `docs/upstream-adk-issues.md`), deterministic gate (`is_satisfied`), workflow/CLI driver, push-doorbell receiver, Agent Console server, and simulated carrier counterparty A2A agents (ADK + LangGraph).
 
-`agents/console/` holds the Agent Console `console_server` (`agents.console.server:build_console_app`, FastAPI + SSE). It runs `agents.address.driver.run_collection` and never imports `bridge/`. Its test is `tests/address/test_console.py`.
-
-`agents/benefits/` holds the simulated carrier counterparty A2A agents the Bridge dials: Carrier A built on ADK (`carrier_a_adk.py`), Carrier B built on LangGraph (`carrier_b_langgraph.py`), plus `server.py`, `wire.py`, `quotes.py`. These are external-zone A2A servers. They are not a service-agent `Workflow`.
-
-The portal lives in `bridge/portal/` (`bridge.portal.server:build_portal_app`, the A2UI Path-B host + `rfp_checklist.py`, the leg-addressed carrier checklist), not in `agents/address/`.
+The portal lives in `bridge/portal/` (`bridge.portal.server:build_portal_app`, the A2UI Path-B host + `rfp_checklist.py`, the leg-addressed carrier checklist), inside the Bridge core.
 
 ### `catalog/doctypes/` vs `skills/` vs `wiki/evals/`
 A bundle in [`catalog/doctypes/`](ontology.md) says what a document *is* (field names, types, `required`, enums, tables, edges — a doctype skill's `assets/schema.json` is generated from it); a [skill](skills.md) says *how the Bridge collects* it and behaves (runtime config); an [eval](../spec/cujs.md) is *how we check it behaved* (spec). Keep the three separate ([knowledge model](knowledge-model.md)).
@@ -129,7 +123,7 @@ The eval corpus is the enforced source of truth for expected dispositions; `test
 - **ADK is pinned `google-adk >= 2.11.0, < 3`** — the [experimental-surfaces list](adk.md) is the risk register.
 - **Three demos only** (Address, Benefits, RFP); the former "Maturity" demo is dropped ([human edge](human-edge.md) folds the X-Ray in as a presentation mode).
 - **Outbound is first-class** ([outbound](outbound.md)); the pull spine remains the core motion.
-- **Completeness** is the app's Sense-B decision; a process skill may carry a **prose** satisfaction description the Bridge best-efforts (no DSL) ([collect](collect.md), [skills](skills.md)).
+- **Completeness** is the app's Sense-B decision; DocuBridge evaluates the process skill's declarative `assets/strategy.yaml` deterministically into `ExchangeTurn.sufficiency` (Sense A′, ADR-14/ADR-15) while the calling agent alone mints `done` and waives requirements ([collect](collect.md), [skills](skills.md)).
 
 Remaining genuinely-open items live in [open-questions](../spec/open-questions.md).
 

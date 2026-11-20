@@ -1155,3 +1155,26 @@ async def test_r1_r2_a2a_snippet_four_signals_oversight_and_cold_import() -> Non
     assert empty_eval["total_traces_evaluated"] == 0
     assert empty_eval["statistical_calibration"]["evaluated"] is False
     assert empty_eval["statistical_calibration"]["n_unlabeled"] == 0
+
+
+def test_post_split_docs_and_playgrounds_have_no_stale_in_repo_agents_address() -> None:
+    """Cleaned design docs, code comments, and playgrounds no longer claim in-repo `agents/address/*`."""
+    cleaned_paths = (
+        "design/actors.md",
+        "design/architecture.md",
+        "design/skills.md",
+        "bridge/agent.py",
+        "bridge/edge/executor.py",
+        "skills/address-proof/SKILL.md",
+        "docs/upstream-adk-issues.md",
+        "docs/playgrounds/address-bridge-playground.html",
+        "docs/playgrounds/cuj1-dataflow-playground.html",
+    )
+    for rel in cleaned_paths:
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        assert "agents/address/" not in text, (
+            f"{rel} still references stale in-repo 'agents/address/' path"
+        )
+        assert "../docubridge-examples" not in text, (
+            f"{rel} contains forbidden sibling-escape link '../docubridge-examples'"
+        )

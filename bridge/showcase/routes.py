@@ -152,12 +152,18 @@ def _upload(
 def _approve_waiver(
     engine: ScenarioEngine, scenario_id: str, body: LiveCollabModeRequest
 ) -> dict[str, Any]:
+    """Record explicit calling-agent acceptance of the reviewer's waiver recommendation.
+
+    Per ADR-14 D4, DocuBridge and reviewers only recommend waivers with evidence;
+    this showcase action invokes the calling agent's explicit Sense-B waiver receipt.
+    """
     beats = _beats_for(engine, scenario_id)
     t0 = time.monotonic()
     ctx = engine.context(scenario_id)
     for name in ("expand", "reconcile"):
         if ctx.state.get("beat", 0) < beats[name]:
             engine.run_beat(scenario_id, beats[name])
+    ctx.state["_caller_waiver_authority"] = "calling_agent"
     engine.run_beat(scenario_id, beats["waiver"])
     telem = ctx.state.setdefault("live_telemetry", build_initial_live_telemetry())
     telem["execution_mode"] = "live_gcp" if body.mode == "live" else "instant_cached"

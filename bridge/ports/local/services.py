@@ -134,6 +134,32 @@ class LocalA2AClient(A2AClientPort):
 
         return OutboundClient(transport)
 
+    def send_message(
+        self,
+        *,
+        endpoint_url: str,
+        payload: dict[str, Any] | None = None,
+        text: str | None = None,
+        expected_skill: str | None = None,
+        context_id: str | None = None,
+        headers: dict[str, str] | None = None,
+        http_client: Any = None,
+        timeout: float = 20.0,
+    ) -> Any:
+        """Discover a peer Agent Card and invoke canonical A2A v1.0 JSON-RPC ``SendMessage``."""
+        from bridge.outbound import send_a2a_message
+
+        return send_a2a_message(
+            endpoint_url=endpoint_url,
+            payload=payload,
+            text=text,
+            expected_skill=expected_skill,
+            context_id=context_id,
+            headers=headers,
+            http_client=http_client,
+            timeout=timeout,
+        )
+
 
 class LocalExtraction(ExtractionPort):
     """Local extraction adapter — the deterministic fixture engine (PORT-8)."""
