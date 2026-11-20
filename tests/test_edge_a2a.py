@@ -262,7 +262,7 @@ async def test_inline_bytes_rejected_end_to_end(edge):
                     task_id = ev.task.id
                 elif ev.HasField("status_update"):
                     task_id = ev.status_update.task_id
-        except Exception:
+        except Exception:  # noqa: BLE001 - A2A client error class varies by transport
             raised = True
 
         # Either the send surfaced an error, or the task never reached COMPLETED.

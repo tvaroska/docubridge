@@ -10,11 +10,12 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from bridge.refinery import SchemaRefineryEngine
 from bridge.showcase.context import OperationContext, resolve_by_beat
 from bridge.showcase.operations import operation, view_builder
 
 
-def _refinery(ctx: OperationContext) -> Any:
+def _refinery(ctx: OperationContext) -> SchemaRefineryEngine:
     if ctx.refinery is None:
         raise RuntimeError(
             f"scenario {ctx.manifest.id!r} needs a SchemaRefineryEngine but none was bound"
@@ -90,7 +91,7 @@ def schema_evolution_view(ctx: OperationContext) -> dict[str, Any]:
     report = reports[-1] if reports else None
 
     materialised = resolve_by_beat(copy.deepcopy(view), beat)
-    beat_copy = next(
+    beat_copy: dict[str, Any] = next(
         (b for b in materialised.get("beats", []) if int(b.get("index", -1)) == beat),
         {},
     )

@@ -365,7 +365,7 @@ async def test_unknown_scenario_marker_does_not_complete():
         task_id = None
         try:
             task_id, _events = await _send(client, _collect_message("nope"))
-        except Exception:
+        except Exception:  # noqa: BLE001 - A2A client error class varies by transport
             raised = True
         if not raised and task_id is not None:
             task = await client.get_task(GetTaskRequest(id=task_id))

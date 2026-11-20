@@ -8,9 +8,7 @@
 
 import type { LifecycleStatus } from "@docubridge/shared";
 
-// --------------------------------------------------------------------------- //
-// Wire shapes (snake_case from the time-warp host)                            //
-// --------------------------------------------------------------------------- //
+// Wire shapes (snake_case from the time-warp host).
 export interface WirePendingAlarm {
   key: string;
   fire_at: number;
@@ -37,9 +35,7 @@ export interface WireState {
   exchanges: WireExchange[];
 }
 
-// --------------------------------------------------------------------------- //
-// App-side types (camelCase)                                                  //
-// --------------------------------------------------------------------------- //
+// App-side types (camelCase).
 export interface PendingAlarm {
   key: string;
   fireAt: number;
@@ -66,9 +62,7 @@ export interface TimewarpState {
   exchanges: Exchange[];
 }
 
-// --------------------------------------------------------------------------- //
-// Mapper (snake→camel)                                                        //
-// --------------------------------------------------------------------------- //
+// Mapper (snake→camel).
 function mapPending(w: WirePendingAlarm): PendingAlarm {
   return {
     key: w.key,

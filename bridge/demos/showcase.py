@@ -77,9 +77,10 @@ import order stays acyclic).
 
 from __future__ import annotations
 
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from starlette.applications import Starlette
 from starlette.routing import Mount
@@ -153,7 +154,7 @@ async def _seed_program(board: ProgramBoard) -> None:
     board.put(open_negotiation(SHOWCASE_PROGRAM_ID, legs, board.standard))
 
 
-def build_showcase_app(
+def build_showcase_app(  # noqa: PLR0913 - public keyword-only showcase app builder
     *,
     url: str | None = None,
     now: datetime | None = None,
@@ -209,8 +210,11 @@ def build_showcase_app(
         intake=processor.intake if processor is not None else None,
         extraction=extraction,
     )
-    edge_kwargs = {} if url is None else {"url": url}
-    edge = build_a2a_app(executor=executor, rfp_board=rfps, **edge_kwargs)
+    edge = (
+        build_a2a_app(executor=executor, rfp_board=rfps)
+        if url is None
+        else build_a2a_app(url=url, executor=executor, rfp_board=rfps)
+    )
 
     # The dashboard resolved + validated the interval once; the loop runs here because
     # Starlette never runs a mounted sub-app's lifespan (exactly one loop per process).
@@ -218,7 +222,7 @@ def build_showcase_app(
     lifespan = None
     if processor is not None and interval > 0:
 
-        def lifespan(_app: Starlette) -> Any:
+        def lifespan(_app: Starlette) -> AbstractAsyncContextManager[None]:
             return email_drain_loop(processor, interval)
 
     app = Starlette(

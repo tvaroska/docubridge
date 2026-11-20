@@ -100,6 +100,201 @@ def _sanitize_data_model_for_channel(
     return base
 
 
+def _build_citation_components(
+    item: ActionInboxItem,
+    *,
+    is_internal: bool,
+    allow_raw_vault_uri: bool,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    components: list[dict[str, Any]] = []
+    citation_ids: list[str] = []
+    for step in item.steps:
+        for idx, cit in enumerate(step.citations):
+            pill_id = f"cite_{step.step_id}_{idx}"
+            citation_ids.append(pill_id)
+            viewer_href = (
+                f"{cit.vault_uri}#page={cit.page_number}"
+                if (allow_raw_vault_uri and cit.vault_uri)
+                else f"/portal/source-pdf/{item.entity_id}/{cit.doc_id}?page={cit.page_number}&field={cit.field_name}"
+            )
+            pill: dict[str, Any] = {
+                "id": pill_id,
+                "component": "SourceCitationPill",
+                "documentTitle": cit.document_title,
+                "docId": cit.doc_id,
+                "pageNumber": cit.page_number,
+                "viewerHref": viewer_href,
+            }
+            if cit.excerpt and is_internal:
+                pill["excerpt"] = cit.excerpt
+            components.append(pill)
+    if not citation_ids:
+        return [], []
+    components.append(
+        {"id": "citations_row", "component": "Row", "children": citation_ids}
+    )
+    return components, ["citations_row"]
+
+
+def _build_action_buttons(is_internal: bool) -> tuple[list[dict[str, Any]], list[str]]:
+    action_buttons = ["btn_approve", "btn_steer", "btn_reject"]
+    components: list[dict[str, Any]] = [
+        {
+            "id": "btn_approve",
+            "component": "Button",
+            "label": (
+                "Approve & Resume Action" if is_internal else "Confirm & Continue"
+            ),
+            "variant": "primary",
+            "action": {
+                "name": "edit_and_approve",
+                "context": {
+                    "decision": "edit",
+                    "resolution": {"path": "/resolution"},
+                    "transfer": {"path": "/transfer"},
+                    "review": {"path": "/review"},
+                },
+            },
+        },
+        {
+            "id": "btn_steer",
+            "component": "Button",
+            "label": "Respond / Steer Agent",
+            "variant": "secondary",
+            "action": {
+                "name": "respond",
+                "context": {"decision": "respond", "review": {"path": "/review"}},
+            },
+        },
+        {
+            "id": "btn_reject",
+            "component": "Button",
+            "label": "Reject",
+            "variant": "danger",
+            "action": {
+                "name": "reject",
+                "context": {"decision": "reject", "review": {"path": "/review"}},
+            },
+        },
+    ]
+    if is_internal:
+        action_buttons.append("btn_escalate")
+        components.append(
+            {
+                "id": "btn_escalate",
+                "component": "Button",
+                "label": "Escalate to Senior Underwriter",
+                "variant": "borderless",
+                "action": {
+                    "name": "escalate",
+                    "context": {
+                        "decision": "escalate",
+                        "targetRole": "underwriter",
+                        "review": {"path": "/review"},
+                    },
+                },
+            }
+        )
+    components.append(
+        {"id": "actions_row", "component": "Row", "children": action_buttons}
+    )
+    return components, ["actions_row"]
+
+
+def _build_input_required_components(
+    item: ActionInboxItem,
+    *,
+    is_internal: bool,
+    allow_internal_conflict_notes: bool,
+    title: str,
+    subtitle: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    components: list[dict[str, Any]] = []
+    approval_children: list[str] = []
+    discrepancy_rows = (
+        item.current_data_model.get("discrepancy", {}).get("rows", [])
+        if is_internal and allow_internal_conflict_notes
+        else []
+    )
+    if discrepancy_rows:
+        components.append(
+            {
+                "id": "conflict_table",
+                "component": "FactConflictTable",
+                "rowsPath": "/discrepancy/rows",
+            }
+        )
+        approval_children.append("conflict_table")
+
+    resolution_options = item.current_data_model.get("resolutionOptions", [])
+    if resolution_options:
+        components.append(
+            {
+                "id": "resolution_picker",
+                "component": "ChoicePicker",
+                "label": "Select Authoritative Value",
+                "variant": "mutuallyExclusive",
+                "options": resolution_options,
+                "value": {"path": "/resolution/selectedValue"},
+            }
+        )
+        approval_children.append("resolution_picker")
+
+    if "transfer" in item.current_data_model and is_internal:
+        raw_max = (
+            item.max_approval_amount
+            if item.max_approval_amount is not None
+            else item.current_data_model["transfer"].get("requestedAmount", 100000)
+        )
+        max_amt_dec = coerce_decimal_amount(raw_max, field_name="max_approval_amount")
+        max_amt = int(max_amt_dec) if max_amt_dec is not None else 100000
+        components.append(
+            {
+                "id": "amount_slider",
+                "component": "Slider",
+                "label": "Approved Amount (USD)",
+                "min": 0,
+                "max": max_amt,
+                "step": 500,
+                "value": {"path": "/transfer/approvedAmount"},
+            }
+        )
+        approval_children.append("amount_slider")
+
+    components.append(
+        {
+            "id": "reviewer_memo",
+            "component": "TextField",
+            "label": (
+                "Reviewer Audit Memo / Steering Feedback"
+                if is_internal
+                else "Confirmation Notes"
+            ),
+            "value": {"path": "/review/memo"},
+        }
+    )
+    approval_children.append("reviewer_memo")
+
+    btn_components, btn_children = _build_action_buttons(is_internal)
+    components.extend(btn_components)
+    approval_children.extend(btn_children)
+
+    if is_internal:
+        components.append(
+            {
+                "id": "approval_gate",
+                "component": "ApprovalCard",
+                "title": f"Action Paused for Review: {title}",
+                "subtitle": subtitle,
+                "riskLevel": item.risk_level,
+                "confidenceScore": item.confidence_score,
+                "children": approval_children,
+            }
+        )
+        return components, ["approval_gate"]
+    return components, approval_children
+
+
 def build_action_progress_surface(
     item: ActionInboxItem,
     *,
@@ -121,202 +316,21 @@ def build_action_progress_surface(
     title = item.title if is_internal else item.external_title
     subtitle = item.hint if is_internal else item.external_hint
 
-    components: list[dict[str, Any]] = []
-    progress_children: list[str] = []
-
-    citation_ids: list[str] = []
-    for step in item.steps:
-        for idx, cit in enumerate(step.citations):
-            pill_id = f"cite_{step.step_id}_{idx}"
-            citation_ids.append(pill_id)
-            viewer_href = (
-                f"{cit.vault_uri}#page={cit.page_number}"
-                if (decision.allow_raw_vault_uri and cit.vault_uri)
-                else f"/portal/source-pdf/{item.entity_id}/{cit.doc_id}?page={cit.page_number}&field={cit.field_name}"
-            )
-            pill: dict[str, Any] = {
-                "id": pill_id,
-                "component": "SourceCitationPill",
-                "documentTitle": cit.document_title,
-                "docId": cit.doc_id,
-                "pageNumber": cit.page_number,
-                "viewerHref": viewer_href,
-            }
-            if cit.excerpt and is_internal:
-                pill["excerpt"] = cit.excerpt
-            components.append(pill)
-
-    if citation_ids:
-        components.append(
-            {
-                "id": "citations_row",
-                "component": "Row",
-                "children": citation_ids,
-            }
-        )
-        progress_children.append("citations_row")
-
+    components, progress_children = _build_citation_components(
+        item,
+        is_internal=is_internal,
+        allow_raw_vault_uri=decision.allow_raw_vault_uri,
+    )
     if item.task_state == "input-required":
-        approval_children: list[str] = []
-        discrepancy_rows = (
-            item.current_data_model.get("discrepancy", {}).get("rows", [])
-            if is_internal and decision.allow_internal_conflict_notes
-            else []
+        gate_components, gate_children = _build_input_required_components(
+            item,
+            is_internal=is_internal,
+            allow_internal_conflict_notes=decision.allow_internal_conflict_notes,
+            title=title,
+            subtitle=subtitle,
         )
-        if discrepancy_rows:
-            components.append(
-                {
-                    "id": "conflict_table",
-                    "component": "FactConflictTable",
-                    "rowsPath": "/discrepancy/rows",
-                }
-            )
-            approval_children.append("conflict_table")
-
-        resolution_options = item.current_data_model.get("resolutionOptions", [])
-        if resolution_options:
-            components.append(
-                {
-                    "id": "resolution_picker",
-                    "component": "ChoicePicker",
-                    "label": "Select Authoritative Value",
-                    "variant": "mutuallyExclusive",
-                    "options": resolution_options,
-                    "value": {"path": "/resolution/selectedValue"},
-                }
-            )
-            approval_children.append("resolution_picker")
-
-        if "transfer" in item.current_data_model and is_internal:
-            raw_max = (
-                item.max_approval_amount
-                if item.max_approval_amount is not None
-                else item.current_data_model["transfer"].get("requestedAmount", 100000)
-            )
-            max_amt_dec = coerce_decimal_amount(
-                raw_max, field_name="max_approval_amount"
-            )
-            max_amt = int(max_amt_dec) if max_amt_dec is not None else 100000
-            components.append(
-                {
-                    "id": "amount_slider",
-                    "component": "Slider",
-                    "label": "Approved Amount (USD)",
-                    "min": 0,
-                    "max": max_amt,
-                    "step": 500,
-                    "value": {"path": "/transfer/approvedAmount"},
-                }
-            )
-            approval_children.append("amount_slider")
-
-        components.append(
-            {
-                "id": "reviewer_memo",
-                "component": "TextField",
-                "label": (
-                    "Reviewer Audit Memo / Steering Feedback"
-                    if is_internal
-                    else "Confirmation Notes"
-                ),
-                "value": {"path": "/review/memo"},
-            }
-        )
-        approval_children.append("reviewer_memo")
-
-        action_buttons = ["btn_approve", "btn_steer", "btn_reject"]
-        components.extend(
-            [
-                {
-                    "id": "btn_approve",
-                    "component": "Button",
-                    "label": (
-                        "Approve & Resume Action"
-                        if is_internal
-                        else "Confirm & Continue"
-                    ),
-                    "variant": "primary",
-                    "action": {
-                        "name": "edit_and_approve",
-                        "context": {
-                            "decision": "edit",
-                            "resolution": {"path": "/resolution"},
-                            "transfer": {"path": "/transfer"},
-                            "review": {"path": "/review"},
-                        },
-                    },
-                },
-                {
-                    "id": "btn_steer",
-                    "component": "Button",
-                    "label": "Respond / Steer Agent",
-                    "variant": "secondary",
-                    "action": {
-                        "name": "respond",
-                        "context": {
-                            "decision": "respond",
-                            "review": {"path": "/review"},
-                        },
-                    },
-                },
-                {
-                    "id": "btn_reject",
-                    "component": "Button",
-                    "label": "Reject",
-                    "variant": "danger",
-                    "action": {
-                        "name": "reject",
-                        "context": {
-                            "decision": "reject",
-                            "review": {"path": "/review"},
-                        },
-                    },
-                },
-            ]
-        )
-        if is_internal:
-            action_buttons.append("btn_escalate")
-            components.append(
-                {
-                    "id": "btn_escalate",
-                    "component": "Button",
-                    "label": "Escalate to Senior Underwriter",
-                    "variant": "borderless",
-                    "action": {
-                        "name": "escalate",
-                        "context": {
-                            "decision": "escalate",
-                            "targetRole": "underwriter",
-                            "review": {"path": "/review"},
-                        },
-                    },
-                }
-            )
-
-        components.append(
-            {
-                "id": "actions_row",
-                "component": "Row",
-                "children": action_buttons,
-            }
-        )
-        approval_children.append("actions_row")
-
-        if is_internal:
-            components.append(
-                {
-                    "id": "approval_gate",
-                    "component": "ApprovalCard",
-                    "title": f"Action Paused for Review: {title}",
-                    "subtitle": subtitle,
-                    "riskLevel": item.risk_level,
-                    "confidenceScore": item.confidence_score,
-                    "children": approval_children,
-                }
-            )
-            progress_children.append("approval_gate")
-        else:
-            progress_children.extend(approval_children)
+        components.extend(gate_components)
+        progress_children.extend(gate_children)
 
     root_card: dict[str, Any] = {
         "id": "root",
@@ -366,7 +380,7 @@ def build_update_data_model_delta(
     surface_id: str,
     *,
     path: str = "/progress",
-    value: Any,
+    value: object,
 ) -> dict[str, Any]:
     """Build a lightweight A2UI v0.9 `updateDataModel` delta message for SSE streaming."""
     return {
@@ -399,7 +413,7 @@ def wrap_a2ui_in_a2a_data_part(messages: list[dict[str, Any]]) -> A2aDataPart:
 
 
 def request_a2ui_inbox_confirmation(
-    tool_context: Any,
+    tool_context: object,
     *,
     item: ActionInboxItem,
     role: CatalogRole = "broker",
@@ -415,11 +429,9 @@ def request_a2ui_inbox_confirmation(
         "mime_type": A2UI_V09_MIME_TYPE,
         "a2ui_messages": a2ui_messages,
     }
-    if tool_context is not None and hasattr(tool_context, "request_confirmation"):
-        tool_context.request_confirmation(
-            hint=item.hint,
-            payload=payload,
-        )
+    req_fn = getattr(tool_context, "request_confirmation", None)
+    if callable(req_fn):
+        req_fn(hint=item.hint, payload=payload)
     return {
         "status": "PENDING_INBOX_APPROVAL",
         "item_id": item.item_id,

@@ -98,8 +98,31 @@ class InboxAuditRecord(BaseModel):
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+def _parse_raw_decimal(value: object, field_name: str) -> Decimal | None:
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid {field_name}: boolean values are not numeric.")
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, int):
+        return Decimal(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"Invalid {field_name}: must be a finite number.")
+        return Decimal(str(value))
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        normalized = cleaned.lstrip("$").replace(",", "").strip()
+        try:
+            return Decimal(normalized)
+        except InvalidOperation as exc:
+            raise ValueError(f"Invalid {field_name}: {value!r}.") from exc
+    raise ValueError(f"Invalid {field_name}: unsupported type {type(value).__name__}.")
+
+
 def coerce_decimal_amount(
-    value: Decimal | str | int | float | None,
+    value: object,
     *,
     field_name: str = "amount",
     allow_negative: bool = False,
@@ -107,29 +130,9 @@ def coerce_decimal_amount(
     """Coerce an optional monetary limit or transfer amount into an exact finite ``Decimal``."""
     if value is None:
         return None
-    if isinstance(value, bool):
-        raise ValueError(f"Invalid {field_name}: boolean values are not numeric.")
-    if isinstance(value, Decimal):
-        parsed = value
-    elif isinstance(value, int):
-        parsed = Decimal(value)
-    elif isinstance(value, float):
-        if not math.isfinite(value):
-            raise ValueError(f"Invalid {field_name}: must be a finite number.")
-        parsed = Decimal(str(value))
-    elif isinstance(value, str):
-        cleaned = value.strip()
-        if not cleaned:
-            return None
-        normalized = cleaned.lstrip("$").replace(",", "").strip()
-        try:
-            parsed = Decimal(normalized)
-        except InvalidOperation as exc:
-            raise ValueError(f"Invalid {field_name}: {value!r}.") from exc
-    else:
-        raise ValueError(
-            f"Invalid {field_name}: unsupported type {type(value).__name__}."
-        )
+    parsed = _parse_raw_decimal(value, field_name)
+    if parsed is None:
+        return None
     if not parsed.is_finite():
         raise ValueError(f"Invalid {field_name}: must be a finite Decimal.")
     if not allow_negative and parsed < Decimal("0"):
@@ -171,7 +174,7 @@ class ActionInboxItem(BaseModel):
 
     @field_validator("max_approval_amount", mode="before")
     @classmethod
-    def _validate_max_approval_amount(cls, value: Any) -> Decimal | None:
+    def _validate_max_approval_amount(cls, value: object) -> Decimal | None:
         return coerce_decimal_amount(value, field_name="max_approval_amount")
 
 

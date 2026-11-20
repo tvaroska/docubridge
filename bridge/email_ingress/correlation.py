@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from bridge.email_ingress.mime import InboundMail
     from bridge.rfp import RfpCollection, RfpLeg
 
-TOKEN_SECRET_ENV = "BRIDGE_EMAIL_TOKEN_SECRET"
+TOKEN_SECRET_ENV = "BRIDGE_EMAIL_TOKEN_SECRET"  # noqa: S105 - env var name, not a secret
 MAILBOX_ENV = "BRIDGE_EMAIL_MAILBOX"
 TOKEN_LEN = 16  # 16 base32 chars = 80 bits
 _TOKEN_RE = re.compile(rf"^[a-z0-9]{{{TOKEN_LEN}}}$")

@@ -359,7 +359,7 @@ def test_cli_drain_connection_error_exits_1_without_traceback(clean_env, capsys)
     ],
 )
 def test_module_imports_first_in_a_fresh_process(module):
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 - test spawns trusted sys.executable import probe
         [sys.executable, "-c", f"import {module}"], capture_output=True, text=True
     )
     assert proc.returncode == 0, proc.stderr

@@ -15,9 +15,7 @@
 // never author, rewrite, or summarize the agent's explanation. Same invariant the three
 // apps held before the hoist.
 
-// --------------------------------------------------------------------------- //
-// Enums (as string unions — the wire values)                                  //
-// --------------------------------------------------------------------------- //
+// Enums (as string unions — the wire values).
 export type Disposition = "accepted" | "rejected" | "pending";
 export type RequirementStatus = "required" | "optional" | "satisfied" | "waived";
 export type LifecycleStatus = "on_track" | "overdue" | "reminder" | "escalated";
@@ -30,9 +28,7 @@ export type RfpItemStatus =
   | "declined"
   | "overdue";
 
-// --------------------------------------------------------------------------- //
-// Camel domain types (the superset — apps narrow via their own view types)     //
-// --------------------------------------------------------------------------- //
+// Camel domain types (the superset — apps narrow via their own view types).
 export interface LedgerEntry {
   docId: string;
   doctype: string;
@@ -62,9 +58,7 @@ export interface FieldReview {
   detail: string | null;
 }
 
-// --------------------------------------------------------------------------- //
-// Wire shapes (snake_case — the superset of the three apps' wire entries)      //
-// --------------------------------------------------------------------------- //
+// Wire shapes (snake_case — the superset of the three apps' wire entries).
 export interface WireLedgerEntry {
   doc_id: string;
   doctype: string;
@@ -91,9 +85,7 @@ export interface WireFieldReview {
   detail?: string | null;
 }
 
-// --------------------------------------------------------------------------- //
-// Mappers (snake→camel; relay reasonCode/message verbatim)                     //
-// --------------------------------------------------------------------------- //
+// Mappers (snake→camel; relay reasonCode/message verbatim).
 export function mapEntry(w: WireLedgerEntry): LedgerEntry {
   return {
     docId: w.doc_id,

@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, overload
 
 from bridge.a2ui_inbox import ActionInboxStore
 from bridge.agent_gym import AgentGymEngine
@@ -50,14 +50,46 @@ class OperationContext:
 
     def entity_for(self, alias: str | None) -> str:
         """Resolve an entity alias (`primary` or a key of `related_entity_ids`)."""
-        if alias in (None, "", "primary"):
+        if alias is None or alias in ("", "primary"):
             return self.manifest.entity_id
         try:
             return self.manifest.related_entity_ids[alias]
         except KeyError as exc:
             raise PlaceholderError(f"unknown entity alias {alias!r}") from exc
 
-    def lookup(self, name: str) -> Any:
+    def _lookup_colon(self, head: str, tail: str, full_name: str) -> object:
+        if head == "entity":
+            return self.entity_for(tail)
+        if head == "pdf_url":
+            return self.pdf_url(tail)
+        if head == "doc":
+            alias, _, fld = tail.partition(".")
+            try:
+                return self.docs[alias][fld]
+            except KeyError as exc:
+                raise PlaceholderError(full_name) from exc
+        raise PlaceholderError(full_name)
+
+    def _lookup_dot(self, head: str, tail: str, full_name: str) -> object:
+        if head == "agent" and tail in self.manifest.agents:
+            return self.manifest.agents[tail]
+        if head == "principal" and tail in self.manifest.principals:
+            return self.manifest.principals[tail]
+        if head == "model":
+            models = {"workhorse": WORKHORSE_MODEL, "reasoning": REASONING_MODEL}
+            if tail in models:
+                return models[tail]
+        if head == "display":
+            display_fields = {
+                "client": self.manifest.display.client,
+                "program": self.manifest.display.program,
+                **self.manifest.display.labels,
+            }
+            if tail in display_fields:
+                return display_fields[tail]
+        raise PlaceholderError(full_name)
+
+    def lookup(self, name: str) -> object:
         """Resolve one placeholder name.
 
         Namespaces: `entity_id`, `entity:<alias>`, `doc:<alias>.<field>`,
@@ -70,37 +102,25 @@ class OperationContext:
             return self.manifest.entity_id
         head, sep, tail = name.partition(":")
         if sep:
-            if head == "entity":
-                return self.entity_for(tail)
-            if head == "pdf_url":
-                return self.pdf_url(tail)
-            if head == "doc":
-                alias, _, fld = tail.partition(".")
-                try:
-                    return self.docs[alias][fld]
-                except KeyError as exc:
-                    raise PlaceholderError(name) from exc
+            return self._lookup_colon(head, tail, name)
         head, sep, tail = name.partition(".")
         if sep:
-            if head == "agent" and tail in self.manifest.agents:
-                return self.manifest.agents[tail]
-            if head == "principal" and tail in self.manifest.principals:
-                return self.manifest.principals[tail]
-            if head == "model":
-                if tail == "workhorse":
-                    return WORKHORSE_MODEL
-                if tail == "reasoning":
-                    return REASONING_MODEL
-            if head == "display":
-                if tail == "client":
-                    return self.manifest.display.client
-                if tail == "program":
-                    return self.manifest.display.program
-                if tail in self.manifest.display.labels:
-                    return self.manifest.display.labels[tail]
+            return self._lookup_dot(head, tail, name)
         raise PlaceholderError(name)
 
-    def render(self, obj: Any) -> Any:
+    @overload
+    def render(self, obj: dict[str, Any]) -> dict[str, Any]: ...
+
+    @overload
+    def render(self, obj: list[Any]) -> list[Any]: ...
+
+    @overload
+    def render(self, obj: str) -> str: ...
+
+    @overload
+    def render(self, obj: object) -> object: ...
+
+    def render(self, obj: object) -> object:
         """Deep-copy `obj` with every `${...}` placeholder substituted.
 
         A string that is exactly one placeholder keeps the referenced value's type
@@ -121,7 +141,19 @@ class OperationContext:
         return obj
 
 
-def resolve_by_beat(obj: Any, beat: int) -> Any:
+@overload
+def resolve_by_beat(obj: dict[str, Any], beat: int) -> dict[str, Any]: ...
+
+
+@overload
+def resolve_by_beat(obj: list[Any], beat: int) -> list[Any]: ...
+
+
+@overload
+def resolve_by_beat(obj: object, beat: int) -> object: ...
+
+
+def resolve_by_beat(obj: object, beat: int) -> object:
     """Materialise beat-conditional view data.
 
     * a dict `{"by_beat": {n: value, ...}}` becomes the value of the largest `n <= beat`

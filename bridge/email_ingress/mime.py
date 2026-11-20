@@ -167,12 +167,65 @@ def _leaves(part: Message, depth: int) -> Iterator[tuple[str, Message]]:
     yield "leaf", part
 
 
+def _payload_bytes(part: Message) -> bytes:
+    raw = part.get_payload(decode=True)
+    return raw if isinstance(raw, bytes) else b""
+
+
 def _opaque_bytes(part: Message) -> bytes:
     payload = part.get_payload()
     inner = payload[0] if isinstance(payload, list) and payload else None
     if isinstance(inner, Message):
         return inner.as_bytes(policy=email.policy.default)
-    return part.get_payload(decode=True) or b""
+    return _payload_bytes(part)
+
+
+def _part_to_attachment(
+    kind: str, part: Message, index: int
+) -> tuple[MailAttachment | None, bool]:
+    ctype = part.get_content_type()
+    disposition = part.get_content_disposition()
+    declared = part.get_filename()
+    if kind == "leaf":
+        if (
+            ctype.startswith("image/")
+            and part.get("Content-ID")
+            and disposition != "attachment"
+        ):
+            return None, True
+        if ctype in _BODY_TYPES and disposition != "attachment" and not declared:
+            return None, False
+        data = _payload_bytes(part)
+    else:
+        data = _opaque_bytes(part)
+    mime_type = ctype
+    if mime_type == "application/octet-stream" and declared:
+        mime_type = mime_for(sanitize_filename(declared, index=index, mime_type=ctype))
+    filename = sanitize_filename(declared, index=index, mime_type=mime_type)
+    if mime_type == "application/octet-stream":
+        mime_type = mime_for(filename)
+    return (
+        MailAttachment(index=index, filename=filename, mime_type=mime_type, data=data),
+        False,
+    )
+
+
+def _collect_attachments(
+    msg: Message, max_attachments: int
+) -> tuple[tuple[MailAttachment, ...], int]:
+    attachments: list[MailAttachment] = []
+    skipped_inline = 0
+    for kind, part in _leaves(msg, 0):
+        attachment, is_inline = _part_to_attachment(kind, part, len(attachments))
+        if is_inline:
+            skipped_inline += 1
+            continue
+        if attachment is None:
+            continue
+        attachments.append(attachment)
+        if len(attachments) > max_attachments:
+            raise ValueError("too_many_attachments")
+    return tuple(attachments), skipped_inline
 
 
 def parse_mime(
@@ -196,45 +249,7 @@ def parse_mime(
         msg = email.message_from_bytes(raw, policy=email.policy.default)
         if not msg.keys():
             raise ValueError("unparseable")
-        attachments: list[MailAttachment] = []
-        skipped_inline = 0
-        for kind, part in _leaves(msg, 0):
-            ctype = part.get_content_type()
-            disposition = part.get_content_disposition()
-            declared = part.get_filename()
-            if kind == "leaf":
-                if (
-                    ctype.startswith("image/")
-                    and part.get("Content-ID")
-                    and disposition != "attachment"
-                ):
-                    skipped_inline += 1
-                    continue
-                if (
-                    ctype in _BODY_TYPES
-                    and disposition != "attachment"
-                    and not declared
-                ):
-                    continue  # the body — never kept
-                data = part.get_payload(decode=True) or b""
-            else:
-                data = _opaque_bytes(part)
-            index = len(attachments)
-            mime_type = ctype
-            if mime_type == "application/octet-stream" and declared:
-                mime_type = mime_for(
-                    sanitize_filename(declared, index=index, mime_type=ctype)
-                )
-            filename = sanitize_filename(declared, index=index, mime_type=mime_type)
-            if mime_type == "application/octet-stream":
-                mime_type = mime_for(filename)
-            attachments.append(
-                MailAttachment(
-                    index=index, filename=filename, mime_type=mime_type, data=data
-                )
-            )
-            if len(attachments) > max_attachments:
-                raise ValueError("too_many_attachments")
+        attachments, skipped_inline = _collect_attachments(msg, max_attachments)
         _, sender = parseaddr(str(msg.get("From") or ""))
         message_id = str(msg.get("Message-ID") or "").strip() or None
         return InboundMail(
@@ -246,14 +261,14 @@ def parse_mime(
             auth_results=tuple(
                 str(v) for v in (msg.get_all("Authentication-Results") or [])
             ),
-            attachments=tuple(attachments),
+            attachments=attachments,
             skipped_inline=skipped_inline,
         )
     except ValueError as exc:
         if str(exc) in ("oversize", "too_many_attachments", "unparseable"):
             raise
         raise ValueError("unparseable") from exc
-    except Exception as exc:  # a malformed message must quarantine, not crash a drain
+    except Exception as exc:
         raise ValueError("unparseable") from exc
 
 
@@ -273,7 +288,7 @@ def landing_key(raw: bytes) -> str:
     try:
         headers = BytesHeaderParser(policy=email.policy.default).parsebytes(raw)
         message_id = normalize_message_id(str(headers.get("Message-ID") or ""))
-    except Exception:
+    except (email.errors.MessageError, ValueError, TypeError, LookupError):
         message_id = ""
     material = f"message-id:{message_id}".encode() if message_id else raw
     return hashlib.sha256(material).hexdigest()[:32]

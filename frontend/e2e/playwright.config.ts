@@ -15,7 +15,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: `pnpm --filter timewarp build && pnpm --filter timewarp preview --port ${PORT} --strictPort`,
+    command: `corepack pnpm --filter timewarp build && corepack pnpm --filter timewarp preview --port ${PORT} --strictPort`,
     port: PORT,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

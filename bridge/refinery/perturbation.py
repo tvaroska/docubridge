@@ -13,14 +13,28 @@ import asyncio
 import inspect
 import os
 import random
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
 from bridge.calibration import gwets_ac2, krippendorff_alpha
 from bridge.doctypes import doctype_schemas
+
+
+class PerturbationExtractor(Protocol):
+    """Structural contract for sync/async extractors used by Tier-3 perturbation stability."""
+
+    def extract(
+        self,
+        artifact_name: str,
+        *,
+        catalog_order: tuple[str, ...],
+    ) -> object:
+        """Extract fields from ``artifact_name`` under a specific catalog order."""
+        ...
+
 
 LIVE_LLM_ENV = "BRIDGE_REFINERY_LIVE_LLM"
 PERTURBATION_DOCS_ENV = "BRIDGE_REFINERY_PERTURBATION_DOCS"
@@ -97,7 +111,7 @@ def build_catalog_permutations(
     if permutations < 2:
         raise ValueError("permutations must be >= 2 to form a rater panel")
     orders: list[tuple[str, ...]] = [forward, tuple(reversed(forward))]
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311 - deterministic benchmark perturbation shuffle
     attempts = 0
     while len(orders) < permutations and attempts < permutations * 20:
         attempts += 1
@@ -109,7 +123,7 @@ def build_catalog_permutations(
     return tuple(orders[:permutations])
 
 
-def normalize_value(value: Any) -> str | None:
+def normalize_value(value: object) -> str | None:
     """String-equal after strip/casefold; ``None`` marks an absent field."""
     if value is None:
         return None
@@ -117,38 +131,47 @@ def normalize_value(value: Any) -> str | None:
     return text if text else None
 
 
-def flatten_extraction(result: Any) -> dict[str, str | None]:
+def flatten_extraction(result: object) -> dict[str, str | None]:
     """``doctype``, ``issuer`` and every ``key_fields`` entry of one extraction."""
-    fields = getattr(result, "fields", None)
-    if fields is None and isinstance(result, dict):
+    fields: object = getattr(result, "fields", None)
+    if fields is None and isinstance(result, Mapping):
         fields = result.get("fields")
     if fields is None:
         return {}
-    get = (
-        fields.get
-        if isinstance(fields, dict)
-        else lambda name, default=None: getattr(fields, name, default)
-    )
+    if isinstance(fields, Mapping):
+        doctype_val: object = fields.get("doctype")
+        issuer_val: object = fields.get("issuer")
+        key_fields_obj: object = fields.get("key_fields")
+    else:
+        doctype_val = getattr(fields, "doctype", None)
+        issuer_val = getattr(fields, "issuer", None)
+        key_fields_obj = getattr(fields, "key_fields", None)
     flat: dict[str, str | None] = {
-        "doctype": normalize_value(get("doctype")),
-        "issuer": normalize_value(get("issuer")),
+        "doctype": normalize_value(doctype_val),
+        "issuer": normalize_value(issuer_val),
     }
-    key_fields = get("key_fields") or {}
-    for name, value in dict(key_fields).items():
-        flat[f"key_fields.{name}"] = normalize_value(value)
+    if isinstance(key_fields_obj, Mapping):
+        for name, value in key_fields_obj.items():
+            flat[f"key_fields.{name}"] = normalize_value(value)
     return flat
 
 
-def _run_extract(extractor: Any, document: str, order: Sequence[str]) -> Any:
+def _run_extract(
+    extractor: PerturbationExtractor, document: str, order: Sequence[str]
+) -> object:
     value = extractor.extract(document, catalog_order=tuple(order))
     if not inspect.isawaitable(value):
         return value
+
+    async def _await_value() -> object:
+        return await value
+
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(value)
+        return asyncio.run(_await_value())
     with ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, value).result()
+        return pool.submit(asyncio.run, _await_value()).result()
 
 
 def stability_from_observations(
@@ -203,7 +226,7 @@ def stability_from_observations(
 
 
 def compute_perturbation_stability(
-    extractor: Any,
+    extractor: PerturbationExtractor | None,
     documents: Sequence[str],
     *,
     permutations: int = DEFAULT_PERMUTATIONS,
@@ -230,9 +253,9 @@ def compute_perturbation_stability(
 
 
 def resolve_perturbation_inputs(
-    extractor: Any = None,
+    extractor: PerturbationExtractor | None = None,
     documents: Sequence[str] = (),
-) -> tuple[Any, tuple[str, ...]]:
+) -> tuple[PerturbationExtractor | None, tuple[str, ...]]:
     """Injected extractor/documents win; else the live-LLM env opt-in builds one.
 
     Mirrors the onboarding inducer: nothing is instantiated unless an extractor is
@@ -259,6 +282,7 @@ __all__ = [
     "PERTURBATION_DOCS_ENV",
     "STABILITY_THRESHOLD",
     "FieldDisagreement",
+    "PerturbationExtractor",
     "PerturbationStabilityResult",
     "build_catalog_permutations",
     "compute_perturbation_stability",

@@ -6,7 +6,7 @@ import os
 import uuid
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Any
+from typing import TYPE_CHECKING
 
 from bridge.operational_store.models import (
     _MONEY_KEYS,
@@ -20,38 +20,109 @@ from bridge.telemetry import trace_step
 from contract.enums import Disposition
 from contract.wire import LedgerEntry
 
+if TYPE_CHECKING:
+    from contract.refinery import OntologyEntitySpec, OntologyRevision
+
+_TIER_KEYWORDS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
+    (
+        40,
+        "ontology:tier-40-override",
+        (
+            "endorsement",
+            "amendment",
+            "addendum",
+            "closing-disclosure",
+            "fee-override",
+        ),
+    ),
+    (
+        30,
+        "ontology:tier-30-agreement",
+        (
+            "policy",
+            "binder",
+            "credit-agreement",
+            "commitment-letter",
+            "loan-agreement",
+            "promissory-note",
+        ),
+    ),
+    (
+        20,
+        "ontology:tier-20-quote",
+        ("quote", "cert", "term-sheet", "appraisal", "rent-roll"),
+    ),
+)
+
+_FALLBACK_METRIC_BUCKETS: dict[str, tuple[str, str]] = {
+    **dict.fromkeys(
+        ("premium", "annual_debt_service"),
+        ("total_premium", "ontology:fallback:total_premium"),
+    ),
+    **dict.fromkeys(
+        ("deductible", "origination_fee", "closing_fee", "rate_lock_fee"),
+        ("total_deductible", "ontology:fallback:total_deductible"),
+    ),
+    **dict.fromkeys(
+        (
+            "coverage_limit",
+            "coverage_limits",
+            "sublimit",
+            "loan_amount",
+            "principal_amount",
+            "facility_limit",
+        ),
+        ("total_coverage_limit", "ontology:fallback:total_coverage_limit"),
+    ),
+    **dict.fromkeys(
+        (
+            "insured_value",
+            "total_insured_value",
+            "appraised_value",
+            "collateral_value",
+        ),
+        ("total_insured_value", "ontology:fallback:total_insured_value"),
+    ),
+}
+
+
+def _match_ontology_spec(
+    active_rev: OntologyRevision, dt: str
+) -> OntologyEntitySpec | None:
+    matched_spec = active_rev.entities.get(dt)
+    if matched_spec is not None:
+        return matched_spec
+    for spec in active_rev.entities.values():
+        if dt in (a.lower() for a in spec.aliases):
+            return spec
+    candidates = [
+        (len(tok), spec.source_priority, spec)
+        for spec in active_rev.entities.values()
+        for tok in (spec.entity_id.lower(), *(a.lower() for a in spec.aliases))
+        if tok and tok in dt
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return candidates[0][2]
+
 
 def _resolve_ontology_graph_context(
     doctype: str,
-) -> tuple[int, str, str | None, Any]:
+) -> tuple[int, str, str | None, OntologyRevision | None]:
     """Query the Zone 6 Ontology Graph for doctype priority, revision ID, and edge ID."""
     try:
         from bridge.knowledge_catalog.catalog import _ensure_shared_ontology
 
         _, active_rev = _ensure_shared_ontology()
         rev_id = active_rev.revision_id
-    except Exception:
+    except (ImportError, OSError, RuntimeError, ValueError, KeyError):
         active_rev = None
         rev_id = "ont-rev-v1-1-baseline"
 
     dt = (doctype or "").strip().lower()
     if active_rev is not None and dt:
-        # Exact match on entity_id or alias in the active OntologyRevision
-        matched_spec = active_rev.entities.get(dt)
-        if matched_spec is None:
-            for spec in active_rev.entities.values():
-                if dt in (a.lower() for a in spec.aliases):
-                    matched_spec = spec
-                    break
-        if matched_spec is None:
-            candidates = []
-            for spec in active_rev.entities.values():
-                for tok in (spec.entity_id.lower(), *(a.lower() for a in spec.aliases)):
-                    if tok and tok in dt:
-                        candidates.append((len(tok), spec.source_priority, spec))
-            if candidates:
-                candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-                matched_spec = candidates[0][2]
+        matched_spec = _match_ontology_spec(active_rev, dt)
         if matched_spec is not None:
             for edge in active_rev.edges:
                 if edge.source_id == matched_spec.entity_id and edge.relation in (
@@ -71,40 +142,9 @@ def _resolve_ontology_graph_context(
                 active_rev,
             )
 
-    if any(
-        tok in dt
-        for tok in (
-            "endorsement",
-            "amendment",
-            "addendum",
-            "closing-disclosure",
-            "fee-override",
-        )
-    ):
-        return 40, rev_id, "ontology:tier-40-override", active_rev
-    if any(
-        tok in dt
-        for tok in (
-            "policy",
-            "binder",
-            "credit-agreement",
-            "commitment-letter",
-            "loan-agreement",
-            "promissory-note",
-        )
-    ):
-        return 30, rev_id, "ontology:tier-30-agreement", active_rev
-    if any(
-        tok in dt
-        for tok in (
-            "quote",
-            "cert",
-            "term-sheet",
-            "appraisal",
-            "rent-roll",
-        )
-    ):
-        return 20, rev_id, "ontology:tier-20-quote", active_rev
+    for tier_prio, tier_edge, keywords in _TIER_KEYWORDS:
+        if any(tok in dt for tok in keywords):
+            return tier_prio, rev_id, tier_edge, active_rev
     return 10, rev_id, None, active_rev
 
 
@@ -143,7 +183,9 @@ def source_priority_for_doctype(doctype: str) -> int:
     return prio
 
 
-def _is_ontology_monetary_field(field_name: str, active_rev: Any) -> bool:
+def _is_ontology_monetary_field(
+    field_name: str, active_rev: OntologyRevision | None
+) -> bool:
     """Return True if a field is monetary in the active Ontology Graph or _MONEY_KEYS."""
     leaf = (field_name or "").strip().lower()
     if leaf in _MONEY_KEYS:
@@ -159,7 +201,7 @@ def _is_ontology_monetary_field(field_name: str, active_rev: Any) -> bool:
 def _resolve_field_metric_bucket(
     leaf: str,
     doctype: str,
-    active_rev: Any,
+    active_rev: OntologyRevision | None,
 ) -> tuple[str | None, str | None]:
     """Resolve the target financial summary bucket and edge ID from [:FEEDS_METRIC] edges."""
     if active_rev is not None:
@@ -172,30 +214,10 @@ def _resolve_field_metric_bucket(
             fspec = spec.fields.get(leaf)
             if fspec and fspec.feeds_metric:
                 return fspec.feeds_metric, f"ontology:{spec.entity_id}:{leaf}"
-    if leaf in ("premium", "annual_debt_service"):
-        return "total_premium", "ontology:fallback:total_premium"
-    if leaf in ("deductible", "origination_fee", "closing_fee", "rate_lock_fee"):
-        return "total_deductible", "ontology:fallback:total_deductible"
-    if leaf in (
-        "coverage_limit",
-        "coverage_limits",
-        "sublimit",
-        "loan_amount",
-        "principal_amount",
-        "facility_limit",
-    ):
-        return "total_coverage_limit", "ontology:fallback:total_coverage_limit"
-    if leaf in (
-        "insured_value",
-        "total_insured_value",
-        "appraised_value",
-        "collateral_value",
-    ):
-        return "total_insured_value", "ontology:fallback:total_insured_value"
-    return None, None
+    return _FALLBACK_METRIC_BUCKETS.get(leaf, (None, None))
 
 
-def consolidate_entry(
+def consolidate_entry(  # noqa: PLR0913 - public keyword-only consolidation API
     entry: LedgerEntry,
     *,
     entity_id: str,

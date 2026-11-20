@@ -48,7 +48,7 @@ import contextlib
 import os
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
@@ -63,15 +63,17 @@ from bridge.rfp import RFP_PROCESS_ENV, load_rfp_policy
 from bridge.telemetry import OtelAsgiMiddleware
 
 if TYPE_CHECKING:
+    from bridge.extraction.fixture import FixtureExtractor
     from bridge.outbound import A2AClient
+    from bridge.ports.protocols import ExtractionPort
 
 
-def build_rfp_board_app(
+def build_rfp_board_app(  # noqa: PLR0913 - public keyword-only RFP board host builder
     *,
     process: str | None = None,
     exchange_store: ExchangeStore | None = None,
     clock: Callable[[], datetime] | None = None,
-    extraction: Any = None,
+    extraction: ExtractionPort | FixtureExtractor | None = None,
     email_drain_interval: float | None = None,
     outbound: A2AClient | None = None,
     max_ticks: int = 2000,
@@ -166,7 +168,7 @@ def serve_rfp_board_container() -> None:  # pragma: no cover
     port = int(os.environ.get("PORT", "8080"))
     # 0.0.0.0 is required by Cloud Run; the service is internal-only ingress and
     # Cloud Run IAM (run.invoker for bridge-runtime alone) gates every request.
-    uvicorn.run(build_rfp_board_app(), host="0.0.0.0", port=port)
+    uvicorn.run(build_rfp_board_app(), host="0.0.0.0", port=port)  # noqa: S104 - Cloud Run requires 0.0.0.0
 
 
 __all__ = ["RFP_PROCESS_ENV", "build_rfp_board_app", "serve_rfp_board_container"]

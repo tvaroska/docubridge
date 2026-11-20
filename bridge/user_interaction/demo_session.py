@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.params import Depends as DependsParam
 
 from bridge.identity import (
     DEFAULT_ROLE_APPROVAL_LIMITS,
@@ -137,7 +138,31 @@ def issue_viewer_cookie(request: Request, response: Response) -> bool:
     return True
 
 
-def require_mutating_identity(
+def _validate_spiffe_mutating_policy(
+    compound: CompoundIdentity, *, allow_external_roles: bool
+) -> None:
+    if compound.agent_spiffe_id is None:
+        return
+    policy = DEFAULT_SPIFFE_AGENT_POLICIES.get(compound.agent_spiffe_id)
+    if policy is None:
+        raise ShadowAgentError(
+            f"Unregistered SPIFFE agent identity '{compound.agent_spiffe_id}' "
+            "blocked by Knowledge Catalog (Shadow AI protection)."
+        )
+    if compound.user.role not in policy.allowed_roles:
+        raise PermissionError(
+            f"SPIFFE agent '{compound.agent_spiffe_id}' is not authorized to act "
+            f"on behalf of role '{compound.user.role}' "
+            f"(allowed: {', '.join(policy.allowed_roles)})."
+        )
+    if not allow_external_roles and policy.security_zone == "external":
+        raise PermissionError(
+            f"External-zone SPIFFE agent '{compound.agent_spiffe_id}' is not "
+            "permitted on this internal mutating endpoint."
+        )
+
+
+def require_mutating_identity(  # noqa: PLR0913 - public mutating route authorization gate
     request: Request,
     *,
     query_role: CatalogRole | None = None,
@@ -166,24 +191,9 @@ def require_mutating_identity(
                 external_role_error
                 or f"External role '{compound.user.role}' is not permitted on this mutating endpoint."
             )
-        if compound.agent_spiffe_id is not None:
-            policy = DEFAULT_SPIFFE_AGENT_POLICIES.get(compound.agent_spiffe_id)
-            if policy is None:
-                raise ShadowAgentError(
-                    f"Unregistered SPIFFE agent identity '{compound.agent_spiffe_id}' "
-                    "blocked by Knowledge Catalog (Shadow AI protection)."
-                )
-            if compound.user.role not in policy.allowed_roles:
-                raise PermissionError(
-                    f"SPIFFE agent '{compound.agent_spiffe_id}' is not authorized to act "
-                    f"on behalf of role '{compound.user.role}' "
-                    f"(allowed: {', '.join(policy.allowed_roles)})."
-                )
-            if not allow_external_roles and policy.security_zone == "external":
-                raise PermissionError(
-                    f"External-zone SPIFFE agent '{compound.agent_spiffe_id}' is not "
-                    "permitted on this internal mutating endpoint."
-                )
+        _validate_spiffe_mutating_policy(
+            compound, allow_external_roles=allow_external_roles
+        )
         return compound
     except AuthenticationRequiredError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
@@ -196,7 +206,7 @@ def verified_mutating_identity(request: Request) -> CompoundIdentity:
     return cast(CompoundIdentity, request.state.mutating_compound_identity)
 
 
-def mutating_auth_dependency(
+def mutating_auth_dependency(  # noqa: PLR0913 - public mutating auth dependency builder
     *,
     default_role: CatalogRole | None = "broker",
     default_role_fn: Callable[[Request], CatalogRole | None] | None = None,
@@ -204,7 +214,7 @@ def mutating_auth_dependency(
     require_auth: bool = False,
     allow_external_roles: bool = True,
     external_role_error: str | None = None,
-) -> Any:
+) -> DependsParam:
     """FastAPI route dependency enforcing mutating-route auth before request body validation."""
 
     def _gate(request: Request) -> CompoundIdentity:
@@ -227,7 +237,7 @@ def mutating_auth_dependency(
         request.state.mutating_compound_identity = compound
         return compound
 
-    return Depends(_gate)
+    return cast(DependsParam, Depends(_gate))
 
 
 def register_demo_session_routes(

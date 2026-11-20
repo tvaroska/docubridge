@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Protocol, TypeVar, override
 
 from ..protocols import (
     ExchangeStorePort,
@@ -17,6 +18,23 @@ from .common import (
     _resolve_dsn,
     parse_agent_engine_resource,
 )
+
+if TYPE_CHECKING:
+    from a2a.server.context import ServerCallContext
+    from a2a.server.tasks import PushNotificationConfigStore, TaskStore
+    from a2a.types import ListTasksRequest, ListTasksResponse, Task
+    from google.adk.memory import BaseMemoryService
+    from google.adk.sessions import BaseSessionService
+
+    from bridge.exchange_store import SqlExchangeStore
+
+_TService = TypeVar("_TService", covariant=True)
+
+
+class _VertexFactory(Protocol[_TService]):
+    def __call__(
+        self, *, project: str | None, location: str | None, agent_engine_id: str
+    ) -> _TService: ...
 
 
 class GcpSessions(SessionsPort):
@@ -43,6 +61,7 @@ class GcpSessions(SessionsPort):
         self._project = project
         self._location = location
 
+    @override
     def build_session_service(
         self,
         db_url: str | None = None,
@@ -50,8 +69,8 @@ class GcpSessions(SessionsPort):
         agent_engine_id: str | None = None,
         project: str | None = None,
         location: str | None = None,
-        vertex_factory: Any = None,
-    ) -> Any:
+        vertex_factory: _VertexFactory[BaseSessionService] | None = None,
+    ) -> BaseSessionService:
         """Construct the ADK session service backed by Agent Engine Sessions or Cloud SQL."""
         raw_engine_id = (
             agent_engine_id
@@ -103,6 +122,7 @@ class GcpMemoryBank(MemoryBankPort):
         self._project = project
         self._location = location
 
+    @override
     def build_memory_service(
         self,
         db_path: str | None = None,
@@ -110,8 +130,8 @@ class GcpMemoryBank(MemoryBankPort):
         agent_engine_id: str | None = None,
         project: str | None = None,
         location: str | None = None,
-        vertex_factory: Any = None,
-    ) -> Any:
+        vertex_factory: _VertexFactory[BaseMemoryService] | None = None,
+    ) -> BaseMemoryService:
         """Construct the ADK memory service backed by Agent Engine Memory Bank."""
         del (
             db_path
@@ -138,7 +158,7 @@ class GcpTaskStore(TaskStorePort):
     terminal-state writes retry with loud logging (`design/ports.md`).
     """
 
-    def build_task_store(self, db_url: str | None = None) -> Any:
+    def build_task_store(self, db_url: str | None = None) -> TaskStore:
         """Construct the durable A2A task store backed by Cloud SQL Postgres with terminal-write retry."""
         from a2a.server.tasks import DatabaseTaskStore
 
@@ -149,7 +169,9 @@ class GcpTaskStore(TaskStorePort):
         )
         return _TerminalRetryTaskStore(inner)
 
-    def build_push_config_store(self, db_url: str | None = None) -> Any:
+    def build_push_config_store(
+        self, db_url: str | None = None
+    ) -> PushNotificationConfigStore:
         """Build the Cloud SQL `DatabasePushNotificationConfigStore`.
 
         Mirrors the local adapter (rides the same DSN); the terminal-write retry
@@ -175,21 +197,59 @@ class GcpExchangeStore(ExchangeStorePort):
     (engine, asyncpg) is opened or imported until the first operation.
     """
 
-    def build_exchange_store(self, db_url: str | None = None) -> Any:
+    def build_exchange_store(self, db_url: str | None = None) -> SqlExchangeStore:
         """Construct the durable exchange store backed by Cloud SQL Postgres (`SqlExchangeStore`)."""
         from bridge.exchange_store import SqlExchangeStore
 
         return SqlExchangeStore(_resolve_dsn(db_url))
 
 
-def _terminal_retry_task_store() -> Any:
+async def _save_with_terminal_retry(
+    inner: TaskStore,
+    task: Task,
+    context: ServerCallContext,
+    *,
+    max_attempts: int,
+    log: logging.Logger,
+) -> None:
+    from a2a.server.agent_execution.active_task import TERMINAL_TASK_STATES
+
+    terminal = task.status.state in TERMINAL_TASK_STATES
+    attempts = max_attempts if terminal else 1
+    last: Exception | None = None
+    for i in range(attempts):
+        try:
+            await inner.save(task, context)
+            return
+        except Exception as e:  # noqa: BLE001 - intentional retry boundary for terminal task persistence
+            last = e
+            if terminal:
+                log.warning(
+                    "terminal task %s save failed (attempt %d/%d): %r",
+                    task.id,
+                    i + 1,
+                    attempts,
+                    e,
+                )
+    if terminal:
+        log.error(
+            "terminal task %s save exhausted %d retries: %r",
+            task.id,
+            attempts,
+            last,
+        )
+    if last is None:
+        raise RuntimeError("terminal task save failed without exception")
+    raise last
+
+
+def _terminal_retry_task_store() -> type[TaskStore]:
     """Lazily build the `_TerminalRetryTaskStore` class over the a2a-sdk
     `TaskStore` base.
 
     `TaskStore` is imported at call time (not module import) so importing this
     package stays dep-free (mirrors the local pkg's lazy imports).
     """
-    from a2a.server.agent_execution.active_task import TERMINAL_TASK_STATES
     from a2a.server.tasks import TaskStore
 
     class _TerminalRetryStore(TaskStore):
@@ -203,54 +263,52 @@ def _terminal_retry_task_store() -> Any:
         delegate unchanged. Unit-testable without GCP: inject a fake inner store.
         """
 
-        def __init__(self, inner: Any, *, attempts: int = 3, log: Any = _LOG) -> None:
+        def __init__(
+            self,
+            inner: TaskStore,
+            *,
+            attempts: int = 3,
+            log: logging.Logger = _LOG,
+        ) -> None:
             self._inner = inner
             self._attempts = attempts
             self._log = log
 
-        async def save(self, task: Any, context: Any) -> None:
-            terminal = task.status.state in TERMINAL_TASK_STATES
-            attempts = self._attempts if terminal else 1
-            last: Exception | None = None
-            for i in range(attempts):
-                try:
-                    return await self._inner.save(task, context)
-                except Exception as e:
-                    last = e
-                    if terminal:
-                        self._log.warning(
-                            "terminal task %s save failed (attempt %d/%d): %r",
-                            task.id,
-                            i + 1,
-                            attempts,
-                            e,
-                        )
-            if terminal:
-                self._log.error(
-                    "terminal task %s save exhausted %d retries: %r",
-                    task.id,
-                    attempts,
-                    last,
-                )
-            assert last is not None
-            raise last
+        async def save(self, task: Task, context: ServerCallContext) -> None:
+            await _save_with_terminal_retry(
+                self._inner,
+                task,
+                context,
+                max_attempts=self._attempts,
+                log=self._log,
+            )
 
-        async def get(self, task_id: Any, context: Any) -> Any:
+        async def get(self, task_id: str, context: ServerCallContext) -> Task | None:
             return await self._inner.get(task_id, context)
 
-        async def delete(self, task_id: Any, context: Any) -> None:
-            return await self._inner.delete(task_id, context)
+        async def delete(self, task_id: str, context: ServerCallContext) -> None:
+            await self._inner.delete(task_id, context)
 
-        async def list(self, params: Any, context: Any) -> Any:
+        async def list(
+            self,
+            params: ListTasksRequest,
+            context: ServerCallContext,
+        ) -> ListTasksResponse:
             return await self._inner.list(params, context)
 
     return _TerminalRetryStore
 
 
-def _TerminalRetryTaskStore(inner: Any, **kwargs: Any) -> Any:
+def _TerminalRetryTaskStore(
+    inner: TaskStore,
+    *,
+    attempts: int = 3,
+    log: logging.Logger = _LOG,
+) -> TaskStore:
     """Construct the terminal-retry task-store wrapper around `inner`.
 
     A thin factory over the lazily-built `_TerminalRetryStore` class so the
     a2a-sdk import stays inside a method (package import pulls no heavy deps).
     """
-    return _terminal_retry_task_store()(inner, **kwargs)
+    cls = _terminal_retry_task_store()
+    return cls(inner, attempts=attempts, log=log)  # type: ignore[call-arg]

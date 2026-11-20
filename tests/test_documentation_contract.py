@@ -346,6 +346,7 @@ def test_dockerfile_and_cloudbuild_parallel_dag_invariants() -> None:
             == "ghcr.io/astral-sh/uv:0.12.24-python3.12-bookworm-slim"
         )
     assert "uv pip install" not in " ".join(steps["python-env-and-lint"]["args"])
+    assert "mypy --strict" in " ".join(steps["python-env-and-lint"]["args"])
 
     # Both Python test shards fan out in parallel after python-env-and-lint.
     assert steps["python-core-and-enterprise-tests"]["waitFor"] == [
@@ -426,6 +427,17 @@ def test_enterprise_demo_console_assets_and_api_contract() -> None:
     assert js_resp.status_code == 200
     assert "javascript" in js_resp.headers.get("content-type", "")
 
+    module_paths = sorted((REPO_ROOT / "demo/modules").glob("*.js"))
+    assert module_paths, (
+        "demo/modules/ must contain the modular enterprise-demo ES modules"
+    )
+    for mod_path in module_paths:
+        mod_resp = client.get(f"/demo/modules/{mod_path.name}")
+        assert mod_resp.status_code == 200, (
+            f"failed to serve /demo/modules/{mod_path.name}"
+        )
+        assert "javascript" in mod_resp.headers.get("content-type", "")
+
     css_resp = client.get("/demo/enterprise-demo.css")
     assert css_resp.status_code == 200
     assert "text/css" in css_resp.headers.get("content-type", "")
@@ -450,7 +462,10 @@ def test_enterprise_demo_console_assets_and_api_contract() -> None:
             f"demo/enterprise-demo.html missing required element {required_id}"
         )
 
-    js_text = (REPO_ROOT / "demo/enterprise-demo.js").read_text(encoding="utf-8")
+    entry_js_text = (REPO_ROOT / "demo/enterprise-demo.js").read_text(encoding="utf-8")
+    js_text = "\n".join(
+        [entry_js_text, *(p.read_text(encoding="utf-8") for p in module_paths)]
+    )
     for fn_name in (
         "window.switchDomain",
         "window.switchScene",
@@ -460,7 +475,7 @@ def test_enterprise_demo_console_assets_and_api_contract() -> None:
         "window.openSourceProofModal",
         "window.runVerifyDay2Payoff",
     ):
-        assert fn_name in js_text, (
+        assert fn_name in entry_js_text, (
             f"demo/enterprise-demo.js missing controller function {fn_name}"
         )
 
@@ -468,7 +483,7 @@ def test_enterprise_demo_console_assets_and_api_contract() -> None:
     onclick_fns = set(re.findall(r"window\.([a-zA-Z0-9_]+)\s*\(", html_text))
     assert len(onclick_fns) >= 8
     for fn in onclick_fns:
-        assert f"window.{fn}" in js_text, (
+        assert f"window.{fn}" in entry_js_text, (
             f"demo/enterprise-demo.html invokes undefined window.{fn}() in enterprise-demo.js"
         )
 
@@ -526,10 +541,9 @@ def test_zero_stale_firestore_or_broken_claude_plan_references() -> None:
         (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )
     ruff_select = set(pyproject["tool"]["ruff"]["lint"]["select"])
-    for rule in ("ANN001", "ANN201", "ANN202"):
-        assert rule in ruff_select, (
-            f"pyproject.toml [tool.ruff.lint] select missing {rule!r}"
-        )
+    assert "ANN" in ruff_select or {"ANN001", "ANN201", "ANN202"}.issubset(
+        ruff_select
+    ), "pyproject.toml [tool.ruff.lint] select missing ANN rules"
 
 
 def test_canonical_financial_figures_match_across_docs_and_seed() -> None:

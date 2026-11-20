@@ -484,9 +484,10 @@ def test_scanned_pdf_is_deterministic_and_has_no_text_layer(tmp_path):
     assert b"/Font" not in SCANNED
     content = SCANNED[SCANNED.rindex(b"5 0 obj") :]
     assert b"BT" not in content and b"Tj" not in content
-    if shutil.which("pdftotext"):
-        text = subprocess.run(
-            ["pdftotext", str(again), "-"], capture_output=True, check=True
+    pdftotext_bin = shutil.which("pdftotext")
+    if pdftotext_bin:
+        text = subprocess.run(  # noqa: S603 - verified local pdftotext binary
+            [pdftotext_bin, str(again), "-"], capture_output=True, check=True
         ).stdout
         assert text.strip() == b"", text[:80]
 

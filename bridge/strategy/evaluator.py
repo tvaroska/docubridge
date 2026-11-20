@@ -14,7 +14,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
 
 from bridge.classification import canonicalize_issuer
 from bridge.strategy.loader import load_strategy
@@ -78,6 +77,25 @@ def _req_targets_doctype(req: Requirement, doctype: str) -> bool:
     return req.doctype_hint == doctype or _norm_key(req.item) == _norm_key(doctype)
 
 
+def _claim_direct_overrides(
+    rules: Sequence[StrategyRule],
+    caller_reqs: Sequence[Requirement],
+) -> tuple[dict[str, Requirement], set[int], set[str]]:
+    rule_overrides: dict[str, Requirement] = {}
+    claimed_indices: set[int] = set()
+    forced_required: set[str] = set()
+    for rule in rules:
+        for idx, req in enumerate(caller_reqs):
+            if idx in claimed_indices or rule.id in rule_overrides:
+                continue
+            if _rule_directly_matches_requirement(rule, req):
+                rule_overrides[rule.id] = req
+                claimed_indices.add(idx)
+                if req.status is RequirementStatus.required:
+                    forced_required.add(rule.id)
+    return rule_overrides, claimed_indices, forced_required
+
+
 def _claim_rule_overrides(
     rules: Sequence[StrategyRule], caller_reqs: Sequence[Requirement]
 ) -> tuple[dict[str, Requirement], set[int], set[str]]:
@@ -88,20 +106,9 @@ def _claim_rule_overrides(
     the sole caller requirement targeting that doctype. Any remaining or colliding caller
     requirements stay unclaimed and are evaluated independently as extra caller items.
     """
-    rule_overrides: dict[str, Requirement] = {}
-    claimed_indices: set[int] = set()
-    forced_required: set[str] = set()
-
-    for rule in rules:
-        for idx, req in enumerate(caller_reqs):
-            if idx in claimed_indices or rule.id in rule_overrides:
-                continue
-            if _rule_directly_matches_requirement(rule, req):
-                rule_overrides[rule.id] = req
-                claimed_indices.add(idx)
-                if req.status is RequirementStatus.required:
-                    forced_required.add(rule.id)
-
+    rule_overrides, claimed_indices, forced_required = _claim_direct_overrides(
+        rules, caller_reqs
+    )
     for rule in rules:
         if rule.id in rule_overrides:
             continue
@@ -110,11 +117,9 @@ def _claim_rule_overrides(
             for idx, req in enumerate(caller_reqs)
             if _req_targets_doctype(req, rule.doctype)
         ]
-        if len(doctype_matches) != 1:
+        if len(doctype_matches) != 1 or doctype_matches[0] in claimed_indices:
             continue
         idx = doctype_matches[0]
-        if idx in claimed_indices:
-            continue
         req = caller_reqs[idx]
         if req.party is None and req.doctype_hint == rule.doctype:
             rule_overrides[rule.id] = req
@@ -146,6 +151,68 @@ def _extra_req_matches_recommendation(
     )
 
 
+def _check_required_fields(rule: StrategyRule, entry: LedgerEntry) -> str | None:
+    for field_name in rule.required_fields:
+        val = entry.key_fields.get(field_name)
+        if val is None or not str(val).strip():
+            return f"doc {entry.doc_id} missing required field '{field_name}'"
+    return None
+
+
+def _check_not_expired(
+    rule: StrategyRule, entry: LedgerEntry, ref_date: date
+) -> str | None:
+    if not rule.not_expired_field:
+        return None
+    exp_date = _parse_iso_date(entry.key_fields.get(rule.not_expired_field))
+    if exp_date is None:
+        return f"doc {entry.doc_id} missing/invalid '{rule.not_expired_field}' date"
+    if exp_date < ref_date:
+        return (
+            f"doc {entry.doc_id} expired "
+            f"({rule.not_expired_field}={exp_date.isoformat()} < {ref_date.isoformat()})"
+        )
+    return None
+
+
+def _check_recency(
+    rule: StrategyRule, entry: LedgerEntry, ref_date: date
+) -> str | None:
+    if rule.recency_days is None or not rule.recency_field:
+        return None
+    doc_date = _parse_iso_date(entry.key_fields.get(rule.recency_field))
+    if doc_date is None:
+        return f"doc {entry.doc_id} missing/invalid '{rule.recency_field}' date"
+    age_days = (ref_date - doc_date).days
+    if age_days > rule.recency_days:
+        return (
+            f"doc {entry.doc_id} stale ({rule.recency_field}={doc_date.isoformat()}, "
+            f"{age_days}d > {rule.recency_days}d window)"
+        )
+    if age_days < 0:
+        return (
+            f"doc {entry.doc_id} future-dated "
+            f"({rule.recency_field}={doc_date.isoformat()} > {ref_date.isoformat()})"
+        )
+    return None
+
+
+def _check_distinct_issuer(
+    rule: StrategyRule, entry: LedgerEntry, forbidden_issuers: set[str]
+) -> str | None:
+    if not rule.distinct_issuer_from:
+        return None
+    issuer = _canonical_issuer(entry)
+    if not issuer:
+        return f"doc {entry.doc_id} missing canonical issuer for cross-document independence check"
+    if issuer in forbidden_issuers:
+        return (
+            f"doc {entry.doc_id} issuer '{issuer}' collides with "
+            f"{', '.join(rule.distinct_issuer_from)}"
+        )
+    return None
+
+
 def _check_entry_eligibility(
     rule: StrategyRule,
     entry: LedgerEntry,
@@ -153,59 +220,29 @@ def _check_entry_eligibility(
     ref_date: date,
     forbidden_issuers: set[str],
 ) -> tuple[bool, str]:
-    for field_name in rule.required_fields:
-        val = entry.key_fields.get(field_name)
-        if val is None or not str(val).strip():
-            return False, f"doc {entry.doc_id} missing required field '{field_name}'"
-
-    if rule.not_expired_field:
-        raw_exp = entry.key_fields.get(rule.not_expired_field)
-        exp_date = _parse_iso_date(raw_exp)
-        if exp_date is None:
-            return (
-                False,
-                f"doc {entry.doc_id} missing/invalid '{rule.not_expired_field}' date",
-            )
-        if exp_date < ref_date:
-            return (
-                False,
-                f"doc {entry.doc_id} expired ({rule.not_expired_field}={exp_date.isoformat()} < {ref_date.isoformat()})",
-            )
-
-    if rule.recency_days is not None and rule.recency_field:
-        raw_dt = entry.key_fields.get(rule.recency_field)
-        doc_date = _parse_iso_date(raw_dt)
-        if doc_date is None:
-            return (
-                False,
-                f"doc {entry.doc_id} missing/invalid '{rule.recency_field}' date",
-            )
-        age_days = (ref_date - doc_date).days
-        if age_days > rule.recency_days:
-            return (
-                False,
-                f"doc {entry.doc_id} stale ({rule.recency_field}={doc_date.isoformat()}, {age_days}d > {rule.recency_days}d window)",
-            )
-        if age_days < 0:
-            return (
-                False,
-                f"doc {entry.doc_id} future-dated ({rule.recency_field}={doc_date.isoformat()} > {ref_date.isoformat()})",
-            )
-
-    if rule.distinct_issuer_from:
-        issuer = _canonical_issuer(entry)
-        if not issuer:
-            return (
-                False,
-                f"doc {entry.doc_id} missing canonical issuer for cross-document independence check",
-            )
-        if issuer in forbidden_issuers:
-            return (
-                False,
-                f"doc {entry.doc_id} issuer '{issuer}' collides with {', '.join(rule.distinct_issuer_from)}",
-            )
-
+    for reason in (
+        _check_required_fields(rule, entry),
+        _check_not_expired(rule, entry, ref_date),
+        _check_recency(rule, entry, ref_date),
+        _check_distinct_issuer(rule, entry, forbidden_issuers),
+    ):
+        if reason is not None:
+            return False, reason
     return True, ""
+
+
+def _dedupe_issuers(rule: StrategyRule, group: list[LedgerEntry]) -> list[LedgerEntry]:
+    if not rule.distinct_issuers:
+        return list(group)
+    seen: set[str] = set()
+    picked: list[LedgerEntry] = []
+    for entry in group:
+        issuer = _canonical_issuer(entry)
+        if not issuer or issuer in seen:
+            continue
+        seen.add(issuer)
+        picked.append(entry)
+    return picked
 
 
 def _select_best_cohort(
@@ -214,22 +251,8 @@ def _select_best_cohort(
     """Select the strongest qualifying cohort respecting distinct_issuers and same_value_fields."""
     if not eligible:
         return [], False
-
-    def _dedupe_issuers(group: list[LedgerEntry]) -> list[LedgerEntry]:
-        if not rule.distinct_issuers:
-            return list(group)
-        seen: set[str] = set()
-        picked: list[LedgerEntry] = []
-        for entry in group:
-            issuer = _canonical_issuer(entry)
-            if not issuer or issuer in seen:
-                continue
-            seen.add(issuer)
-            picked.append(entry)
-        return picked
-
     if not rule.same_value_fields or rule.min_count <= 1:
-        return _dedupe_issuers(eligible), False
+        return _dedupe_issuers(rule, eligible), False
 
     buckets: dict[tuple[str, ...], list[LedgerEntry]] = {}
     for entry in eligible:
@@ -244,7 +267,7 @@ def _select_best_cohort(
 
     best: list[LedgerEntry] = []
     for group in buckets.values():
-        candidate = _dedupe_issuers(group)
+        candidate = _dedupe_issuers(rule, group)
         if len(candidate) > len(best):
             best = candidate
     mismatch = len(buckets) > 1 and len(best) < rule.min_count
@@ -258,6 +281,16 @@ class _RuleOutcome:
     evidence: SufficiencyEvidence
     outstanding_requirement: Requirement | None
     order_key: tuple[int, int, int, int]
+
+
+@dataclass(frozen=True)
+class _StrategyEvalContext:
+    strategy: CollectionStrategy
+    entries: Sequence[LedgerEntry]
+    accepted_by_doctype: dict[str, list[LedgerEntry]]
+    rule_overrides: dict[str, Requirement]
+    waiver_recommendations: Sequence[WaiverRecommendation]
+    ref_date: date
 
 
 def _order_key_for(
@@ -275,75 +308,137 @@ def _order_key_for(
     return (pos, alt.priority, rule.priority, declared_idx)
 
 
+def _apply_caller_override(
+    rule: StrategyRule,
+    caller_override: Requirement | None,
+    order_key: tuple[int, int, int, int],
+    field_refs: list[str],
+    has_waiver_rec: bool,
+) -> tuple[bool, _RuleOutcome | None]:
+    effective_required = rule.required
+    if caller_override is None:
+        return effective_required, None
+    if caller_override.status is RequirementStatus.waived:
+        reason_tag = caller_override.reason_code or "caller_override"
+        reason = (
+            f"Waived by calling agent override ({caller_override.item}: {reason_tag})."
+        )
+        return False, _RuleOutcome(
+            rule=rule,
+            effective_required=False,
+            evidence=SufficiencyEvidence(
+                rule_id=rule.id,
+                satisfied=True,
+                doc_ids=[],
+                issuers=[],
+                reason=reason,
+                field_refs=field_refs,
+                waiver_recommended=has_waiver_rec,
+            ),
+            outstanding_requirement=None,
+            order_key=order_key,
+        )
+    if caller_override.status is RequirementStatus.satisfied:
+        reason = f"Marked satisfied by calling agent override ({caller_override.item})."
+        return False, _RuleOutcome(
+            rule=rule,
+            effective_required=False,
+            evidence=SufficiencyEvidence(
+                rule_id=rule.id,
+                satisfied=True,
+                doc_ids=[],
+                issuers=[],
+                reason=reason,
+                field_refs=field_refs,
+                waiver_recommended=has_waiver_rec,
+            ),
+            outstanding_requirement=None,
+            order_key=order_key,
+        )
+    if caller_override.status is RequirementStatus.optional:
+        effective_required = False
+    elif caller_override.status is RequirementStatus.required:
+        effective_required = True
+    return effective_required, None
+
+
+@dataclass(frozen=True)
+class _UnsatisfiedContext:
+    picked: list[LedgerEntry]
+    issuers: list[str]
+    same_val_mismatch: bool
+    disqualified_notes: list[str]
+    non_accepted: list[LedgerEntry]
+    matched_recs: list[WaiverRecommendation]
+
+
+def _build_unsatisfied_reason(
+    rule: StrategyRule,
+    info: _UnsatisfiedContext,
+) -> str:
+    details: list[str] = []
+    if rule.distinct_issuers:
+        details.append(
+            f"need {rule.min_count} accepted {rule.doctype} from distinct issuers; "
+            f"have {len(info.picked)}"
+            + (f" ({', '.join(info.issuers)})" if info.issuers else "")
+        )
+    else:
+        details.append(
+            f"need {rule.min_count} accepted {rule.doctype}; have {len(info.picked)}"
+        )
+    if info.same_val_mismatch:
+        details.append(
+            f"matching {', '.join(rule.same_value_fields)} required across documents"
+        )
+    if info.disqualified_notes:
+        details.append("; ".join(info.disqualified_notes))
+    if info.non_accepted:
+        non_acc_summary = ", ".join(
+            f"{e.doc_id}={e.disposition.value}" for e in info.non_accepted
+        )
+        details.append(f"non-accepted entries ignored ({non_acc_summary})")
+    if info.matched_recs:
+        rec_notes = "; ".join(f"{r.reason_code}: {r.reason}" for r in info.matched_recs)
+        details.append(f"waiver recommended for calling agent ({rec_notes})")
+    return "; ".join(details) + "."
+
+
 def _evaluate_single_rule(
-    strategy: CollectionStrategy,
+    ctx: _StrategyEvalContext,
     alt: StrategyAlternative,
     rule: StrategyRule,
     declared_idx: int,
-    *,
-    entries: Sequence[LedgerEntry],
-    accepted_by_doctype: dict[str, list[LedgerEntry]],
-    caller_override: Requirement | None,
-    matched_recs: list[WaiverRecommendation],
-    ref_date: date,
 ) -> _RuleOutcome:
-    order_key = _order_key_for(strategy, alt, rule, declared_idx)
+    order_key = _order_key_for(ctx.strategy, alt, rule, declared_idx)
     field_refs = rule.referenced_fields()
+    matched_recs = [
+        rec
+        for rec in ctx.waiver_recommendations
+        if _rule_matches_recommendation(rule, rec)
+    ]
     has_waiver_rec = bool(matched_recs)
-    effective_required = rule.required
+    effective_required, short_circuit = _apply_caller_override(
+        rule,
+        ctx.rule_overrides.get(rule.id),
+        order_key,
+        field_refs,
+        has_waiver_rec,
+    )
+    if short_circuit is not None:
+        return short_circuit
 
-    if caller_override is not None:
-        if caller_override.status is RequirementStatus.waived:
-            reason_tag = caller_override.reason_code or "caller_override"
-            return _RuleOutcome(
-                rule=rule,
-                effective_required=False,
-                evidence=SufficiencyEvidence(
-                    rule_id=rule.id,
-                    satisfied=True,
-                    doc_ids=[],
-                    issuers=[],
-                    reason=f"Waived by calling agent override ({caller_override.item}: {reason_tag}).",
-                    field_refs=field_refs,
-                    waiver_recommended=has_waiver_rec,
-                ),
-                outstanding_requirement=None,
-                order_key=order_key,
-            )
-        if caller_override.status is RequirementStatus.satisfied:
-            return _RuleOutcome(
-                rule=rule,
-                effective_required=False,
-                evidence=SufficiencyEvidence(
-                    rule_id=rule.id,
-                    satisfied=True,
-                    doc_ids=[],
-                    issuers=[],
-                    reason=f"Marked satisfied by calling agent override ({caller_override.item}).",
-                    field_refs=field_refs,
-                    waiver_recommended=has_waiver_rec,
-                ),
-                outstanding_requirement=None,
-                order_key=order_key,
-            )
-        if caller_override.status is RequirementStatus.optional:
-            effective_required = False
-        elif caller_override.status is RequirementStatus.required:
-            effective_required = True
-
-    forbidden_issuers: set[str] = set()
-    for other_dt in rule.distinct_issuer_from:
-        for other_entry in accepted_by_doctype.get(other_dt, ()):
-            iss = _canonical_issuer(other_entry)
-            if iss:
-                forbidden_issuers.add(iss)
-
-    accepted_candidates = accepted_by_doctype.get(rule.doctype, [])
+    forbidden_issuers = {
+        iss
+        for other_dt in rule.distinct_issuer_from
+        for other_entry in ctx.accepted_by_doctype.get(other_dt, ())
+        if (iss := _canonical_issuer(other_entry))
+    }
     eligible: list[LedgerEntry] = []
     disqualified_notes: list[str] = []
-    for entry in accepted_candidates:
+    for entry in ctx.accepted_by_doctype.get(rule.doctype, []):
         ok, why = _check_entry_eligibility(
-            rule, entry, ref_date=ref_date, forbidden_issuers=forbidden_issuers
+            rule, entry, ref_date=ctx.ref_date, forbidden_issuers=forbidden_issuers
         )
         if ok:
             eligible.append(entry)
@@ -351,11 +446,10 @@ def _evaluate_single_rule(
             disqualified_notes.append(why)
 
     picked, same_val_mismatch = _select_best_cohort(rule, eligible)
-    satisfied = len(picked) >= rule.min_count
     doc_ids = [e.doc_id for e in picked]
     issuers = sorted({iss for e in picked if (iss := _canonical_issuer(e))})
 
-    if satisfied:
+    if len(picked) >= rule.min_count:
         issuer_note = (
             f" from distinct issuers ({', '.join(issuers)})"
             if rule.distinct_issuers and issuers
@@ -383,35 +477,20 @@ def _evaluate_single_rule(
 
     non_accepted = [
         e
-        for e in entries
+        for e in ctx.entries
         if e.doctype == rule.doctype and e.disposition is not Disposition.accepted
     ]
-    details: list[str] = []
-    if rule.distinct_issuers:
-        details.append(
-            f"need {rule.min_count} accepted {rule.doctype} from distinct issuers; "
-            f"have {len(picked)}" + (f" ({', '.join(issuers)})" if issuers else "")
-        )
-    else:
-        details.append(
-            f"need {rule.min_count} accepted {rule.doctype}; have {len(picked)}"
-        )
-    if same_val_mismatch:
-        details.append(
-            f"matching {', '.join(rule.same_value_fields)} required across documents"
-        )
-    if disqualified_notes:
-        details.append("; ".join(disqualified_notes))
-    if non_accepted:
-        non_acc_summary = ", ".join(
-            f"{e.doc_id}={e.disposition.value}" for e in non_accepted
-        )
-        details.append(f"non-accepted entries ignored ({non_acc_summary})")
-    if has_waiver_rec:
-        rec_notes = "; ".join(f"{r.reason_code}: {r.reason}" for r in matched_recs)
-        details.append(f"waiver recommended for calling agent ({rec_notes})")
-
-    reason_text = "; ".join(details) + "."
+    reason_text = _build_unsatisfied_reason(
+        rule,
+        _UnsatisfiedContext(
+            picked=picked,
+            issuers=issuers,
+            same_val_mismatch=same_val_mismatch,
+            disqualified_notes=disqualified_notes,
+            non_accepted=non_accepted,
+            matched_recs=matched_recs,
+        ),
+    )
     req_status = (
         RequirementStatus.required if effective_required else RequirementStatus.optional
     )
@@ -461,6 +540,33 @@ def _entry_item_affinity(req: Requirement, entry: LedgerEntry) -> int:
     return sum(1 for tok in tokens if tok in haystack)
 
 
+def _find_extra_req_candidates(
+    req: Requirement,
+    accepted_entries: Sequence[LedgerEntry],
+    used_doc_ids: set[str],
+) -> list[LedgerEntry]:
+    target_doctype = req.doctype_hint or req.item
+    req_party = req.party
+    target_party = canonicalize_issuer(req_party) if req_party else None
+    candidates: list[LedgerEntry] = []
+    for entry in accepted_entries:
+        if entry.doc_id in used_doc_ids:
+            continue
+        if entry.doctype != target_doctype and _norm_key(entry.doctype) != _norm_key(
+            target_doctype
+        ):
+            continue
+        if target_party is not None and req_party is not None:
+            entry_iss = _canonical_issuer(entry)
+            if (
+                entry_iss != target_party
+                and req_party.lower() not in (entry.issuer or "").lower()
+            ):
+                continue
+        candidates.append(entry)
+    return candidates
+
+
 def _evaluate_extra_caller_requirement(
     req: Requirement,
     idx: int,
@@ -472,59 +578,30 @@ def _evaluate_extra_caller_requirement(
     """Evaluate a caller-supplied requirement that does not map to a strategy rule."""
     slug = _norm_key(req.item) or f"item-{idx}"
     rule_id = f"caller:{slug}"
-    matched_recs = [
-        r
-        for r in waiver_recommendations
-        if _extra_req_matches_recommendation(req, slug, r)
-    ]
-    has_rec = bool(matched_recs)
+    has_rec = any(
+        _extra_req_matches_recommendation(req, slug, r) for r in waiver_recommendations
+    )
 
-    if req.status is RequirementStatus.waived:
+    if req.status in (RequirementStatus.waived, RequirementStatus.satisfied):
+        verb = (
+            "waived by calling agent."
+            if req.status is RequirementStatus.waived
+            else "marked satisfied by calling agent."
+        )
         return (
             SufficiencyEvidence(
                 rule_id=rule_id,
                 satisfied=True,
                 doc_ids=[],
                 issuers=[],
-                reason=f"Caller-added requirement {req.item!r} waived by calling agent.",
-                waiver_recommended=has_rec,
-            ),
-            None,
-            True,
-        )
-    if req.status is RequirementStatus.satisfied:
-        return (
-            SufficiencyEvidence(
-                rule_id=rule_id,
-                satisfied=True,
-                doc_ids=[],
-                issuers=[],
-                reason=f"Caller-added requirement {req.item!r} marked satisfied by calling agent.",
+                reason=f"Caller-added requirement {req.item!r} {verb}",
                 waiver_recommended=has_rec,
             ),
             None,
             True,
         )
 
-    target_doctype = req.doctype_hint or req.item
-    target_party = canonicalize_issuer(req.party) if req.party else None
-    candidates: list[LedgerEntry] = []
-    for entry in accepted_entries:
-        if entry.doc_id in used_doc_ids:
-            continue
-        if entry.doctype != target_doctype and _norm_key(entry.doctype) != _norm_key(
-            target_doctype
-        ):
-            continue
-        if target_party is not None:
-            entry_iss = _canonical_issuer(entry)
-            if (
-                entry_iss != target_party
-                and req.party.lower() not in (entry.issuer or "").lower()
-            ):
-                continue
-        candidates.append(entry)
-
+    candidates = _find_extra_req_candidates(req, accepted_entries, used_doc_ids)
     if candidates:
         candidates.sort(key=lambda e: _entry_item_affinity(req, e), reverse=True)
         chosen = candidates[0]
@@ -572,6 +649,73 @@ def _evaluate_extra_caller_requirement(
     )
 
 
+def _evaluate_alternatives(
+    ctx: _StrategyEvalContext,
+) -> tuple[
+    list[tuple[StrategyAlternative, list[_RuleOutcome], bool]],
+    list[SufficiencyEvidence],
+]:
+    alt_outcomes: list[tuple[StrategyAlternative, list[_RuleOutcome], bool]] = []
+    all_evidence: list[SufficiencyEvidence] = []
+    declared_idx = 0
+    for alt in sorted(ctx.strategy.effective_alternatives(), key=lambda a: a.priority):
+        outcomes: list[_RuleOutcome] = []
+        for rule in alt.rules:
+            outcome = _evaluate_single_rule(ctx, alt, rule, declared_idx)
+            declared_idx += 1
+            outcomes.append(outcome)
+            all_evidence.append(outcome.evidence)
+        required_outcomes = [o for o in outcomes if o.effective_required]
+        alt_satisfied = (
+            all(o.evidence.satisfied for o in required_outcomes)
+            if required_outcomes
+            else (bool(outcomes) and any(o.evidence.satisfied for o in outcomes))
+        )
+        alt_outcomes.append((alt, outcomes, alt_satisfied))
+    return alt_outcomes, all_evidence
+
+
+def _collect_outstanding(
+    strategy: CollectionStrategy,
+    alt_outcomes: list[tuple[StrategyAlternative, list[_RuleOutcome], bool]],
+    base_satisfied: bool,
+    forced_outstanding: list[_RuleOutcome],
+    extra_outstanding: list[Requirement],
+) -> list[Requirement]:
+    outstanding_outcomes: list[_RuleOutcome] = []
+    if not base_satisfied:
+        outstanding_outcomes.extend(
+            outcome
+            for _, outcomes, _ in alt_outcomes
+            for outcome in outcomes
+            if outcome.outstanding_requirement is not None
+        )
+    else:
+        seen_ids: set[str] = set()
+        for outcome in forced_outstanding:
+            if outcome.outstanding_requirement is not None:
+                outstanding_outcomes.append(outcome)
+                seen_ids.add(outcome.rule.id)
+        for _, outcomes, alt_ok in alt_outcomes:
+            if strategy.match == "any_of" and not alt_ok:
+                continue
+            outstanding_outcomes.extend(
+                outcome
+                for outcome in outcomes
+                if outcome.rule.id not in seen_ids
+                and not outcome.effective_required
+                and outcome.outstanding_requirement is not None
+            )
+    outstanding_outcomes.sort(key=lambda o: o.order_key)
+    outstanding = [
+        o.outstanding_requirement
+        for o in outstanding_outcomes
+        if o.outstanding_requirement is not None
+    ]
+    outstanding.extend(extra_outstanding)
+    return outstanding
+
+
 def evaluate_strategy(
     strategy: CollectionStrategy,
     entries: Sequence[LedgerEntry],
@@ -596,57 +740,29 @@ def evaluate_strategy(
     rule_overrides, claimed_caller_indices, caller_forced_required_rules = (
         _claim_rule_overrides(strategy.all_rules(), caller_reqs)
     )
+    ctx = _StrategyEvalContext(
+        strategy=strategy,
+        entries=entries,
+        accepted_by_doctype=accepted_by_doctype,
+        rule_overrides=rule_overrides,
+        waiver_recommendations=waiver_recommendations,
+        ref_date=ref_date,
+    )
+    alt_outcomes, all_evidence = _evaluate_alternatives(ctx)
+    base_satisfied = (
+        any(alt_ok for _, _, alt_ok in alt_outcomes)
+        if strategy.match == "any_of"
+        else all(alt_ok for _, _, alt_ok in alt_outcomes)
+    )
 
-    alt_outcomes: list[tuple[StrategyAlternative, list[_RuleOutcome], bool]] = []
-    all_evidence: list[SufficiencyEvidence] = []
-    declared_idx = 0
-
-    for alt in sorted(strategy.effective_alternatives(), key=lambda a: a.priority):
-        outcomes: list[_RuleOutcome] = []
-        for rule in alt.rules:
-            matched_recs = [
-                rec
-                for rec in waiver_recommendations
-                if _rule_matches_recommendation(rule, rec)
-            ]
-            outcome = _evaluate_single_rule(
-                strategy,
-                alt,
-                rule,
-                declared_idx,
-                entries=entries,
-                accepted_by_doctype=accepted_by_doctype,
-                caller_override=rule_overrides.get(rule.id),
-                matched_recs=matched_recs,
-                ref_date=ref_date,
-            )
-            declared_idx += 1
-            outcomes.append(outcome)
-            all_evidence.append(outcome.evidence)
-        required_outcomes = [o for o in outcomes if o.effective_required]
-        if required_outcomes:
-            alt_satisfied = all(o.evidence.satisfied for o in required_outcomes)
-        else:
-            alt_satisfied = bool(outcomes) and any(
-                o.evidence.satisfied for o in outcomes
-            )
-        alt_outcomes.append((alt, outcomes, alt_satisfied))
-
-    if strategy.match == "any_of":
-        base_satisfied = any(alt_ok for _, _, alt_ok in alt_outcomes)
-    else:
-        base_satisfied = all(alt_ok for _, _, alt_ok in alt_outcomes)
-
-    forced_rules_ok = True
-    forced_outstanding: list[_RuleOutcome] = []
-    for _, outcomes, _ in alt_outcomes:
-        for outcome in outcomes:
-            if (
-                outcome.rule.id in caller_forced_required_rules
-                and not outcome.evidence.satisfied
-            ):
-                forced_rules_ok = False
-                forced_outstanding.append(outcome)
+    forced_outstanding = [
+        outcome
+        for _, outcomes, _ in alt_outcomes
+        for outcome in outcomes
+        if outcome.rule.id in caller_forced_required_rules
+        and not outcome.evidence.satisfied
+    ]
+    forced_rules_ok = not forced_outstanding
 
     extra_outstanding: list[Requirement] = []
     extra_required_ok = True
@@ -668,38 +784,9 @@ def evaluate_strategy(
             extra_outstanding.append(out_req)
 
     overall_satisfied = base_satisfied and forced_rules_ok and extra_required_ok
-
-    outstanding_outcomes: list[_RuleOutcome] = []
-    if not base_satisfied:
-        for _, outcomes, _ in alt_outcomes:
-            for outcome in outcomes:
-                if outcome.outstanding_requirement is not None:
-                    outstanding_outcomes.append(outcome)
-    else:
-        seen_ids: set[str] = set()
-        for outcome in forced_outstanding:
-            if outcome.outstanding_requirement is not None:
-                outstanding_outcomes.append(outcome)
-                seen_ids.add(outcome.rule.id)
-        for _, outcomes, alt_ok in alt_outcomes:
-            if strategy.match == "any_of" and not alt_ok:
-                continue
-            for outcome in outcomes:
-                if (
-                    outcome.rule.id not in seen_ids
-                    and not outcome.effective_required
-                    and outcome.outstanding_requirement is not None
-                ):
-                    outstanding_outcomes.append(outcome)
-
-    outstanding_outcomes.sort(key=lambda o: o.order_key)
-    outstanding = [
-        o.outstanding_requirement
-        for o in outstanding_outcomes
-        if o.outstanding_requirement is not None
-    ]
-    outstanding.extend(extra_outstanding)
-
+    outstanding = _collect_outstanding(
+        strategy, alt_outcomes, base_satisfied, forced_outstanding, extra_outstanding
+    )
     return SufficiencyVerdict(
         satisfied=overall_satisfied,
         strategy_revision=strategy.revision or strategy.version,
@@ -709,7 +796,7 @@ def evaluate_strategy(
     )
 
 
-def evaluate_process_sufficiency(
+def evaluate_process_sufficiency(  # noqa: PLR0913 - public process-sufficiency evaluation contract
     process: str,
     entries: Sequence[LedgerEntry],
     *,
@@ -737,7 +824,7 @@ def evaluate_process_sufficiency(
 
 
 def waiver_recommendations_from_advisories(
-    advisories: Sequence[Any],
+    advisories: Sequence[object],
     *,
     recommended_by: str = "counterparty_reply_table",
 ) -> list[WaiverRecommendation]:

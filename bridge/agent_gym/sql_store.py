@@ -7,7 +7,10 @@ import json
 import os
 import threading
 from collections.abc import Coroutine
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
 from bridge.agent_gym.engine import AgentGymEngine, InMemoryAgentGymEngine
 from bridge.agent_gym.models import (
@@ -169,7 +172,7 @@ class SqlAgentGymEngine(AgentGymEngine):
             trust_table = self._trust_table
             seed_policies = self._initial_trust_policies
 
-            async def _create_and_seed(engine: Any) -> None:
+            async def _create_and_seed(engine: AsyncEngine) -> None:
                 async with engine.begin() as conn:
                     await conn.run_sync(meta.create_all)
                     existing_res = await conn.execute(
@@ -213,10 +216,11 @@ class SqlAgentGymEngine(AgentGymEngine):
         release_dsn_runtime(self.dsn, runtime, timeout_s=_OP_TIMEOUT_S)
         _SQL_GYM_CACHE.pop(self.dsn, None)
 
-    def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
+    def _run[T](self, coro: Coroutine[Any, Any, T]) -> T:
         self._ensure_ready()
-        assert self._runtime is not None
-        return self._runtime.run(coro, timeout_s=_OP_TIMEOUT_S)
+        if self._runtime is None:
+            raise RuntimeError("SqlAgentGymEngine runtime is not initialized")
+        return cast(T, self._runtime.run(coro, timeout_s=_OP_TIMEOUT_S))
 
     def _save_signal(self, signal: ExpertFeedbackSignal) -> None:
         self._ensure_ready()

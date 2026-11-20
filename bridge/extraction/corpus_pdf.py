@@ -154,7 +154,7 @@ def conformance_pdf_title(record: dict[str, Any]) -> str:
 def _cell(
     record: dict[str, Any], table: str, index: int, column: str, value: str
 ) -> str:
-    return record.get("pdf_overrides", {}).get(f"{table}[{index}].{column}", value)
+    return str(record.get("pdf_overrides", {}).get(f"{table}[{index}].{column}", value))
 
 
 def conformance_pdf_lines(record: dict[str, Any]) -> list[str]:

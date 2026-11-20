@@ -60,6 +60,29 @@ NUDGE_STEPS: tuple[LifecycleStatus, ...] = (
 )
 
 
+class _HttpResponseLike(Protocol):
+    def raise_for_status(self) -> object: ...
+
+    def json(self) -> object: ...
+
+
+class _HttpClientLike(Protocol):
+    def get(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> _HttpResponseLike: ...
+
+    def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> _HttpResponseLike: ...
+
+
 @runtime_checkable
 class OutboundMessage(Protocol):
     """Any egress message the client can idempotently deliver over the transport.
@@ -332,7 +355,7 @@ class OutboundClient:
         """Return the chronological tuple of all sent outbound notifications."""
         return list(self._receipts.values())
 
-    def send_message(
+    def send_message(  # noqa: PLR0913 - public A2A client contract with keyword options
         self,
         *,
         endpoint_url: str,
@@ -341,7 +364,7 @@ class OutboundClient:
         expected_skill: str | None = None,
         context_id: str | None = None,
         headers: dict[str, str] | None = None,
-        http_client: Any = None,
+        http_client: _HttpClientLike | None = None,
         timeout: float = 20.0,
         url_reconciler: Callable[[str], str] | None = None,
         auth_header_provider: Callable[[str], dict[str, str]] | None = None,
@@ -361,7 +384,7 @@ class OutboundClient:
         )
 
 
-def stringify_decimals(value: Any) -> Any:
+def stringify_decimals(value: object) -> object:
     """Recursively convert ``Decimal`` values to strings before A2A JSON/Struct encoding."""
     if isinstance(value, Decimal):
         return str(value)
@@ -491,7 +514,7 @@ class A2ASendResult:
                 return found.strip()
         return ""
 
-    def find_metadata_value(self, key: str) -> Any:
+    def find_metadata_value(self, key: str) -> object:
         """Look up a metadata attribute across artifact parts, artifacts, data, task, and card."""
         for artifact in self.artifacts:
             for part in artifact.get("parts") or ():
@@ -552,12 +575,12 @@ def _build_card_url(endpoint_url: str) -> str:
     return f"{cleaned.rstrip('/')}{A2A_CARD_WELL_KNOWN_PATH}"
 
 
-def discover_a2a_card(
+def discover_a2a_card(  # noqa: PLR0913 - public A2A discovery contract with keyword options
     endpoint_url: str,
     *,
     expected_skill: str | None = None,
     headers: dict[str, str] | None = None,
-    http_client: Any = None,
+    http_client: _HttpClientLike | None = None,
     timeout: float = 15.0,
     url_reconciler: Callable[[str], str] | None = None,
     auth_header_provider: Callable[[str], dict[str, str]] | None = None,
@@ -570,7 +593,7 @@ def discover_a2a_card(
         get_headers.update(auth_header_provider(card_url))
 
     if http_client is not None:
-        resp = http_client.get(card_url, headers=get_headers)
+        resp: _HttpResponseLike = http_client.get(card_url, headers=get_headers)
     else:
         import httpx
 
@@ -603,7 +626,104 @@ def discover_a2a_card(
     return card, card_url, rpc_url
 
 
-def send_a2a_message(
+def _parse_a2a_task_response(
+    task: dict[str, Any],
+    *,
+    card_url: str,
+    rpc_url: str,
+    card: dict[str, Any],
+) -> A2ASendResult:
+    raw_status = task.get("status")
+    status: dict[str, Any] = raw_status if isinstance(raw_status, dict) else {}
+    raw_msg = status.get("message")
+    status_msg: dict[str, Any] = raw_msg if isinstance(raw_msg, dict) else {}
+    artifacts = tuple(a for a in (task.get("artifacts") or ()) if isinstance(a, dict))
+    response_text = " ".join(
+        str(p.get("text"))
+        for p in (status_msg.get("parts") or ())
+        if isinstance(p, dict) and isinstance(p.get("text"), str)
+    ).strip()
+    task_id = str(task.get("id") or "")
+    task_state = str(status.get("state") or "")
+    if task_state in (
+        "TASK_STATE_FAILED",
+        "TASK_STATE_REJECTED",
+        "TASK_STATE_CANCELED",
+    ):
+        raise RuntimeError(
+            f"A2A SendMessage task {task_id!r} at {rpc_url!r} ended in "
+            f"{task_state}: {response_text or 'no details'}"
+        )
+    return A2ASendResult(
+        card_url=card_url,
+        rpc_url=rpc_url,
+        task_id=task_id,
+        task_state=task_state,
+        card=card,
+        artifacts=artifacts,
+        task_metadata=dict(task.get("metadata") or {}),
+        response_text=response_text,
+    )
+
+
+def _parse_a2a_direct_message(
+    direct_msg: dict[str, Any],
+    *,
+    card_url: str,
+    rpc_url: str,
+    card: dict[str, Any],
+) -> A2ASendResult:
+    msg_parts = [p for p in (direct_msg.get("parts") or ()) if isinstance(p, dict)]
+    response_text = " ".join(
+        str(p.get("text")) for p in msg_parts if isinstance(p.get("text"), str)
+    ).strip()
+    return A2ASendResult(
+        card_url=card_url,
+        rpc_url=rpc_url,
+        task_id=str(direct_msg.get("taskId") or ""),
+        task_state="TASK_STATE_COMPLETED",
+        card=card,
+        artifacts=(
+            {
+                "name": "",
+                "parts": msg_parts,
+                "metadata": dict(direct_msg.get("metadata") or {}),
+            },
+        ),
+        task_metadata=dict(direct_msg.get("metadata") or {}),
+        response_text=response_text,
+    )
+
+
+def _build_a2a_rpc_body(
+    payload: dict[str, Any] | None,
+    text: str | None,
+    context_id: str | None,
+) -> dict[str, Any]:
+    sanitized = stringify_decimals(payload) if payload is not None else None
+    parts: list[dict[str, Any]] = []
+    if text is not None:
+        parts.append({"text": text})
+    elif sanitized is not None:
+        parts.append({"text": json.dumps(sanitized, sort_keys=True)})
+    if isinstance(sanitized, dict) and sanitized:
+        parts.append({"data": sanitized, "mediaType": "application/json"})
+    message: dict[str, Any] = {
+        "messageId": uuid.uuid4().hex,
+        "role": "ROLE_USER",
+        "parts": parts,
+    }
+    if context_id:
+        message["contextId"] = context_id
+    return {
+        "jsonrpc": "2.0",
+        "id": uuid.uuid4().hex,
+        "method": "SendMessage",
+        "params": {"message": message},
+    }
+
+
+def send_a2a_message(  # noqa: PLR0913 - public A2A SendMessage contract with keyword options
     *,
     endpoint_url: str,
     payload: dict[str, Any] | None = None,
@@ -611,7 +731,7 @@ def send_a2a_message(
     expected_skill: str | None = None,
     context_id: str | None = None,
     headers: dict[str, str] | None = None,
-    http_client: Any = None,
+    http_client: _HttpClientLike | None = None,
     timeout: float = 20.0,
     url_reconciler: Callable[[str], str] | None = None,
     auth_header_provider: Callable[[str], dict[str, str]] | None = None,
@@ -626,29 +746,7 @@ def send_a2a_message(
         url_reconciler=url_reconciler,
         auth_header_provider=auth_header_provider,
     )
-    sanitized = stringify_decimals(payload) if payload is not None else None
-    parts: list[dict[str, Any]] = []
-    if text is not None:
-        parts.append({"text": text})
-    elif sanitized is not None:
-        parts.append({"text": json.dumps(sanitized, sort_keys=True)})
-    if isinstance(sanitized, dict) and sanitized:
-        parts.append({"data": sanitized, "mediaType": "application/json"})
-
-    message: dict[str, Any] = {
-        "messageId": uuid.uuid4().hex,
-        "role": "ROLE_USER",
-        "parts": parts,
-    }
-    if context_id:
-        message["contextId"] = context_id
-
-    rpc_body = {
-        "jsonrpc": "2.0",
-        "id": uuid.uuid4().hex,
-        "method": "SendMessage",
-        "params": {"message": message},
-    }
+    rpc_body = _build_a2a_rpc_body(payload, text, context_id)
     post_headers = _strip_outcome_baggage(dict(headers or {}))
     post_headers.setdefault("content-type", "application/json")
     post_headers["A2A-Version"] = A2A_PROTOCOL_VERSION
@@ -656,7 +754,9 @@ def send_a2a_message(
         post_headers.update(auth_header_provider(rpc_url))
 
     if http_client is not None:
-        resp = http_client.post(rpc_url, json=rpc_body, headers=post_headers)
+        resp: _HttpResponseLike = http_client.post(
+            rpc_url, json=rpc_body, headers=post_headers
+        )
     else:
         import httpx
 
@@ -683,61 +783,14 @@ def send_a2a_message(
         task = result
 
     if isinstance(task, dict):
-        status = task.get("status") if isinstance(task.get("status"), dict) else {}
-        status_msg = (
-            status.get("message") if isinstance(status.get("message"), dict) else {}
-        )
-        artifacts = tuple(
-            a for a in (task.get("artifacts") or ()) if isinstance(a, dict)
-        )
-        response_text = " ".join(
-            str(p.get("text"))
-            for p in (status_msg.get("parts") or ())
-            if isinstance(p, dict) and isinstance(p.get("text"), str)
-        ).strip()
-        task_id = str(task.get("id") or "")
-        task_state = str(status.get("state") or "")
-        if task_state in (
-            "TASK_STATE_FAILED",
-            "TASK_STATE_REJECTED",
-            "TASK_STATE_CANCELED",
-        ):
-            raise RuntimeError(
-                f"A2A SendMessage task {task_id!r} at {rpc_url!r} ended in "
-                f"{task_state}: {response_text or 'no details'}"
-            )
-        return A2ASendResult(
-            card_url=card_url,
-            rpc_url=rpc_url,
-            task_id=task_id,
-            task_state=task_state,
-            card=card,
-            artifacts=artifacts,
-            task_metadata=dict(task.get("metadata") or {}),
-            response_text=response_text,
+        return _parse_a2a_task_response(
+            task, card_url=card_url, rpc_url=rpc_url, card=card
         )
 
     direct_msg = result.get("message") if isinstance(result, dict) else None
     if isinstance(direct_msg, dict):
-        msg_parts = [p for p in (direct_msg.get("parts") or ()) if isinstance(p, dict)]
-        response_text = " ".join(
-            str(p.get("text")) for p in msg_parts if isinstance(p.get("text"), str)
-        ).strip()
-        return A2ASendResult(
-            card_url=card_url,
-            rpc_url=rpc_url,
-            task_id=str(direct_msg.get("taskId") or ""),
-            task_state="TASK_STATE_COMPLETED",
-            card=card,
-            artifacts=(
-                {
-                    "name": "",
-                    "parts": msg_parts,
-                    "metadata": dict(direct_msg.get("metadata") or {}),
-                },
-            ),
-            task_metadata=dict(direct_msg.get("metadata") or {}),
-            response_text=response_text,
+        return _parse_a2a_direct_message(
+            direct_msg, card_url=card_url, rpc_url=rpc_url, card=card
         )
 
     raise RuntimeError(

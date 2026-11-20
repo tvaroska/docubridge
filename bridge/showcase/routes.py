@@ -11,10 +11,12 @@ import base64
 import os
 import re
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.params import Depends
 from fastapi.responses import HTMLResponse, Response
 
 from bridge.knowledge_catalog import CatalogRole
@@ -251,31 +253,7 @@ def _zip_response(engine: ScenarioEngine, scenario_id: str) -> Response:
     )
 
 
-def register_scenario_routes(
-    router: APIRouter,
-    *,
-    engine: ScenarioEngine,
-    principal_roles: dict[str, CatalogRole] | None = None,
-    require_auth: bool = False,
-) -> None:
-    """Mount generic scenario routes and the legacy aliases onto `router`."""
-    internal_mutating_deps = [
-        mutating_auth_dependency(
-            default_role="broker",
-            principal_roles=principal_roles,
-            require_auth=require_auth,
-            allow_external_roles=False,
-        )
-    ]
-    borrower_mutating_deps = [
-        mutating_auth_dependency(
-            default_role="broker",
-            principal_roles=principal_roles,
-            require_auth=require_auth,
-            allow_external_roles=True,
-        )
-    ]
-
+def _register_generic_read_routes(router: APIRouter, engine: ScenarioEngine) -> None:
     @router.get("/v1/demo/scenarios")
     def list_scenarios_endpoint() -> dict[str, Any]:
         """List every loaded scenario manifest (seed + stage bodies omitted)."""
@@ -288,6 +266,28 @@ def register_scenario_routes(
         except UnknownScenarioError as exc:
             raise _not_found(scenario_id) from exc
 
+    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs")
+    def scenario_pdfs_endpoint(scenario_id: str) -> dict[str, Any]:
+        return _pdf_listing(
+            engine, scenario_id, f"/v1/demo/scenarios/{scenario_id}/pdfs.zip"
+        )
+
+    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs.zip")
+    def scenario_pdfs_zip_endpoint(scenario_id: str) -> Response:
+        return _zip_response(engine, scenario_id)
+
+    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs/{filename}")
+    def scenario_pdf_file_endpoint(scenario_id: str, filename: str) -> Response:
+        return _serve_pdf(engine, scenario_id, filename)
+
+
+def _register_generic_lifecycle_routes(
+    router: APIRouter,
+    engine: ScenarioEngine,
+    *,
+    internal_mutating_deps: Sequence[Depends],
+    borrower_mutating_deps: Sequence[Depends],
+) -> None:
     @router.post(
         "/v1/demo/scenarios/{scenario_id}/advance",
         dependencies=borrower_mutating_deps,
@@ -321,20 +321,6 @@ def register_scenario_routes(
         """Hot-reload scenario manifests and clear cached PDFs from `BRIDGE_SCENARIOS_DIR`."""
         return engine.reload()
 
-    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs")
-    def scenario_pdfs_endpoint(scenario_id: str) -> dict[str, Any]:
-        return _pdf_listing(
-            engine, scenario_id, f"/v1/demo/scenarios/{scenario_id}/pdfs.zip"
-        )
-
-    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs.zip")
-    def scenario_pdfs_zip_endpoint(scenario_id: str) -> Response:
-        return _zip_response(engine, scenario_id)
-
-    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs/{filename}")
-    def scenario_pdf_file_endpoint(scenario_id: str, filename: str) -> Response:
-        return _serve_pdf(engine, scenario_id, filename)
-
     @router.post(
         "/v1/demo/scenarios/{scenario_id}/upload-pdf",
         dependencies=borrower_mutating_deps,
@@ -344,6 +330,13 @@ def register_scenario_routes(
     ) -> dict[str, Any]:
         return _upload(engine, scenario_id, body)
 
+
+def _register_generic_action_routes(
+    router: APIRouter,
+    engine: ScenarioEngine,
+    *,
+    internal_mutating_deps: Sequence[Depends],
+) -> None:
     @router.post(
         "/v1/demo/scenarios/{scenario_id}/approve-waiver",
         dependencies=internal_mutating_deps,
@@ -423,7 +416,49 @@ def register_scenario_routes(
         response.headers["x-outcome-id"] = outcome_id
         return payload
 
-    _register_legacy_aliases(
+
+def register_scenario_routes(
+    router: APIRouter,
+    *,
+    engine: ScenarioEngine,
+    principal_roles: dict[str, CatalogRole] | None = None,
+    require_auth: bool = False,
+) -> None:
+    """Mount generic scenario routes and the legacy aliases onto `router`."""
+    internal_mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
+    borrower_mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=True,
+        )
+    ]
+    _register_generic_read_routes(router, engine)
+    _register_generic_lifecycle_routes(
+        router,
+        engine,
+        internal_mutating_deps=internal_mutating_deps,
+        borrower_mutating_deps=borrower_mutating_deps,
+    )
+    _register_generic_action_routes(
+        router, engine, internal_mutating_deps=internal_mutating_deps
+    )
+    _register_legacy_consolidation_read_aliases(router, engine)
+    _register_legacy_consolidation_write_aliases(
+        router,
+        engine,
+        internal_mutating_deps=internal_mutating_deps,
+        borrower_mutating_deps=borrower_mutating_deps,
+    )
+    _register_legacy_evolution_and_ebc_routes(
         router,
         engine,
         internal_mutating_deps=internal_mutating_deps,
@@ -431,47 +466,16 @@ def register_scenario_routes(
     )
 
 
-def _register_legacy_aliases(
+def _register_legacy_consolidation_read_aliases(
     router: APIRouter,
     engine: ScenarioEngine,
-    *,
-    internal_mutating_deps: list[Any],
-    borrower_mutating_deps: list[Any],
 ) -> None:
     consolidation = ScenarioStageKind.consolidation
-    evolution = ScenarioStageKind.schema_evolution
-
-    @router.post("/v1/demo/seed", dependencies=internal_mutating_deps)
-    def seed_demo_scenarios_endpoint() -> dict[str, Any]:
-        """Seed baseline bi-temporal facts and lineage for every scenario with a `seed` block."""
-        return engine.seed_all()
-
-    @router.post("/v1/demo/reset", dependencies=internal_mutating_deps)
-    def reset_demo_scenarios_endpoint() -> dict[str, Any]:
-        """Reset all live showcase scenarios and close any open outcomes as abandoned."""
-        engine.reset_all()
-        return {"status": "reset"}
 
     @router.get("/v1/demo/consolidation-collab/state")
     def get_consolidation_collab_state_endpoint() -> dict[str, Any]:
         """Current beat state of the default consolidation scenario (legacy alias)."""
         return engine.state(_require(engine, consolidation)).payload
-
-    @router.post(
-        "/v1/demo/consolidation-collab/advance",
-        dependencies=borrower_mutating_deps,
-    )
-    def advance_consolidation_collab_endpoint(
-        body: AdvanceConsolidationCollabRequest,
-    ) -> dict[str, Any]:
-        return _advance(engine, _require(engine, consolidation), body.beat)
-
-    @router.post(
-        "/v1/demo/consolidation-collab/reset",
-        dependencies=internal_mutating_deps,
-    )
-    def reset_consolidation_collab_endpoint() -> dict[str, Any]:
-        return engine.reset(_require(engine, consolidation)).payload
 
     @router.get("/v1/demo/consolidation-collab/pdfs")
     def list_consolidation_pdfs_endpoint() -> dict[str, Any]:
@@ -488,6 +492,43 @@ def _register_legacy_aliases(
     @router.get("/v1/demo/consolidation-collab/pdfs/{filename}")
     def get_consolidation_pdf_file_endpoint(filename: str) -> Response:
         return _serve_pdf(engine, _require(engine, consolidation), filename)
+
+
+def _register_legacy_consolidation_write_aliases(
+    router: APIRouter,
+    engine: ScenarioEngine,
+    *,
+    internal_mutating_deps: Sequence[Depends],
+    borrower_mutating_deps: Sequence[Depends],
+) -> None:
+    consolidation = ScenarioStageKind.consolidation
+
+    @router.post("/v1/demo/seed", dependencies=internal_mutating_deps)
+    def seed_demo_scenarios_endpoint() -> dict[str, Any]:
+        """Seed baseline bi-temporal facts and lineage for every scenario with a `seed` block."""
+        return engine.seed_all()
+
+    @router.post("/v1/demo/reset", dependencies=internal_mutating_deps)
+    def reset_demo_scenarios_endpoint() -> dict[str, Any]:
+        """Reset all live showcase scenarios and close any open outcomes as abandoned."""
+        engine.reset_all()
+        return {"status": "reset"}
+
+    @router.post(
+        "/v1/demo/consolidation-collab/advance",
+        dependencies=borrower_mutating_deps,
+    )
+    def advance_consolidation_collab_endpoint(
+        body: AdvanceConsolidationCollabRequest,
+    ) -> dict[str, Any]:
+        return _advance(engine, _require(engine, consolidation), body.beat)
+
+    @router.post(
+        "/v1/demo/consolidation-collab/reset",
+        dependencies=internal_mutating_deps,
+    )
+    def reset_consolidation_collab_endpoint() -> dict[str, Any]:
+        return engine.reset(_require(engine, consolidation)).payload
 
     @router.post(
         "/v1/demo/consolidation-collab/upload-pdf",
@@ -540,6 +581,16 @@ def _register_legacy_aliases(
         return promote_compiled_skill(
             engine, _require(engine, consolidation), revision_id=body.revision_id
         )
+
+
+def _register_legacy_evolution_and_ebc_routes(
+    router: APIRouter,
+    engine: ScenarioEngine,
+    *,
+    internal_mutating_deps: Sequence[Depends],
+    borrower_mutating_deps: Sequence[Depends],
+) -> None:
+    evolution = ScenarioStageKind.schema_evolution
 
     @router.get("/v1/demo/schema-evolution/state")
     def get_schema_evolution_state(

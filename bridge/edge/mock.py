@@ -115,12 +115,10 @@ def _turn(
     )
 
 
-# --------------------------------------------------------------------------- #
-# Scenario registry (Decision 5) — corpus-mirroring literals.                  #
-# Canonical issuer strings (``power-co``, ``aqua-util``) and doc ids come from #
-# wiki/evals/address/expected.json + timeline.json so terminal outcomes match  #
-# the real Bridge (parity = terminal reason + accepted-issuer set).            #
-# --------------------------------------------------------------------------- #
+# Scenario registry (Decision 5) — corpus-mirroring literals.
+# Canonical issuer strings (``power-co``, ``aqua-util``) and doc ids come from
+# wiki/evals/address/expected.json + timeline.json so terminal outcomes match
+# the real Bridge (parity = terminal reason + accepted-issuer set).
 SCENARIOS: dict[str, Scenario] = {
     # CUJ-1 fast path: instant accept of a clean gov-id, one terminal turn.
     "path-a-instant": Scenario(
@@ -392,7 +390,12 @@ class ScriptedBridgeExecutor(AgentExecutor):
         # real edge accepts (JSON CollectRequest or free text). Submissions are
         # intentionally ignored — scenarios are script-driven (Decision 5).
         """Execute a scripted mock A2A bridge turn for deterministic conformance testing."""
+        if context.message is None:
+            raise ValueError("inbound A2A request is missing a message")
+        if context.task_id is None or context.context_id is None:
+            raise RuntimeError("RequestContext missing task_id or context_id")
         request = decode_intake(context.message)
+        task_id = context.task_id
         context_id = context.context_id
 
         # Pin the scenario per context on the first turn; continue it on resume.
@@ -417,14 +420,14 @@ class ScriptedBridgeExecutor(AgentExecutor):
         if context.current_task is None:
             await event_queue.enqueue_event(
                 ph.new_task(
-                    context.task_id,
-                    context.context_id,
+                    task_id,
+                    context_id,
                     TaskState.TASK_STATE_SUBMITTED,
-                    history=[context.message] if context.message is not None else [],
+                    history=[context.message],
                 )
             )
 
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        updater = TaskUpdater(event_queue, task_id, context_id)
         # last_chunk=True matters (D4): a *partial* artifact event streams but is
         # never persisted, so a downstream gate reading the session can't see it.
         await updater.add_artifact(
@@ -452,11 +455,13 @@ class ScriptedBridgeExecutor(AgentExecutor):
         # escalated stall) to CANCELED; an already-terminal task is not cancelable
         # (the SDK handler enforces both). Mirror CollectExecutor.cancel.
         """Cancel an active scripted mock bridge execution."""
+        if context.task_id is None or context.context_id is None:
+            raise RuntimeError("RequestContext missing task_id or context_id")
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.cancel()
 
 
-def build_mock_bridge_app(
+def build_mock_bridge_app(  # noqa: PLR0913 - keyword-only test/app collaborators
     *,
     url: str = DEFAULT_URL,
     executor: ScriptedBridgeExecutor | None = None,
@@ -483,6 +488,7 @@ def build_mock_bridge_app(
     active_task_store = task_store or InMemoryTaskStore()
 
     # P4-4: Build push config store and sender (same logic as server.py)
+    active_push_config_store: PushNotificationConfigStore | None
     if push_config_store is None and push_sender is None:
         # Build via port (though for mock, in-memory is most common)
         store_port = get_adapter(Port.task_store, resolve_mode(Port.task_store))
@@ -495,6 +501,7 @@ def build_mock_bridge_app(
     if active_push_config_store is not None:
         active_push_config_store = guarded_push_config_store(active_push_config_store)
 
+    active_push_sender: PushNotificationSender | None
     if push_sender is None and active_push_config_store is not None:
         from a2a.server.tasks import BasePushNotificationSender
 

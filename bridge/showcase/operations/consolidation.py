@@ -29,8 +29,9 @@ from bridge.telemetry import (
     trace_step,
 )
 from bridge.user_interaction.surfaces import ingest_accepted_submission
+from contract.enums import Disposition, Gate
 from contract.extraction import SourceAnchor
-from contract.wire import Disposition, Gate, LedgerEntry, WaiverRecommendation
+from contract.wire import LedgerEntry, WaiverRecommendation
 
 
 def recompute_counts(state: dict[str, Any]) -> None:
@@ -151,7 +152,9 @@ def ingest_documents(ctx: OperationContext, params: dict[str, Any]) -> dict[str,
         }
 
 
-def _set_path(state: dict[str, Any], dotted: str, value: Any, *, append: bool) -> None:
+def _set_path(
+    state: dict[str, Any], dotted: str, value: object, *, append: bool
+) -> None:
     keys = dotted.split(".")
     node: Any = state
     for key in keys[:-1]:

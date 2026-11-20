@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -220,7 +221,111 @@ def _build_underwriter_widgets(
     ]
 
 
-def render_domain_agent_a2ui(
+@dataclass(frozen=True)
+class _ViewRenderRequest:
+    entity_id: str
+    resolved_view: str
+    as_of_learned: datetime | None
+    effective_on: datetime | None
+    allow_raw_vault_uri: bool
+    allow_competitor_quotes: bool
+    principal: UserPrincipal | None
+
+
+def _build_primary_view_widgets(
+    store: OperationalStore,
+    req: _ViewRenderRequest,
+) -> tuple[list[A2uiWidget], str]:
+    if req.resolved_view == "v_broker_placement":
+        b_view = store.broker_view(req.entity_id, learned_as_of=req.as_of_learned)
+        widgets = _build_broker_widgets(
+            b_view,
+            allow_raw_vault_uri=req.allow_raw_vault_uri,
+            allow_competitor_quotes=req.allow_competitor_quotes,
+            principal=req.principal,
+        )
+        headline = (
+            f"Placement view for {req.entity_id} ({len(b_view.quotes)} submission(s))"
+        )
+        return widgets, headline
+    if req.resolved_view == "v_claims_coverage":
+        loss_dt = req.effective_on or req.as_of_learned or datetime.now(UTC)
+        c_view = store.claims_view(
+            req.entity_id,
+            loss_date=loss_dt,
+            learned_as_of=req.as_of_learned,
+        )
+        widgets = _build_claims_widgets(
+            c_view, allow_raw_vault_uri=req.allow_raw_vault_uri
+        )
+        headline = (
+            f"Claims coverage view for {req.entity_id} "
+            f"as of {c_view.loss_date.isoformat()}"
+        )
+        return widgets, headline
+    if req.resolved_view == "v_underwriter_exposure":
+        u_view = store.underwriter_view(req.entity_id, learned_as_of=req.as_of_learned)
+        widgets = _build_underwriter_widgets(
+            u_view, allow_raw_vault_uri=req.allow_raw_vault_uri
+        )
+        return widgets, f"Underwriter exposure view for {req.entity_id}"
+    raise ValueError(f"Unsupported business view '{req.resolved_view}'.")
+
+
+def _append_timeline_and_conflicts(
+    widgets: list[A2uiWidget],
+    store: OperationalStore,
+    req: _ViewRenderRequest,
+    *,
+    allow_internal_conflict_notes: bool,
+) -> None:
+    all_history = store.list_facts(req.entity_id)
+    distinct_recordings = sorted({f.recorded_at for f in all_history})
+    if len(distinct_recordings) > 1:
+        widgets.append(
+            A2uiWidget(
+                widget_id=f"timeline:{req.entity_id}",
+                widget_type="time_travel_timeline",
+                title="Bi-Temporal Version History (Point-in-Time Audit)",
+                subtitle=f"{len(distinct_recordings)} recorded states available",
+                data={
+                    "recorded_timestamps": [
+                        ts.isoformat() for ts in distinct_recordings
+                    ],
+                    "total_fact_versions": len(all_history),
+                },
+            )
+        )
+    if not allow_internal_conflict_notes:
+        return
+    _, conflicts = store.query_as_of(
+        req.entity_id, learned_as_of=req.as_of_learned, effective_on=req.effective_on
+    )
+    if conflicts:
+        widgets.append(
+            A2uiWidget(
+                widget_id=f"conflicts:{req.entity_id}",
+                widget_type="conflict_alert",
+                title="Cross-Document Discrepancy Alerts",
+                subtitle=f"{len(conflicts)} discrepancy flag(s) detected",
+                data={
+                    "conflicts": [
+                        {
+                            "field_path": c.field_path,
+                            "winning_doc_id": c.winning_doc_id,
+                            "winning_value": c.winning_value,
+                            "conflicting_doc_id": c.conflicting_doc_id,
+                            "conflicting_value": c.conflicting_value,
+                            "reason": c.reason,
+                        }
+                        for c in conflicts
+                    ]
+                },
+            )
+        )
+
+
+def render_domain_agent_a2ui(  # noqa: PLR0913 - public A2UI surface rendering contract
     entity_id: str,
     *,
     role: CatalogRole,
@@ -275,9 +380,6 @@ def render_domain_agent_a2ui(
         if not agent_ctx.access_decision.allowed:
             raise PermissionError(agent_ctx.access_decision.reason)
 
-        allow_raw_vault_uri = agent_ctx.access_decision.allow_raw_vault_uri
-        allow_competitor_quotes = agent_ctx.access_decision.allow_competitor_quotes
-
         if hasattr(catalog, "validate_consolidation_view"):
             catalog.validate_consolidation_view(
                 resolved_view,
@@ -286,41 +388,17 @@ def render_domain_agent_a2ui(
                 raise_on_invalid=True,
             )
 
-        if resolved_view == "v_broker_placement":
-            b_view = store.broker_view(entity_id, learned_as_of=as_of_learned)
-            widgets = _build_broker_widgets(
-                b_view,
-                allow_raw_vault_uri=allow_raw_vault_uri,
-                allow_competitor_quotes=allow_competitor_quotes,
-                principal=principal,
-            )
-            headline = (
-                f"Placement view for {entity_id} ({len(b_view.quotes)} submission(s))"
-            )
-        elif resolved_view == "v_claims_coverage":
-            loss_dt = effective_on or as_of_learned or datetime.now(UTC)
-            c_view = store.claims_view(
-                entity_id,
-                loss_date=loss_dt,
-                learned_as_of=as_of_learned,
-            )
-            widgets = _build_claims_widgets(
-                c_view, allow_raw_vault_uri=allow_raw_vault_uri
-            )
-            headline = (
-                f"Claims coverage view for {entity_id} "
-                f"as of {c_view.loss_date.isoformat()}"
-            )
-        elif resolved_view == "v_underwriter_exposure":
-            u_view = store.underwriter_view(entity_id, learned_as_of=as_of_learned)
-            widgets = _build_underwriter_widgets(
-                u_view, allow_raw_vault_uri=allow_raw_vault_uri
-            )
-            headline = f"Underwriter exposure view for {entity_id}"
-        else:
-            raise ValueError(f"Unsupported business view '{resolved_view}'.")
+        req = _ViewRenderRequest(
+            entity_id=entity_id,
+            resolved_view=resolved_view,
+            as_of_learned=as_of_learned,
+            effective_on=effective_on,
+            allow_raw_vault_uri=agent_ctx.access_decision.allow_raw_vault_uri,
+            allow_competitor_quotes=agent_ctx.access_decision.allow_competitor_quotes,
+            principal=principal,
+        )
+        widgets, headline = _build_primary_view_widgets(store, req)
 
-        # Apply Stage 3 Agent Gym presentation preferences for internal Gemini App roles
         if channel == "gemini_app" and widgets:
             prefs = gym.get_presentation_preferences(role=role)
             if prefs:
@@ -336,52 +414,12 @@ def render_domain_agent_a2ui(
                 ]
                 widgets[0] = widgets[0].model_copy(update={"data": primary_data})
 
-        # Attach bi-temporal history timeline widget when multiple versions exist
-        all_history = store.list_facts(entity_id)
-        distinct_recordings = sorted({f.recorded_at for f in all_history})
-        if len(distinct_recordings) > 1:
-            widgets.append(
-                A2uiWidget(
-                    widget_id=f"timeline:{entity_id}",
-                    widget_type="time_travel_timeline",
-                    title="Bi-Temporal Version History (Point-in-Time Audit)",
-                    subtitle=f"{len(distinct_recordings)} recorded states available",
-                    data={
-                        "recorded_timestamps": [
-                            ts.isoformat() for ts in distinct_recordings
-                        ],
-                        "total_fact_versions": len(all_history),
-                    },
-                )
-            )
-
-        # Attach internal conflict alerts ONLY if permitted by Knowledge Catalog policy
-        if agent_ctx.access_decision.allow_internal_conflict_notes:
-            _, conflicts = store.query_as_of(
-                entity_id, learned_as_of=as_of_learned, effective_on=effective_on
-            )
-            if conflicts:
-                widgets.append(
-                    A2uiWidget(
-                        widget_id=f"conflicts:{entity_id}",
-                        widget_type="conflict_alert",
-                        title="Cross-Document Discrepancy Alerts",
-                        subtitle=f"{len(conflicts)} discrepancy flag(s) detected",
-                        data={
-                            "conflicts": [
-                                {
-                                    "field_path": c.field_path,
-                                    "winning_doc_id": c.winning_doc_id,
-                                    "winning_value": c.winning_value,
-                                    "conflicting_doc_id": c.conflicting_doc_id,
-                                    "conflicting_value": c.conflicting_value,
-                                    "reason": c.reason,
-                                }
-                                for c in conflicts
-                            ]
-                        },
-                    )
-                )
+        _append_timeline_and_conflicts(
+            widgets,
+            store,
+            req,
+            allow_internal_conflict_notes=agent_ctx.access_decision.allow_internal_conflict_notes,
+        )
 
         lineage_records = catalog.list_lineage_for_entity(entity_id)
         span.set_attribute("docubridge.widget_count", len(widgets))
@@ -431,7 +469,86 @@ def _resolve_process_skill_name(entity_id: str, doctype: str) -> str:
     return "commercial-loan-closing"
 
 
-def ingest_accepted_submission(
+def _redact_and_apply_gym_derivations(
+    entry: LedgerEntry, gym: AgentGymEngine
+) -> tuple[LedgerEntry, list[str]]:
+    sanitized_extraction, _ = redact_personal_data(
+        ExtractionResult(
+            fields=ExtractionFields(
+                doctype=entry.doctype,
+                issuer=entry.issuer,
+                key_fields=dict(entry.key_fields),
+                tables=dict(entry.tables),
+                source_anchors=dict(entry.source_anchors),
+            ),
+            overall_confidence=(
+                entry.overall_confidence
+                if entry.overall_confidence is not None
+                else 1.0
+            ),
+            legible=True,
+        )
+    )
+    normalized_entry = entry.model_copy(
+        update={
+            "key_fields": dict(sanitized_extraction.fields.key_fields),
+            "tables": dict(sanitized_extraction.fields.tables),
+            "source_anchors": dict(sanitized_extraction.fields.source_anchors),
+        }
+    )
+    if normalized_entry.issuer:
+        norm_issuer = gym.normalize_entity_or_issuer(normalized_entry.issuer)
+        if norm_issuer and norm_issuer != normalized_entry.issuer:
+            new_key_fields = dict(normalized_entry.key_fields)
+            if "issuer" in new_key_fields:
+                new_key_fields["issuer"] = norm_issuer
+            normalized_entry = normalized_entry.model_copy(
+                update={"issuer": norm_issuer, "key_fields": new_key_fields}
+            )
+
+    hints = gym.get_extraction_hints(
+        issuer=normalized_entry.issuer or "*",
+        doctype=normalized_entry.doctype,
+    )
+    derived_fields, applied_rules = apply_field_derivations(
+        ExtractionFields(
+            doctype=normalized_entry.doctype,
+            issuer=normalized_entry.issuer,
+            key_fields=dict(normalized_entry.key_fields),
+            tables=dict(normalized_entry.tables),
+            source_anchors=dict(normalized_entry.source_anchors),
+        ),
+        active_hints=hints,
+    )
+    applied_hint_ids = list(applied_rules)
+    if derived_fields.key_fields != normalized_entry.key_fields or applied_hint_ids:
+        update_payload: dict[str, Any] = {"key_fields": dict(derived_fields.key_fields)}
+        if applied_hint_ids and normalized_entry.disposition == Disposition.pending:
+            update_payload["disposition"] = Disposition.accepted
+            update_payload["gate"] = Gate.auto_approve
+        normalized_entry = normalized_entry.model_copy(update=update_payload)
+    return normalized_entry, applied_hint_ids
+
+
+def _emit_extract_llm_span(
+    attrs: dict[str, Any],
+    *,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    thinking_tokens: int | None,
+) -> None:
+    if input_tokens is not None:
+        attrs["gen_ai.usage.input_tokens"] = int(input_tokens)
+    if output_tokens is not None:
+        attrs["gen_ai.usage.output_tokens"] = int(output_tokens)
+    if thinking_tokens is not None:
+        attrs["gen_ai.usage.reasoning.output_tokens"] = int(thinking_tokens)
+        attrs["docubridge.thinking_tokens"] = int(thinking_tokens)
+    with trace_step("docubridge.extract.call_llm", attrs):
+        pass
+
+
+def ingest_accepted_submission(  # noqa: PLR0913 - public enterprise submission ingestion contract
     entry: LedgerEntry,
     *,
     entity_id: str,
@@ -472,77 +589,13 @@ def ingest_accepted_submission(
         catalog = knowledge_catalog or knowledge_catalog_from_env()
         gym = agent_gym_from_env(agent_gym)
 
-        # Apply Stage 1 Edge PII Redaction + Stage 2 Agent Gym Entity/Carrier Alias
-        # normalization before consolidation while keeping 100% of financial math
-        # deterministic in OperationalStore.
-        sanitized_extraction, _ = redact_personal_data(
-            ExtractionResult(
-                fields=ExtractionFields(
-                    doctype=entry.doctype,
-                    issuer=entry.issuer,
-                    key_fields=dict(entry.key_fields),
-                    tables=dict(entry.tables),
-                    source_anchors=dict(entry.source_anchors),
-                ),
-                overall_confidence=(
-                    entry.overall_confidence
-                    if entry.overall_confidence is not None
-                    else 1.0
-                ),
-                legible=True,
-            )
+        normalized_entry, applied_hint_ids = _redact_and_apply_gym_derivations(
+            entry, gym
         )
-        normalized_entry = entry.model_copy(
-            update={
-                "key_fields": dict(sanitized_extraction.fields.key_fields),
-                "tables": dict(sanitized_extraction.fields.tables),
-                "source_anchors": dict(sanitized_extraction.fields.source_anchors),
-            }
-        )
-        if normalized_entry.issuer:
-            norm_issuer = gym.normalize_entity_or_issuer(normalized_entry.issuer)
-            if norm_issuer and norm_issuer != normalized_entry.issuer:
-                new_key_fields = dict(normalized_entry.key_fields)
-                if "issuer" in new_key_fields:
-                    new_key_fields["issuer"] = norm_issuer
-                normalized_entry = normalized_entry.model_copy(
-                    update={
-                        "issuer": norm_issuer,
-                        "key_fields": new_key_fields,
-                    }
-                )
-
-        # Apply promoted Stage 1 Agent Gym EXTRACTION_HINT rules & Stage-B deterministic
-        # derivations via bridge.extraction.derivations.apply_field_derivations
-        hints = gym.get_extraction_hints(
-            issuer=normalized_entry.issuer or "*",
-            doctype=normalized_entry.doctype,
-        )
-        derived_fields, applied_rules = apply_field_derivations(
-            ExtractionFields(
-                doctype=normalized_entry.doctype,
-                issuer=normalized_entry.issuer,
-                key_fields=dict(normalized_entry.key_fields),
-                tables=dict(normalized_entry.tables),
-                source_anchors=dict(normalized_entry.source_anchors),
-            ),
-            active_hints=hints,
-        )
-        applied_hint_ids = list(applied_rules)
-        if derived_fields.key_fields != normalized_entry.key_fields or applied_hint_ids:
-            update_payload: dict[str, Any] = {
-                "key_fields": dict(derived_fields.key_fields)
-            }
-            if applied_hint_ids and normalized_entry.disposition == Disposition.pending:
-                update_payload["disposition"] = Disposition.accepted
-                update_payload["gate"] = Gate.auto_approve
-            normalized_entry = normalized_entry.model_copy(update=update_payload)
         span.set_attribute(
             "docubridge.applied_extraction_hints", ",".join(applied_hint_ids)
         )
 
-        # Resolve active SkillRevision from Agent Registry / Skill Registry and stamp
-        # process-instance skill lineage onto the LedgerEntry before Vault & Store promotion
         process_skill_name = _resolve_process_skill_name(
             entity_id, normalized_entry.doctype
         )
@@ -572,45 +625,36 @@ def ingest_accepted_submission(
             effective_from=effective_from,
         )
 
-        # Emit workhorse extraction span (`gemini-3.8-flash`) with OTel gen_ai.* attributes.
-        # Token counts are recorded only when real model usage is supplied (no character-division
-        # or byte-length estimates).
-        llm_span_attrs: dict[str, Any] = {
-            "docubridge.zone": "2_extraction_quarantine",
-            "docubridge.entity_id": entity_id,
-            "entity_id": entity_id,
-            "docubridge.context_id": context_id,
-            "docubridge.doc_id": entry.doc_id,
-            "docubridge.doctype": entry.doctype,
-            "skill_id": entry.doctype,
-            "skill_version": active_doc_skill.version,
-            "source_mode": source_mode,
-            "docubridge.source_mode": source_mode,
-            "docubridge.skill.version": active_doc_skill.version,
-            "docubridge.skill.revision_id": active_doc_skill.revision_id,
-            "docubridge.skill.urn": active_doc_skill.skill_urn,
-            "docubridge.process_skill.name": process_skill_name,
-            "docubridge.process_skill.revision_id": active_proc_skill.revision_id,
-            "gen_ai.system": "gemini_platform",
-            "gen_ai.operation.name": "call_llm",
-            "gen_ai.agent.name": "extraction_agent",
-            "gen_ai.request.model": "gemini-3.8-flash",
-            "gen_ai.response.model": "gemini-3.8-flash",
-            "docubridge.finops.traffic_type": "production_inference",
-            "finops.traffic_type": "production_inference",
-            "docubridge.day2_distilled_execution": bool(applied_hint_ids),
-        }
-        if input_tokens is not None:
-            llm_span_attrs["gen_ai.usage.input_tokens"] = int(input_tokens)
-        if output_tokens is not None:
-            llm_span_attrs["gen_ai.usage.output_tokens"] = int(output_tokens)
-        if thinking_tokens is not None:
-            llm_span_attrs["gen_ai.usage.reasoning.output_tokens"] = int(
-                thinking_tokens
-            )
-            llm_span_attrs["docubridge.thinking_tokens"] = int(thinking_tokens)
-        with trace_step("docubridge.extract.call_llm", llm_span_attrs):
-            pass
+        _emit_extract_llm_span(
+            {
+                "docubridge.zone": "2_extraction_quarantine",
+                "docubridge.entity_id": entity_id,
+                "entity_id": entity_id,
+                "docubridge.context_id": context_id,
+                "docubridge.doc_id": entry.doc_id,
+                "docubridge.doctype": entry.doctype,
+                "skill_id": entry.doctype,
+                "skill_version": active_doc_skill.version,
+                "source_mode": source_mode,
+                "docubridge.source_mode": source_mode,
+                "docubridge.skill.version": active_doc_skill.version,
+                "docubridge.skill.revision_id": active_doc_skill.revision_id,
+                "docubridge.skill.urn": active_doc_skill.skill_urn,
+                "docubridge.process_skill.name": process_skill_name,
+                "docubridge.process_skill.revision_id": active_proc_skill.revision_id,
+                "gen_ai.system": "gemini_platform",
+                "gen_ai.operation.name": "call_llm",
+                "gen_ai.agent.name": "extraction_agent",
+                "gen_ai.request.model": "gemini-3.8-flash",
+                "gen_ai.response.model": "gemini-3.8-flash",
+                "docubridge.finops.traffic_type": "production_inference",
+                "finops.traffic_type": "production_inference",
+                "docubridge.day2_distilled_execution": bool(applied_hint_ids),
+            },
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            thinking_tokens=thinking_tokens,
+        )
 
         promoted_entry, vault_record = promote_accepted_to_vault(
             vault,
@@ -633,9 +677,6 @@ def ingest_accepted_submission(
         )
         _, conflicts = store.query_as_of(entity_id)
 
-        # Tier-2 Multi-Model Escalation: when cross-document conflicts exist and have not yet
-        # been auto-resolved by a promoted Agent Gym rule, escalate to `gemini-4-argon` to
-        # prepare the pre-adjudicated conflict brief for Zone 5 HITL review.
         if conflicts and not applied_hint_ids:
             with trace_step(
                 "docubridge.consolidation.adjudicate_conflict",

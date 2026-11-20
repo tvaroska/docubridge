@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from types import UnionType
-from typing import Any, Literal, Union, get_args, get_origin
+from typing import Literal, Union, get_args, get_origin
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
@@ -235,19 +235,17 @@ class HumanReviewResolution(BaseModel):
     reviewer: str | None = None
 
 
-# --------------------------------------------------------------------------- #
-# Version-gated tolerant decode (D2).                                          #
-#                                                                             #
-# The wire models above stay ``extra="forbid"`` — strict *within* our contract #
-# major, which honours spec D2's "extra=forbid for our two-party edge" and     #
-# catches first-party typos. But spec D2 also reserves a **tolerant reader**   #
-# for genuinely external callers, and a producer running a *newer* contract    #
-# major is exactly that. ``decode_wire`` inspects ``contract_version`` (until  #
-# now carried but never read) and, on a major mismatch OR a NEWER minor (a     #
-# minor bump is additive by rule), strips fields the model doesn't declare     #
-# before validating — so an added field degrades gracefully instead of         #
-# hard-failing. Same- or older-version decode is unchanged (strict).           #
-# --------------------------------------------------------------------------- #
+# Version-gated tolerant decode (D2).
+#
+# The wire models above stay ``extra="forbid"`` — strict *within* our contract
+# major, which honours spec D2's "extra=forbid for our two-party edge" and
+# catches first-party typos. But spec D2 also reserves a **tolerant reader**
+# for genuinely external callers, and a producer running a *newer* contract
+# major is exactly that. ``decode_wire`` inspects ``contract_version`` (until
+# now carried but never read) and, on a major mismatch OR a NEWER minor (a
+# minor bump is additive by rule), strips fields the model doesn't declare
+# before validating — so an added field degrades gracefully instead of
+# hard-failing. Same- or older-version decode is unchanged (strict).
 
 
 def _major(version: object) -> str:
@@ -278,7 +276,37 @@ def _needs_tolerance(version: object) -> bool:
     return _minor(version) > _minor(CONTRACT_VERSION)
 
 
-def _strip_to_known(annotation: Any, value: Any) -> Any:
+def _model_key_annotations(model_cls: type[BaseModel]) -> dict[str, object]:
+    """Map every accepted wire key (name, alias, or AliasChoices spelling) to its type."""
+    by_key: dict[str, object] = {}
+    for name, field in model_cls.model_fields.items():
+        by_key[name] = field.annotation
+        if field.alias:
+            by_key[field.alias] = field.annotation
+        # A `validation_alias=AliasChoices(...)` is invisible to `field.alias`, so
+        # without this the tolerant decode would strip an external caller's
+        # accepted spelling (e.g. `fields_requiring_review`) back out — exactly
+        # the caller the tolerance exists for.
+        if isinstance(field.validation_alias, AliasChoices):
+            for choice in field.validation_alias.choices:
+                if isinstance(choice, str):
+                    by_key[choice] = field.annotation
+        elif isinstance(field.validation_alias, str):
+            by_key[field.validation_alias] = field.annotation
+    return by_key
+
+
+def _strip_union(annotation: object, value: object) -> object:
+    for arg in get_args(annotation):
+        if arg is type(None):
+            continue
+        stripped = _strip_to_known(arg, value)
+        if stripped is not value:  # a model arm claimed and rewrote it
+            return stripped
+    return value
+
+
+def _strip_to_known(annotation: object, value: object) -> object:
     """Recursively drop dict keys not declared on nested contract models.
 
     Walks the declared type (``BaseModel`` subtrees, ``list[...]``, ``X | None``,
@@ -290,17 +318,11 @@ def _strip_to_known(annotation: Any, value: Any) -> Any:
     origin = get_origin(annotation)
 
     if origin is Union or origin is UnionType:
-        for arg in get_args(annotation):
-            if arg is type(None):
-                continue
-            stripped = _strip_to_known(arg, value)
-            if stripped is not value:  # a model arm claimed and rewrote it
-                return stripped
-        return value
+        return _strip_union(annotation, value)
 
     if origin in (list, tuple) and isinstance(value, list):
         args = get_args(annotation)
-        item_t = args[0] if args else Any
+        item_t: object = args[0] if args else object
         return [_strip_to_known(item_t, v) for v in value]
 
     if origin is dict:
@@ -311,31 +333,17 @@ def _strip_to_known(annotation: Any, value: Any) -> Any:
         and issubclass(annotation, BaseModel)
         and isinstance(value, dict)
     ):
-        by_key: dict[str, tuple[str, Any]] = {}
-        for name, field in annotation.model_fields.items():
-            by_key[name] = (name, field.annotation)
-            if field.alias:
-                by_key[field.alias] = (name, field.annotation)
-            # A `validation_alias=AliasChoices(...)` is invisible to `field.alias`, so
-            # without this the tolerant decode would strip an external caller's
-            # accepted spelling (e.g. `fields_requiring_review`) back out — exactly
-            # the caller the tolerance exists for.
-            if isinstance(field.validation_alias, AliasChoices):
-                for choice in field.validation_alias.choices:
-                    if isinstance(choice, str):
-                        by_key[choice] = (name, field.annotation)
-            elif isinstance(field.validation_alias, str):
-                by_key[field.validation_alias] = (name, field.annotation)
-        known: dict[str, Any] = {}
-        for key, val in value.items():
-            if key in by_key:
-                known[key] = _strip_to_known(by_key[key][1], val)
-        return known
+        by_key = _model_key_annotations(annotation)
+        return {
+            key: _strip_to_known(by_key[key], val)
+            for key, val in value.items()
+            if key in by_key
+        }
 
     return value
 
 
-def decode_wire[M: BaseModel](model_cls: type[M], data: Any) -> M:
+def decode_wire[M: BaseModel](model_cls: type[M], data: object) -> M:
     """Validate an inbound wire payload, tolerating a newer producer's added fields.
 
     Same-major payloads at our minor or older validate strictly (``extra="forbid"`` —

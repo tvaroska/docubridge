@@ -1,33 +1,55 @@
+@import url("/demo/fonts/fonts.css");
+
   :root {
-    --brand-primary: #1a73e8;
+    --surface: #f8f9fa;
+    --surface-container: #ffffff;
+    --surface-container-low: #f1f3f4;
+    --on-surface: #202124;
+    --on-surface-variant: #5f6368;
+    --outline-variant: #dadce0;
+    --primary: #1a73e8;
+    --on-primary: #ffffff;
+    --status-ok-fg: #137333;
+    --status-ok-bg: #e6f4ea;
+    --status-warn-fg: #b06000;
+    --status-warn-bg: #fef7e0;
+    --status-err-fg: #c5221f;
+    --status-err-bg: #fce8e6;
+    --status-info-fg: #1967d2;
+    --status-info-bg: #e8f0fe;
+    --radius: 0.5rem;
+    --font-sans: "Google Sans", "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+    --font-mono: "Roboto Mono", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+    --brand-primary: var(--primary);
     --brand-primary-dark: #1557b0;
     --brand-slate: #0f172a;
-    --brand-bg: #f8fafc;
-    --brand-border: #e2e8f0;
-    --brand-text: #0f172a;
-    --brand-muted: #64748b;
-    --brand-green: #059669;
-    --brand-green-bg: #ecfdf5;
-    --brand-amber: #d97706;
-    --brand-amber-bg: #fffbeb;
+    --brand-bg: var(--surface);
+    --brand-border: var(--outline-variant);
+    --brand-text: var(--on-surface);
+    --brand-muted: var(--on-surface-variant);
+    --brand-green: var(--status-ok-fg);
+    --brand-green-bg: var(--status-ok-bg);
+    --brand-amber: var(--status-warn-fg);
+    --brand-amber-bg: var(--status-warn-bg);
     --brand-purple: #6d28d9;
     --brand-purple-bg: #f5f3ff;
-    --brand-blue: #1d4ed8;
-    --brand-blue-bg: #eff6ff;
-    --brand-danger: #dc2626;
-    --brand-danger-bg: #fef2f2;
+    --brand-blue: var(--status-info-fg);
+    --brand-blue-bg: var(--status-info-bg);
+    --brand-danger: var(--status-err-fg);
+    --brand-danger-bg: var(--status-err-bg);
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
     padding: 0;
-    background: var(--brand-bg);
-    color: var(--brand-text);
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--surface);
+    color: var(--on-surface);
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
   .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 
   /* Top Header — Neutral Enterprise Blue-Slate */
@@ -751,4 +773,16 @@
     border-radius: 10px;
     padding: 11px 13px;
     background: #faf5ff;
+  }
+  table, th, td, .kpi-val, .kpi-value, .metric-val, .metric-value,
+  .collab-fin-val, .collab-fin-sub, .badge, .pill, .status-pill {
+    font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }

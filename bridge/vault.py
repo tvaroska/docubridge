@@ -34,8 +34,9 @@ import abc
 import hashlib
 import os
 import re
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Protocol, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -43,6 +44,39 @@ from bridge.telemetry import trace_step
 from contract.enums import Disposition
 from contract.extraction import ExtractionResult, SourceAnchor
 from contract.wire import LedgerEntry
+
+
+class _GcsBlobLike(Protocol):
+    name: str
+
+    def upload_from_string(
+        self,
+        data: bytes,
+        *,
+        content_type: str | None = None,
+        if_generation_match: int | None = None,
+    ) -> object: ...
+
+    def download_as_bytes(self) -> bytes: ...
+
+
+class _GcsBucketLike(Protocol):
+    def list_blobs(self, *, prefix: str | None = None) -> Iterable[_GcsBlobLike]: ...
+
+    def blob(self, blob_name: str) -> _GcsBlobLike: ...
+
+
+class _GcsClientLike(Protocol):
+    def bucket(self, bucket_name: str) -> _GcsBucketLike: ...
+
+
+class _RetentionHolder(Protocol):
+    retention: object
+
+
+class _MetadataHolder(Protocol):
+    metadata: dict[str, str]
+
 
 VAULT_BUCKET_ENV = "BRIDGE_VAULT_BUCKET"
 VAULT_PREFIX_ENV = "BRIDGE_VAULT_PREFIX"
@@ -95,6 +129,67 @@ def _scrub_string(value: str) -> tuple[str, bool]:
     return out, (out != value)
 
 
+def _redact_string_mapping(
+    values: Mapping[str, str],
+    path_prefix: str,
+    sensitive_keys: frozenset[str],
+    redacted_paths: list[str],
+) -> dict[str, str]:
+    sanitized: dict[str, str] = {}
+    for key, val in values.items():
+        path = f"{path_prefix}.{key}"
+        if key.lower() in sensitive_keys:
+            sanitized[key] = "[REDACTED-PII]"
+            redacted_paths.append(path)
+        else:
+            scrubbed, changed = _scrub_string(val)
+            sanitized[key] = scrubbed
+            if changed:
+                redacted_paths.append(path)
+    return sanitized
+
+
+def _redact_tables(
+    tables: Mapping[str, list[dict[str, str]]],
+    sensitive_keys: frozenset[str],
+    redacted_paths: list[str],
+) -> dict[str, list[dict[str, str]]]:
+    return {
+        table_name: [
+            _redact_string_mapping(
+                row,
+                f"fields.tables.{table_name}[{idx}]",
+                sensitive_keys,
+                redacted_paths,
+            )
+            for idx, row in enumerate(rows)
+        ]
+        for table_name, rows in tables.items()
+    }
+
+
+def _redact_anchors(
+    anchors: Mapping[str, SourceAnchor],
+    sensitive_keys: frozenset[str],
+    redacted_paths: list[str],
+) -> dict[str, SourceAnchor]:
+    new_anchors: dict[str, SourceAnchor] = {}
+    for anchor_key, anchor in anchors.items():
+        if anchor.snippet is not None:
+            scrubbed, changed = _scrub_string(anchor.snippet)
+            if anchor_key.split(".")[-1].lower() in sensitive_keys:
+                scrubbed = "[REDACTED-PII]"
+                changed = True
+            if changed:
+                redacted_paths.append(f"fields.source_anchors.{anchor_key}.snippet")
+                new_anchors[anchor_key] = anchor.model_copy(
+                    update={"snippet": scrubbed}
+                )
+                continue
+        new_anchors[anchor_key] = anchor
+    return new_anchors
+
+
 def redact_personal_data(
     result: ExtractionResult,
     *,
@@ -110,51 +205,13 @@ def redact_personal_data(
     - Returns ``(sanitized_result, RedactionAudit)`` without mutating ``result``.
     """
     redacted_paths: list[str] = []
-    new_key_fields: dict[str, str] = {}
-
-    for key, val in result.fields.key_fields.items():
-        path = f"fields.key_fields.{key}"
-        if key.lower() in sensitive_keys:
-            new_key_fields[key] = "[REDACTED-PII]"
-            redacted_paths.append(path)
-        else:
-            scrubbed, changed = _scrub_string(val)
-            new_key_fields[key] = scrubbed
-            if changed:
-                redacted_paths.append(path)
-
-    new_tables: dict[str, list[dict[str, str]]] = {}
-    for table_name, rows in result.fields.tables.items():
-        new_rows: list[dict[str, str]] = []
-        for idx, row in enumerate(rows):
-            new_row: dict[str, str] = {}
-            for col, val in row.items():
-                path = f"fields.tables.{table_name}[{idx}].{col}"
-                if col.lower() in sensitive_keys:
-                    new_row[col] = "[REDACTED-PII]"
-                    redacted_paths.append(path)
-                else:
-                    scrubbed, changed = _scrub_string(val)
-                    new_row[col] = scrubbed
-                    if changed:
-                        redacted_paths.append(path)
-            new_rows.append(new_row)
-        new_tables[table_name] = new_rows
-
-    new_anchors: dict[str, SourceAnchor] = {}
-    for anchor_key, anchor in result.fields.source_anchors.items():
-        if anchor.snippet is not None:
-            scrubbed, changed = _scrub_string(anchor.snippet)
-            if anchor_key.split(".")[-1].lower() in sensitive_keys:
-                scrubbed = "[REDACTED-PII]"
-                changed = True
-            if changed:
-                redacted_paths.append(f"fields.source_anchors.{anchor_key}.snippet")
-                new_anchors[anchor_key] = anchor.model_copy(
-                    update={"snippet": scrubbed}
-                )
-                continue
-        new_anchors[anchor_key] = anchor
+    new_key_fields = _redact_string_mapping(
+        result.fields.key_fields, "fields.key_fields", sensitive_keys, redacted_paths
+    )
+    new_tables = _redact_tables(result.fields.tables, sensitive_keys, redacted_paths)
+    new_anchors = _redact_anchors(
+        result.fields.source_anchors, sensitive_keys, redacted_paths
+    )
 
     sanitized_fields = result.fields.model_copy(
         update={
@@ -179,9 +236,7 @@ def redact_personal_data(
         return sanitized_result, audit
 
 
-# --------------------------------------------------------------------------- #
-# Zone 3: Cloud Storage Audit Vault (Tamper-Proof Write-Once Lock)             #
-# --------------------------------------------------------------------------- #
+# Zone 3: Cloud Storage Audit Vault (Tamper-Proof Write-Once Lock)
 
 
 class VaultImmutabilityError(RuntimeError):
@@ -299,7 +354,9 @@ def _match_vault_key(blob_name: str, *, prefix: str = "") -> re.Match[str] | Non
     return _VAULT_KEY_RE.match(rel)
 
 
-def _apply_blob_retention(blob: Any, *, mode: str, retain_until_time: datetime) -> bool:
+def _apply_blob_retention(
+    blob: object, *, mode: str, retain_until_time: datetime
+) -> bool:
     """Apply per-object GCS Object Retention onto ``blob`` prior to upload when supported."""
     if not hasattr(blob, "retention"):
         return False
@@ -314,7 +371,10 @@ def _apply_blob_retention(blob: Any, *, mode: str, retain_until_time: datetime) 
         ret["retainUntilTime"] = rfc3339
         return True
     try:
-        blob.retention = {"mode": mode, "retainUntilTime": rfc3339}
+        cast(_RetentionHolder, blob).retention = {
+            "mode": mode,
+            "retainUntilTime": rfc3339,
+        }
         return True
     except AttributeError:
         return False
@@ -324,7 +384,7 @@ class AuditVaultStore(abc.ABC):
     """Abstract interface for the tamper-proof Cloud Storage Audit Vault."""
 
     @abc.abstractmethod
-    def lock_document(
+    def lock_document(  # noqa: PLR0913 - public AuditVaultStore contract
         self,
         *,
         context_id: str,
@@ -364,7 +424,7 @@ class InMemoryAuditVaultStore(AuditVaultStore):
         self._records: dict[tuple[str, str, int], VaultRecord] = {}
         self._blobs: dict[tuple[str, str, int], bytes] = {}
 
-    def lock_document(
+    def lock_document(  # noqa: PLR0913 - public AuditVaultStore contract
         self,
         *,
         context_id: str,
@@ -432,7 +492,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         prefix: str | None = None,
         retention_days: int | None = None,
         retention_mode: str | None = None,
-        client: Any = None,
+        client: _GcsClientLike | None = None,
     ) -> None:
         bucket, resolved_prefix = _parse_vault_bucket_and_prefix(bucket_name, prefix)
         if not bucket:
@@ -453,14 +513,14 @@ class GcpAuditVaultStore(AuditVaultStore):
         self._client = client
         self._index: dict[tuple[str, str, int], VaultRecord] = {}
 
-    def _get_bucket(self) -> Any:
+    def _get_bucket(self) -> _GcsBucketLike:
         if self._client is None:  # pragma: no cover - live GCP client lazy import
             from google.cloud import storage
 
-            self._client = storage.Client()
+            self._client = cast(_GcsClientLike, storage.Client())
         return self._client.bucket(self.bucket_name)
 
-    def lock_document(
+    def lock_document(  # noqa: PLR0913 - public AuditVaultStore contract
         self,
         *,
         context_id: str,
@@ -518,7 +578,7 @@ class GcpAuditVaultStore(AuditVaultStore):
                 metadata["retain_until_time"] = (
                     retain_until.astimezone(UTC).isoformat().replace("+00:00", "Z")
                 )
-            blob.metadata = metadata
+            cast(_MetadataHolder, blob).metadata = metadata
         try:
             blob.upload_from_string(data, content_type=mime_type, if_generation_match=0)
         except Exception as exc:
@@ -540,7 +600,7 @@ class GcpAuditVaultStore(AuditVaultStore):
         self._index[key] = rec
         return rec
 
-    def _record_from_blob(self, blob: Any) -> VaultRecord | None:
+    def _record_from_blob(self, blob: _GcsBlobLike) -> VaultRecord | None:
         """Reconstruct a ``VaultRecord`` from a GCS blob across stateless replicas."""
         match = _match_vault_key(getattr(blob, "name", ""), prefix=self.prefix)
         if not match:
@@ -635,7 +695,7 @@ def vault_from_env() -> AuditVaultStore:
     return adapter.build_vault()
 
 
-def promote_accepted_to_vault(
+def promote_accepted_to_vault(  # noqa: PLR0913 - public vault promotion contract
     vault: AuditVaultStore,
     *,
     context_id: str,

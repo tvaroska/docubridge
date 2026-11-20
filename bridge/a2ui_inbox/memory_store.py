@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -48,11 +49,225 @@ from bridge.telemetry import (
     trace_step,
 )
 
+_DIRECT_DECISIONS: dict[str, GovernanceDecision] = {
+    "accept": "accept",
+    "respond": "respond",
+    "reject": "reject",
+    "escalate": "escalate",
+}
+_ESCALATION_ROLES: dict[str, CatalogRole] = {
+    "broker": "broker",
+    "claims": "claims",
+    "underwriter": "underwriter",
+    "executive": "executive",
+}
+
+
+@dataclass(frozen=True)
+class _ReviewTelemetry:
+    notes: str
+    review_dwell_ms: int
+    citation_opened: bool
+    pre_committed: bool
+
+
+@dataclass(frozen=True)
+class _ResolutionActor:
+    principal: str
+    role: CatalogRole
+    agent_spiffe_id: str | None
+    channel: DeliveryChannel
+
+
+def _populate_conflict_model(
+    initial_model: dict[str, Any],
+    conflicts: list[FactConflict],
+    *,
+    blind_pre_commitment: bool,
+) -> None:
+    rows: list[dict[str, Any]] = []
+    options: list[dict[str, str]] = []
+    for c in conflicts:
+        field_short = c.field_path.split(".")[-1]
+        rows.append(
+            {
+                "field": field_short,
+                "sourceA": {
+                    "label": f"{c.winning_value} ({c.winning_doc_id})",
+                    "docId": c.winning_doc_id,
+                    "pageNumber": 1,
+                },
+                "sourceB": {
+                    "label": f"{c.conflicting_value} ({c.conflicting_doc_id})",
+                    "docId": c.conflicting_doc_id,
+                    "pageNumber": 1,
+                },
+            }
+        )
+        options.extend(
+            [
+                {
+                    "value": c.winning_value,
+                    "label": f"Keep {c.winning_doc_id}: {c.winning_value}",
+                },
+                {
+                    "value": c.conflicting_value,
+                    "label": f"Use {c.conflicting_doc_id}: {c.conflicting_value}",
+                },
+            ]
+        )
+    initial_model["discrepancy"] = {"rows": rows}
+    initial_model["resolutionOptions"] = options
+    if (
+        options
+        and not blind_pre_commitment
+        and not initial_model["resolution"].get("selectedValue")
+    ):
+        initial_model["resolution"]["selectedValue"] = options[0]["value"]
+
+
+def _derive_task_state(steps: list[ActionProgressStep]) -> TaskLifecycleState:
+    if any(s.status == "failed" for s in steps):
+        return "failed"
+    if any(s.status == "input-required" for s in steps):
+        return "input-required"
+    if all(s.status == "completed" for s in steps):
+        return "completed"
+    return "working"
+
+
+def _parse_governance_decision(
+    action_name: str, action_ctx: dict[str, Any]
+) -> GovernanceDecision:
+    raw_decision = str(action_ctx.get("decision", action_name)).lower()
+    if raw_decision in ("approve", "edit_and_approve", "edit"):
+        return "edit" if action_name == "edit_and_approve" else "accept"
+    if raw_decision in _DIRECT_DECISIONS:
+        return _DIRECT_DECISIONS[raw_decision]
+    raise ValueError(f"Unsupported governance decision '{raw_decision}'.")
+
+
+def _merge_and_validate_candidate_model(
+    item: ActionInboxItem,
+    action_ctx: dict[str, Any],
+    principal_max_approval_amount: Decimal | str | int | None,
+) -> dict[str, Any]:
+    candidate_model = copy.deepcopy(item.current_data_model)
+    for section in ("resolution", "transfer", "review"):
+        if isinstance(action_ctx.get(section), dict):
+            candidate_model.setdefault(section, {}).update(action_ctx[section])
+
+    effective_max_limit = item.max_approval_amount
+    coerced_principal_limit = coerce_decimal_amount(
+        principal_max_approval_amount,
+        field_name="principal_max_approval_amount",
+    )
+    if coerced_principal_limit is not None:
+        effective_max_limit = (
+            min(effective_max_limit, coerced_principal_limit)
+            if effective_max_limit is not None
+            else coerced_principal_limit
+        )
+    if "transfer" in candidate_model and effective_max_limit is not None:
+        raw_approved = candidate_model["transfer"].get("approvedAmount", Decimal("0"))
+        approved_amt = coerce_decimal_amount(
+            raw_approved,
+            field_name="approvedAmount",
+            allow_negative=True,
+        )
+        if approved_amt is None:
+            approved_amt = Decimal("0")
+        if approved_amt > effective_max_limit:
+            raise ValueError(
+                f"Approved amount ({approved_amt}) exceeds maximum authority limit "
+                f"({effective_max_limit})."
+            )
+        if approved_amt < Decimal("0"):
+            raise ValueError("Approved amount cannot be negative.")
+    return candidate_model
+
+
+def _extract_review_telemetry(
+    item: ActionInboxItem,
+    candidate_model: dict[str, Any],
+    action_ctx: dict[str, Any],
+) -> _ReviewTelemetry:
+    review_block = candidate_model.get("review", {}) or {}
+    notes = str(review_block.get("memo", ""))
+    raw_dwell = action_ctx.get(
+        "review_dwell_ms",
+        action_ctx.get(
+            "reviewDwellMs",
+            review_block.get("review_dwell_ms", review_block.get("dwellMs", 4200)),
+        ),
+    )
+    review_dwell_ms = max(0, int(raw_dwell if raw_dwell is not None else 4200))
+    raw_citation = action_ctx.get(
+        "citation_opened",
+        action_ctx.get(
+            "citationOpened",
+            action_ctx.get(
+                "citation_verified",
+                review_block.get("citation_opened", True),
+            ),
+        ),
+    )
+    citation_opened = bool(True if raw_citation is None else raw_citation)
+    raw_pre_commit = action_ctx.get(
+        "pre_committed",
+        action_ctx.get(
+            "preCommitted",
+            review_block.get("pre_committed", item.blind_pre_commitment),
+        ),
+    )
+    return _ReviewTelemetry(
+        notes=notes,
+        review_dwell_ms=review_dwell_ms,
+        citation_opened=citation_opened,
+        pre_committed=bool(raw_pre_commit),
+    )
+
+
+def _apply_step_transition(
+    item: ActionInboxItem,
+    decision: GovernanceDecision,
+    *,
+    actor_role: CatalogRole,
+    notes: str,
+    action_ctx: dict[str, Any],
+) -> dict[str, Any]:
+    if decision == "respond":
+        for s in item.steps:
+            if s.status == "input-required":
+                s.status = "working"
+                s.detail = f"Agent replanning with reviewer steering: {notes}"
+        item.task_state = "working"
+        return {
+            "confirmed": False,
+            "payload": {"decision": "respond", "notes": notes, **action_ctx},
+        }
+    if decision == "reject":
+        for s in item.steps:
+            if s.status in ("input-required", "working"):
+                s.status = "failed"
+                s.detail = f"Rejected by {actor_role}: {notes or 'Rejected'}"
+        item.task_state = "failed"
+        return {
+            "confirmed": False,
+            "payload": {"decision": "reject", "notes": notes, **action_ctx},
+        }
+    for s in item.steps:
+        if s.status in ("input-required", "working", "pending"):
+            s.status = "completed"
+            s.updated_at = datetime.now(UTC)
+    item.task_state = "completed"
+    return {"confirmed": True}
+
 
 class ActionInboxStore:
     """Protocol/base class for tracking A2UI v0.9 Action Progress & Agent Inbox items."""
 
-    def create_action(
+    def create_action(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
         *,
         entity_id: str,
@@ -92,7 +307,7 @@ class ActionInboxStore:
         """List action inbox items filtered by status, assigned role, domain, or entity ID."""
         raise NotImplementedError
 
-    def advance_step(
+    def advance_step(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
         item_id: str,
         *,
@@ -105,7 +320,7 @@ class ActionInboxStore:
         """Advance the workflow step of an active action inbox item and append an audit event."""
         raise NotImplementedError
 
-    def resolve_action(
+    def resolve_action(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
         item_id: str,
         *,
@@ -132,7 +347,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         self._items: dict[str, ActionInboxItem] = {}
         self._audits: list[InboxAuditRecord] = []
 
-    def create_action(
+    def create_action(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
         *,
         entity_id: str,
@@ -178,53 +393,17 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 if steps is not None
                 else default_submission_progress_steps()
             )
-
             initial_model: dict[str, Any] = (
                 copy.deepcopy(data_model) if data_model else {}
             )
             initial_model.setdefault("resolution", {"selectedValue": ""})
             initial_model.setdefault("review", {"memo": ""})
-
             if conflicts:
-                rows = []
-                options = []
-                for c in conflicts:
-                    field_short = c.field_path.split(".")[-1]
-                    rows.append(
-                        {
-                            "field": field_short,
-                            "sourceA": {
-                                "label": f"{c.winning_value} ({c.winning_doc_id})",
-                                "docId": c.winning_doc_id,
-                                "pageNumber": 1,
-                            },
-                            "sourceB": {
-                                "label": f"{c.conflicting_value} ({c.conflicting_doc_id})",
-                                "docId": c.conflicting_doc_id,
-                                "pageNumber": 1,
-                            },
-                        }
-                    )
-                    options.extend(
-                        [
-                            {
-                                "value": c.winning_value,
-                                "label": f"Keep {c.winning_doc_id}: {c.winning_value}",
-                            },
-                            {
-                                "value": c.conflicting_value,
-                                "label": f"Use {c.conflicting_doc_id}: {c.conflicting_value}",
-                            },
-                        ]
-                    )
-                initial_model["discrepancy"] = {"rows": rows}
-                initial_model["resolutionOptions"] = options
-                if (
-                    options
-                    and not blind_pre_commitment
-                    and not initial_model["resolution"].get("selectedValue")
-                ):
-                    initial_model["resolution"]["selectedValue"] = options[0]["value"]
+                _populate_conflict_model(
+                    initial_model,
+                    conflicts,
+                    blind_pre_commitment=blind_pre_commitment,
+                )
 
             task_state: TaskLifecycleState = (
                 "input-required" if (pause_for_review or bool(conflicts)) else "working"
@@ -294,7 +473,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
             items = [i for i in items if i.task_state == task_state]
         return sorted(items, key=lambda i: i.created_at, reverse=True)
 
-    def advance_step(
+    def advance_step(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
         item_id: str,
         *,
@@ -309,32 +488,20 @@ class InMemoryActionInboxStore(ActionInboxStore):
         if item is None:
             raise KeyError(f"Unknown action inbox item '{item_id}'.")
 
-        matched = False
-        for step in item.steps:
-            if step.step_id == step_id:
-                step.status = status
-                step.updated_at = datetime.now(UTC)
-                if detail is not None:
-                    step.detail = detail
-                if external_detail is not None:
-                    step.external_detail = external_detail
-                matched = True
-                break
-        if not matched:
+        step = next((s for s in item.steps if s.step_id == step_id), None)
+        if step is None:
             raise KeyError(f"Unknown step_id '{step_id}' on item '{item_id}'.")
+        step.status = status
+        step.updated_at = datetime.now(UTC)
+        if detail is not None:
+            step.detail = detail
+        if external_detail is not None:
+            step.external_detail = external_detail
 
         if hint is not None:
             item.hint = hint
         item.updated_at = datetime.now(UTC)
-
-        if any(s.status == "failed" for s in item.steps):
-            item.task_state = "failed"
-        elif any(s.status == "input-required" for s in item.steps):
-            item.task_state = "input-required"
-        elif all(s.status == "completed" for s in item.steps):
-            item.task_state = "completed"
-        else:
-            item.task_state = "working"
+        item.task_state = _derive_task_state(item.steps)
 
         delta = build_update_data_model_delta(
             item.surface_id,
@@ -346,7 +513,49 @@ class InMemoryActionInboxStore(ActionInboxStore):
         item.delta_history.append(delta)
         return item, delta
 
-    def resolve_action(
+    def _record_escalation(
+        self,
+        item: ActionInboxItem,
+        action_ctx: dict[str, Any],
+        patches: list[Any],
+        telemetry: _ReviewTelemetry,
+        actor: _ResolutionActor,
+    ) -> tuple[InboxAuditRecord, dict[str, Any]]:
+        target_role = str(action_ctx.get("targetRole", "underwriter"))
+        if target_role in _ESCALATION_ROLES:
+            item.assigned_role = _ESCALATION_ROLES[target_role]
+        audit = InboxAuditRecord(
+            audit_id=f"aud_{uuid.uuid4().hex[:10]}",
+            item_id=item.item_id,
+            entity_id=item.entity_id,
+            session_id=item.session_id,
+            invocation_id=item.invocation_id,
+            decision="escalate",
+            actor_principal=actor.principal,
+            actor_role=actor.role,
+            agent_spiffe_id=actor.agent_spiffe_id,
+            channel=actor.channel,
+            initial_data_model=item.initial_data_model,
+            resolved_data_model=item.current_data_model,
+            patches=patches,
+            notes=telemetry.notes,
+            escalated_to=item.assigned_role,
+            review_dwell_ms=telemetry.review_dwell_ms,
+            citation_opened=telemetry.citation_opened,
+            pre_committed=telemetry.pre_committed,
+        )
+        self._audits.append(audit)
+        return audit, {
+            "item_id": item.item_id,
+            "task_state": "input-required",
+            "decision": "escalate",
+            "escalated_to": item.assigned_role,
+            "agent_spiffe_id": actor.agent_spiffe_id,
+            "patches": [p.model_dump(mode="json") for p in patches],
+            "audit_id": audit.audit_id,
+        }
+
+    def resolve_action(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
         item_id: str,
         *,
@@ -393,58 +602,10 @@ class InMemoryActionInboxStore(ActionInboxStore):
             action_obj = action_request.action
             action_name = str(action_obj.get("name", "accept"))
             action_ctx = action_obj.get("context", {}) or {}
-            raw_decision = str(action_ctx.get("decision", action_name)).lower()
-
-            if raw_decision in ("approve", "edit_and_approve", "edit"):
-                decision: GovernanceDecision = (
-                    "edit" if action_name == "edit_and_approve" else "accept"
-                )
-            elif raw_decision in ("accept", "respond", "reject", "escalate"):
-                decision = raw_decision  # type: ignore[assignment]
-            else:
-                raise ValueError(f"Unsupported governance decision '{raw_decision}'.")
-
-            candidate_model = copy.deepcopy(item.current_data_model)
-            if isinstance(action_ctx.get("resolution"), dict):
-                candidate_model.setdefault("resolution", {}).update(
-                    action_ctx["resolution"]
-                )
-            if isinstance(action_ctx.get("transfer"), dict):
-                candidate_model.setdefault("transfer", {}).update(
-                    action_ctx["transfer"]
-                )
-            if isinstance(action_ctx.get("review"), dict):
-                candidate_model.setdefault("review", {}).update(action_ctx["review"])
-
-            effective_max_limit = item.max_approval_amount
-            coerced_principal_limit = coerce_decimal_amount(
-                principal_max_approval_amount,
-                field_name="principal_max_approval_amount",
+            decision = _parse_governance_decision(action_name, action_ctx)
+            candidate_model = _merge_and_validate_candidate_model(
+                item, action_ctx, principal_max_approval_amount
             )
-            if coerced_principal_limit is not None:
-                effective_max_limit = (
-                    min(effective_max_limit, coerced_principal_limit)
-                    if effective_max_limit is not None
-                    else coerced_principal_limit
-                )
-            if "transfer" in candidate_model and effective_max_limit is not None:
-                raw_approved = candidate_model["transfer"].get(
-                    "approvedAmount", Decimal("0")
-                )
-                approved_amt = coerce_decimal_amount(
-                    raw_approved,
-                    field_name="approvedAmount",
-                    allow_negative=True,
-                )
-                if approved_amt is None:
-                    approved_amt = Decimal("0")
-                if approved_amt > effective_max_limit:
-                    raise ValueError(
-                        f"Approved amount ({approved_amt}) exceeds maximum authority limit "
-                        f"({effective_max_limit})."
-                    )
-                if approved_amt < Decimal("0"):
-                    raise ValueError("Approved amount cannot be negative.")
 
             patches = compute_rfc6902_patches(item.initial_data_model, candidate_model)
             if decision == "edit" and not patches:
@@ -452,126 +613,52 @@ class InMemoryActionInboxStore(ActionInboxStore):
             elif decision == "accept" and patches:
                 decision = "edit"
 
-            notes = str(candidate_model.get("review", {}).get("memo", ""))
-            review_block = candidate_model.get("review", {}) or {}
-            raw_dwell = action_ctx.get(
-                "review_dwell_ms",
-                action_ctx.get(
-                    "reviewDwellMs",
-                    review_block.get(
-                        "review_dwell_ms", review_block.get("dwellMs", 4200)
-                    ),
-                ),
-            )
-            review_dwell_ms = max(0, int(raw_dwell if raw_dwell is not None else 4200))
-            raw_citation = action_ctx.get(
-                "citation_opened",
-                action_ctx.get(
-                    "citationOpened",
-                    action_ctx.get(
-                        "citation_verified",
-                        review_block.get("citation_opened", True),
-                    ),
-                ),
-            )
-            citation_opened = bool(True if raw_citation is None else raw_citation)
-            raw_pre_commit = action_ctx.get(
-                "pre_committed",
-                action_ctx.get(
-                    "preCommitted",
-                    review_block.get("pre_committed", item.blind_pre_commitment),
-                ),
-            )
-            pre_committed = bool(raw_pre_commit)
-
+            telemetry = _extract_review_telemetry(item, candidate_model, action_ctx)
             item.current_data_model = candidate_model
             item.updated_at = datetime.now(UTC)
             span.set_attribute("docubridge.decision", decision)
             span.set_attribute("docubridge.patch_count", len(patches))
-            span.set_attribute("docubridge.review_dwell_ms", review_dwell_ms)
-            span.set_attribute("docubridge.citation_opened", citation_opened)
-            span.set_attribute("docubridge.pre_committed", pre_committed)
+            span.set_attribute("docubridge.review_dwell_ms", telemetry.review_dwell_ms)
+            span.set_attribute("docubridge.citation_opened", telemetry.citation_opened)
+            span.set_attribute("docubridge.pre_committed", telemetry.pre_committed)
 
             if decision == "escalate":
-                target_role = str(action_ctx.get("targetRole", "underwriter"))
-                if target_role in (
-                    "broker",
-                    "claims",
-                    "underwriter",
-                    "executive",
-                ):
-                    item.assigned_role = target_role  # type: ignore[assignment]
-                audit = InboxAuditRecord(
-                    audit_id=f"aud_{uuid.uuid4().hex[:10]}",
-                    item_id=item.item_id,
-                    entity_id=item.entity_id,
-                    session_id=item.session_id,
-                    invocation_id=item.invocation_id,
-                    decision="escalate",
-                    actor_principal=actor_principal,
-                    actor_role=actor_role,
-                    agent_spiffe_id=agent_spiffe_id,
-                    channel=channel,
-                    initial_data_model=item.initial_data_model,
-                    resolved_data_model=candidate_model,
-                    patches=patches,
-                    notes=notes,
-                    escalated_to=item.assigned_role,
-                    review_dwell_ms=review_dwell_ms,
-                    citation_opened=citation_opened,
-                    pre_committed=pre_committed,
+                audit, payload = self._record_escalation(
+                    item,
+                    action_ctx,
+                    patches,
+                    telemetry,
+                    _ResolutionActor(
+                        principal=actor_principal,
+                        role=actor_role,
+                        agent_spiffe_id=agent_spiffe_id,
+                        channel=channel,
+                    ),
                 )
-                self._audits.append(audit)
                 span.set_attribute("docubridge.audit_id", audit.audit_id)
                 span.set_attribute("docubridge.task_state", "input-required")
-                return {
-                    "item_id": item.item_id,
-                    "task_state": "input-required",
-                    "decision": "escalate",
-                    "escalated_to": item.assigned_role,
-                    "agent_spiffe_id": agent_spiffe_id,
+                return payload
+
+            transition = _apply_step_transition(
+                item,
+                decision,
+                actor_role=actor_role,
+                notes=telemetry.notes,
+                action_ctx=action_ctx,
+            )
+            resume_payload = transition.get(
+                "payload",
+                {
+                    "decision": decision,
+                    "data": candidate_model,
                     "patches": [p.model_dump(mode="json") for p in patches],
-                    "audit_id": audit.audit_id,
-                }
-
-            if decision == "respond":
-                for s in item.steps:
-                    if s.status == "input-required":
-                        s.status = "working"
-                        s.detail = f"Agent replanning with reviewer steering: {notes}"
-                item.task_state = "working"
-                adk_resume = build_adk_confirmation_response(
-                    item,
-                    confirmed=False,
-                    payload={"decision": "respond", "notes": notes, **action_ctx},
-                )
-            elif decision == "reject":
-                for s in item.steps:
-                    if s.status in ("input-required", "working"):
-                        s.status = "failed"
-                        s.detail = f"Rejected by {actor_role}: {notes or 'Rejected'}"
-                item.task_state = "failed"
-                adk_resume = build_adk_confirmation_response(
-                    item,
-                    confirmed=False,
-                    payload={"decision": "reject", "notes": notes, **action_ctx},
-                )
-            else:
-                for s in item.steps:
-                    if s.status in ("input-required", "working", "pending"):
-                        s.status = "completed"
-                        s.updated_at = datetime.now(UTC)
-                item.task_state = "completed"
-                adk_resume = build_adk_confirmation_response(
-                    item,
-                    confirmed=True,
-                    payload={
-                        "decision": decision,
-                        "data": candidate_model,
-                        "patches": [p.model_dump(mode="json") for p in patches],
-                    },
-                )
-
+                },
+            )
+            adk_resume = build_adk_confirmation_response(
+                item,
+                confirmed=bool(transition["confirmed"]),
+                payload=resume_payload,
+            )
             delta = build_update_data_model_delta(
                 item.surface_id,
                 path="/progress",
@@ -597,35 +684,26 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 initial_data_model=item.initial_data_model,
                 resolved_data_model=candidate_model,
                 patches=patches,
-                notes=notes,
-                review_dwell_ms=review_dwell_ms,
-                citation_opened=citation_opened,
-                pre_committed=pre_committed,
+                notes=telemetry.notes,
+                review_dwell_ms=telemetry.review_dwell_ms,
+                citation_opened=telemetry.citation_opened,
+                pre_committed=telemetry.pre_committed,
             )
             self._audits.append(audit)
             span.set_attribute("docubridge.audit_id", audit.audit_id)
             span.set_attribute("docubridge.task_state", item.task_state)
             if close_outcome_on_resolve and item.outcome_id:
-                if decision in ("accept", "edit_and_approve"):
+                if decision in ("accept", "edit"):
                     close_outcome(
-                        "succeeded",
-                        subject=item.entity_id,
-                        outcome_id=item.outcome_id,
+                        "succeeded", subject=item.entity_id, outcome_id=item.outcome_id
                     )
                 elif decision == "reject":
                     close_outcome(
-                        "failed",
-                        subject=item.entity_id,
-                        outcome_id=item.outcome_id,
-                    )
-                elif decision == "escalate":
-                    close_outcome(
-                        "escalated",
-                        subject=item.entity_id,
-                        outcome_id=item.outcome_id,
+                        "failed", subject=item.entity_id, outcome_id=item.outcome_id
                     )
 
-            fn_resp = adk_resume.parts[0].function_response
+            parts = adk_resume.parts or []
+            fn_resp = parts[0].function_response if parts else None
             return {
                 "item_id": item.item_id,
                 "outcome_id": item.outcome_id,

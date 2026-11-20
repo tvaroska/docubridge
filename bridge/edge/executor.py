@@ -60,13 +60,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from a2a.helpers import proto_helpers as ph
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from a2a.types import Message, TaskState
+from a2a.types import Message, Task, TaskState
 from a2a.utils.errors import (
     InvalidParamsError,
     InvalidRequestError,
@@ -100,6 +101,7 @@ from bridge.edge.executor_hitl import (
     REVIEWER_NOT_AUTHORIZED_TEXT,
     ExecutorHitlMixin,
     ReviewScope,
+    _require_context_ids,
     _text_message,
     _turn_artifact_id,
     llm_status,
@@ -151,6 +153,9 @@ from contract.wire import (
 if TYPE_CHECKING:
     from bridge.dashboard.board import RfpBoard
     from bridge.edge.llm_leg import LlmLeg
+    from bridge.knowledge_catalog import KnowledgeCatalog
+    from bridge.operational_store import OperationalStore
+    from bridge.vault import AuditVaultStore
 
 logger = logging.getLogger(__name__)
 
@@ -159,16 +164,16 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
     """Edge executor: routes each message (``BRIDGE_EDGE_MODE``) to Path-A, the
     deterministic Collector, or the LLM leg."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only injectable collaborators
         self,
         collector: Collector | None = None,
         *,
         artifact_store: BaseArtifactService | None = None,
         base_url: str = DEFAULT_URL,
         resolver: Resolver = resolve_bytes,
-        vault_store: Any = None,
-        operational_store: Any = None,
-        knowledge_catalog: Any = None,
+        vault_store: AuditVaultStore | None = None,
+        operational_store: OperationalStore | None = None,
+        knowledge_catalog: KnowledgeCatalog | None = None,
     ) -> None:
         # Default Collector lazily resolves the extraction port via get_adapter
         # (P1-4). Injectable for tests.
@@ -228,7 +233,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         mode: EdgeMode,
         *,
         llm_leg: LlmLeg | None = None,
-        reviewers: Any = None,
+        reviewers: Iterable[str] | str | None = None,
     ) -> None:
         """D2: bind the routing mode (resolved once at app build) and, in hybrid
         mode, the LLM leg.
@@ -266,9 +271,9 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
     def bind_enterprise_stores(
         self,
         *,
-        vault_store: Any = None,
-        operational_store: Any = None,
-        knowledge_catalog: Any = None,
+        vault_store: AuditVaultStore | None = None,
+        operational_store: OperationalStore | None = None,
+        knowledge_catalog: KnowledgeCatalog | None = None,
     ) -> None:
         """Bind Zone 3–6 Enterprise Data Architecture stores onto the underlying Collector.
 
@@ -324,6 +329,8 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             active_outcome = start_outcome(outcome_id=f"out_{cid}", owner=default_owner)
             self._task_outcomes[cid] = active_outcome
         message = context.message
+        if message is None:
+            raise InvalidParamsError(message="inbound A2A request is missing a message")
         route, scope = await self._route_for(message, context.current_task)
 
         # Dual-path routing (PATH-A/PATH-B): a structured extraction-assertion (no
@@ -357,7 +364,9 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             message="this message is not supported by this edge"
         )
 
-    async def admit(self, message: Message | None, task: Any, user: Any) -> None:
+    async def admit(
+        self, message: Message | None, task: Task | None, user: object
+    ) -> None:
         """Pre-dispatch guard (G / R5 / R6 validation) — called by the edge's request
         handler BEFORE the SDK touches the task, so a refusal leaves the task
         byte-for-byte unchanged (an exception raised inside ``execute`` would mark
@@ -385,7 +394,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             self._validate_resolution(message, user, scope)
 
     async def _route_for(
-        self, message: Message | None, task: Any
+        self, message: Message, task: Task | None
     ) -> tuple[Route, ReviewScope | None]:
         """Classify ``message`` against ``task`` (D3 route table) + the task's review
         scope. G1: deterministic mode never reads the LLM session."""
@@ -401,7 +410,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         return route, scope
 
     async def _execute_collect(
-        self, context: RequestContext, event_queue: EventQueue, message: Any
+        self, context: RequestContext, event_queue: EventQueue, message: Message
     ) -> None:
         """R2: the deterministic, model-free Collector path."""
         # WIRE-5 dual-mode intake: content-route JSON or text to CollectRequest
@@ -491,7 +500,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         self,
         context: RequestContext,
         event_queue: EventQueue,
-        message: Any,
+        message: Message,
         request: CollectRequest,
     ) -> None:
         """S0-arch-19: open / update / read the RFP of this exchange on the durable board.
@@ -505,11 +514,13 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         apply → put runs on one worker thread (thread-local CAS versions; the loop never
         blocks on the DB).
         """
-        assert self._rfp is not None  # guarded by the caller
+        if self._rfp is None:
+            raise RuntimeError("RFP board is not bound")
         if any(p.HasField("raw") or p.HasField("url") for p in message.parts):
             raise InvalidParamsError(message=RFP_SUBMISSIONS_TEXT)
+        _, context_id = _require_context_ids(context)
         try:
-            cid = rfp_context_id(request, context.context_id)
+            cid = rfp_context_id(request, context_id)
         except InvalidRfpContext as e:
             raise InvalidParamsError(message=INVALID_RFP_CONTEXT_TEXT) from e
         try:
@@ -543,7 +554,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             assessor=self._assessor,
         )
 
-    def _build_path_a_turn(self, message: Any) -> ExchangeTurn:
+    def _build_path_a_turn(self, message: Message) -> ExchangeTurn:
         """PATH-A validate-only: schema-validate the structured assertion + dispose it
         into a one-entry terminal turn — NO extraction port call, NO artifact persistence
         (a structured response carries no bytes).
@@ -623,7 +634,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
         turn: ExchangeTurn,
-        message: Any,
+        message: Message | None,
     ) -> None:
         """Enqueue the task (if new), add the ExchangeTurn artifact, set task state.
 
@@ -636,19 +647,20 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         context_id (see the reference consumer interceptor in docubridge-examples;
         D8: not collapsed).
         """
+        task_id, context_id = _require_context_ids(context)
         # 1.x requires a brand-new task's first enqueued event to be a Task,
         # else the server raises InvalidAgentResponseError.
         if context.current_task is None:
             await event_queue.enqueue_event(
                 ph.new_task(
-                    context.task_id,
-                    context.context_id,
+                    task_id,
+                    context_id,
                     TaskState.TASK_STATE_SUBMITTED,
                     history=[message] if message is not None else [],
                 )
             )
 
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        updater = TaskUpdater(event_queue, task_id, context_id)
         # last_chunk=True matters (D4 / consumer gotcha): a *partial* artifact
         # event is streamed but never persisted, so a downstream gate reading the
         # session couldn't see it.
@@ -719,10 +731,10 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             outcome_id=outcome_id,
             owner="a2a-edge",
         )
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        task_id, context_id = _require_context_ids(context)
+        updater = TaskUpdater(event_queue, task_id, context_id)
         await updater.cancel()
 
-    # ------------------------------------------------------------------ #
     def _candidate_doctypes(self, process: str) -> list[str]:
         """Decision 5: consolidated source in ``bridge.edge.skills``.
 

@@ -50,6 +50,32 @@ def ip_is_global(ip: str) -> bool:
     return addr.is_global
 
 
+def _classify_host(host: str, port: int | None) -> tuple[bool, str]:
+    """Classify an IP literal or resolved hostname against global IP ranges."""
+    try:
+        ipaddress.ip_address(host)
+        is_literal = True
+    except ValueError:
+        is_literal = False
+
+    if is_literal:
+        if not ip_is_global(host):
+            return False, f"host {host} is a non-global address"
+        return True, "ok"
+
+    try:
+        infos = socket.getaddrinfo(host, port or None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        # Unresolvable: cannot reach an internal target — allow (the request fails).
+        return True, "unresolvable host (no SSRF reach)"
+
+    resolved = {str(info[4][0]) for info in infos}
+    bad = [ip for ip in resolved if not ip_is_global(ip)]
+    if bad:
+        return False, f"host {host} resolves to non-global address(es): {sorted(bad)}"
+    return True, "ok"
+
+
 def url_allowed(
     url: str, *, allowlist: frozenset[str] = frozenset()
 ) -> tuple[bool, str]:
@@ -72,31 +98,7 @@ def url_allowed(
     ):
         return True, "allowlisted"
 
-    # An IP literal is classified directly; a name is resolved and every
-    # returned address must be global (so a name pointing at 10.x or the
-    # metadata IP is caught).
-    try:
-        ipaddress.ip_address(host)
-        is_literal = True
-    except ValueError:
-        is_literal = False
-
-    if is_literal:
-        if not ip_is_global(host):
-            return False, f"host {host} is a non-global address"
-        return True, "ok"
-
-    try:
-        infos = socket.getaddrinfo(host, parts.port or None, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
-        # Unresolvable: cannot reach an internal target — allow (the request fails).
-        return True, "unresolvable host (no SSRF reach)"
-
-    resolved = {info[4][0] for info in infos}
-    bad = [ip for ip in resolved if not ip_is_global(ip)]
-    if bad:
-        return False, f"host {host} resolves to non-global address(es): {sorted(bad)}"
-    return True, "ok"
+    return _classify_host(host, parts.port)
 
 
 __all__ = ["allowlist_from_env", "ip_is_global", "url_allowed"]

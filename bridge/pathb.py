@@ -48,8 +48,7 @@ from bridge.disposition import (
 )
 from bridge.offscript import REASON_ESCALATED, REASON_HUMAN_REVIEW
 from bridge.ports import Port, get_adapter, resolve_mode
-from bridge.ports.protocols import ExtractionPort
-from bridge.signals import dispose_signals, signals_from_result
+from bridge.signals import ExtractorLike, dispose_signals, signals_from_result
 from contract.enums import Disposition, Gate
 from contract.wire import ArtifactRef, LedgerEntry
 
@@ -101,7 +100,7 @@ async def step(
     doc_id: str,
     artifact_name: str,
     artifact: ArtifactRef | None = None,
-    extractor: ExtractionPort | None = None,
+    extractor: ExtractorLike | None = None,
 ) -> PathBStep:
     """extract → dispose → route. One node-traversal of the Path-B graph.
 
@@ -110,7 +109,9 @@ async def step(
     ``verdict.gate`` per §2a/§2b. RESUBMIT/HITL/ESCALATE are non-terminal parks;
     ACCEPT/REJECT are terminal.
     """
-    ext = extractor or get_adapter(Port.extraction, resolve_mode(Port.extraction))
+    ext: ExtractorLike = extractor or get_adapter(
+        Port.extraction, resolve_mode(Port.extraction)
+    )
     result = await ext.extract(artifact_name)
     signals = signals_from_result(
         result, candidate_doctypes=list(state.candidate_doctypes)

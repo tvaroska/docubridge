@@ -7,7 +7,7 @@ import json
 import threading
 from collections.abc import Coroutine
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from bridge.operational_store.memory_store import OperationalStore
 from bridge.operational_store.models import (
@@ -17,6 +17,9 @@ from bridge.operational_store.models import (
     _utc_iso,
 )
 from contract.extraction import SourceAnchor
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 class SqlOperationalStore(OperationalStore):
@@ -112,7 +115,7 @@ class SqlOperationalStore(OperationalStore):
                 ),
             )
 
-            async def _create(engine: Any) -> None:
+            async def _create(engine: AsyncEngine) -> None:
                 from sqlalchemy import inspect, text
 
                 async with engine.begin() as conn:
@@ -175,10 +178,11 @@ class SqlOperationalStore(OperationalStore):
         release_dsn_runtime(self.dsn, runtime, timeout_s=_OP_TIMEOUT_S)
         _SQL_STORE_CACHE.pop(self.dsn, None)
 
-    def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
+    def _run[T](self, coro: Coroutine[Any, Any, T]) -> T:
         self._ensure_ready()
-        assert self._runtime is not None
-        return self._runtime.run(coro, timeout_s=_OP_TIMEOUT_S)
+        if self._runtime is None:
+            raise RuntimeError("SqlOperationalStore runtime is not initialized")
+        return cast(T, self._runtime.run(coro, timeout_s=_OP_TIMEOUT_S))
 
     def append_facts(self, facts: list[ConsolidatedFact]) -> int:
         """Persist extracted canonical fact rows into the SQL operational store."""

@@ -32,6 +32,26 @@ from contract.refinery import (
 )
 
 
+def resolve_target_deal_for_domain(domain: str) -> str:
+    """Resolve the canonical showcase entity_id for ``domain`` from ``scenarios/*/scenario.yaml``."""
+    from bridge.showcase.loader import discover_manifests
+
+    norm = (domain or "").strip().lower()
+    manifests = discover_manifests()
+    seeded_match = next(
+        (
+            m.entity_id
+            for m in manifests
+            if m.domain.value == norm and m.seed is not None
+        ),
+        None,
+    )
+    if seeded_match:
+        return seeded_match
+    any_match = next((m.entity_id for m in manifests if m.domain.value == norm), None)
+    return any_match or f"deal-{norm or 'default'}"
+
+
 def build_benefits_hdhp_hsa_fsa_proposal(
     *,
     baseline_revision: OntologyRevision,
@@ -244,6 +264,12 @@ def build_benefits_hdhp_hsa_fsa_proposal(
             "socratic_answer": "Broad Domain Rule: HDHP includes HSA · HDHP excludes FSA across all carriers.",
             "false_absent_quarantine_rate_before": 0.35,
             "false_absent_quarantine_rate_after": 0.0,
-            "target_deal": "BENEFITS-APEX-HDHP-2027",
+            "target_deal": resolve_target_deal_for_domain("benefits"),
         },
     )
+
+
+__all__ = [
+    "build_benefits_hdhp_hsa_fsa_proposal",
+    "resolve_target_deal_for_domain",
+]

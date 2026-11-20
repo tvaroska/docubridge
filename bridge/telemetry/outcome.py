@@ -66,7 +66,9 @@ class OutcomeBaggageSpanProcessor(SpanProcessor):
 BaggageSpanProcessor = OutcomeBaggageSpanProcessor
 
 
-def configure_propagation(tracer_provider: Any | None = None) -> None:
+def configure_propagation(
+    tracer_provider: trace.TracerProvider | None = None,
+) -> None:
     """Register W3C `tracecontext,baggage` propagators and attach `OutcomeBaggageSpanProcessor` idempotently."""
     propagate.set_global_textmap(
         CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()])
@@ -149,7 +151,7 @@ def resume_outcome(
     )
 
 
-def close_outcome(
+def close_outcome(  # noqa: PLR0913 - public keyword-only outcome closing API
     status: OutcomeStatus | str,
     *,
     subject: str | None = None,

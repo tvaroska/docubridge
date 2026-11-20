@@ -13,10 +13,14 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import logging
 import os
 import threading
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
 DEFAULT_OP_TIMEOUT_S = 30.0
 IAM_AUTH_ENV = "BRIDGE_DB_IAM_AUTH"
@@ -35,7 +39,7 @@ def fetch_cloud_sql_iam_token() -> str:
     creds, _ = google.auth.default(
         scopes=["https://www.googleapis.com/auth/sqlservice.admin"]
     )
-    creds.refresh(google.auth.transport.requests.Request())
+    creds.refresh(google.auth.transport.requests.Request())  # type: ignore[no-untyped-call]
     if not creds.token:
         raise RuntimeError(
             "failed to mint Cloud SQL IAM token from Application Default Credentials"
@@ -43,11 +47,11 @@ def fetch_cloud_sql_iam_token() -> str:
     return str(creds.token)
 
 
-def enable_iam_auth(
-    engine: Any,
+def enable_iam_auth[EngineT](
+    engine: EngineT,
     *,
     token_fetcher: Callable[[], str] | None = None,
-) -> Any:
+) -> EngineT:
     """Attach a SQLAlchemy ``do_connect`` hook that injects a short-lived Cloud SQL IAM token.
 
     When ``cparams`` has no password (or an empty password), injects ``cparams['password']``
@@ -60,7 +64,7 @@ def enable_iam_auth(
 
     @event.listens_for(sync_engine, "do_connect")
     def _inject_iam_token(
-        dialect: Any, conn_rec: Any, cargs: Any, cparams: dict[str, Any]
+        dialect: object, conn_rec: object, cargs: object, cparams: dict[str, Any]
     ) -> None:
         del dialect, conn_rec, cargs
         if not cparams.get("password"):
@@ -84,12 +88,12 @@ def create_async_engine_with_iam(
     dsn: str,
     *,
     token_fetcher: Callable[[], str] | None = None,
-    **kwargs: Any,
-) -> Any:
+    **kwargs: object,
+) -> AsyncEngine:
     """Create a SQLAlchemy ``AsyncEngine`` and attach Cloud SQL IAM auth when enabled."""
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    merged = {**_engine_kwargs_for_dsn(dsn), **kwargs}
+    merged: dict[str, Any] = {**_engine_kwargs_for_dsn(dsn), **kwargs}
     engine = create_async_engine(dsn, **merged)
     lowered = dsn.lower()
     if (lowered.startswith("postgresql") or lowered.startswith("postgres")) and (
@@ -118,19 +122,19 @@ class DsnSqlRuntime:
         )
         self.thread.start()
         try:
-            self.engine: Any = create_async_engine_with_iam(dsn)
+            self.engine: AsyncEngine = create_async_engine_with_iam(dsn)
         except BaseException:
             self.loop.call_soon_threadsafe(self.loop.stop)
             self.thread.join(timeout=5.0)
             self.loop.close()
             raise
 
-    def run(
+    def run[T](
         self,
-        coro: Coroutine[Any, Any, Any],
+        coro: Coroutine[Any, Any, T],
         *,
         timeout_s: float = DEFAULT_OP_TIMEOUT_S,
-    ) -> Any:
+    ) -> T:
         """Execute ``coro`` on this runtime's event loop and block for its result."""
         if threading.current_thread() is self.thread:
             coro.close()
@@ -152,8 +156,10 @@ class DsnSqlRuntime:
             asyncio.run_coroutine_threadsafe(self.engine.dispose(), self.loop).result(
                 timeout=timeout_s
             )
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001  # best-effort engine dispose on shutdown
+            logging.getLogger(__name__).debug(
+                "SQL engine dispose ignored on shutdown: %s", exc
+            )
         finally:
             self.loop.call_soon_threadsafe(self.loop.stop)
             self.thread.join(timeout=timeout_s)

@@ -135,7 +135,7 @@ class _FlipOnceExtractor(_PermutationAwareFixtureExtractor):
         result = await super().extract(artifact_name, catalog_order=catalog_order)
         order = tuple(catalog_order or ())
         if _normalize_key(artifact_name) != self._document or order != tuple(
-            reversed(sorted(order))
+            sorted(order, reverse=True)
         ):
             return result
         key_fields = {**result.fields.key_fields, self._field: " Perturbed "}

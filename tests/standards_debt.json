@@ -1,29 +1,5 @@
 {
-  "config": [
-    "mypy:missing",
-    "ruff:ANN",
-    "ruff:BLE",
-    "ruff:C4",
-    "ruff:C90",
-    "ruff:E",
-    "ruff:PLR0911",
-    "ruff:PLR0912",
-    "ruff:PLR0913",
-    "ruff:PLR0915",
-    "ruff:S",
-    "ruff:W"
-  ],
-  "oversized_files": {
-    "bridge/identity.py": 827,
-    "bridge/rfp.py": 843,
-    "bridge/agent_gym/engine.py": 820,
-    "bridge/agent_gym/registry_gateway.py": 870,
-    "bridge/edge/llm_leg.py": 868,
-    "bridge/extraction/containers.py": 835,
-    "bridge/extraction/gemini.py": 856,
-    "bridge/knowledge_catalog/catalog.py": 905,
-    "bridge/refinery/assay.py": 965,
-    "demo/enterprise-demo.js": 2756
-  },
-  "narration_comments": 141
+  "config": [],
+  "oversized_files": {},
+  "narration_comments": 0
 }

@@ -60,3 +60,44 @@ test("Fast-forward drives the visible lifecycle to escalated", async ({ page }) 
   await expect(badge).toHaveAttribute("data-lifecycle", "escalated");
   await expect(badge).toContainText("escalated");
 });
+
+test("Zero external CDN calls, valid SVG favicon, and GM3 --surface token", async ({
+  page,
+  request,
+}) => {
+  const externalHosts: string[] = [];
+  const failedAssets: string[] = [];
+
+  page.on("request", (req) => {
+    const url = new URL(req.url());
+    const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (!isLocal && url.protocol.startsWith("http")) {
+      externalHosts.push(req.url());
+    }
+  });
+  page.on("response", (resp) => {
+    if (resp.status() >= 400 && !resp.url().includes("/timewarp/")) {
+      failedAssets.push(`${resp.status()} ${resp.url()}`);
+    }
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("external-zone")).toBeVisible();
+
+  const iconHref = await page
+    .locator('link[rel="icon"]')
+    .first()
+    .getAttribute("href");
+  expect(iconHref).toBe("/favicon.svg");
+
+  const faviconResp = await request.get("/favicon.svg");
+  expect(faviconResp.status()).toBe(200);
+  expect(faviconResp.headers()["content-type"]).toContain("image/svg+xml");
+
+  const surfaceToken = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--surface").trim(),
+  );
+  expect(surfaceToken).toBe("#f8f9fa");
+  expect(externalHosts).toEqual([]);
+  expect(failedAssets).toEqual([]);
+});

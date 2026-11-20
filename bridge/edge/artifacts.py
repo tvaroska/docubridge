@@ -138,10 +138,10 @@ async def resolve_bytes(uri: str) -> tuple[bytes, str] | None:
         return None
     try:
         resolved = await resolve_document(uri)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Decision 7: never fail a turn when artifact persistence fails
         _LOG.warning("artifact %s not persisted: %s: %s", uri, type(exc).__name__, exc)
         return None
-    if resolved.by_reference:
+    if resolved.by_reference or resolved.data is None:
         return None
     return resolved.data, resolved.mime_type
 
@@ -289,8 +289,10 @@ def gcs_signer(bucket_name: str) -> Signer:
             .bucket(resolved_bucket)
             .blob(_adk_gcs_blob_path(user_id, context_id, filename, version or 0))
         )
-        return blob.generate_signed_url(
-            expiration=timedelta(minutes=SIGNED_URL_TTL_MIN), version="v4"
+        return str(
+            blob.generate_signed_url(
+                expiration=timedelta(minutes=SIGNED_URL_TTL_MIN), version="v4"
+            )
         )
 
     return _sign

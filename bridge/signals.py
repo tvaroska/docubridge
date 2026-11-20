@@ -1,6 +1,7 @@
 """Four-signal disposition model (CORE-4): one SignalProvider interface, pluggable impls."""
 
 import abc
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,8 +13,14 @@ from bridge.disposition import (
     dispose,
 )
 from bridge.ports import Port, get_adapter, resolve_mode
-from bridge.ports.protocols import ExtractionPort
 from contract.extraction import ExtractionResult, fields_requiring_review
+
+
+class ExtractorLike(Protocol):
+    """Structural extraction contract satisfied by ExtractionPort, FixtureExtractor, and test spies."""
+
+    async def extract(self, artifact_name: str) -> ExtractionResult:
+        """Extract fields and signals for a document artifact."""
 
 
 class Signals(BaseModel):
@@ -88,14 +95,14 @@ class SignalProvider(abc.ABC):
 class ExtractionSignalProvider(SignalProvider):
     """Signals derived from the extraction port; canonicalizes the issuer Bridge-side."""
 
-    def __init__(self, extractor: ExtractionPort | None = None) -> None:
+    def __init__(self, extractor: ExtractorLike | None = None) -> None:
         self._extractor = extractor  # None -> resolve the extraction port lazily
 
     async def signals_for(
         self, artifact_name: str, *, candidate_doctypes: list[str]
     ) -> Signals:
         """Extract quality, freshness, and schema completeness signals from a document."""
-        extractor = self._extractor or get_adapter(
+        extractor: ExtractorLike = self._extractor or get_adapter(
             Port.extraction, resolve_mode(Port.extraction)
         )
         r = await extractor.extract(artifact_name)

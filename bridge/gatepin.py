@@ -28,14 +28,22 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
-from google.adk.tools import ToolContext
 from google.adk.tools.base_tool import BaseTool
+from google.adk.tools.tool_context import ToolContext
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from bridge.signals import Signals, signals_from_result
 from contract.extraction import ExtractionResult
+
+
+class _MutableState(Protocol):
+    """Minimal session-state contract shared by plain dicts and ADK State."""
+
+    def get(self, key: str, default: object = None) -> object: ...
+    def __setitem__(self, key: str, value: object) -> None: ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -123,13 +131,17 @@ def _rerecorded(records: Mapping[str, Any], rec: RecordedSignals) -> dict[str, A
     }
 
 
-def record_signals(state: Any, rec: RecordedSignals) -> None:
+def record_signals(state: _MutableState, rec: RecordedSignals) -> None:
     """Record ``rec`` into session ``state`` (a new top-level value, so the ADK state
     delta tracks it; nested dicts are never mutated in place)."""
-    state[SIGNALS_KEY] = _rerecorded(state.get(SIGNALS_KEY) or {}, rec)
+    existing = state.get(SIGNALS_KEY)
+    records = existing if isinstance(existing, Mapping) else {}
+    state[SIGNALS_KEY] = _rerecorded(records, rec)
 
 
-def record_extraction(state: Any, *, doc_id: str, result: ExtractionResult) -> None:
+def record_extraction(
+    state: _MutableState, *, doc_id: str, result: ExtractionResult
+) -> None:
     """Record the genuine extraction of ``doc_id`` (called inside ``extract_document``)."""
     record_signals(
         state, recorded_from_result(result, doc_id=doc_id, source="extraction")
@@ -243,7 +255,7 @@ def pin_gate_args(
     return None
 
 
-def pinned_signals(pin: Any) -> tuple[str, Signals] | None:
+def pinned_signals(pin: object) -> tuple[str, Signals] | None:
     """Parse a :data:`PINS_KEY` value → ``(doc_id, Signals)``; ``None`` when malformed."""
     if not isinstance(pin, Mapping):
         return None

@@ -51,12 +51,74 @@ level, so a module-level port import here would close an import cycle (and
 from __future__ import annotations
 
 import json
+import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from functools import lru_cache
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, create_model
+
+if TYPE_CHECKING:
+    from bridge.ports.protocols import SkillRegistryPort
+
+
+class _RenderableDescription(Protocol):
+    def render(self) -> str: ...
+
+
+class _FieldSpecLike(Protocol):
+    @property
+    def field_type(self) -> str: ...
+
+    @property
+    def description(self) -> _RenderableDescription: ...
+
+    @property
+    def required(self) -> bool: ...
+
+
+class _EntitySpecLike(Protocol):
+    @property
+    def entity_id(self) -> str: ...
+
+    @property
+    def declares_issuer(self) -> bool: ...
+
+    @property
+    def issuer_description(self) -> str: ...
+
+    @property
+    def fields(self) -> Mapping[str, _FieldSpecLike]: ...
+
+    @property
+    def entity_description(self) -> _RenderableDescription: ...
+
+    @property
+    def revision_id(self) -> str: ...
+
+    @property
+    def aliases(self) -> Sequence[str]: ...
+
+
+class _OntologyRevisionLike(Protocol):
+    @property
+    def entities(self) -> Mapping[str, _EntitySpecLike]: ...
+
+    @property
+    def edges(self) -> Sequence[object]: ...
+
+
+class _SkillMetaLike(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def schema_asset(self) -> str | None: ...
+
+    @property
+    def description(self) -> str: ...
+
 
 __all__ = [
     "DEFAULT_SCHEMA_ASSET",
@@ -82,7 +144,7 @@ __all__ = [
 DEFAULT_SCHEMA_ASSET = "assets/schema.json"
 
 
-def key_field_properties(schema: dict) -> dict:
+def key_field_properties(schema: dict[str, Any]) -> dict[str, Any]:
     """The ``key_fields.properties`` block of a doctype schema (``{}`` when absent)."""
     if not isinstance(schema, dict):
         return {}
@@ -91,7 +153,7 @@ def key_field_properties(schema: dict) -> dict:
     return props if isinstance(props, dict) else {}
 
 
-def required_key_fields(schema: dict) -> tuple[str, ...]:
+def required_key_fields(schema: dict[str, Any]) -> tuple[str, ...]:
     """The ``key_fields.required`` list of a doctype schema (``()`` when absent).
 
     Defensive about authoring shape: a non-list ``required`` yields ``()`` rather than
@@ -107,7 +169,7 @@ def required_key_fields(schema: dict) -> tuple[str, ...]:
     return tuple(str(name) for name in required)
 
 
-def table_properties(schema: dict) -> dict[str, dict]:
+def table_properties(schema: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """(table name -> ``items.properties`` column block) of a doctype schema.
 
     Only well-formed tables count: an ``array`` property whose ``items`` declares at
@@ -119,7 +181,7 @@ def table_properties(schema: dict) -> dict[str, dict]:
     props = tables.get("properties") if isinstance(tables, dict) else None
     if not isinstance(props, dict):
         return {}
-    out: dict[str, dict] = {}
+    out: dict[str, dict[str, Any]] = {}
     for name, spec in props.items():
         items = (spec or {}).get("items") if isinstance(spec, dict) else None
         columns = (items or {}).get("properties") if isinstance(items, dict) else None
@@ -128,7 +190,7 @@ def table_properties(schema: dict) -> dict[str, dict]:
     return out
 
 
-def table_spec(schema: dict, table: str) -> dict:
+def table_spec(schema: dict[str, Any], table: str) -> dict[str, Any]:
     """The raw ``properties.tables.properties.{table}`` block (``{}`` when absent)."""
     if not isinstance(schema, dict):
         return {}
@@ -138,12 +200,12 @@ def table_spec(schema: dict, table: str) -> dict:
     return spec if isinstance(spec, dict) else {}
 
 
-def _table_required(schema: dict, table: str) -> set[str]:
+def _table_required(schema: dict[str, Any], table: str) -> set[str]:
     required = (table_spec(schema, table).get("items") or {}).get("required")
     return {str(c) for c in required} if isinstance(required, list) else set()
 
 
-def doctype_tables(schema: dict) -> dict[str, dict[str, str]]:
+def doctype_tables(schema: dict[str, Any]) -> dict[str, dict[str, str]]:
     """(table name -> (column -> description)) — the prompt-catalog view of tables."""
     return {
         table: {
@@ -154,7 +216,7 @@ def doctype_tables(schema: dict) -> dict[str, dict[str, str]]:
     }
 
 
-def doctype_fields(schema: dict) -> dict[str, str]:
+def doctype_fields(schema: dict[str, Any]) -> dict[str, str]:
     """(field name -> description) from a doctype schema's ``key_fields`` properties.
 
     The description is the schema property's own ``description`` (``""`` when the
@@ -167,14 +229,14 @@ def doctype_fields(schema: dict) -> dict[str, str]:
     }
 
 
-def declares_issuer(schema: dict) -> bool:
+def declares_issuer(schema: dict[str, Any]) -> bool:
     """Whether a doctype schema declares a top-level ``issuer`` (utility-bill does)."""
     if not isinstance(schema, dict):
         return False
     return "issuer" in (schema.get("properties") or {})
 
 
-def issuer_description(schema: dict) -> str:
+def issuer_description(schema: dict[str, Any]) -> str:
     """Return a human-readable description of the expected document issuer."""
     return str(
         ((schema.get("properties") or {}).get("issuer") or {}).get("description", "")
@@ -182,7 +244,7 @@ def issuer_description(schema: dict) -> str:
     )
 
 
-def doctype_description(schema: dict) -> str:
+def doctype_description(schema: dict[str, Any]) -> str:
     """Return the top-level contrastive entity description of a doctype schema."""
     if not isinstance(schema, dict):
         return ""
@@ -190,7 +252,7 @@ def doctype_description(schema: dict) -> str:
 
 
 def entity_spec_to_json_schema(
-    spec: Any,
+    spec: _EntitySpecLike,
     *,
     field_enums: dict[str, tuple[str, ...]] | None = None,
     tables: dict[str, dict[str, Any]] | None = None,
@@ -259,7 +321,7 @@ def entity_spec_to_json_schema(
 
 def _enrich_schema_with_okf_spec(
     schema: dict[str, Any],
-    okf_spec: Any | None,
+    okf_spec: _EntitySpecLike | None,
     fallback_skill_description: str = "",
 ) -> dict[str, Any]:
     """Enrich a parsed ``assets/schema.json`` dict with OKF contrastive descriptions."""
@@ -305,24 +367,29 @@ def _field_type(spec: object) -> object:
     return str
 
 
-def _text_model(name: str, props: dict, required: set[str]) -> type[BaseModel] | None:
+def _text_model(
+    name: str, props: dict[str, Any], required: set[str]
+) -> type[BaseModel] | None:
     """An ``extra="forbid"`` model of text (or closed-enum) fields; ``None`` if fieldless."""
     # A leading underscore is a pydantic private attribute, not a field — a schema
     # declaring one gets it ignored rather than crashing model construction.
     names = [n for n in props if isinstance(n, str) and n and not n.startswith("_")]
     if not names:
         return None
-    definitions: dict[str, object] = {}
+    definitions: dict[str, Any] = {}
     for field in names:
-        typ = _field_type(props[field])
+        typ: Any = _field_type(props[field])
         definitions[field] = (typ, ...) if field in required else (typ | None, None)
-    return create_model(
-        name,
-        # extra="forbid": an undeclared key is an ``extra_forbidden`` error — the same
-        # posture the hand-written contract models carried. Empty protected_namespaces
-        # so a legitimately-named ``model_*`` field does not warn.
-        __config__=ConfigDict(extra="forbid", protected_namespaces=()),
-        **definitions,
+    return cast(
+        type[BaseModel],
+        create_model(
+            name,
+            # extra="forbid": an undeclared key is an ``extra_forbidden`` error — the same
+            # posture the hand-written contract models carried. Empty protected_namespaces
+            # so a legitimately-named ``model_*`` field does not warn.
+            __config__=ConfigDict(extra="forbid", protected_namespaces=()),
+            **definitions,
+        ),
     )
 
 
@@ -350,7 +417,7 @@ def _tables_model_cached(doctype: str, schema_json: str) -> type[BaseModel]:
     """Build (once per schema CONTENT) the typed ``tables`` model — same cache rule."""
     schema = json.loads(schema_json)
     base = _model_name(doctype).removesuffix("KeyFields")
-    definitions: dict[str, object] = {}
+    definitions: dict[str, Any] = {}
     for table, columns in table_properties(schema).items():
         row = _text_model(
             f"{base}{_model_name(table).removesuffix('KeyFields')}Row",
@@ -358,17 +425,21 @@ def _tables_model_cached(doctype: str, schema_json: str) -> type[BaseModel]:
             _table_required(schema, table),
         )
         if row is not None:
-            definitions[table] = (list[row] | None, None)
-    return create_model(
-        f"{base}Tables",
-        # A doctype declaring no tables gets a field-less forbid model: an asserted
-        # table it never declared is rejected, an empty ``tables`` passes.
-        __config__=ConfigDict(extra="forbid", protected_namespaces=()),
-        **definitions,
+            row_list_type: Any = list.__class_getitem__(row)
+            definitions[table] = (row_list_type | None, None)
+    return cast(
+        type[BaseModel],
+        create_model(
+            f"{base}Tables",
+            # A doctype declaring no tables gets a field-less forbid model: an asserted
+            # table it never declared is rejected, an empty ``tables`` passes.
+            __config__=ConfigDict(extra="forbid", protected_namespaces=()),
+            **definitions,
+        ),
     )
 
 
-def key_field_model(doctype: str, schema: dict) -> type[BaseModel] | None:
+def key_field_model(doctype: str, schema: dict[str, Any]) -> type[BaseModel] | None:
     """The typed ``key_fields`` model for ``doctype``, or ``None`` when it declares none.
 
     ``None`` means "nothing to enforce" (a half-installed skill whose schema asset is
@@ -380,7 +451,7 @@ def key_field_model(doctype: str, schema: dict) -> type[BaseModel] | None:
     return _key_field_model_cached(doctype, json.dumps(schema, sort_keys=True))
 
 
-def tables_model(doctype: str, schema: dict) -> type[BaseModel]:
+def tables_model(doctype: str, schema: dict[str, Any]) -> type[BaseModel]:
     """The typed ``ExtractionFields.tables`` model for ``doctype``.
 
     Declared tables are optional (a quote may print no rate grid); within a present
@@ -393,7 +464,51 @@ def tables_model(doctype: str, schema: dict) -> type[BaseModel]:
     )
 
 
-def doctype_schemas() -> dict[str, dict]:
+def _load_active_okf_specs(
+    bundles: Mapping[str, Any], baseline_revision_id: str
+) -> tuple[dict[str, _EntitySpecLike], str]:
+    okf_specs: dict[str, _EntitySpecLike] = {eid: b.spec for eid, b in bundles.items()}
+    active_revision_id = baseline_revision_id
+    try:
+        from bridge.knowledge_catalog import knowledge_catalog_from_env
+
+        active_rev = knowledge_catalog_from_env().get_active_ontology_revision()
+        if active_rev is not None and active_rev.entities:
+            okf_specs = dict(active_rev.entities)
+            active_revision_id = active_rev.revision_id
+    except (ImportError, OSError, RuntimeError, ValueError, KeyError) as exc:
+        logging.getLogger(__name__).debug(
+            "Active ontology revision unavailable; using baseline bundles: %s", exc
+        )
+    return okf_specs, active_revision_id
+
+
+def _read_doctype_asset_schema(
+    registry: SkillRegistryPort,
+    meta: _SkillMetaLike,
+    okf_specs: Mapping[str, _EntitySpecLike],
+) -> dict[str, Any]:
+    rel = meta.schema_asset or DEFAULT_SCHEMA_ASSET
+    try:
+        raw = registry.read_asset(meta.name, rel)
+    except KeyError:
+        return {}  # declared-but-absent asset: name-only, no raise
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"doctype skill {meta.name!r}: {rel} is not valid JSON"
+        ) from exc
+    if isinstance(parsed, dict) and parsed:
+        return _enrich_schema_with_okf_spec(
+            parsed,
+            okf_specs.get(meta.name),
+            fallback_skill_description=getattr(meta, "description", "") or "",
+        )
+    return cast(dict[str, Any], parsed)
+
+
+def doctype_schemas() -> dict[str, dict[str, Any]]:
     """Read every installed doctype skill's schema — OKF bundle first, asset second.
 
     A doctype whose ``catalog/doctypes/<name>.okf.md`` bundle exists gets its schema
@@ -423,20 +538,11 @@ def doctype_schemas() -> dict[str, dict]:
     )
 
     bundles = load_okf_doctype_bundles()
-    okf_specs: dict[str, Any] = {eid: b.spec for eid, b in bundles.items()}
-    active_revision_id = BASELINE_REVISION_ID
-    try:
-        from bridge.knowledge_catalog import knowledge_catalog_from_env
-
-        active_rev = knowledge_catalog_from_env().get_active_ontology_revision()
-        if active_rev is not None and active_rev.entities:
-            okf_specs = dict(active_rev.entities)
-            active_revision_id = active_rev.revision_id
-    except Exception:
-        pass
-
+    okf_specs, active_revision_id = _load_active_okf_specs(
+        bundles, BASELINE_REVISION_ID
+    )
     registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
-    schemas: dict[str, dict] = {}
+    schemas: dict[str, dict[str, Any]] = {}
     for meta in registry.list_skills():
         if meta.kind != "doctype":
             continue  # process skills carry no field schema
@@ -449,26 +555,7 @@ def doctype_schemas() -> dict[str, dict]:
                 schema_version=bundle.schema_version,
             )
             continue
-        rel = meta.schema_asset or DEFAULT_SCHEMA_ASSET
-        try:
-            raw = registry.read_asset(meta.name, rel)
-        except KeyError:
-            schemas[meta.name] = {}  # declared-but-absent asset: name-only, no raise
-            continue
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"doctype skill {meta.name!r}: {rel} is not valid JSON"
-            ) from exc
-        if isinstance(parsed, dict) and parsed:
-            schemas[meta.name] = _enrich_schema_with_okf_spec(
-                parsed,
-                okf_specs.get(meta.name),
-                fallback_skill_description=getattr(meta, "description", "") or "",
-            )
-        else:
-            schemas[meta.name] = parsed
+        schemas[meta.name] = _read_doctype_asset_schema(registry, meta, okf_specs)
 
     # Include newly split/promoted child entities when an ontology revision beyond
     # baseline is active and BRIDGE_SKILLS_DIR is not isolated to a test tempdir.
@@ -496,8 +583,8 @@ _SLICE_NEIGHBORHOOD_RELATIONS: frozenset[str] = frozenset(
 
 def _resolve_seed_doctype(
     raw_name: str,
-    base_schemas: dict[str, dict],
-    entities: dict[str, Any],
+    base_schemas: Mapping[str, dict[str, Any]],
+    entities: Mapping[str, _EntitySpecLike],
 ) -> str:
     """Resolve a target or candidate doctype name or OKF alias to its canonical entity ID."""
     cleaned = raw_name.strip()
@@ -510,14 +597,75 @@ def _resolve_seed_doctype(
     return cleaned
 
 
+def _resolve_active_ontology_revision(
+    revision: _OntologyRevisionLike | None,
+) -> _OntologyRevisionLike | None:
+    if revision is not None:
+        return revision
+    try:
+        from bridge.knowledge_catalog import knowledge_catalog_from_env
+
+        active_rev = knowledge_catalog_from_env().get_active_ontology_revision()
+        if active_rev is not None:
+            return active_rev
+    except (ImportError, OSError, RuntimeError, ValueError, KeyError):
+        pass
+    try:
+        from bridge.refinery.okf_loader import build_baseline_ontology_revision
+
+        return build_baseline_ontology_revision()
+    except (ImportError, OSError, RuntimeError, ValueError, KeyError):
+        return None
+
+
+def _collect_slice_seeds(
+    target_doctype: str | None,
+    candidate_doctypes: Sequence[str] | None,
+    context_set: str | None,
+    base_schemas: Mapping[str, dict[str, Any]],
+    rev_entities: Mapping[str, _EntitySpecLike],
+) -> set[str]:
+    seeds: set[str] = set()
+    if target_doctype and target_doctype.strip():
+        seeds.add(_resolve_seed_doctype(target_doctype, base_schemas, rev_entities))
+    for cand in candidate_doctypes or ():
+        if str(cand).strip():
+            seeds.add(_resolve_seed_doctype(str(cand), base_schemas, rev_entities))
+    if context_set and context_set.strip():
+        ctx_clean = context_set.strip()
+        for eid, spec in rev_entities.items():
+            if getattr(spec, "context_set", "") == ctx_clean:
+                seeds.add(eid)
+    return seeds
+
+
+def _expand_ontology_neighborhood(
+    seeds: set[str],
+    rev_edges: Sequence[object],
+    base_schemas: Mapping[str, dict[str, Any]],
+    rev_entities: Mapping[str, _EntitySpecLike],
+) -> set[str]:
+    selected = set(seeds)
+    for edge in rev_edges:
+        if getattr(edge, "relation", "") not in _SLICE_NEIGHBORHOOD_RELATIONS:
+            continue
+        src = getattr(edge, "source_id", "")
+        tgt = getattr(edge, "target_id", "")
+        if src in seeds and tgt:
+            selected.add(_resolve_seed_doctype(tgt, base_schemas, rev_entities))
+        elif tgt in seeds and src:
+            selected.add(_resolve_seed_doctype(src, base_schemas, rev_entities))
+    return selected
+
+
 def slice_ontology_for_extraction(
     target_doctype: str | None = None,
     candidate_doctypes: Sequence[str] | None = None,
-    revision: Any | None = None,
+    revision: _OntologyRevisionLike | None = None,
     *,
     context_set: str | None = None,
-    schemas: dict[str, dict] | None = None,
-) -> dict[str, dict]:
+    schemas: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
     """Return the target-scoped doctype schema slice (spine + 1-hop ontology neighborhood).
 
     When ``target_doctype``, ``candidate_doctypes``, and ``context_set`` are all empty
@@ -535,53 +683,21 @@ def slice_ontology_for_extraction(
     if not has_target and not has_candidates and not has_context:
         return base_schemas
 
-    active_rev = revision
-    if active_rev is None:
-        try:
-            from bridge.knowledge_catalog import knowledge_catalog_from_env
-
-            active_rev = knowledge_catalog_from_env().get_active_ontology_revision()
-        except Exception:
-            active_rev = None
-    if active_rev is None:
-        try:
-            from bridge.refinery.okf_loader import build_baseline_ontology_revision
-
-            active_rev = build_baseline_ontology_revision()
-        except Exception:
-            active_rev = None
-
-    rev_entities: dict[str, Any] = (
+    active_rev = _resolve_active_ontology_revision(revision)
+    rev_entities: dict[str, _EntitySpecLike] = (
         dict(active_rev.entities) if active_rev is not None else {}
     )
-    rev_edges: Sequence[Any] = tuple(active_rev.edges) if active_rev is not None else ()
+    rev_edges: Sequence[object] = (
+        tuple(active_rev.edges) if active_rev is not None else ()
+    )
+    seeds = _collect_slice_seeds(
+        target_doctype, candidate_doctypes, context_set, base_schemas, rev_entities
+    )
+    selected = _expand_ontology_neighborhood(
+        seeds, rev_edges, base_schemas, rev_entities
+    )
 
-    seeds: set[str] = set()
-    if has_target and target_doctype is not None:
-        seeds.add(_resolve_seed_doctype(target_doctype, base_schemas, rev_entities))
-    if has_candidates and candidate_doctypes is not None:
-        for cand in candidate_doctypes:
-            if str(cand).strip():
-                seeds.add(_resolve_seed_doctype(str(cand), base_schemas, rev_entities))
-    if has_context and context_set is not None:
-        ctx_clean = context_set.strip()
-        for eid, spec in rev_entities.items():
-            if getattr(spec, "context_set", "") == ctx_clean:
-                seeds.add(eid)
-
-    selected = set(seeds)
-    # Expand 1-hop shared spine & spoke neighborhood across ontology graph edges
-    for edge in rev_edges:
-        if getattr(edge, "relation", "") not in _SLICE_NEIGHBORHOOD_RELATIONS:
-            continue
-        src = getattr(edge, "source_id", "")
-        tgt = getattr(edge, "target_id", "")
-        if src in seeds and tgt:
-            selected.add(_resolve_seed_doctype(tgt, base_schemas, rev_entities))
-        elif tgt in seeds and src:
-            selected.add(_resolve_seed_doctype(src, base_schemas, rev_entities))
-
-    sliced: dict[str, dict] = {}
+    sliced: dict[str, dict[str, Any]] = {}
     for eid in sorted(selected):
         if eid in base_schemas:
             if revision is not None and eid in rev_entities:

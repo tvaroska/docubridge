@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bridge.a2ui_inbox import ActionInboxStore, action_inbox_store_from_env
 from bridge.agent_gym import AgentGymEngine, agent_gym_from_env
@@ -33,6 +33,9 @@ from contract.scenario import (
 )
 from contract.wire import LedgerEntry
 
+if TYPE_CHECKING:
+    from bridge.showcase.gcs_scenarios import GcsStorageClientLike
+
 
 class UnknownScenarioError(KeyError):
     """No loaded scenario has the requested id."""
@@ -41,7 +44,7 @@ class UnknownScenarioError(KeyError):
 class ScenarioEngine:
     """Owns manifests, per-scenario beat state, rendered PDFs and uploaded PDF bytes."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - public ScenarioEngine dependency injection contract
         self,
         manifests: tuple[ScenarioManifest, ...] | None = None,
         *,
@@ -51,7 +54,7 @@ class ScenarioEngine:
         gym: AgentGymEngine | None = None,
         refinery: SchemaRefineryEngine | None = None,
         scenarios_dir: Path | str | None = None,
-        storage_client: Any = None,
+        storage_client: GcsStorageClientLike | None = None,
     ) -> None:
         self._scenarios_dir = scenarios_dir
         self._storage_client = storage_client
@@ -76,7 +79,6 @@ class ScenarioEngine:
         # Schema-evolution scenarios share one refinery, so only one may be live at a time.
         self._active_refinery_scenario: str | None = None
 
-    # ------------------------------------------------------------------ lookup
     def list(self) -> list[dict[str, Any]]:
         return [m.summary() for m in self._manifests.values()]
 
@@ -107,7 +109,6 @@ class ScenarioEngine:
             return m
         return None
 
-    # ------------------------------------------------------------------- state
     def _ctx(self, scenario_id: str) -> OperationContext:
         if scenario_id not in self._contexts:
             self._contexts[scenario_id] = self._fresh_context(self.get(scenario_id))
@@ -115,6 +116,14 @@ class ScenarioEngine:
         return self._contexts[scenario_id]
 
     def _fresh_context(self, manifest: ScenarioManifest) -> OperationContext:
+        sid = manifest.id
+
+        def _pdf_bytes(asset_id: str) -> bytes:
+            return self.pdf(sid, asset_id).pdf_bytes
+
+        def _pdf_url(asset_id: str) -> str:
+            return self.pdf_url(sid, asset_id)
+
         ctx = OperationContext(
             manifest=manifest,
             state={},
@@ -123,10 +132,8 @@ class ScenarioEngine:
             inbox=self.inbox,
             gym=self.gym,
             refinery=self.refinery,
-            pdf_bytes=lambda asset_id, sid=manifest.id: (
-                self.pdf(sid, asset_id).pdf_bytes
-            ),
-            pdf_url=lambda asset_id, sid=manifest.id: self.pdf_url(sid, asset_id),
+            pdf_bytes=_pdf_bytes,
+            pdf_url=_pdf_url,
         )
         initial = manifest.stage.initial_state if manifest.stage else {}
         ctx.state = ctx.render(copy.deepcopy(initial))
@@ -326,7 +333,6 @@ class ScenarioEngine:
     def custom_pdf(self, scenario_id: str, filename: str) -> bytes | None:
         return self._custom_pdfs.get(scenario_id, {}).get(filename)
 
-    # -------------------------------------------------------------------- seed
     def seed_all(
         self,
         *,

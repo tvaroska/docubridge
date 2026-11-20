@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING
 
 from ..protocols import (
     ActionInboxPort,
@@ -14,11 +14,18 @@ from ..protocols import (
 )
 from .stores import require_async_driver
 
+if TYPE_CHECKING:
+    from bridge.a2ui_inbox import ActionInboxStore
+    from bridge.agent_gym import AgentGymEngine
+    from bridge.knowledge_catalog import KnowledgeCatalog
+    from bridge.operational_store import OperationalStore
+    from bridge.vault import AuditVaultStore
+
 
 class LocalAuditVault(AuditVaultPort):
     """Local `audit_vault` adapter (Zone 3): in-memory WORM vault or GCS when bucket is supplied."""
 
-    def build_vault(self, bucket_name: str | None = None) -> Any:
+    def build_vault(self, bucket_name: str | None = None) -> AuditVaultStore:
         """Construct an in-memory Audit Vault (or GCS vault when a bucket is explicitly configured)."""
         from bridge.vault import (
             VAULT_BUCKET_ENV,
@@ -35,7 +42,7 @@ class LocalAuditVault(AuditVaultPort):
 class LocalOperationalStore(OperationalStorePort):
     """Local `operational_store` adapter (Zone 3–4): in-memory or SQLite-backed bi-temporal store."""
 
-    def build_operational_store(self, db_url: str | None = None) -> Any:
+    def build_operational_store(self, db_url: str | None = None) -> OperationalStore:
         """Construct an in-memory or SQL-backed OperationalStore for local execution."""
         from bridge.operational_store import (
             _SQL_CACHE_LOCK,
@@ -64,7 +71,7 @@ class LocalOperationalStore(OperationalStorePort):
 class LocalActionInbox(ActionInboxPort):
     """Local `action_inbox` adapter (Zone 5): in-memory singleton or SQLite-backed inbox store."""
 
-    def build_action_inbox_store(self, db_url: str | None = None) -> Any:
+    def build_action_inbox_store(self, db_url: str | None = None) -> ActionInboxStore:
         """Construct an in-memory or SQL-backed ActionInboxStore for local execution."""
         import bridge.a2ui_inbox as inbox_mod
         from bridge.a2ui_inbox import (
@@ -104,7 +111,7 @@ class LocalActionInbox(ActionInboxPort):
 class LocalAgentGym(AgentGymPort):
     """Local `agent_gym` adapter (Zone 6): in-memory singleton or SQLite-backed Agent Gym engine."""
 
-    def build_agent_gym(self, db_url: str | None = None) -> Any:
+    def build_agent_gym(self, db_url: str | None = None) -> AgentGymEngine:
         """Construct an in-memory or SQL-backed AgentGymEngine for local execution."""
         import bridge.agent_gym.sql_store as gym_sql
         from bridge.agent_gym.engine import InMemoryAgentGymEngine
@@ -142,7 +149,7 @@ class LocalAgentGym(AgentGymPort):
 class LocalKnowledgeCatalog(KnowledgeCatalogPort):
     """Local `knowledge_catalog` adapter (Zone 6): in-memory or SQLite-backed Knowledge Catalog & TBox Ontology Graph."""
 
-    def build_knowledge_catalog(self, db_url: str | None = None) -> Any:
+    def build_knowledge_catalog(self, db_url: str | None = None) -> KnowledgeCatalog:
         """Construct an in-memory or SQL-backed KnowledgeCatalog for local execution."""
         import bridge.knowledge_catalog.sql_store as cat_sql
         from bridge.knowledge_catalog.catalog import InMemoryKnowledgeCatalog

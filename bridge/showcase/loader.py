@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from pydantic import ValidationError
 
 from contract.scenario import ScenarioManifest
+
+if TYPE_CHECKING:
+    from bridge.showcase.gcs_scenarios import GcsStorageClientLike
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENARIOS_DIR = _REPO_ROOT / "scenarios"
@@ -89,7 +92,7 @@ def load_manifest(path: Path) -> ScenarioManifest:
 def discover_manifests(
     scenarios_dir: Path | str | None = None,
     *,
-    storage_client: Any = None,
+    storage_client: GcsStorageClientLike | None = None,
 ) -> tuple[ScenarioManifest, ...]:
     """All manifests under the scenarios root (local folder or `gs://` bucket), ordered by (`order`, `id`)."""
     raw_override = (

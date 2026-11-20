@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from fastapi import FastAPI, HTTPException, Response
@@ -22,6 +22,7 @@ from bridge.identity import SPIFFE_ID_HEADER, SPIFFE_SVID_HEADER, mint_jwt_svid
 from bridge.knowledge_catalog import CatalogRole
 from bridge.outbound import stringify_decimals
 from bridge.ports import Port, get_adapter, resolve_mode
+from bridge.ports.protocols import A2AClientPort
 from bridge.showcase.live_extraction import (
     _build_genai_client,
     is_live_gemini_configured,
@@ -33,6 +34,8 @@ from bridge.user_interaction.demo_session import mutating_auth_dependency
 
 if TYPE_CHECKING:
     from bridge.dashboard.board import RfpBoard
+    from bridge.showcase.live_extraction import GenaiClientLike
+    from contract.wire import LedgerEntry
 
 
 class RunRfpProcurementRequest(BaseModel):
@@ -74,11 +77,219 @@ def _build_long_context_appendix(case_id: str) -> str:
     return "".join(blocks)
 
 
+def _fetch_carrier_a_assertion(
+    body: RunRfpProcurementRequest,
+    *,
+    a2a_port: A2AClientPort,
+    expected_skill: str | None,
+    ext_headers: dict[str, str],
+    http_client: httpx.Client | None,
+) -> dict[str, Any]:
+    carrier_a_endpoint = (
+        body.carrier_a_url or os.environ.get("BRIDGE_CARRIER_A_URL", "").strip()
+    )
+    assertion: dict[str, Any] | None = None
+    if body.mode == "live" and (carrier_a_endpoint or http_client is not None):
+        req_a = cast(
+            dict[str, Any],
+            stringify_decimals(
+                {
+                    "rfp_id": body.case_id,
+                    "employer_name": body.employer_name,
+                    "plan_year": body.plan_year,
+                    "carrier": "carrier-a",
+                }
+            ),
+        )
+        res_a = a2a_port.send_message(
+            endpoint_url=carrier_a_endpoint,
+            payload=req_a,
+            expected_skill=expected_skill,
+            context_id=f"{body.case_id}:carrier-a",
+            headers=ext_headers,
+            http_client=http_client,
+            timeout=20.0,
+        )
+        found_a = res_a.find_data_part(
+            kind=expected_skill, artifact_name=expected_skill
+        )
+        if found_a is None:
+            raise HTTPException(
+                status_code=502,
+                detail="Carrier A A2A SendMessage returned no structured quote artifact.",
+            )
+        data_a, _, _ = found_a
+        assertion = data_a.get("assertion", data_a)
+    elif body.carrier_a_fallback:
+        assertion = dict(body.carrier_a_fallback)
+    if not assertion:
+        raise HTTPException(
+            status_code=503, detail="Carrier A quote assertion unavailable."
+        )
+    return assertion
+
+
+def _validate_carrier_a_path_a(
+    body: RunRfpProcurementRequest,
+    assertion: dict[str, Any],
+    doctypes: list[str],
+) -> LedgerEntry:
+    with trace_step(
+        "docubridge.rfp.carrier_a_path_a_validate",
+        {
+            "entity_id": body.case_id,
+            "source_mode": "A2A_PATH_A",
+            "gen_ai.operation.name": "execute_tool",
+            "gen_ai.tool.name": "path_a_validate_carrier_quote",
+            "gen_ai.agent.name": "rfp_path_a_validator",
+            "gen_ai.usage.input_tokens": 0,
+            "gen_ai.usage.output_tokens": 0,
+            "finops.traffic_type": "production_inference",
+        },
+    ):
+        try:
+            return patha.validate_only_entry(
+                assertion,
+                doc_id=f"{body.case_id}-carrier-a",
+                candidate_doctypes=doctypes,
+                require_installed_schema=True,
+            )
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Carrier A Path-A validation failed: {exc}",
+            ) from exc
+
+
+def _fetch_carrier_b_quote_meta(  # noqa: PLR0913 - internal A2A transport fan-out helper
+    body: RunRfpProcurementRequest,
+    *,
+    a2a_port: A2AClientPort,
+    carrier_b_skill: str | None,
+    ext_headers: dict[str, str],
+    http_client: httpx.Client | None,
+    uncalibrated_argon: bool,
+) -> tuple[str, dict[str, Any]]:
+    carrier_b_endpoint = (
+        body.carrier_b_url or os.environ.get("BRIDGE_CARRIER_B_URL", "").strip()
+    )
+    pdf_uri = body.carrier_b_pdf_uri or ""
+    if not (body.mode == "live" and (carrier_b_endpoint or http_client is not None)):
+        return pdf_uri, {}
+    req_b = cast(
+        dict[str, Any],
+        stringify_decimals(
+            {
+                "rfp_id": body.case_id,
+                "employer_name": body.employer_name,
+                "plan_year": body.plan_year,
+                "carrier": "carrier-b",
+                "pdf_uri": pdf_uri,
+                "uncalibrated_argon": uncalibrated_argon,
+            }
+        ),
+    )
+    res_b = a2a_port.send_message(
+        endpoint_url=carrier_b_endpoint,
+        payload=req_b,
+        expected_skill=carrier_b_skill,
+        context_id=f"{body.case_id}:carrier-b",
+        headers=ext_headers,
+        http_client=http_client,
+        timeout=25.0,
+    )
+    discovered_uri = (
+        res_b.find_file_uri(mime_type="application/pdf") or res_b.find_file_uri()
+    )
+    if discovered_uri:
+        pdf_uri = discovered_uri
+    meta: dict[str, Any] = {
+        "pdf_uri": pdf_uri,
+        "pdf_base64": str(res_b.find_metadata_value("pdf_base64") or ""),
+        "task_id": res_b.task_id,
+        "task_state": res_b.task_state,
+    }
+    found_b = res_b.find_data_part(kind=carrier_b_skill, artifact_name=carrier_b_skill)
+    if found_b is not None:
+        meta["quote_artifact"] = found_b[0]
+    return pdf_uri, meta
+
+
+def _extract_carrier_b_quote(  # noqa: PLR0913 - internal PDF extraction helper
+    body: RunRfpProcurementRequest,
+    *,
+    pdf_uri: str,
+    carrier_b_meta: dict[str, Any],
+    chosen_model: str,
+    uncalibrated_argon: bool,
+    use_live: bool,
+    genai_client: GenaiClientLike | None,
+) -> tuple[str, int, int, int]:
+    if not use_live:
+        return (
+            json.dumps(
+                {
+                    "carrier": "Carrier B",
+                    "revision": "v2",
+                    "orthodontics_gap_closed": True,
+                }
+            ),
+            212000 if uncalibrated_argon else 1180,
+            240 if uncalibrated_argon else 165,
+            190 if uncalibrated_argon else 0,
+        )
+    from google.genai import types
+
+    client = _build_genai_client(genai_client)
+    prompt_head = (
+        f"Extract Carrier B voluntary benefits quote schedule for {body.employer_name} "
+        f"(RFP {body.case_id}, plan year {body.plan_year}), reconciling v0 orthodontics "
+        f"gap against v2 revised deductible and rate tiers. Return concise JSON."
+    )
+    if uncalibrated_argon:
+        prompt_head = prompt_head + "\n\n" + _build_long_context_appendix(body.case_id)
+    contents: list[Any] = [prompt_head]
+    if pdf_uri.startswith("gs://"):
+        contents.append(
+            types.Part.from_uri(file_uri=pdf_uri, mime_type="application/pdf")
+        )
+    elif carrier_b_meta.get("pdf_base64"):
+        import base64
+
+        contents.append(
+            types.Part.from_bytes(
+                data=base64.b64decode(carrier_b_meta["pdf_base64"]),
+                mime_type="application/pdf",
+            )
+        )
+    resp = client.models.generate_content(
+        model=chosen_model,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.0,
+            max_output_tokens=1024 if uncalibrated_argon else 320,
+            thinking_config=(
+                types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
+                if uncalibrated_argon
+                else types.ThinkingConfig(thinking_budget=0)
+            ),
+        ),
+    )
+    usage = getattr(resp, "usage_metadata", None)
+    return (
+        str(getattr(resp, "text", "") or "").strip(),
+        int(getattr(usage, "prompt_token_count", 0) or 0),
+        int(getattr(usage, "candidates_token_count", 0) or 0),
+        int(getattr(usage, "thoughts_token_count", 0) or 0),
+    )
+
+
 def execute_rfp_procurement_run(
     *,
     body: RunRfpProcurementRequest,
     rfps: RfpBoard | None = None,
-    genai_client: Any = None,
+    genai_client: GenaiClientLike | None = None,
     http_client: httpx.Client | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Run one multi-carrier RFP evaluation and close its `EVAL-P11` outcome."""
@@ -100,12 +311,6 @@ def execute_rfp_procurement_run(
     )
 
     try:
-        carrier_a_endpoint = (
-            body.carrier_a_url or os.environ.get("BRIDGE_CARRIER_A_URL", "").strip()
-        )
-        carrier_b_endpoint = (
-            body.carrier_b_url or os.environ.get("BRIDGE_CARRIER_B_URL", "").strip()
-        )
         source_spiffe = "spiffe://agents.docubridge.io/ingest/docubridge-collector"
         ext_headers = inject_outcome_headers(
             {
@@ -118,112 +323,26 @@ def execute_rfp_procurement_run(
         a2a_port = get_adapter(Port.a2a_client, resolve_mode(Port.a2a_client))
         expected_skill = doctypes[0] if doctypes else None
 
-        carrier_a_assertion: dict[str, Any] | None = None
-        if body.mode == "live" and (carrier_a_endpoint or http_client is not None):
-            req_a = stringify_decimals(
-                {
-                    "rfp_id": body.case_id,
-                    "employer_name": body.employer_name,
-                    "plan_year": body.plan_year,
-                    "carrier": "carrier-a",
-                }
-            )
-            res_a = a2a_port.send_message(
-                endpoint_url=carrier_a_endpoint,
-                payload=req_a,
-                expected_skill=expected_skill,
-                context_id=f"{body.case_id}:carrier-a",
-                headers=ext_headers,
-                http_client=http_client,
-                timeout=20.0,
-            )
-            found_a = res_a.find_data_part(
-                kind=expected_skill, artifact_name=expected_skill
-            )
-            if found_a is None:
-                raise HTTPException(
-                    status_code=502,
-                    detail="Carrier A A2A SendMessage returned no structured quote artifact.",
-                )
-            data_a, _, _ = found_a
-            carrier_a_assertion = data_a.get("assertion", data_a)
-        elif body.carrier_a_fallback:
-            carrier_a_assertion = dict(body.carrier_a_fallback)
-
-        if not carrier_a_assertion:
-            raise HTTPException(
-                status_code=503, detail="Carrier A quote assertion unavailable."
-            )
+        carrier_a_assertion = _fetch_carrier_a_assertion(
+            body,
+            a2a_port=a2a_port,
+            expected_skill=expected_skill,
+            ext_headers=ext_headers,
+            http_client=http_client,
+        )
         if not doctypes and "fields" in carrier_a_assertion:
             doctypes = [str(carrier_a_assertion["fields"].get("doctype", ""))]
         carrier_b_skill = doctypes[0] if doctypes and doctypes[0] else expected_skill
 
-        with trace_step(
-            "docubridge.rfp.carrier_a_path_a_validate",
-            {
-                "entity_id": body.case_id,
-                "source_mode": "A2A_PATH_A",
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": "path_a_validate_carrier_quote",
-                "gen_ai.agent.name": "rfp_path_a_validator",
-                "gen_ai.usage.input_tokens": 0,
-                "gen_ai.usage.output_tokens": 0,
-                "finops.traffic_type": "production_inference",
-            },
-        ):
-            try:
-                entry_a = patha.validate_only_entry(
-                    carrier_a_assertion,
-                    doc_id=f"{body.case_id}-carrier-a",
-                    candidate_doctypes=doctypes,
-                    require_installed_schema=True,
-                )
-            except (ValidationError, ValueError) as exc:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Carrier A Path-A validation failed: {exc}",
-                ) from exc
-
-        pdf_uri = body.carrier_b_pdf_uri or ""
-        carrier_b_meta: dict[str, Any] = {}
-        if body.mode == "live" and (carrier_b_endpoint or http_client is not None):
-            req_b = stringify_decimals(
-                {
-                    "rfp_id": body.case_id,
-                    "employer_name": body.employer_name,
-                    "plan_year": body.plan_year,
-                    "carrier": "carrier-b",
-                    "pdf_uri": pdf_uri,
-                    "uncalibrated_argon": uncalibrated_argon,
-                }
-            )
-            res_b = a2a_port.send_message(
-                endpoint_url=carrier_b_endpoint,
-                payload=req_b,
-                expected_skill=carrier_b_skill,
-                context_id=f"{body.case_id}:carrier-b",
-                headers=ext_headers,
-                http_client=http_client,
-                timeout=25.0,
-            )
-            discovered_uri = (
-                res_b.find_file_uri(mime_type="application/pdf")
-                or res_b.find_file_uri()
-            )
-            if discovered_uri:
-                pdf_uri = discovered_uri
-            pdf_b64 = str(res_b.find_metadata_value("pdf_base64") or "")
-            carrier_b_meta = {
-                "pdf_uri": pdf_uri,
-                "pdf_base64": pdf_b64,
-                "task_id": res_b.task_id,
-                "task_state": res_b.task_state,
-            }
-            found_b = res_b.find_data_part(
-                kind=carrier_b_skill, artifact_name=carrier_b_skill
-            )
-            if found_b is not None:
-                carrier_b_meta["quote_artifact"] = found_b[0]
+        entry_a = _validate_carrier_a_path_a(body, carrier_a_assertion, doctypes)
+        pdf_uri, carrier_b_meta = _fetch_carrier_b_quote_meta(
+            body,
+            a2a_port=a2a_port,
+            carrier_b_skill=carrier_b_skill,
+            ext_headers=ext_headers,
+            http_client=http_client,
+            uncalibrated_argon=uncalibrated_argon,
+        )
 
         chosen_model = REASONING_MODEL if uncalibrated_argon else WORKHORSE_MODEL
         source_mode = "PDF_PATH_B_ARGON" if uncalibrated_argon else "PDF_PATH_B_FLASH"
@@ -232,66 +351,15 @@ def execute_rfp_procurement_run(
             if uncalibrated_argon
             else "rfp_pdf_extractor_flash"
         )
-
-        in_tok, out_tok, think_tok = 0, 0, 0
-        extracted_summary = ""
-        if use_live:
-            from google.genai import types
-
-            client = _build_genai_client(genai_client)
-            prompt_head = (
-                f"Extract Carrier B voluntary benefits quote schedule for {body.employer_name} "
-                f"(RFP {body.case_id}, plan year {body.plan_year}), reconciling v0 orthodontics "
-                f"gap against v2 revised deductible and rate tiers. Return concise JSON."
-            )
-            if uncalibrated_argon:
-                prompt_head = (
-                    prompt_head + "\n\n" + _build_long_context_appendix(body.case_id)
-                )
-            contents: list[Any] = [prompt_head]
-            if pdf_uri.startswith("gs://"):
-                contents.append(
-                    types.Part.from_uri(file_uri=pdf_uri, mime_type="application/pdf")
-                )
-            elif carrier_b_meta.get("pdf_base64"):
-                import base64
-
-                contents.append(
-                    types.Part.from_bytes(
-                        data=base64.b64decode(carrier_b_meta["pdf_base64"]),
-                        mime_type="application/pdf",
-                    )
-                )
-            resp = client.models.generate_content(
-                model=chosen_model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.0,
-                    max_output_tokens=1024 if uncalibrated_argon else 320,
-                    thinking_config=(
-                        types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
-                        if uncalibrated_argon
-                        else types.ThinkingConfig(thinking_budget=0)
-                    ),
-                ),
-            )
-            extracted_summary = str(getattr(resp, "text", "") or "").strip()
-            usage = getattr(resp, "usage_metadata", None)
-            in_tok = int(getattr(usage, "prompt_token_count", 0) or 0)
-            out_tok = int(getattr(usage, "candidates_token_count", 0) or 0)
-            think_tok = int(getattr(usage, "thoughts_token_count", 0) or 0)
-        else:
-            in_tok = 212000 if uncalibrated_argon else 1180
-            out_tok = 240 if uncalibrated_argon else 165
-            think_tok = 190 if uncalibrated_argon else 0
-            extracted_summary = json.dumps(
-                {
-                    "carrier": "Carrier B",
-                    "revision": "v2",
-                    "orthodontics_gap_closed": True,
-                }
-            )
+        extracted_summary, in_tok, out_tok, think_tok = _extract_carrier_b_quote(
+            body,
+            pdf_uri=pdf_uri,
+            carrier_b_meta=carrier_b_meta,
+            chosen_model=chosen_model,
+            uncalibrated_argon=uncalibrated_argon,
+            use_live=use_live,
+            genai_client=genai_client,
+        )
 
         with trace_step(
             "docubridge.rfp.carrier_b_pdf_extract",

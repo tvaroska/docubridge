@@ -87,7 +87,7 @@ async def test_terminal_retry_exhausts_then_reraises(caplog):
     inner = _FakeInner(fail_times=99)
     store = _TerminalRetryTaskStore(inner, attempts=3)
 
-    with caplog.at_level(logging.WARNING, logger="bridge.ports.gcp"):  # noqa: SIM117
+    with caplog.at_level(logging.WARNING, logger="bridge.ports.gcp"):
         with pytest.raises(RuntimeError, match="boom 3"):
             await store.save(_task(terminal=True), context=None)
 
@@ -104,7 +104,7 @@ async def test_terminal_retry_skips_non_terminal_write(caplog):
     inner = _FakeInner(fail_times=99)
     store = _TerminalRetryTaskStore(inner, attempts=3)
 
-    with caplog.at_level(logging.WARNING, logger="bridge.ports.gcp"):  # noqa: SIM117
+    with caplog.at_level(logging.WARNING, logger="bridge.ports.gcp"):
         with pytest.raises(RuntimeError, match="boom 1"):
             await store.save(_task(terminal=False), context=None)
 

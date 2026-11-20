@@ -18,9 +18,7 @@ import {
   type WireFieldReview,
 } from "./contract";
 
-// --------------------------------------------------------------------------- //
-// Wire (snake_case)                                                           //
-// --------------------------------------------------------------------------- //
+// Wire (snake_case).
 export interface WireRfpCarrier {
   party: string;
   context_id: string;
@@ -63,9 +61,7 @@ export interface WireRfpStatus {
   unmatched: string[];
 }
 
-// --------------------------------------------------------------------------- //
-// App-side (camelCase)                                                        //
-// --------------------------------------------------------------------------- //
+// App-side (camelCase).
 export interface RfpCarrier {
   party: string;
   contextId: string;
@@ -109,9 +105,7 @@ export interface RfpStatus {
   unmatched: string[];
 }
 
-// --------------------------------------------------------------------------- //
-// Mappers                                                                     //
-// --------------------------------------------------------------------------- //
+// Mappers.
 export function mapRfpCarrier(w: WireRfpCarrier): RfpCarrier {
   return {
     party: w.party,

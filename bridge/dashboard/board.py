@@ -47,6 +47,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime
+from typing import overload
 
 from bridge.comparison import ProgramComparison
 from bridge.exchange_store import ExchangeRecord, ExchangeStore, InMemoryExchangeStore
@@ -111,9 +112,13 @@ class _RfpMapping(Mapping[str, RfpCollection]):
             raise KeyError(rfp_id)
         return rfp
 
-    def get(
-        self, rfp_id: str, default: RfpCollection | None = None
-    ) -> RfpCollection | None:  # type: ignore[override]
+    @overload
+    def get(self, rfp_id: str, default: None = None) -> RfpCollection | None: ...
+
+    @overload
+    def get[T](self, rfp_id: str, default: T) -> RfpCollection | T: ...
+
+    def get[T](self, rfp_id: str, default: T | None = None) -> RfpCollection | T | None:
         """Return the RFP state for a given key, or the default value if absent."""
         rfp = self._board._get(rfp_id)
         return default if rfp is None else rfp

@@ -318,7 +318,9 @@ def test_naive_now_refused(clean_env):
 # 6. The script boots this factory                                             #
 # --------------------------------------------------------------------------- #
 def test_run_showcase_script_boots_the_showcase_factory():
-    assert subprocess.run(["bash", "-n", str(SCRIPT)]).returncode == 0
+    assert (
+        subprocess.run(["/bin/bash", "-n", str(SCRIPT)]).returncode == 0  # noqa: S603 - syntax check on local repo script
+    )
     text = SCRIPT.read_text()
     target = "bridge.demos.showcase:build_showcase_app"
     assert f"--factory {target}" in text

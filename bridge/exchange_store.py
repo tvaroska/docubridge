@@ -53,7 +53,13 @@ import threading
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    import sqlalchemy as sa
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+    from bridge.sql_runtime import DsnSqlRuntime
 
 TABLE_NAME = "bridge_exchange_records"
 
@@ -88,13 +94,13 @@ class StaleExchangeWrite(Exception):
         super().__init__(f"exchange record {kind}/{ref} {what}")
 
 
-def _json_roundtrip(doc: Any) -> dict[str, Any]:
+def _json_roundtrip(doc: object) -> dict[str, Any]:
     """The doc as the database would hand it back (``TypeError`` if not JSON-serializable)."""
     if not isinstance(doc, dict):
         raise TypeError(
             f"an exchange record doc must be a dict, got {type(doc).__name__}"
         )
-    return json.loads(json.dumps(doc, allow_nan=False))
+    return cast(dict[str, Any], json.loads(json.dumps(doc, allow_nan=False)))
 
 
 def _check_key(kind: str, ref: str) -> None:
@@ -217,7 +223,7 @@ class InMemoryExchangeStore(ExchangeStore):
 
 
 @functools.cache
-def _table() -> Any:
+def _table() -> sa.Table:
     """The ``bridge_exchange_records`` table (built lazily: SQLAlchemy is not a top import)."""
     import sqlalchemy as sa
 
@@ -237,7 +243,7 @@ def _table() -> Any:
     )
 
 
-def _record(row: Any) -> ExchangeRecord:
+def _record(row: sa.Row[Any]) -> ExchangeRecord:
     return ExchangeRecord(
         kind=row.kind,
         ref=row.ref,
@@ -265,10 +271,10 @@ class SqlExchangeStore(ExchangeStore):
             raise ValueError("SqlExchangeStore needs a non-empty DSN")
         self.dsn = dsn.strip()
         self._lock = threading.Lock()
-        self._runtime: Any = None
+        self._runtime: DsnSqlRuntime | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
-        self._engine: Any = None
+        self._engine: AsyncEngine | None = None
         self._closed = False
 
     # -- lifecycle ---------------------------------------------------------------
@@ -293,12 +299,14 @@ class SqlExchangeStore(ExchangeStore):
             self._thread = runtime.thread
             self._engine = runtime.engine
 
-    async def _open(self, engine: Any) -> None:
+    async def _open(self, engine: AsyncEngine) -> None:
+        from sqlalchemy.exc import SQLAlchemyError
+
         table = _table()
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(table.metadata.create_all)
-        except Exception:
+        except SQLAlchemyError:
             # Another handle/replica may have won the CREATE race; checkfirst
             # makes a second pass a no-op if the table now exists.
             async with engine.begin() as conn:
@@ -318,7 +326,7 @@ class SqlExchangeStore(ExchangeStore):
 
         release_dsn_runtime(self.dsn, runtime, timeout_s=_OP_TIMEOUT_S)
 
-    def _call[T](self, make: Callable[[Any], Coroutine[Any, Any, T]]) -> T:
+    def _call[T](self, make: Callable[[AsyncEngine], Coroutine[Any, Any, T]]) -> T:
         """Run ``make(engine)`` (a coroutine factory) on the store loop; block for it."""
         if threading.current_thread() is self._thread:
             raise RuntimeError(
@@ -326,7 +334,7 @@ class SqlExchangeStore(ExchangeStore):
             )
         self._start()
         runtime, engine = self._runtime, self._engine
-        if runtime is None:
+        if runtime is None or engine is None:
             raise RuntimeError("the exchange store is closed")
         return runtime.run(make(engine), timeout_s=_OP_TIMEOUT_S)
 
@@ -337,7 +345,7 @@ class SqlExchangeStore(ExchangeStore):
         _check_key(kind, ref)
         t = _table()
 
-        async def op(engine: Any) -> ExchangeRecord | None:
+        async def op(engine: AsyncEngine) -> ExchangeRecord | None:
             import sqlalchemy as sa
 
             async with engine.begin() as conn:
@@ -354,7 +362,7 @@ class SqlExchangeStore(ExchangeStore):
         """List all exchange state snapshots stored in the SQL database."""
         t = _table()
 
-        async def op(engine: Any) -> list[ExchangeRecord]:
+        async def op(engine: AsyncEngine) -> list[ExchangeRecord]:
             import sqlalchemy as sa
 
             async with engine.begin() as conn:
@@ -381,7 +389,7 @@ class SqlExchangeStore(ExchangeStore):
         stored = _json_roundtrip(doc)
         t = _table()
 
-        async def op(engine: Any) -> int:
+        async def op(engine: AsyncEngine) -> int:
             import sqlalchemy as sa
             from sqlalchemy.exc import IntegrityError
 
@@ -436,4 +444,4 @@ def exchange_store_from_env() -> ExchangeStore:
     from bridge.ports import Port, get_adapter, resolve_mode
 
     adapter = get_adapter(Port.exchange_store, resolve_mode(Port.exchange_store))
-    return adapter.build_exchange_store()  # type: ignore[attr-defined]
+    return adapter.build_exchange_store()

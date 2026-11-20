@@ -29,12 +29,13 @@ Discipline highlights:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from a2a.helpers import proto_helpers as ph
 from a2a.types import Message, Part, Role
 from google.protobuf import struct_pb2
 from google.protobuf.json_format import MessageToDict, ParseDict
+from pydantic import ValidationError
 
 from bridge.collect import DocumentSubmission
 from contract.wire import (
@@ -71,13 +72,10 @@ KIND_HUMAN_REVIEW_RESOLUTION = "human_review_resolution"
 JSON_MIME = "application/json"
 
 
-# --------------------------------------------------------------------------- #
-# Low-level proto-part helpers (flat 1.x Part; see module docstring).          #
-# --------------------------------------------------------------------------- #
 def _part_metadata(part: Part) -> dict[str, Any]:
     """Read a Part's metadata Struct as a plain dict ({} when absent)."""
     if part.HasField("metadata"):
-        return MessageToDict(part.metadata)
+        return cast(dict[str, Any], MessageToDict(part.metadata))
     return {}
 
 
@@ -93,9 +91,6 @@ def _data_part(data: dict[str, Any], metadata: dict[str, Any]) -> Part:
     return part
 
 
-# --------------------------------------------------------------------------- #
-# Decode (inbound: client -> Bridge)                                          #
-# --------------------------------------------------------------------------- #
 def decode_collect_request(message: Message) -> CollectRequest:
     """Find the data Part whose shape validates as a ``CollectRequest``.
 
@@ -110,7 +105,7 @@ def decode_collect_request(message: Message) -> CollectRequest:
             continue
         try:
             return decode_wire(CollectRequest, data)
-        except Exception:
+        except (ValidationError, ValueError, TypeError):
             continue
     raise ValueError(
         "no CollectRequest data part found in inbound message "
@@ -197,14 +192,11 @@ def decode_exchange_turn(parts: list[Part]) -> ExchangeTurn:
         if isinstance(data, dict):
             try:
                 return decode_wire(ExchangeTurn, data)
-            except Exception:
+            except (ValidationError, ValueError, TypeError):
                 continue
     raise ValueError("no ExchangeTurn data part found")
 
 
-# --------------------------------------------------------------------------- #
-# Encode (outbound: Bridge -> client)                                         #
-# --------------------------------------------------------------------------- #
 def encode_exchange_turn(turn: ExchangeTurn) -> list[Part]:
     """Encode an ``ExchangeTurn`` as a single tagged JSON data Part.
 

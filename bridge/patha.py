@@ -42,6 +42,7 @@ NEVER ``agents/``.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from bridge.collect import project_ledger_entry
 from bridge.disposition import (
@@ -58,9 +59,9 @@ _LOG = logging.getLogger("bridge.patha")
 
 
 def validate_assertion(
-    assertion: dict | ExtractionResult,
+    assertion: dict[str, Any] | ExtractionResult,
     *,
-    schemas: dict[str, dict] | None = None,
+    schemas: dict[str, dict[str, Any]] | None = None,
     require_installed_schema: bool = False,
 ) -> ExtractionResult:
     """Schema-validate a structured extraction assertion (§2e), no disposition.
@@ -119,11 +120,11 @@ def validate_assertion(
 
 
 async def validate_only(
-    assertion: dict | ExtractionResult,
+    assertion: dict[str, Any] | ExtractionResult,
     *,
     candidate_doctypes: list[str],
     thresholds: DispositionThresholds = DEFAULT_THRESHOLDS,
-    schemas: dict[str, dict] | None = None,
+    schemas: dict[str, dict[str, Any]] | None = None,
     require_installed_schema: bool = False,
 ) -> DispositionVerdict:
     """PATH-A: schema-validate the assertion, then dispose the asserted signals.
@@ -139,14 +140,14 @@ async def validate_only(
     return dispose_signals(signals, thresholds)
 
 
-def validate_only_entry(
-    assertion: dict | ExtractionResult,
+def validate_only_entry(  # noqa: PLR0913  # public Path-A entry contract
+    assertion: dict[str, Any] | ExtractionResult,
     *,
     doc_id: str,
     candidate_doctypes: list[str],
     thresholds: DispositionThresholds = DEFAULT_THRESHOLDS,
     artifact: ArtifactRef | None = None,
-    schemas: dict[str, dict] | None = None,
+    schemas: dict[str, dict[str, Any]] | None = None,
     require_installed_schema: bool = False,
 ) -> LedgerEntry:
     """Validate + dispose a Path-A assertion into a ``LedgerEntry`` (no extraction).

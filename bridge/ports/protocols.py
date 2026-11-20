@@ -167,7 +167,7 @@ class A2AClientPort(PortABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def send_message(
+    def send_message(  # noqa: PLR0913 - public A2A port contract with keyword options
         self,
         *,
         endpoint_url: str,
@@ -176,7 +176,7 @@ class A2AClientPort(PortABC):
         expected_skill: str | None = None,
         context_id: str | None = None,
         headers: dict[str, str] | None = None,
-        http_client: Any = None,
+        http_client: object = None,
         timeout: float = 20.0,
     ) -> "A2ASendResult":
         """Discover a peer Agent Card and invoke canonical A2A v1.0 JSON-RPC ``SendMessage``."""
@@ -189,7 +189,7 @@ class ExtractionPort(PortABC):
     port = Port.extraction
 
     @abc.abstractmethod
-    async def extract(
+    async def extract(  # noqa: PLR0913 - public ExtractionPort contract
         self,
         artifact_name: str,
         *,
@@ -202,10 +202,7 @@ class ExtractionPort(PortABC):
         """Extract normalized fields, deterministic derivations, and disposition signals for a document artifact."""
 
 
-# --------------------------------------------------------------------------- #
-# email_ingress — the shared validation both adapters run BEFORE any I/O       #
-# --------------------------------------------------------------------------- #
-
+# Shared email_ingress validation run by both adapters before any I/O.
 # A landing key is the 32-hex prefix of a sha256 (`bridge.email_ingress.landing_key`).
 EMAIL_KEY_PATTERN = r"^[0-9a-f]{32}$"
 MAX_ATTACHMENT_NAME = 128
@@ -292,19 +289,14 @@ class EmailIngressPort(PortABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def mark_processed(self, key: str, outcome: dict) -> bool:
+    def mark_processed(self, key: str, outcome: dict[str, Any]) -> bool:
         """Write the create-only JSON outcome marker; `False` = already marked."""
         raise NotImplementedError
 
     @abc.abstractmethod
-    def processed(self, key: str) -> dict | None:
+    def processed(self, key: str) -> dict[str, Any] | None:
         """The stored outcome marker, or `None` when the key is not processed."""
         raise NotImplementedError
-
-
-# --------------------------------------------------------------------------- #
-# Zone 3-6 Enterprise Data Architecture Ports                                 #
-# --------------------------------------------------------------------------- #
 
 
 class AuditVaultPort(PortABC):

@@ -31,7 +31,7 @@ import logging
 import re
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import yaml
 from google.adk.skills._utils import _parse_skill_md_content
@@ -95,6 +95,33 @@ def _contained_asset(skill_dir: Path, rel: str, where: Path, key: str) -> Path:
     if base not in path.parents:
         raise ValueError(f"{where}: {key} {rel!r} escapes the skill dir")
     return path
+
+
+def _validate_skill_asset(
+    skill_dir: Path, kind: str, meta: dict[str, Any], md: Path, schema_asset: str
+) -> None:
+    if kind == "process":
+        rel = str(meta.get("bridge-policy") or DEFAULT_POLICY_ASSET)
+        policy = _contained_asset(skill_dir, rel, md, "bridge-policy")
+        if not policy.is_file():
+            return
+        try:
+            doc = yaml.safe_load(policy.read_text())
+        except yaml.YAMLError as exc:
+            detail = " ".join(str(exc).split())
+            raise ValueError(
+                f"{md}: policy {rel} is not valid YAML ({detail})"
+            ) from exc
+        if not isinstance(doc, dict):
+            raise ValueError(f"{md}: policy {rel} is not a mapping")
+        return
+    rel = schema_asset or DEFAULT_SCHEMA_ASSET
+    schema = _contained_asset(skill_dir, rel, md, "bridge-schema")
+    if schema.is_file():
+        try:
+            json.loads(schema.read_text())
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{md}: schema {rel} is not valid JSON ({exc})") from exc
 
 
 def skill_meta_from_dir(skill_dir: Path) -> SkillMeta:
@@ -162,46 +189,23 @@ def skill_meta_from_dir(skill_dir: Path) -> SkillMeta:
             f"{skill_dir.name!r}"
         )
     schema_asset = str(meta.get("bridge-schema", "") or "")
-    if kind == "process":
-        rel = str(meta.get("bridge-policy") or DEFAULT_POLICY_ASSET)
-        policy = _contained_asset(skill_dir, rel, md, "bridge-policy")
-        if policy.is_file():
-            try:
-                doc = yaml.safe_load(policy.read_text())
-            except yaml.YAMLError as exc:
-                detail = " ".join(str(exc).split())
-                raise ValueError(
-                    f"{md}: policy {rel} is not valid YAML ({detail})"
-                ) from exc
-            if not isinstance(doc, dict):
-                raise ValueError(f"{md}: policy {rel} is not a mapping")
-    else:
-        rel = schema_asset or DEFAULT_SCHEMA_ASSET
-        schema = _contained_asset(skill_dir, rel, md, "bridge-schema")
-        if schema.is_file():
-            try:
-                json.loads(schema.read_text())
-            except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"{md}: schema {rel} is not valid JSON ({exc})"
-                ) from exc
-    return SkillMeta(
-        name=fm["name"],
-        description=fm["description"],
-        kind=kind,
-        candidate_doctypes=tuple(
+    _validate_skill_asset(skill_dir, str(kind), meta, md, schema_asset)
+    payload: dict[str, Any] = {
+        "name": fm["name"],
+        "description": fm["description"],
+        "kind": kind,
+        "candidate_doctypes": tuple(
             str(meta.get("bridge-candidate-doctypes", "")).split()
         ),
-        tags=tuple(str(meta.get("bridge-tags", "")).split()),
-        schema_asset=schema_asset,
-        satisfaction=str(meta.get("bridge-satisfaction", "") or "").strip(),
-        **({"hitl": meta["bridge-hitl"]} if meta.get("bridge-hitl") else {}),
-        **(
-            {"input_modes": tuple(str(meta["bridge-input-modes"]).split())}
-            if meta.get("bridge-input-modes")
-            else {}
-        ),
-    )
+        "tags": tuple(str(meta.get("bridge-tags", "")).split()),
+        "schema_asset": schema_asset,
+        "satisfaction": str(meta.get("bridge-satisfaction", "") or "").strip(),
+    }
+    if meta.get("bridge-hitl"):
+        payload["hitl"] = meta["bridge-hitl"]
+    if meta.get("bridge-input-modes"):
+        payload["input_modes"] = tuple(str(meta["bridge-input-modes"]).split())
+    return SkillMeta.model_validate(payload)
 
 
 def listed_skill_meta(skill_dir: Path) -> SkillMeta | None:
@@ -408,9 +412,11 @@ def rfp_policy_for(process: str) -> RfpPolicy:
     )
     where = f"{process}/{policy_rel}"
 
-    def load_policy_doc() -> dict:
+    def load_policy_doc() -> dict[str, Any]:
         try:
-            return yaml.safe_load(registry.read_asset(process, policy_rel))
+            return cast(
+                dict[str, Any], yaml.safe_load(registry.read_asset(process, policy_rel))
+            )
         except (KeyError, OSError) as exc:
             raise ValueError(f"policy file {where} not found") from exc
         except yaml.YAMLError as exc:

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from bridge.offscript import REASON_ESCALATED
@@ -46,7 +47,7 @@ if TYPE_CHECKING:
 RFP_STATUS_API_VERSION = "1"
 
 
-def project_exchange(rec: PortalSessionRecord) -> dict:
+def project_exchange(rec: PortalSessionRecord) -> dict[str, Any]:
     """Project a ``PortalSessionRecord`` into an operator ``OpsExchange`` view.
 
     ``entries`` = the accumulated ledger + (if a non-terminal park is active) the parked
@@ -91,7 +92,7 @@ def project_exchange(rec: PortalSessionRecord) -> dict:
     }
 
 
-def project_rfp_exchange(rfp: RfpCollection, view: RfpStatusView) -> dict:
+def project_rfp_exchange(rfp: RfpCollection, view: RfpStatusView) -> dict[str, Any]:
     """Project an RFP collection (S0-arch-11) into the same ``OpsExchange`` shape, plus an
     ``rfp`` key carrying the per-carrier x product matrix (``RfpStatusView``, verbatim).
 
@@ -116,7 +117,9 @@ def project_rfp_exchange(rfp: RfpCollection, view: RfpStatusView) -> dict:
     }
 
 
-def project_rfp_status(view: RfpStatusView, *, intake: IntakeAddressing | None) -> dict:
+def project_rfp_status(
+    view: RfpStatusView, *, intake: IntakeAddressing | None
+) -> dict[str, Any]:
     """The consumer read API's per-RFP status (S0-frontend-1, ``GET /rfps/{id}``).
 
     ``view.model_dump(mode="json")`` verbatim — ``rfp_id``, ``process``, ``context_id``,
@@ -145,7 +148,9 @@ def project_rfp_status(view: RfpStatusView, *, intake: IntakeAddressing | None) 
     return body
 
 
-def list_exchanges(store: PortalStore, *, rfps: RfpBoard | None = None) -> list[dict]:
+def list_exchanges(
+    store: PortalStore, *, rfps: RfpBoard | None = None
+) -> list[dict[str, Any]]:
     """List all exchanges (project each record [+ each RFP on an injected board])."""
     exchanges = [project_exchange(rec) for rec in store.list()]
     if rfps is not None:
@@ -153,17 +158,21 @@ def list_exchanges(store: PortalStore, *, rfps: RfpBoard | None = None) -> list[
     return exchanges
 
 
-def hitl_queue(store: PortalStore, *, rfps: RfpBoard | None = None) -> list[dict]:
+def hitl_queue(
+    store: PortalStore, *, rfps: RfpBoard | None = None
+) -> list[dict[str, Any]]:
     """The HITL queue: exchanges with an active HITL park."""
     return [x for x in list_exchanges(store, rfps=rfps) if x["hitl"]]
 
 
-def escalation_queue(store: PortalStore, *, rfps: RfpBoard | None = None) -> list[dict]:
+def escalation_queue(
+    store: PortalStore, *, rfps: RfpBoard | None = None
+) -> list[dict[str, Any]]:
     """The escalation queue: exchanges with a REASON_ESCALATED entry (or an escalated RFP)."""
     return [x for x in list_exchanges(store, rfps=rfps) if x["escalated"]]
 
 
-def project_comparison(comparison: ProgramComparison) -> dict:
+def project_comparison(comparison: ProgramComparison) -> dict[str, Any]:
     """Project a ``ProgramComparison`` into protocol-only JSON (content-not-pixels).
 
     Returns ``comparison.model_dump(mode="json")`` verbatim: already snake_case and
@@ -180,7 +189,7 @@ def readmodel_snapshot(
     *,
     board: ProgramBoard | None = None,
     rfps: RfpBoard | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """The whole cross-exchange read-model snapshot (exchanges + queues [+ programs]).
 
     When ``board`` is injected, adds a ``"programs"`` key carrying the recomputed program
@@ -207,7 +216,7 @@ def readmodel_snapshot(
     return snapshot
 
 
-def _frame(d: dict) -> str:
+def _frame(d: dict[str, Any]) -> str:
     """Format one snapshot as an SSE ``data:`` frame."""
     return f"data: {json.dumps(d)}\n\n"
 
@@ -219,7 +228,7 @@ async def sse_frames(
     rfps: RfpBoard | None = None,
     interval: float = 0.02,
     max_ticks: int = 2000,
-) -> Any:
+) -> AsyncIterator[str]:
     """Yield SSE frames for the cross-exchange read-model until ``max_ticks`` deadline.
 
     Emits the current snapshot immediately, then re-reads on each tick and yields a frame

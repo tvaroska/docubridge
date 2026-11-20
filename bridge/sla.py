@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -67,7 +68,7 @@ class SlaPolicy:
         return sorted(((pairs[s], s) for s in self.ladder), key=lambda p: p[0])
 
 
-def parse_skill_frontmatter(raw: str, *, where: str) -> dict:
+def parse_skill_frontmatter(raw: str, *, where: str) -> dict[str, Any]:
     """Parse the YAML frontmatter mapping out of raw ``SKILL.md`` text.
 
     The pure half of ``_load_skill_frontmatter``, shared with the live port reader
@@ -86,7 +87,9 @@ def parse_skill_frontmatter(raw: str, *, where: str) -> dict:
     return frontmatter
 
 
-def _load_skill_frontmatter(skill_name: str, *, skills_dir: Path | None = None) -> dict:
+def _load_skill_frontmatter(
+    skill_name: str, *, skills_dir: Path | None = None
+) -> dict[str, Any]:
     """Parse a skill's ``SKILL.md`` YAML frontmatter (the whole mapping).
 
     Pure (stdlib + yaml) so the pure process loaders (``bridge.rfp``) can read a skill's
@@ -99,7 +102,9 @@ def _load_skill_frontmatter(skill_name: str, *, skills_dir: Path | None = None) 
     return parse_skill_frontmatter(skill_md.read_text(), where=str(skill_md))
 
 
-def _load_policy_doc(skill_name: str, *, skills_dir: Path | None = None) -> dict:
+def _load_policy_doc(
+    skill_name: str, *, skills_dir: Path | None = None
+) -> dict[str, Any]:
     """Resolve + parse a process skill's declared ``policy.yaml`` (the whole doc).
 
     Shared by ``load_sla_policy`` (``sla:`` block) and
@@ -120,7 +125,7 @@ def _load_policy_doc(skill_name: str, *, skills_dir: Path | None = None) -> dict
     if not policy_path.exists():
         raise ValueError(f"policy file {policy_path} not found")
 
-    return yaml.safe_load(policy_path.read_text())
+    return cast(dict[str, Any], yaml.safe_load(policy_path.read_text()))
 
 
 def load_sla_policy(skill_name: str, *, skills_dir: Path | None = None) -> SlaPolicy:
@@ -138,7 +143,7 @@ def load_sla_policy(skill_name: str, *, skills_dir: Path | None = None) -> SlaPo
     return sla_policy_from_doc(policy_doc, where=where)
 
 
-def sla_policy_from_doc(policy_doc: dict, *, where: str) -> SlaPolicy:
+def sla_policy_from_doc(policy_doc: dict[str, Any], *, where: str) -> SlaPolicy:
     """Parse + validate the ``sla:`` block of an already-loaded policy doc.
 
     The pure half of ``load_sla_policy``, shared with the live port reader (the policy
@@ -165,21 +170,19 @@ def sla_policy_from_doc(policy_doc: dict, *, where: str) -> SlaPolicy:
     except ValueError as e:
         raise ValueError(f"unknown ladder step in {policy_path}: {e}") from e
 
-    # Validate invariants (mirrors test_skills.py:139-161)
-    # 1. ladder == [overdue, reminder, escalated] (order + membership)
+    # Validate invariants (mirrors test_skills.py:139-161): ladder order/membership,
+    # deadline alignment, monotone tick spacing, and two pre-escalation nudges.
     if ladder != LADDER_STEPS:
         raise ValueError(
             f"ladder must be {[s.value for s in LADDER_STEPS]} in order; "
             f"got {[s.value for s in ladder]}"
         )
 
-    # 2. escalate_ticks == deadline
     if escalate_ticks != deadline:
         raise ValueError(
             f"escalate_ticks ({escalate_ticks}) must equal deadline ({deadline})"
         )
 
-    # 3. 0 < overdue_ticks < reminder_ticks < escalate_ticks (monotone ladder)
     if not (0 < overdue_ticks < reminder_ticks < escalate_ticks):
         raise ValueError(
             f"ladder ticks must be monotone increasing: "
@@ -187,7 +190,6 @@ def sla_policy_from_doc(policy_doc: dict, *, where: str) -> SlaPolicy:
             f"< escalate_ticks ({escalate_ticks})"
         )
 
-    # 4. max_nudges == 2 (overdue + reminder before escalation)
     if max_nudges != 2:
         raise ValueError(
             f"max_nudges must be 2 (overdue + reminder before escalation); got {max_nudges}"

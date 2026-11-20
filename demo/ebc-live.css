@@ -1,25 +1,43 @@
 /* Google Cloud Console (GM3 Light) — Unified Split-Screen Commercial Underwriting Live Demo */
 :root {
-  --gcc-bg: #f8f9fa;
-  --gcc-surface: #ffffff;
-  --gcc-surface-2: #f1f3f4;
-  --gcc-border: #dadce0;
-  --gcc-text: #202124;
-  --gcc-muted: #5f6368;
-  --gcc-blue: #1a73e8;
+  --surface: #f8f9fa;
+  --surface-container: #ffffff;
+  --surface-container-low: #f1f3f4;
+  --on-surface: #202124;
+  --on-surface-variant: #5f6368;
+  --outline-variant: #dadce0;
+  --primary: #1a73e8;
+  --on-primary: #ffffff;
+  --status-ok-fg: #137333;
+  --status-ok-bg: #e6f4ea;
+  --status-warn-fg: #b06000;
+  --status-warn-bg: #fef7e0;
+  --status-err-fg: #c5221f;
+  --status-err-bg: #fce8e6;
+  --status-info-fg: #1967d2;
+  --status-info-bg: #e8f0fe;
+  --radius: 0.5rem;
+  --font-sans: "Google Sans", "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "Roboto Mono", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+  --gcc-bg: var(--surface);
+  --gcc-surface: var(--surface-container);
+  --gcc-surface-2: var(--surface-container-low);
+  --gcc-border: var(--outline-variant);
+  --gcc-text: var(--on-surface);
+  --gcc-muted: var(--on-surface-variant);
+  --gcc-blue: var(--primary);
   --gcc-blue-dark: #1557b0;
-  --gcc-blue-bg: #e8f0fe;
+  --gcc-blue-bg: var(--status-info-bg);
   --gcc-green: #1e8e3e;
-  --gcc-green-bg: #e6f4ea;
-  --gcc-amber: #b06000;
-  --gcc-amber-bg: #fef7e0;
-  --gcc-red: #c5221f;
-  --gcc-red-bg: #fce8e6;
+  --gcc-green-bg: var(--status-ok-bg);
+  --gcc-amber: var(--status-warn-fg);
+  --gcc-amber-bg: var(--status-warn-bg);
+  --gcc-red: var(--status-err-fg);
+  --gcc-red-bg: var(--status-err-bg);
   --gcc-purple: #8430ce;
   --gcc-purple-bg: #f3e8fd;
-  --font-display: 'Google Sans', system-ui, -apple-system, sans-serif;
-  --font-body: 'Google Sans Text', 'Google Sans', system-ui, sans-serif;
-  --font-mono: 'Roboto Mono', monospace;
+  --font-display: var(--font-sans);
+  --font-body: "Google Sans Text", var(--font-sans);
 }
 
 * {
@@ -912,10 +930,20 @@ body {
   gap: 8px;
   font-family: var(--font-mono);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   background: var(--gcc-surface);
   border: 1px solid var(--gcc-border);
   border-radius: 5px;
   padding: 5px 8px;
+}
+
+.trace-pill,
+.mono-hash,
+.ext-row,
+table,
+th,
+td {
+  font-variant-numeric: tabular-nums;
 }
 
 .skill-code-pre {

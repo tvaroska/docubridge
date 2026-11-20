@@ -27,9 +27,7 @@ export type Disposition = "accepted" | "rejected" | "pending";
 export type RequirementStatus = "required" | "optional" | "satisfied" | "waived";
 export type SessionStatus = "running" | "parked" | "done" | "error";
 
-// --------------------------------------------------------------------------- //
-// App-specific view types (camelCase)                                         //
-// --------------------------------------------------------------------------- //
+// App-specific view types (camelCase).
 export interface Turn {
   contextId: string;
   entries: LedgerEntry[];
@@ -53,9 +51,7 @@ export interface Prepared {
   label: string;
 }
 
-// --------------------------------------------------------------------------- //
-// Wire shapes (snake_case — the console_server's app-specific envelope)        //
-// --------------------------------------------------------------------------- //
+// Wire shapes (snake_case — the console_server's app-specific envelope).
 interface WireRequirementsList {
   requirements?: WireRequirement[];
   done?: boolean;
@@ -84,9 +80,7 @@ export interface WireSnapshot {
   turn?: WireTurn | null;
 }
 
-// --------------------------------------------------------------------------- //
-// View mappers (compose the shared mapEntry / mapRequirement)                  //
-// --------------------------------------------------------------------------- //
+// View mappers (compose the shared mapEntry / mapRequirement).
 /** Map the host's snake_case ExchangeTurn JSON into the app's camelCase model. */
 export function mapTurn(json: WireTurn): Turn {
   return {

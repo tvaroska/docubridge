@@ -8,12 +8,33 @@ from Cloud Storage with an injectable storage client so unit tests run offline.
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from collections.abc import Iterable
+from typing import Protocol, cast
 
 import yaml
 from pydantic import ValidationError
 
 from contract.scenario import ScenarioManifest
+
+
+class _GcsBlobLike(Protocol):
+    name: str
+
+    def download_as_bytes(self) -> bytes: ...
+
+
+class _GcsBucketLike(Protocol):
+    def blob(self, blob_name: str) -> _GcsBlobLike: ...
+
+
+class GcsStorageClientLike(Protocol):
+    """Minimal structural contract for a GCS storage client (live or test fake)."""
+
+    def bucket(self, bucket_name: str) -> _GcsBucketLike: ...
+
+    def list_blobs(
+        self, bucket_or_name: object, *, prefix: str | None = None
+    ) -> Iterable[_GcsBlobLike]: ...
 
 
 def parse_gcs_uri(uri: str) -> tuple[str, str]:
@@ -28,17 +49,17 @@ def parse_gcs_uri(uri: str) -> tuple[str, str]:
     return bucket, key.lstrip("/")
 
 
-def _default_storage_client() -> Any:
+def _default_storage_client() -> GcsStorageClientLike:
     from google.cloud import storage
 
-    return storage.Client()
+    return cast(GcsStorageClientLike, storage.Client())
 
 
 def fetch_gcs_bytes(
     gcs_uri: str,
     *,
     expected_sha256: str | None = None,
-    storage_client: Any = None,
+    storage_client: GcsStorageClientLike | None = None,
 ) -> bytes:
     """Download object bytes from `gcs_uri` and optionally verify SHA-256."""
     bucket_name, blob_name = parse_gcs_uri(gcs_uri)
@@ -46,7 +67,7 @@ def fetch_gcs_bytes(
         raise ValueError(f"Missing object path in {gcs_uri!r}")
     client = storage_client or _default_storage_client()
     blob = client.bucket(bucket_name).blob(blob_name)
-    raw: bytes = blob.download_as_bytes()
+    raw = blob.download_as_bytes()
     if expected_sha256:
         actual = hashlib.sha256(raw).hexdigest()
         if actual.lower() != expected_sha256.lower():
@@ -56,11 +77,42 @@ def fetch_gcs_bytes(
     return raw
 
 
+def _load_gcs_manifest_blob(
+    blob: _GcsBlobLike,
+    *,
+    bucket_name: str,
+    prefix: str,
+    folder_id: str,
+) -> ScenarioManifest:
+    name = str(blob.name)
+    raw_yaml = blob.download_as_bytes().decode("utf-8")
+    doc = yaml.safe_load(raw_yaml)
+    if not isinstance(doc, dict):
+        raise ValueError(f"gs://{bucket_name}/{name}: top level must be a mapping")
+    stage = doc.get("stage")
+    if isinstance(stage, dict):
+        for asset in stage.get("pdf_assets") or []:
+            asset.pop("spec", None)
+            asset.setdefault("document_title", asset.get("title", ""))
+            if not asset.get("gcs_uri") and not asset.get("pages"):
+                doc_key = f"{prefix}{folder_id}/docs/{asset['filename']}"
+                asset["gcs_uri"] = f"gs://{bucket_name}/{doc_key}"
+    try:
+        manifest = ScenarioManifest.model_validate(doc)
+    except ValidationError as exc:
+        raise ValueError(f"gs://{bucket_name}/{name}: {exc}") from exc
+    if manifest.id != folder_id:
+        raise ValueError(
+            f"gs://{bucket_name}/{name}: manifest id {manifest.id!r} must equal {folder_id!r}"
+        )
+    return manifest
+
+
 def discover_gcs_manifests(
     gcs_root_uri: str,
     *,
     manifest_filename: str = "scenario.yaml",
-    storage_client: Any = None,
+    storage_client: GcsStorageClientLike | None = None,
 ) -> tuple[ScenarioManifest, ...]:
     """Discover and validate all `<scenario_id>/scenario.yaml` objects under `gcs_root_uri`."""
     bucket_name, root_prefix = parse_gcs_uri(gcs_root_uri)
@@ -75,32 +127,17 @@ def discover_gcs_manifests(
         name = str(blob.name)
         if not name.endswith(suffix):
             continue
-        rel = name[len(prefix) :]
-        parts = rel.split("/")
+        parts = name[len(prefix) :].split("/")
         if len(parts) != 2 or parts[1] != manifest_filename:
             continue
-        folder_id = parts[0]
-        raw_yaml = blob.download_as_bytes().decode("utf-8")
-        doc = yaml.safe_load(raw_yaml)
-        if not isinstance(doc, dict):
-            raise ValueError(f"gs://{bucket_name}/{name}: top level must be a mapping")
-        stage = doc.get("stage")
-        if isinstance(stage, dict):
-            for asset in stage.get("pdf_assets") or []:
-                asset.pop("spec", None)
-                asset.setdefault("document_title", asset.get("title", ""))
-                if not asset.get("gcs_uri") and not asset.get("pages"):
-                    doc_key = f"{prefix}{folder_id}/docs/{asset['filename']}"
-                    asset["gcs_uri"] = f"gs://{bucket_name}/{doc_key}"
-        try:
-            manifest = ScenarioManifest.model_validate(doc)
-        except ValidationError as exc:
-            raise ValueError(f"gs://{bucket_name}/{name}: {exc}") from exc
-        if manifest.id != folder_id:
-            raise ValueError(
-                f"gs://{bucket_name}/{name}: manifest id {manifest.id!r} must equal {folder_id!r}"
+        manifests.append(
+            _load_gcs_manifest_blob(
+                blob,
+                bucket_name=bucket_name,
+                prefix=prefix,
+                folder_id=parts[0],
             )
-        manifests.append(manifest)
+        )
 
     ids = [m.id for m in manifests]
     if len(ids) != len(set(ids)):

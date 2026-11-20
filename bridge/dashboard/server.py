@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import math
 import os
+from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
@@ -82,7 +83,140 @@ class ResolveBody(BaseModel):
     message: str
 
 
-def build_dashboard_app(
+def _resolve_email_wiring(
+    *,
+    rfps: RfpBoard | None,
+    email: EmailProcessor | None,
+    intake: IntakeAddressing | None,
+    email_drain_interval: float | None,
+) -> tuple[EmailProcessor | None, IntakeAddressing | None, float]:
+    from bridge.edge.email_ingress import (
+        drain_interval_from_env,
+        email_processor_from_env,
+    )
+
+    processor: EmailProcessor | None = None
+    if rfps is not None:
+        processor = email if email is not None else email_processor_from_env(rfps)
+        if processor is not None and processor.board is not rfps:
+            raise ValueError(
+                "build_dashboard_app(email=...) must drain onto this host's rfps board"
+            )
+    elif email is not None:
+        raise ValueError("build_dashboard_app(email=...) requires rfps= (its board)")
+
+    reply_intake: IntakeAddressing | None
+    if intake is not None:
+        reply_intake = intake
+    elif processor is not None:
+        reply_intake = processor.intake
+    else:
+        reply_intake = IntakeAddressing.from_env()
+
+    interval = 0.0
+    if processor is not None:
+        interval = (
+            email_drain_interval
+            if email_drain_interval is not None
+            else drain_interval_from_env()
+        )
+        if not math.isfinite(interval) or interval < 0:
+            raise ValueError(
+                f"email_drain_interval must be finite and >= 0; got {interval!r}"
+            )
+    return processor, reply_intake, interval
+
+
+def _load_portal_session(active_store: PortalStore, sid: str) -> PortalSessionRecord:
+    try:
+        return active_store.get(sid)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid!r}") from e
+
+
+def _mount_exchange_routes(
+    app: FastAPI,
+    *,
+    active_store: PortalStore,
+    rfps: RfpBoard | None,
+) -> None:
+    @app.get("/exchanges")
+    def get_exchanges() -> list[dict[str, Any]]:
+        # Newest-first for the UI (store keeps insertion order, so reverse).
+        return list(reversed(readmodel.list_exchanges(active_store, rfps=rfps)))
+
+    @app.get("/exchanges/{sid}")
+    def get_exchange(sid: str) -> dict[str, Any]:
+        if rfps is not None and sid in rfps.rfps:
+            rfp = rfps.rfps[sid]
+            return readmodel.project_rfp_exchange(rfp, rfps.get(sid))
+        rec = _load_portal_session(active_store, sid)  # 404 for an unknown session
+        return readmodel.project_exchange(rec)
+
+    @app.get("/queues/hitl")
+    def get_hitl_queue() -> list[dict[str, Any]]:
+        return readmodel.hitl_queue(active_store, rfps=rfps)
+
+    @app.get("/queues/escalation")
+    def get_escalation_queue() -> list[dict[str, Any]]:
+        return readmodel.escalation_queue(active_store, rfps=rfps)
+
+    @app.post("/exchanges/{sid}/resolve")
+    def post_resolve(sid: str, body: ResolveBody) -> dict[str, Any]:
+        _load_portal_session(
+            active_store, sid
+        )  # 404 for an unknown session before touching the graph
+        try:
+            rec = portal_session.resolve(
+                active_store,
+                sid,
+                resolution=Disposition(body.resolution),
+                message=body.message,
+            )
+        except NoActivePark as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        return readmodel.project_exchange(rec)
+
+
+def _mount_program_and_sse_routes(
+    app: FastAPI,
+    *,
+    active_store: PortalStore,
+    board: ProgramBoard | None,
+    rfps: RfpBoard | None,
+    max_ticks: int,
+) -> None:
+    @app.get("/programs")
+    def get_programs() -> list[dict[str, Any]]:
+        # Recompute-on-read (S1-benefits-7): a landed revision surfaces here immediately.
+        if board is None:
+            return []
+        return [readmodel.project_comparison(c) for c in board.comparisons()]
+
+    @app.get("/programs/{program_id}")
+    def get_program(program_id: str) -> dict[str, Any]:
+        if board is None:
+            raise HTTPException(status_code=404, detail="no program board configured")
+        try:
+            comparison = board.get(program_id)
+        except KeyError as e:
+            raise HTTPException(
+                status_code=404, detail=f"unknown program {program_id!r}"
+            ) from e
+        return readmodel.project_comparison(comparison)
+
+    @app.get("/events")
+    def stream_events() -> StreamingResponse:
+        # Cross-exchange stream is always valid (no 404).
+        return StreamingResponse(
+            readmodel.sse_frames(
+                active_store, board=board, rfps=rfps, max_ticks=max_ticks
+            ),
+            media_type="text/event-stream",
+        )
+
+
+def build_dashboard_app(  # noqa: PLR0913 - public keyword-only dashboard host builder
     *,
     store: PortalStore | None = None,
     board: ProgramBoard | None = None,
@@ -125,45 +259,20 @@ def build_dashboard_app(
     its own lifespan (Starlette runs no mounted sub-app's lifespan) —
     ``app.state.email_processor`` / ``app.state.email_drain_interval`` carry what it needs.
     """
-    from bridge.edge.email_ingress import (
-        drain_interval_from_env,
-        email_drain_loop,
-        email_processor_from_env,
-        mount_email_drain_routes,
-    )
+    from bridge.edge.email_ingress import email_drain_loop, mount_email_drain_routes
 
     active_store: PortalStore = store or InMemoryPortalStore()
-    processor: EmailProcessor | None = None
-    if rfps is not None:
-        processor = email if email is not None else email_processor_from_env(rfps)
-        if processor is not None and processor.board is not rfps:
-            raise ValueError(
-                "build_dashboard_app(email=...) must drain onto this host's rfps board"
-            )
-    elif email is not None:
-        raise ValueError("build_dashboard_app(email=...) requires rfps= (its board)")
-    if intake is not None:
-        reply_intake = intake
-    elif processor is not None:
-        reply_intake = processor.intake
-    else:
-        reply_intake = IntakeAddressing.from_env()
-    interval = 0.0
-    if processor is not None:
-        interval = (
-            email_drain_interval
-            if email_drain_interval is not None
-            else drain_interval_from_env()
-        )
-        if not math.isfinite(interval) or interval < 0:
-            raise ValueError(
-                f"email_drain_interval must be finite and >= 0; got {interval!r}"
-            )
+    processor, reply_intake, interval = _resolve_email_wiring(
+        rfps=rfps,
+        email=email,
+        intake=intake,
+        email_drain_interval=email_drain_interval,
+    )
 
     lifespan = None
     if processor is not None and interval > 0:
 
-        def lifespan(_app: FastAPI) -> Any:
+        def lifespan(_app: FastAPI) -> AbstractAsyncContextManager[None]:
             return email_drain_loop(processor, interval)
 
     app = FastAPI(
@@ -184,69 +293,10 @@ def build_dashboard_app(
         allow_headers=["*"],
         expose_headers=["x-docubridge-trace-id", "traceparent"],
     )
-
-    def _load(sid: str) -> PortalSessionRecord:
-        try:
-            return active_store.get(sid)
-        except KeyError as e:
-            raise HTTPException(
-                status_code=404, detail=f"unknown session {sid!r}"
-            ) from e
-
-    @app.get("/exchanges")
-    def get_exchanges() -> list[dict]:
-        # Newest-first for the UI (store keeps insertion order, so reverse).
-        return list(reversed(readmodel.list_exchanges(active_store, rfps=rfps)))
-
-    @app.get("/exchanges/{sid}")
-    def get_exchange(sid: str) -> dict:
-        if rfps is not None and sid in rfps.rfps:
-            rfp = rfps.rfps[sid]
-            return readmodel.project_rfp_exchange(rfp, rfps.get(sid))
-        rec = _load(sid)  # 404 for an unknown session
-        return readmodel.project_exchange(rec)
-
-    @app.get("/queues/hitl")
-    def get_hitl_queue() -> list[dict]:
-        return readmodel.hitl_queue(active_store, rfps=rfps)
-
-    @app.get("/queues/escalation")
-    def get_escalation_queue() -> list[dict]:
-        return readmodel.escalation_queue(active_store, rfps=rfps)
-
-    @app.post("/exchanges/{sid}/resolve")
-    def post_resolve(sid: str, body: ResolveBody) -> dict:
-        _load(sid)  # 404 for an unknown session before touching the graph
-        try:
-            rec = portal_session.resolve(
-                active_store,
-                sid,
-                resolution=Disposition(body.resolution),
-                message=body.message,
-            )
-        except NoActivePark as e:
-            raise HTTPException(status_code=409, detail=str(e)) from e
-        return readmodel.project_exchange(rec)
-
-    @app.get("/programs")
-    def get_programs() -> list[dict]:
-        # Recompute-on-read (S1-benefits-7): a landed revision surfaces here immediately.
-        if board is None:
-            return []
-        return [readmodel.project_comparison(c) for c in board.comparisons()]
-
-    @app.get("/programs/{program_id}")
-    def get_program(program_id: str) -> dict:
-        if board is None:
-            raise HTTPException(status_code=404, detail="no program board configured")
-        try:
-            comparison = board.get(program_id)
-        except KeyError as e:
-            raise HTTPException(
-                status_code=404, detail=f"unknown program {program_id!r}"
-            ) from e
-        return readmodel.project_comparison(comparison)
-
+    _mount_exchange_routes(app, active_store=active_store, rfps=rfps)
+    _mount_program_and_sse_routes(
+        app, active_store=active_store, board=board, rfps=rfps, max_ticks=max_ticks
+    )
     mount_rfp_routes(app, rfps=rfps, intake=reply_intake, outbound=outbound)
     mount_rfp_procurement_routes(app, rfps=rfps)
     if processor is not None:
@@ -259,17 +309,6 @@ def build_dashboard_app(
     )
     app.state.email_processor = processor
     app.state.email_drain_interval = interval
-
-    @app.get("/events")
-    def stream_events() -> StreamingResponse:
-        # Cross-exchange stream is always valid (no 404).
-        return StreamingResponse(
-            readmodel.sse_frames(
-                active_store, board=board, rfps=rfps, max_ticks=max_ticks
-            ),
-            media_type="text/event-stream",
-        )
-
     return app
 
 

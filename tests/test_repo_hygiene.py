@@ -464,7 +464,7 @@ def test_declarative_ast_rules_and_positive_controls(tmp_path: Path) -> None:
     if ast_grep is None:
         pytest.skip("ast-grep binary not installed on this runner")
 
-    live_res = subprocess.run(
+    live_res = subprocess.run(  # noqa: S603 - test runs verified local ast-grep binary
         [ast_grep, "scan", "--rule", str(rules_path)],
         cwd=REPO_ROOT,
         capture_output=True,
@@ -486,7 +486,7 @@ def test_declarative_ast_rules_and_positive_controls(tmp_path: Path) -> None:
 
         for bad_code in meta["invalid_examples"]:
             target_file.write_text(f"{bad_code}\n", encoding="utf-8")
-            bad_res = subprocess.run(
+            bad_res = subprocess.run(  # noqa: S603 - test runs verified local ast-grep binary
                 [ast_grep, "scan", "--rule", str(single_rule), "."],
                 cwd=case_dir,
                 capture_output=True,
@@ -500,7 +500,7 @@ def test_declarative_ast_rules_and_positive_controls(tmp_path: Path) -> None:
 
         for good_code in meta["valid_examples"]:
             target_file.write_text(f"{good_code}\n", encoding="utf-8")
-            good_res = subprocess.run(
+            good_res = subprocess.run(  # noqa: S603 - test runs verified local ast-grep binary
                 [ast_grep, "scan", "--rule", str(single_rule), "."],
                 cwd=case_dir,
                 capture_output=True,

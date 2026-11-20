@@ -81,13 +81,13 @@ class OkfDoctypeBundle:
         return self.spec.entity_id
 
 
-def _parse_enum(raw: Any) -> tuple[str, ...]:
+def _parse_enum(raw: object) -> tuple[str, ...]:
     if not isinstance(raw, list):
         return ()
     return tuple(str(v) for v in raw if str(v).strip())
 
 
-def _parse_tables(raw: Any) -> dict[str, dict[str, Any]]:
+def _parse_tables(raw: object) -> dict[str, dict[str, Any]]:
     """Normalize the ``tables`` frontmatter block.
 
     Authoring shape per table: ``description``, ``required`` (column names) and
@@ -148,7 +148,7 @@ def _split_frontmatter(raw_text: str) -> tuple[dict[str, Any], str]:
 
 
 def _parse_contrastive_description(
-    raw: Any, fallback: str = ""
+    raw: object, fallback: str = ""
 ) -> ContrastiveDescription:
     """Parse either a 3-part mapping or a plain string into ``ContrastiveDescription``."""
     if isinstance(raw, ContrastiveDescription):

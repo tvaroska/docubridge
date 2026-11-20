@@ -161,7 +161,7 @@ class PageAwareFakeClient:
         local_rows = len(tables.get("rates", []))
         flagged: list[str] = []
         reviews: list[dict] = []
-        confidence: dict[str, float] = {name: 0.98 for name in doc.key_fields}
+        confidence: dict[str, float] = dict.fromkeys(doc.key_fields, 0.98)
         for global_index in self.flag_rows:
             local = global_index - offset
             if 0 <= local < local_rows:

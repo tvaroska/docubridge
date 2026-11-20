@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol, cast, override
 
 from ..protocols import (
     EMAIL_KEY_PATTERN,
@@ -31,6 +33,64 @@ from .common import (
     split_bucket_and_prefix,
 )
 
+if TYPE_CHECKING:
+    from bridge.edge.skills import SkillMeta
+    from bridge.outbound import (
+        A2ASendResult,
+        OutboundClient,
+        OutboundMessage,
+        _HttpClientLike,
+    )
+    from bridge.scheduler import Alarm
+    from contract.extraction import ExtractionResult
+
+
+class _GcsBlobLike(Protocol):
+    name: str
+    time_created: object
+
+    def exists(self) -> bool: ...
+    def download_to_filename(self, filename: str) -> None: ...
+    def download_as_text(self) -> str: ...
+    def download_as_bytes(self) -> bytes: ...
+    def upload_from_string(
+        self,
+        data: str | bytes,
+        *,
+        content_type: str | None = None,
+        if_generation_match: int | None = None,
+    ) -> None: ...
+
+
+class _GcsBucketLike(Protocol):
+    name: str
+
+    def list_blobs(self, *, prefix: str | None = None) -> Iterable[_GcsBlobLike]: ...
+    def blob(self, blob_name: str) -> _GcsBlobLike: ...
+
+
+class _CloudTasksClientLike(Protocol):
+    def create_task(self, *, parent: str, task: dict[str, Any]) -> object: ...
+    def delete_task(self, *, name: str) -> object: ...
+    def list_tasks(self, *, parent: str) -> Iterable[object]: ...
+
+
+class _HttpSender(Protocol):
+    def __call__(self, *, url: str, headers: dict[str, str], body: bytes) -> object: ...
+
+
+class _ExtractorLike(Protocol):
+    async def extract(  # noqa: PLR0913 - matches ExtractionPort.extract contract
+        self,
+        artifact_name: str,
+        *,
+        target_doctype: str | None = None,
+        candidate_doctypes: Sequence[str] | None = None,
+        requested_fields: Sequence[str] | None = None,
+        context_set: str | None = None,
+        ontology_revision: str | None = None,
+    ) -> ExtractionResult: ...
+
 
 def _resolve_bucket(
     bucket_name: str | None = None, env: str = SKILLS_BUCKET_ENV
@@ -55,7 +115,7 @@ def _resolve_bucket(
     return bucket
 
 
-def _validate_skill_paths(name: str, rels: Any) -> None:
+def _validate_skill_paths(name: str, rels: Iterable[str] | None) -> None:
     """Reject a traversing skill name / asset path BEFORE any storage I/O."""
     import posixpath
     import re
@@ -68,7 +128,7 @@ def _validate_skill_paths(name: str, rels: Any) -> None:
             raise ValueError(f"asset path {rel!r} escapes skill dir")
 
 
-def _download_prefix(bucket: Any, prefix: str, dest: Any) -> None:
+def _download_prefix(bucket: _GcsBucketLike, prefix: str, dest: Path) -> None:
     """Download every blob under `prefix` into `dest` preserving relative paths."""
     for blob in bucket.list_blobs(prefix=prefix):
         rel = blob.name[len(prefix) :]
@@ -103,16 +163,15 @@ class GcpSkillRegistry(SkillRegistryPort):
                 return embedded
         return normalize_gcs_prefix(os.environ.get(SKILLS_PREFIX_ENV, ""))
 
-    def _bucket(self) -> Any:
+    def _bucket(self) -> _GcsBucketLike:
         name = _resolve_bucket(self._bucket_name)
         from google.cloud.storage import Client
 
-        return Client().bucket(name)
+        return cast(_GcsBucketLike, Client().bucket(name))
 
-    def list_skills(self) -> list[Any]:
+    def list_skills(self) -> list[SkillMeta]:
         """List all skill packages discovered in the Cloud Storage skills bucket or prefix."""
         import tempfile
-        from pathlib import Path
 
         from bridge.edge.skills import listed_skill_meta
 
@@ -132,7 +191,7 @@ class GcpSkillRegistry(SkillRegistryPort):
                 continue
             if rel_name == f"{parts[0]}/SKILL.md":
                 have_skill_md.add(parts[0])
-        metas = []
+        metas: list[SkillMeta] = []
         for name in sorted(have_skill_md):
             with tempfile.TemporaryDirectory() as tmp:
                 dest = Path(tmp) / name
@@ -142,10 +201,9 @@ class GcpSkillRegistry(SkillRegistryPort):
                 metas.append(meta)
         return metas
 
-    def get_skill(self, name: str) -> Any:
+    def get_skill(self, name: str) -> SkillMeta:
         """Retrieve a single skill package definition by skill name."""
         import tempfile
-        from pathlib import Path
 
         from bridge.edge.skills import skill_meta_from_dir
 
@@ -161,10 +219,9 @@ class GcpSkillRegistry(SkillRegistryPort):
 
     def install_skill(
         self, name: str, skill_md: str, assets: dict[str, str] | None = None
-    ) -> Any:
+    ) -> SkillMeta:
         """Upload and register a skill directory into the Cloud Storage skills bucket or prefix."""
         import tempfile
-        from pathlib import Path
 
         from bridge.edge.skills import skill_meta_from_dir, validate_skill_upload
 
@@ -187,12 +244,8 @@ class GcpSkillRegistry(SkillRegistryPort):
         blob = self._bucket().blob(f"{base}{name}/{rel}")
         if not blob.exists():
             raise KeyError(f"{name}/{rel}")
-        return blob.download_as_text()
+        return str(blob.download_as_text())
 
-
-# ---------------------------------------------------------------------------
-# scheduler (P7-4) — Cloud Tasks bridge-followups queue
-# ---------------------------------------------------------------------------
 
 _ADVANCE_UNSUPPORTED = (
     "Cloud Tasks is wall-clock/push-driven: the queue fires the OIDC callback at "
@@ -221,16 +274,18 @@ def _task_id(key: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "_", key)
 
 
-def _schedule_seconds(schedule_time: Any) -> int:
+def _schedule_seconds(schedule_time: object) -> int:
     """Best-effort epoch-seconds from a task's `schedule_time`."""
     if schedule_time is None:
         return 0
     if isinstance(schedule_time, dict):
         return int(schedule_time.get("seconds", 0))
-    if hasattr(schedule_time, "timestamp"):
-        return int(schedule_time.timestamp())
-    if hasattr(schedule_time, "seconds"):
-        return int(schedule_time.seconds)
+    ts = getattr(schedule_time, "timestamp", None)
+    if callable(ts):
+        return int(ts())
+    secs = getattr(schedule_time, "seconds", None)
+    if secs is not None:
+        return int(secs)
     return 0
 
 
@@ -243,24 +298,24 @@ class _GcpCloudTasksScheduler:
         queue_path: str,
         callback_url: str,
         oidc_sa_email: str,
-        client: Any = None,
+        client: _CloudTasksClientLike | None = None,
     ) -> None:
         self._queue_path = queue_path
         self._callback_url = callback_url
         self._oidc_sa_email = oidc_sa_email
         self._client_obj = client
 
-    def _client(self) -> Any:
+    def _client(self) -> _CloudTasksClientLike:
         if self._client_obj is None:
             from google.cloud import tasks_v2
 
-            self._client_obj = tasks_v2.CloudTasksClient()
+            self._client_obj = cast(_CloudTasksClientLike, tasks_v2.CloudTasksClient())
         return self._client_obj
 
     def _task_name(self, key: str) -> str:
         return f"{self._queue_path}/tasks/{_task_id(key)}"
 
-    def _delete_quietly(self, client: Any, name: str) -> None:
+    def _delete_quietly(self, client: _CloudTasksClientLike, name: str) -> None:
         import contextlib
 
         from google.api_core.exceptions import NotFound
@@ -274,7 +329,7 @@ class _GcpCloudTasksScheduler:
 
         return int(time.time())
 
-    def schedule(self, key: str, fire_at: int, payload: Any = None) -> Any:
+    def schedule(self, key: str, fire_at: int, payload: object = None) -> Alarm:
         """Mint a Cloud Task firing at `fire_at` (absolute epoch seconds)."""
         import json
 
@@ -314,21 +369,22 @@ class _GcpCloudTasksScheduler:
         except NotFound:
             return False
 
-    def pending(self) -> list[Any]:
+    def pending(self) -> list[Alarm]:
         """List armed tasks as `Alarm`s."""
         import json
 
         from bridge.scheduler import Alarm
 
-        alarms = []
+        alarms: list[Alarm] = []
         for task in self._client().list_tasks(parent=self._queue_path):
             if isinstance(task, dict):
                 http = task.get("http_request", {}) or {}
                 body = http.get("body", b"")
                 st = task.get("schedule_time")
             else:
-                body = task.http_request.body
-                st = task.schedule_time
+                http_req = getattr(task, "http_request", None)
+                body = getattr(http_req, "body", b"") if http_req is not None else b""
+                st = getattr(task, "schedule_time", None)
             key, payload = "", None
             if body:
                 data = json.loads(body)
@@ -338,11 +394,11 @@ class _GcpCloudTasksScheduler:
             )
         return alarms
 
-    def advance(self, ticks: int) -> list[Any]:
+    def advance(self, ticks: int) -> list[Alarm]:
         """Advance the scheduler clock by a relative duration and fire due callbacks."""
         raise NotImplementedError(_ADVANCE_UNSUPPORTED)
 
-    def advance_to(self, tick: int) -> list[Any]:
+    def advance_to(self, tick: int) -> list[Alarm]:
         """Advance the scheduler clock to a target UTC timestamp and fire due callbacks."""
         raise NotImplementedError(_ADVANCE_UNSUPPORTED)
 
@@ -360,14 +416,15 @@ class GcpScheduler(SchedulerPort):
         self._callback_url = callback_url
         self._oidc_sa_email = oidc_sa_email
 
+    @override
     def build_scheduler(
         self,
-        client: Any = None,
+        client: _CloudTasksClientLike | None = None,
         *,
         queue_path: str | None = None,
         callback_url: str | None = None,
         oidc_sa_email: str | None = None,
-    ) -> Any:
+    ) -> _GcpCloudTasksScheduler:
         """Build the Cloud Tasks scheduler (injectable-port idiom, P7-8 wiring-guard)."""
         return _GcpCloudTasksScheduler(
             queue_path=_resolve_scheduler_config(
@@ -387,11 +444,6 @@ class GcpScheduler(SchedulerPort):
             ),
             client=client,
         )
-
-
-# ---------------------------------------------------------------------------
-# a2a_client (P7-5) — the Agent-Identity outbound transport
-# ---------------------------------------------------------------------------
 
 
 def _resolve_a2a_config(value: str | None, env: str, what: str) -> str:
@@ -444,8 +496,8 @@ class _AgentIdentityTransport:
         *,
         gateway_host: str,
         sa_email: str,
-        id_token_fetcher: Any = None,
-        sender: Any = None,
+        id_token_fetcher: Callable[[str], str] | None = None,
+        sender: _HttpSender | None = None,
     ) -> None:
         self._gateway_host = gateway_host
         self._sa_email = sa_email
@@ -458,8 +510,10 @@ class _AgentIdentityTransport:
         import google.auth.transport.requests
         from google.oauth2 import id_token
 
-        return id_token.fetch_id_token(
-            google.auth.transport.requests.Request(), audience
+        return str(
+            id_token.fetch_id_token(  # type: ignore[no-untyped-call]
+                google.auth.transport.requests.Request(), audience
+            )
         )
 
     def _post(self, url: str, headers: dict[str, str], body: bytes) -> None:
@@ -470,7 +524,7 @@ class _AgentIdentityTransport:
 
         httpx.Client().post(url, headers=headers, content=body)
 
-    def deliver(self, message: Any) -> None:
+    def deliver(self, message: OutboundMessage) -> None:
         """Deliver a signed A2A envelope to a remote peer endpoint with Cloud Run OIDC credentials."""
         target_url = getattr(message, "card_url", None)
         if not target_url:
@@ -494,14 +548,15 @@ class GcpA2AClient(A2AClientPort):
         self._gateway_host = gateway_host
         self._sa_email = sa_email
 
+    @override
     def build_client(
         self,
         *,
         gateway_host: str | None = None,
         sa_email: str | None = None,
-        id_token_fetcher: Any = None,
-        sender: Any = None,
-    ) -> Any:
+        id_token_fetcher: Callable[[str], str] | None = None,
+        sender: _HttpSender | None = None,
+    ) -> OutboundClient:
         """Build the Agent-Identity outbound client (injectable-port idiom)."""
         from bridge.outbound import OutboundClient
 
@@ -521,6 +576,7 @@ class GcpA2AClient(A2AClientPort):
         )
         return OutboundClient(transport)
 
+    @override
     def send_message(
         self,
         *,
@@ -530,11 +586,11 @@ class GcpA2AClient(A2AClientPort):
         expected_skill: str | None = None,
         context_id: str | None = None,
         headers: dict[str, str] | None = None,
-        http_client: Any = None,
+        http_client: object = None,
         timeout: float = 20.0,
         gateway_host: str | None = None,
-        id_token_fetcher: Any = None,
-    ) -> Any:
+        id_token_fetcher: Callable[[str], str] | None = None,
+    ) -> A2ASendResult:
         """Invoke canonical A2A v1.0 ``SendMessage`` with same-origin reconciliation and OIDC."""
         from bridge.outbound import send_a2a_message
 
@@ -560,7 +616,7 @@ class GcpA2AClient(A2AClientPort):
                     if parsed.netloc
                     else target_url
                 )
-                token = id_token.fetch_id_token(
+                token = id_token.fetch_id_token(  # type: ignore[no-untyped-call]
                     google.auth.transport.requests.Request(), audience
                 )
                 return {"Authorization": f"Bearer {token}"}
@@ -573,16 +629,11 @@ class GcpA2AClient(A2AClientPort):
             expected_skill=expected_skill,
             context_id=context_id,
             headers=headers,
-            http_client=http_client,
+            http_client=cast("_HttpClientLike | None", http_client),
             timeout=timeout,
             url_reconciler=reconciler,
             auth_header_provider=_auth_headers,
         )
-
-
-# ---------------------------------------------------------------------------
-# extraction (P7-6) — the Gemini extraction engine behind the port
-# ---------------------------------------------------------------------------
 
 
 class GcpExtraction(ExtractionPort):
@@ -591,7 +642,7 @@ class GcpExtraction(ExtractionPort):
     def __init__(self, engine: str | None = None) -> None:
         self._engine_name = engine
 
-    def _resolve_engine(self) -> Any:
+    def _resolve_engine(self) -> _ExtractorLike:
         """Select the extraction engine: arg wins, else env, else gemini default."""
         name = (
             self._engine_name or os.environ.get(BRIDGE_EXTRACTION_ENGINE_ENV, "gemini")
@@ -613,16 +664,17 @@ class GcpExtraction(ExtractionPort):
             f"unknown extraction engine {name!r}: expected fixture|gemini|docai"
         )
 
+    @override
     async def extract(
         self,
         artifact_name: str,
         *,
         target_doctype: str | None = None,
-        candidate_doctypes: Any = None,
-        requested_fields: Any = None,
+        candidate_doctypes: Sequence[str] | None = None,
+        requested_fields: Sequence[str] | None = None,
         context_set: str | None = None,
         ontology_revision: str | None = None,
-    ) -> Any:
+    ) -> ExtractionResult:
         """Run structured document extraction via Document AI and Gemini schema mapping."""
         return await self._resolve_engine().extract(
             artifact_name,
@@ -632,11 +684,6 @@ class GcpExtraction(ExtractionPort):
             context_set=context_set,
             ontology_revision=ontology_revision,
         )
-
-
-# ---------------------------------------------------------------------------
-# email_ingress (S0-arch-13) — the GCS mailbox landing bucket
-# ---------------------------------------------------------------------------
 
 
 class GcpEmailIngress(EmailIngressPort):
@@ -676,14 +723,14 @@ class GcpEmailIngress(EmailIngressPort):
     def _object_key(self, rel: str) -> str:
         return join_gcs_prefix(self._effective_prefix(), rel)
 
-    def _bucket(self) -> Any:
+    def _bucket(self) -> _GcsBucketLike:
         name = self._name()
         from google.cloud.storage import Client
 
-        return Client().bucket(name)
+        return cast(_GcsBucketLike, Client().bucket(name))
 
     @staticmethod
-    def _create_only(blob: Any, data: bytes, content_type: str) -> bool:
+    def _create_only(blob: _GcsBlobLike, data: bytes, content_type: str) -> bool:
         from google.api_core.exceptions import Forbidden, PreconditionFailed
 
         try:
@@ -717,7 +764,7 @@ class GcpEmailIngress(EmailIngressPort):
             for blob in bucket.list_blobs(prefix=processed_prefix)
             if blob.name.endswith(".json")
         }
-        rows = []
+        rows: list[tuple[Any, str]] = []
         for blob in bucket.list_blobs(prefix=inbox_prefix):
             rel = blob.name[len(inbox_prefix) :]
             key = rel.removesuffix(".eml")
@@ -738,8 +785,9 @@ class GcpEmailIngress(EmailIngressPort):
         blob = self._bucket().blob(obj_key)
         if not blob.exists():
             raise KeyError(key)
-        return blob.download_as_bytes()
+        return bytes(blob.download_as_bytes())
 
+    @override
     def put_attachment(
         self, key: str, index: int, filename: str, data: bytes, mime_type: str
     ) -> str:
@@ -751,7 +799,7 @@ class GcpEmailIngress(EmailIngressPort):
         self._create_only(bucket.blob(name), data, mime_type)
         return f"gs://{bucket.name}/{name}"
 
-    def mark_processed(self, key: str, outcome: dict) -> bool:
+    def mark_processed(self, key: str, outcome: dict[str, Any]) -> bool:
         """Move a processed message from the pending prefix to the processed archive prefix."""
         import json
 
@@ -761,7 +809,7 @@ class GcpEmailIngress(EmailIngressPort):
         body = json.dumps(outcome, sort_keys=True).encode()
         return self._create_only(blob, body, "application/json")
 
-    def processed(self, key: str) -> dict | None:
+    def processed(self, key: str) -> dict[str, Any] | None:
         """Return the processed outcome marker for `key`, or `None` if unprocessed."""
         import json
 
@@ -770,4 +818,4 @@ class GcpEmailIngress(EmailIngressPort):
         blob = self._bucket().blob(obj_key)
         if not blob.exists():
             return None
-        return json.loads(blob.download_as_bytes())
+        return cast(dict[str, Any], json.loads(blob.download_as_bytes()))

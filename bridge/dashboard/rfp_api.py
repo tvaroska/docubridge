@@ -39,7 +39,7 @@ from starlette.concurrency import run_in_threadpool
 from bridge.dashboard import readmodel
 from bridge.outbound import Nudge
 from bridge.ports import Port, get_adapter, resolve_mode
-from bridge.rfp import chase_message, chaseable_items, record_chase
+from bridge.rfp import RfpCollection, chase_message, chaseable_items, record_chase
 
 if TYPE_CHECKING:
     from bridge.dashboard.board import RfpBoard
@@ -57,6 +57,122 @@ class ChaseBody(BaseModel):
     party: str | None = None
 
 
+def _resolve_chase_targets(
+    rfp: RfpCollection, rfp_id: str, party: str | None
+) -> list[str]:
+    if party is not None:
+        try:
+            rfp.leg_for(party)
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=str(e.args[0])) from e
+        targets = [party] if chaseable_items(rfp, party) else []
+    else:
+        targets = [leg.party for leg in rfp.legs if chaseable_items(rfp, leg.party)]
+    if not targets:
+        raise HTTPException(
+            status_code=409,
+            detail=f"nothing outstanding to chase on RFP {rfp_id!r}"
+            + (f" for {party!r}" if party is not None else ""),
+        )
+    return targets
+
+
+def _build_chase_nudges(
+    board: RfpBoard,
+    rfp: RfpCollection,
+    rfp_id: str,
+    targets: list[str],
+    intake: IntakeAddressing | None,
+) -> list[Nudge]:
+    view = board.get(rfp_id)
+    step_of = {c.party: c.lifecycle for c in view.carriers}
+    nudges: list[Nudge] = []
+    for target in targets:
+        leg = rfp.leg_for(target)
+        reply = intake.reply_address(rfp_id, target) if intake else None
+        tag = intake.reply_subject_tag(rfp_id, target) if intake else None
+        lines = [c.product_line for c in chaseable_items(rfp, target)]
+        nudges.append(
+            Nudge(
+                context_id=leg.context_id,
+                party=target,
+                step=step_of[target],
+                channel=CHASE_CHANNEL,
+                message=chase_message(
+                    rfp,
+                    target,
+                    lines=lines,
+                    reply_address=reply,
+                    reply_subject_tag=tag,
+                ),
+                seq=leg.chases,
+            )
+        )
+    return nudges
+
+
+async def _send_chase_nudges(
+    client: A2AClient, nudges: list[Nudge]
+) -> tuple[list[NudgeReceipt], Exception | None]:
+    receipts: list[NudgeReceipt] = []
+    for nudge in nudges:
+        try:
+            receipts.append(await run_in_threadpool(client.send, nudge))
+        except Exception as e:  # noqa: BLE001 - recorded below, then surfaced as 502
+            return receipts, e
+    return receipts, None
+
+
+def _record_chase_receipts(
+    board: RfpBoard, rfp_id: str, receipts: list[NudgeReceipt]
+) -> None:
+    now = board.clock()
+    current = board.rfps.get(rfp_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail=f"unknown RFP {rfp_id!r}")
+    for receipt in receipts:
+        sent = receipt.nudge
+        # Record once per seq: a concurrent chase that already recorded this seq
+        # (its send deduped here) must not count twice; a crash re-drive (seq not
+        # yet recorded) still records.
+        if current.leg_for(sent.party).chases == sent.seq:
+            current = record_chase(
+                current, sent.party, now=now, step=sent.step, channel=sent.channel
+            )
+    board.put(current)
+
+
+def _require_rfp_board(rfps: RfpBoard | None) -> RfpBoard:
+    if rfps is None:
+        raise HTTPException(status_code=404, detail="no RFP board configured")
+    return rfps
+
+
+def _resolve_outbound_client(
+    outbound: A2AClient | None, built: dict[str, A2AClient]
+) -> A2AClient:
+    if outbound is not None:
+        return outbound
+    if "client" not in built:
+        try:
+            adapter = get_adapter(Port.a2a_client, resolve_mode(Port.a2a_client))
+            built["client"] = adapter.build_client()
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+    return built["client"]
+
+
+def _project_rfp_or_404(
+    rfps: RfpBoard | None, rfp_id: str, intake: IntakeAddressing | None
+) -> dict[str, Any]:
+    board = _require_rfp_board(rfps)
+    try:
+        view = board.get(rfp_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=f"unknown RFP {rfp_id!r}") from e
+    return readmodel.project_rfp_status(view, intake=intake)
+
+
 def mount_rfp_routes(
     app: FastAPI,
     *,
@@ -65,37 +181,10 @@ def mount_rfp_routes(
     outbound: A2AClient | None = None,
 ) -> None:
     """Add the consumer RFP read API + the manual chase route to ``app``."""
-    built: dict[str, Any] = {}
-
-    def _client() -> A2AClient:
-        if outbound is not None:
-            return outbound
-        if "client" not in built:
-            try:
-                built["client"] = get_adapter(
-                    Port.a2a_client, resolve_mode(Port.a2a_client)
-                ).build_client()
-            except RuntimeError as e:
-                raise HTTPException(status_code=503, detail=str(e)) from e
-        return built["client"]
-
-    def _board() -> RfpBoard:
-        if rfps is None:
-            raise HTTPException(status_code=404, detail="no RFP board configured")
-        return rfps
-
-    def _project(rfp_id: str) -> dict:
-        board = _board()
-        try:
-            view = board.get(rfp_id)
-        except KeyError as e:
-            raise HTTPException(
-                status_code=404, detail=f"unknown RFP {rfp_id!r}"
-            ) from e
-        return readmodel.project_rfp_status(view, intake=intake)
+    built: dict[str, A2AClient] = {}
 
     @app.get("/rfps")
-    def get_rfps() -> list[dict]:
+    def get_rfps() -> list[dict[str, Any]]:
         if rfps is None:
             return []
         return [
@@ -104,83 +193,24 @@ def mount_rfp_routes(
         ]
 
     @app.get("/rfps/{rfp_id}")
-    def get_rfp(rfp_id: str) -> dict:
-        return _project(rfp_id)
+    def get_rfp(rfp_id: str) -> dict[str, Any]:
+        return _project_rfp_or_404(rfps, rfp_id, intake)
 
     @app.post("/rfps/{rfp_id}/chase")
-    async def post_chase(rfp_id: str, body: ChaseBody | None = None) -> dict:
-        board = _board()
+    async def post_chase(rfp_id: str, body: ChaseBody | None = None) -> dict[str, Any]:
+        board = _require_rfp_board(rfps)
         party = body.party if body is not None else None
         rfp = board.rfps.get(rfp_id)
         if rfp is None:
             raise HTTPException(status_code=404, detail=f"unknown RFP {rfp_id!r}")
-        if party is not None:
-            try:
-                rfp.leg_for(party)
-            except KeyError as e:
-                raise HTTPException(status_code=404, detail=str(e.args[0])) from e
-            targets = [party] if chaseable_items(rfp, party) else []
-        else:
-            targets = [leg.party for leg in rfp.legs if chaseable_items(rfp, leg.party)]
-        if not targets:
-            raise HTTPException(
-                status_code=409,
-                detail=f"nothing outstanding to chase on RFP {rfp_id!r}"
-                + (f" for {party!r}" if party is not None else ""),
-            )
-
-        now = board.clock()
-        view = board.get(rfp_id)
-        step_of = {c.party: c.lifecycle for c in view.carriers}
-        nudges: list[Nudge] = []
-        for target in targets:
-            leg = rfp.leg_for(target)
-            reply = intake.reply_address(rfp_id, target) if intake else None
-            tag = intake.reply_subject_tag(rfp_id, target) if intake else None
-            lines = [c.product_line for c in chaseable_items(rfp, target)]
-            nudges.append(
-                Nudge(
-                    context_id=leg.context_id,
-                    party=target,
-                    step=step_of[target],
-                    channel=CHASE_CHANNEL,
-                    message=chase_message(
-                        rfp,
-                        target,
-                        lines=lines,
-                        reply_address=reply,
-                        reply_subject_tag=tag,
-                    ),
-                    seq=leg.chases,
-                )
-            )
-
+        targets = _resolve_chase_targets(rfp, rfp_id, party)
+        nudges = _build_chase_nudges(board, rfp, rfp_id, targets, intake)
         # Sends first (may block — off the loop); a failure records what already went.
-        client = _client()
-        receipts: list[NudgeReceipt] = []
-        failure: Exception | None = None
-        for nudge in nudges:
-            try:
-                receipts.append(await run_in_threadpool(client.send, nudge))
-            except Exception as e:  # recorded below, then surfaced as 502
-                failure = e
-                break
-
+        receipts, failure = await _send_chase_nudges(
+            _resolve_outbound_client(outbound, built), nudges
+        )
         # Fresh read → record → put, with NO await in between.
-        current = board.rfps.get(rfp_id)
-        if current is None:
-            raise HTTPException(status_code=404, detail=f"unknown RFP {rfp_id!r}")
-        for receipt in receipts:
-            sent = receipt.nudge
-            # Record once per seq: a concurrent chase that already recorded this seq
-            # (its send deduped here) must not count twice; a crash re-drive (seq not
-            # yet recorded) still records.
-            if current.leg_for(sent.party).chases == sent.seq:
-                current = record_chase(
-                    current, sent.party, now=now, step=sent.step, channel=sent.channel
-                )
-        board.put(current)
-
+        _record_chase_receipts(board, rfp_id, receipts)
         if failure is not None:
             raise HTTPException(
                 status_code=502,

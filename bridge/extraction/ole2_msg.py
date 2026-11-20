@@ -7,6 +7,7 @@ Outlook ``.msg`` submission envelopes without third-party C or PyPI dependencies
 from __future__ import annotations
 
 import struct
+from dataclasses import dataclass
 
 OLE2_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 _ENDOFCHAIN = 0xFFFFFFFE
@@ -14,37 +15,17 @@ _FREESECT = 0xFFFFFFFF
 _SPECIAL_SECTORS = frozenset({0xFFFFFFFC, 0xFFFFFFFD, _ENDOFCHAIN, _FREESECT})
 
 
+@dataclass(slots=True)
 class Ole2DirEntry:
     """Directory entry node inside an MS-CFB / OLE2 binary compound file."""
 
-    __slots__ = (
-        "child_id",
-        "left_sibling",
-        "name",
-        "obj_type",
-        "right_sibling",
-        "start_sector",
-        "stream_size",
-    )
-
-    def __init__(
-        self,
-        name: str,
-        obj_type: int,
-        left_sibling: int,
-        right_sibling: int,
-        child_id: int,
-        start_sector: int,
-        stream_size: int,
-    ) -> None:
-        """Initialize an OLE2 directory entry descriptor."""
-        self.name = name
-        self.obj_type = obj_type
-        self.left_sibling = left_sibling
-        self.right_sibling = right_sibling
-        self.child_id = child_id
-        self.start_sector = start_sector
-        self.stream_size = stream_size
+    name: str
+    obj_type: int
+    left_sibling: int
+    right_sibling: int
+    child_id: int
+    start_sector: int
+    stream_size: int
 
 
 class Ole2CompoundReader:
@@ -73,6 +54,23 @@ class Ole2CompoundReader:
         first_difat_sector = struct.unpack_from("<I", data, 68)[0]
         num_difat_sectors = struct.unpack_from("<I", data, 72)[0]
 
+        self.fat = self._load_fat(
+            data, num_fat_sectors, first_difat_sector, num_difat_sectors
+        )
+        self.minifat = self._load_minifat(first_minifat_sector, num_minifat_sectors)
+        dir_bytes = self._read_chain(
+            first_dir_sector, size=None, max_bytes=max_stream_bytes
+        )
+        self.entries = self._parse_directory(dir_bytes)
+        self._mini_stream = self._load_mini_stream(max_stream_bytes)
+
+    def _load_fat(
+        self,
+        data: bytes,
+        num_fat_sectors: int,
+        first_difat_sector: int,
+        num_difat_sectors: int,
+    ) -> list[int]:
         difat: list[int] = [
             s
             for s in struct.unpack_from("<109I", data, 76)
@@ -83,29 +81,35 @@ class Ole2CompoundReader:
         for _ in range(min(num_difat_sectors, 1024)):
             if curr_difat in _SPECIAL_SECTORS:
                 break
-            sec_bytes = self._sector_bytes(curr_difat)
-            vals = struct.unpack(f"<{entries_per_sector}I", sec_bytes)
+            vals = struct.unpack(
+                f"<{entries_per_sector}I", self._sector_bytes(curr_difat)
+            )
             difat.extend(s for s in vals[:-1] if s not in _SPECIAL_SECTORS)
             curr_difat = vals[-1]
-
-        self.fat: list[int] = []
+        fat: list[int] = []
         for fat_sec in difat[:num_fat_sectors]:
-            sec_bytes = self._sector_bytes(fat_sec)
-            self.fat.extend(struct.unpack(f"<{entries_per_sector}I", sec_bytes))
+            fat.extend(
+                struct.unpack(f"<{entries_per_sector}I", self._sector_bytes(fat_sec))
+            )
+        return fat
 
-        self.minifat: list[int] = []
+    def _load_minifat(
+        self, first_minifat_sector: int, num_minifat_sectors: int
+    ) -> list[int]:
+        minifat: list[int] = []
         curr_mini = first_minifat_sector
+        entries_per_sector = self.sector_size // 4
         for _ in range(min(num_minifat_sectors, 4096)):
             if curr_mini in _SPECIAL_SECTORS:
                 break
-            sec_bytes = self._sector_bytes(curr_mini)
-            self.minifat.extend(struct.unpack(f"<{entries_per_sector}I", sec_bytes))
+            minifat.extend(
+                struct.unpack(f"<{entries_per_sector}I", self._sector_bytes(curr_mini))
+            )
             curr_mini = self._next_sector(self.fat, curr_mini)
+        return minifat
 
-        dir_bytes = self._read_chain(
-            first_dir_sector, size=None, max_bytes=max_stream_bytes
-        )
-        self.entries: list[Ole2DirEntry] = []
+    def _parse_directory(self, dir_bytes: bytes) -> list[Ole2DirEntry]:
+        entries: list[Ole2DirEntry] = []
         for offset in range(0, len(dir_bytes) - 127, 128):
             chunk = dir_bytes[offset : offset + 128]
             name_len = struct.unpack_from("<H", chunk, 64)[0]
@@ -118,9 +122,8 @@ class Ole2CompoundReader:
             start_sec = struct.unpack_from("<I", chunk, 116)[0]
             raw_size = struct.unpack_from("<Q", chunk, 120)[0]
             if self.sector_size == 512:
-                # MS-CFB v3: upper 32 bits of stream_size may contain uninitialized bytes.
                 raw_size &= 0xFFFFFFFF
-            self.entries.append(
+            entries.append(
                 Ole2DirEntry(
                     name=name,
                     obj_type=obj_type,
@@ -131,16 +134,19 @@ class Ole2CompoundReader:
                     stream_size=raw_size,
                 )
             )
+        return entries
 
-        self._mini_stream = b""
-        if self.entries and self.entries[0].obj_type == 5:
-            root = self.entries[0]
-            if root.stream_size > 0 and root.start_sector not in _SPECIAL_SECTORS:
-                self._mini_stream = self._read_chain(
-                    root.start_sector,
-                    size=root.stream_size,
-                    max_bytes=max_stream_bytes,
-                )
+    def _load_mini_stream(self, max_stream_bytes: int) -> bytes:
+        if not self.entries or self.entries[0].obj_type != 5:
+            return b""
+        root = self.entries[0]
+        if root.stream_size > 0 and root.start_sector not in _SPECIAL_SECTORS:
+            return self._read_chain(
+                root.start_sector,
+                size=root.stream_size,
+                max_bytes=max_stream_bytes,
+            )
+        return b""
 
     def _sector_bytes(self, sector_id: int) -> bytes:
         start = (sector_id + 1) * self.sector_size

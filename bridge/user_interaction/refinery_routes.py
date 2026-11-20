@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.params import Depends
 
 from bridge.a2ui_inbox import ActionInboxStore
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
@@ -22,49 +24,12 @@ from bridge.user_interaction.schemas import (
 )
 
 
-def register_refinery_routes(
+def _register_refinery_write_routes(
     router: APIRouter,
-    *,
-    catalog: KnowledgeCatalog,
-    inbox: ActionInboxStore | None = None,
-    schema_refinery: SchemaRefineryEngine | None = None,
-    principal_roles: dict[str, CatalogRole] | None = None,
-    require_auth: bool = False,
+    refinery: SchemaRefineryEngine,
+    inbox: ActionInboxStore | None,
+    mutating_deps: Sequence[Depends],
 ) -> None:
-    """Mount ``/v1/refinery/*`` routes onto the Zone 5 API router."""
-    refinery = schema_refinery_from_env(
-        schema_refinery,
-        knowledge_catalog=catalog,
-    )
-    mutating_deps = [
-        mutating_auth_dependency(
-            default_role="broker",
-            principal_roles=principal_roles,
-            require_auth=require_auth,
-            allow_external_roles=False,
-        )
-    ]
-
-    @router.get("/v1/refinery/revisions")
-    def get_refinery_revisions(
-        domain: str | None = Query(default=None),
-        relation: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        """List active and historical OntologyRevision snapshots, edges, and proposals."""
-        active = refinery.get_active_revision()
-        edges = list(active.edges)
-        if relation is not None:
-            edges = [e for e in edges if e.relation == relation]
-        proposals = refinery.list_proposals(domain=domain)
-        reports = refinery.list_assay_reports()
-        return {
-            "active_revision": active.model_dump(mode="json"),
-            "revisions": [r.model_dump(mode="json") for r in refinery.list_revisions()],
-            "edges": [e.model_dump(mode="json") for e in edges],
-            "proposals": [p.model_dump(mode="json") for p in proposals],
-            "assay_reports": [rep.model_dump(mode="json") for rep in reports],
-        }
-
     @router.post("/v1/refinery/assay", dependencies=mutating_deps)
     def post_refinery_assay(body: RunRefineryAssayRequest) -> dict[str, Any]:
         """Run bimodal field sparsity detection & the 3-Tier Refinery Assay Gate."""
@@ -107,10 +72,7 @@ def register_refinery_routes(
     ) -> dict[str, Any]:
         """Onboard a complete use-case agent (all its doctypes + process skill) onto DocuBridge."""
         try:
-            result = onboard_use_case(
-                body,
-                refinery=refinery,
-            )
+            result = onboard_use_case(body, refinery=refinery)
         except (ValueError, FileNotFoundError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return result.model_dump(mode="json")
@@ -148,3 +110,49 @@ def register_refinery_routes(
             "status": "reset",
             "active_revision": baseline.model_dump(mode="json"),
         }
+
+
+def register_refinery_routes(  # noqa: PLR0913 - public FastAPI route registrar
+    router: APIRouter,
+    *,
+    catalog: KnowledgeCatalog,
+    inbox: ActionInboxStore | None = None,
+    schema_refinery: SchemaRefineryEngine | None = None,
+    principal_roles: dict[str, CatalogRole] | None = None,
+    require_auth: bool = False,
+) -> None:
+    """Mount ``/v1/refinery/*`` routes onto the Zone 5 API router."""
+    refinery = schema_refinery_from_env(
+        schema_refinery,
+        knowledge_catalog=catalog,
+    )
+    mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
+
+    @router.get("/v1/refinery/revisions")
+    def get_refinery_revisions(
+        domain: str | None = Query(default=None),
+        relation: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        """List active and historical OntologyRevision snapshots, edges, and proposals."""
+        active = refinery.get_active_revision()
+        edges = list(active.edges)
+        if relation is not None:
+            edges = [e for e in edges if e.relation == relation]
+        proposals = refinery.list_proposals(domain=domain)
+        reports = refinery.list_assay_reports()
+        return {
+            "active_revision": active.model_dump(mode="json"),
+            "revisions": [r.model_dump(mode="json") for r in refinery.list_revisions()],
+            "edges": [e.model_dump(mode="json") for e in edges],
+            "proposals": [p.model_dump(mode="json") for p in proposals],
+            "assay_reports": [rep.model_dump(mode="json") for rep in reports],
+        }
+
+    _register_refinery_write_routes(router, refinery, inbox, mutating_deps)

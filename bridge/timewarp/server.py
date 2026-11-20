@@ -20,6 +20,8 @@ stdlib only; NEVER ``agents/``.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
@@ -51,6 +53,59 @@ class AdvanceBody(BaseModel):
     to: int | None = None
 
 
+def _mount_timewarp_advance_routes(app: FastAPI, host: TimewarpHost) -> None:
+    @app.post("/timewarp/arm")
+    def post_arm(body: ArmBody) -> dict[str, Any]:
+        try:
+            return host.arm(body.session_id)
+        except KeyError as e:
+            raise HTTPException(
+                status_code=404, detail=f"unknown session {body.session_id!r}"
+            ) from e
+
+    @app.post("/timewarp/advance")
+    def post_advance(body: AdvanceBody) -> dict[str, Any]:
+        try:
+            if body.to is not None:
+                return host.advance_to(body.to)
+            return host.advance(body.ticks if body.ticks is not None else 1)
+        except TimewarpPaused as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        except ValueError as e:
+            # VirtualClock raises ValueError on backward/negative moves -> 400, not 500.
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    @app.post("/timewarp/step")
+    def post_step() -> dict[str, Any]:
+        try:
+            return host.step()
+        except TimewarpPaused as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+
+
+def _mount_timewarp_control_routes(app: FastAPI, host: TimewarpHost) -> None:
+    @app.post("/timewarp/pause")
+    def post_pause() -> dict[str, Any]:
+        return host.pause()
+
+    @app.post("/timewarp/resume")
+    def post_resume() -> dict[str, Any]:
+        return host.resume()
+
+    @app.post("/timewarp/reset")
+    def post_reset() -> dict[str, Any]:
+        return host.reset()
+
+    @app.get("/timewarp/state")
+    def get_state() -> dict[str, Any]:
+        return host.state()
+
+
+def _mount_timewarp_routes(app: FastAPI, host: TimewarpHost) -> None:
+    _mount_timewarp_advance_routes(app, host)
+    _mount_timewarp_control_routes(app, host)
+
+
 def build_timewarp_app(
     *, store: PortalStore | None = None, clock: Scheduler | None = None
 ) -> FastAPI:
@@ -69,51 +124,7 @@ def build_timewarp_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    @app.post("/timewarp/arm")
-    def post_arm(body: ArmBody) -> dict:
-        try:
-            return host.arm(body.session_id)
-        except KeyError as e:
-            raise HTTPException(
-                status_code=404, detail=f"unknown session {body.session_id!r}"
-            ) from e
-
-    @app.post("/timewarp/advance")
-    def post_advance(body: AdvanceBody) -> dict:
-        try:
-            if body.to is not None:
-                return host.advance_to(body.to)
-            return host.advance(body.ticks if body.ticks is not None else 1)
-        except TimewarpPaused as e:
-            raise HTTPException(status_code=409, detail=str(e)) from e
-        except ValueError as e:
-            # VirtualClock raises ValueError on backward/negative moves -> 400, not 500.
-            raise HTTPException(status_code=400, detail=str(e)) from e
-
-    @app.post("/timewarp/step")
-    def post_step() -> dict:
-        try:
-            return host.step()
-        except TimewarpPaused as e:
-            raise HTTPException(status_code=409, detail=str(e)) from e
-
-    @app.post("/timewarp/pause")
-    def post_pause() -> dict:
-        return host.pause()
-
-    @app.post("/timewarp/resume")
-    def post_resume() -> dict:
-        return host.resume()
-
-    @app.post("/timewarp/reset")
-    def post_reset() -> dict:
-        return host.reset()
-
-    @app.get("/timewarp/state")
-    def get_state() -> dict:
-        return host.state()
-
+    _mount_timewarp_routes(app, host)
     return app
 
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException
+from fastapi.params import Depends
 
 from bridge.agent_gym import AgentGymEngine
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
@@ -17,65 +19,71 @@ from bridge.user_interaction.schemas import (
 )
 
 
-def register_registry_and_catalog_routes(
-    router: APIRouter,
-    *,
-    store: OperationalStore,
-    catalog: KnowledgeCatalog,
-    gym: AgentGymEngine,
-    principal_roles: dict[str, CatalogRole] | None,
-    require_auth: bool,
-) -> None:
-    """Register Agent Registry, Skill Registry, Agent Gateway, and Zone 6 Knowledge Catalog routes."""
+@dataclass(frozen=True)
+class _RegistryRouteDeps:
+    store: OperationalStore
+    catalog: KnowledgeCatalog
+    gym: AgentGymEngine
+    principal_roles: dict[str, CatalogRole] | None
+    require_auth: bool
+    registry_internal_deps: list[Depends]
 
+
+def _register_registry_read_routes(router: APIRouter, deps: _RegistryRouteDeps) -> None:
     @router.get("/v1/registry/catalog")
     def get_registry_catalog_endpoint() -> dict[str, Any]:
         """Return the unified Gemini platform Agent Registry, Skill Registry, and Agent Gateway catalog."""
-        return gym.get_registry_catalog()
+        return deps.gym.get_registry_catalog()
 
     @router.get("/v1/registry/agents")
     def list_registry_agents_endpoint() -> list[dict[str, Any]]:
         """List all registered agents in the Gemini platform Agent Registry."""
-        return gym.get_registry_catalog()["agent_registry"]["agents"]
+        return cast(
+            list[dict[str, Any]],
+            deps.gym.get_registry_catalog()["agent_registry"]["agents"],
+        )
 
     @router.get("/v1/registry/mcp-servers")
     def list_registry_mcp_servers_endpoint() -> list[dict[str, Any]]:
         """List all registered MCP servers and tool specs in the Gemini platform Agent Registry."""
-        return gym.get_registry_catalog()["agent_registry"]["mcp_servers"]
+        return cast(
+            list[dict[str, Any]],
+            deps.gym.get_registry_catalog()["agent_registry"]["mcp_servers"],
+        )
 
     @router.get("/v1/registry/endpoints")
     def list_registry_endpoints_endpoint() -> list[dict[str, Any]]:
         """List all registered service endpoints in the Gemini platform Agent Registry."""
-        return gym.get_registry_catalog()["agent_registry"]["endpoints"]
+        return cast(
+            list[dict[str, Any]],
+            deps.gym.get_registry_catalog()["agent_registry"]["endpoints"],
+        )
 
     @router.get("/v1/registry/skills")
     def list_registry_skills_endpoint() -> dict[str, Any]:
         """Return the Gemini platform Skill Registry catalog and active skill containers."""
-        return gym.get_registry_catalog()["skill_registry"]
+        return cast(dict[str, Any], deps.gym.get_registry_catalog()["skill_registry"])
 
     @router.get("/v1/registry/bindings")
     def list_registry_bindings_endpoint() -> list[dict[str, Any]]:
         """List all explicit source-to-target authentication bindings in the Agent Registry."""
-        return gym.get_registry_catalog()["agent_registry"]["bindings"]
-
-    registry_internal_deps = [
-        mutating_auth_dependency(
-            default_role="broker",
-            principal_roles=principal_roles,
-            require_auth=require_auth,
-            allow_external_roles=False,
-            external_role_error="External roles cannot mutate Agent Registry or evaluate internal gateway routes.",
+        return cast(
+            list[dict[str, Any]],
+            deps.gym.get_registry_catalog()["agent_registry"]["bindings"],
         )
-    ]
 
-    @router.post("/v1/registry/services", dependencies=registry_internal_deps)
+
+def _register_registry_write_and_gateway_routes(
+    router: APIRouter, deps: _RegistryRouteDeps
+) -> None:
+    @router.post("/v1/registry/services", dependencies=deps.registry_internal_deps)
     def register_registry_service_endpoint(
         body: RegisterServiceRequest,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Register a writable Service resource in Agent Registry projecting onto AGENT, MCP_SERVER, or ENDPOINT."""
         del role
-        return gym.register_registry_service(
+        return deps.gym.register_registry_service(
             service_id=body.service_id,
             display_name=body.display_name,
             component_type=body.component_type,
@@ -87,7 +95,7 @@ def register_registry_and_catalog_routes(
             data_resources=body.data_resources,
         )
 
-    @router.post("/v1/registry/bindings", dependencies=registry_internal_deps)
+    @router.post("/v1/registry/bindings", dependencies=deps.registry_internal_deps)
     def create_registry_binding_endpoint(
         body: CreateBindingRequest,
         role: CatalogRole | None = None,
@@ -95,7 +103,7 @@ def register_registry_and_catalog_routes(
         """Create an explicit Agent Registry Binding enforcing hierarchical resource names over URNs."""
         del role
         try:
-            return gym.create_registry_binding(
+            return deps.gym.create_registry_binding(
                 binding_id=body.binding_id,
                 source_agent=body.source_agent,
                 target_resource=body.target_resource,
@@ -110,15 +118,15 @@ def register_registry_and_catalog_routes(
     @router.get("/v1/gateway/status")
     def get_gateway_status_endpoint() -> dict[str, Any]:
         """Return the Gemini platform Agent Gateway and IAM v3 Unified Access Policy control-plane status."""
-        return gym.get_gateway_catalog()
+        return deps.gym.get_gateway_catalog()
 
     @router.post(
         "/v1/gateway/evaluate-route",
         dependencies=[
             mutating_auth_dependency(
                 default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
+                principal_roles=deps.principal_roles,
+                require_auth=deps.require_auth,
                 allow_external_roles=False,
             )
         ],
@@ -127,7 +135,7 @@ def register_registry_and_catalog_routes(
         body: EvaluateGatewayRouteRequest,
     ) -> dict[str, Any]:
         """Evaluate a CLIENT_TO_AGENT or AGENT_TO_ANYWHERE route through Model Armor, Cloud DLP, and IAM v3 UAP CEL."""
-        return gym.evaluate_gateway_route(
+        return deps.gym.evaluate_gateway_route(
             governed_access_path=body.governed_access_path,
             source_principal=body.source_principal,
             target_resource=body.target_resource,
@@ -136,13 +144,19 @@ def register_registry_and_catalog_routes(
             payload_text=body.payload_text,
         )
 
+
+def _register_catalog_and_lineage_routes(
+    router: APIRouter, deps: _RegistryRouteDeps
+) -> None:
     @router.get("/v1/registry/lineage/{entity_or_context_id}")
     def get_process_skill_lineage_endpoint(
         entity_or_context_id: str,
     ) -> dict[str, Any]:
         """Return bi-temporal process-instance and consolidated-fact skill revision lineage for an entity or context."""
-        by_entity = gym.list_process_skill_lineage(entity_id=entity_or_context_id)
-        by_context = gym.list_process_skill_lineage(context_id=entity_or_context_id)
+        by_entity = deps.gym.list_process_skill_lineage(entity_id=entity_or_context_id)
+        by_context = deps.gym.list_process_skill_lineage(
+            context_id=entity_or_context_id
+        )
         seen_ids: set[str] = set()
         merged = []
         for rec in [*by_entity, *by_context]:
@@ -151,7 +165,7 @@ def register_registry_and_catalog_routes(
                 merged.append(rec)
         merged.sort(key=lambda r: (r.recorded_at, r.document_version))
 
-        facts, _ = store.query_as_of(entity_or_context_id)
+        facts, _ = deps.store.query_as_of(entity_or_context_id)
         fact_skill_lineage = [
             {
                 "fact_id": f.fact_id,
@@ -183,7 +197,7 @@ def register_registry_and_catalog_routes(
         """List registered SPIFFE agent identities and least-privilege policies from Zone 6 Knowledge Catalog."""
         return [
             p.model_dump(mode="json")
-            for p in catalog.list_spiffe_agents(security_zone=security_zone)
+            for p in deps.catalog.list_spiffe_agents(security_zone=security_zone)
         ]
 
     @router.get("/v1/catalog/assets")
@@ -193,7 +207,7 @@ def register_registry_and_catalog_routes(
         """List governed data assets registered across the 6 architecture zones."""
         return [
             a.model_dump(mode="json")
-            for a in catalog.list_assets(external_safe_only=external_safe_only)
+            for a in deps.catalog.list_assets(external_safe_only=external_safe_only)
         ]
 
     @router.get("/v1/catalog/glossary")
@@ -204,7 +218,7 @@ def register_registry_and_catalog_routes(
         """List business glossary terms and deterministic quality rules from Zone 6 Knowledge Catalog."""
         return [
             t.model_dump(mode="json")
-            for t in catalog.list_glossary_terms(
+            for t in deps.catalog.list_glossary_terms(
                 domain=domain, include_confidential=include_confidential
             )
         ]
@@ -215,10 +229,41 @@ def register_registry_and_catalog_routes(
         field_name: str,
     ) -> dict[str, Any]:
         """Trace 6-hop end-to-end field lineage from user view back to the source PDF page and WORM vault."""
-        trace = catalog.trace_lineage(entity_id, field_name)
+        trace = deps.catalog.trace_lineage(entity_id, field_name)
         if trace is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"No lineage found for {entity_id}.{field_name}",
             )
         return trace.model_dump(mode="json")
+
+
+def register_registry_and_catalog_routes(  # noqa: PLR0913 - public FastAPI route registrar
+    router: APIRouter,
+    *,
+    store: OperationalStore,
+    catalog: KnowledgeCatalog,
+    gym: AgentGymEngine,
+    principal_roles: dict[str, CatalogRole] | None,
+    require_auth: bool,
+) -> None:
+    """Register Agent Registry, Skill Registry, Agent Gateway, and Zone 6 Knowledge Catalog routes."""
+    deps = _RegistryRouteDeps(
+        store=store,
+        catalog=catalog,
+        gym=gym,
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+        registry_internal_deps=[
+            mutating_auth_dependency(
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+                allow_external_roles=False,
+                external_role_error="External roles cannot mutate Agent Registry or evaluate internal gateway routes.",
+            )
+        ],
+    )
+    _register_registry_read_routes(router, deps)
+    _register_registry_write_and_gateway_routes(router, deps)
+    _register_catalog_and_lineage_routes(router, deps)

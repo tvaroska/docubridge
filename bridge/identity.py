@@ -31,229 +31,103 @@ import hashlib
 import hmac
 import json
 import os
-import re
 import time
+from collections.abc import Sequence
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
-
+from bridge.identity_models import (
+    ALLOWED_ENTITIES_HEADER as ALLOWED_ENTITIES_HEADER,
+)
+from bridge.identity_models import (
+    ALLOWED_SVID_ALGORITHMS as ALLOWED_SVID_ALGORITHMS,
+)
+from bridge.identity_models import (
+    CARRIER_SLUG_HEADER as CARRIER_SLUG_HEADER,
+)
+from bridge.identity_models import (
+    DEFAULT_DEV_SVID_SECRET as DEFAULT_DEV_SVID_SECRET,
+)
+from bridge.identity_models import (
+    DEFAULT_ROLE_APPROVAL_LIMITS as DEFAULT_ROLE_APPROVAL_LIMITS,
+)
+from bridge.identity_models import (
+    DEFAULT_SPIFFE_AGENT_POLICIES as DEFAULT_SPIFFE_AGENT_POLICIES,
+)
+from bridge.identity_models import (
+    DEFAULT_SPIFFE_TRUST_DOMAIN as DEFAULT_SPIFFE_TRUST_DOMAIN,
+)
+from bridge.identity_models import (
+    EXTERNAL_COUNTERPARTY_TRUST_DOMAINS as EXTERNAL_COUNTERPARTY_TRUST_DOMAINS,
+)
+from bridge.identity_models import (
+    MAX_APPROVAL_HEADER as MAX_APPROVAL_HEADER,
+)
+from bridge.identity_models import (
+    SPIFFE_ID_HEADER as SPIFFE_ID_HEADER,
+)
+from bridge.identity_models import (
+    SPIFFE_PRIVATE_KEY_PEM_ENV as SPIFFE_PRIVATE_KEY_PEM_ENV,
+)
+from bridge.identity_models import (
+    SPIFFE_PUBLIC_KEY_PEM_ENV as SPIFFE_PUBLIC_KEY_PEM_ENV,
+)
+from bridge.identity_models import (
+    SPIFFE_REQUIRE_SVID_ENV as SPIFFE_REQUIRE_SVID_ENV,
+)
+from bridge.identity_models import (
+    SPIFFE_SVID_HEADER as SPIFFE_SVID_HEADER,
+)
+from bridge.identity_models import (
+    SPIFFE_SVID_SECRET_ENV as SPIFFE_SVID_SECRET_ENV,
+)
+from bridge.identity_models import (
+    SPIFFE_TRUST_DOMAIN_ENV as SPIFFE_TRUST_DOMAIN_ENV,
+)
+from bridge.identity_models import (
+    TENANT_ID_HEADER as TENANT_ID_HEADER,
+)
+from bridge.identity_models import (
+    USER_JWT_SECRET_ENV as USER_JWT_SECRET_ENV,
+)
+from bridge.identity_models import (
+    USER_TOKEN_HEADER as USER_TOKEN_HEADER,
+)
+from bridge.identity_models import (
+    AuthViaLiteral as AuthViaLiteral,
+)
+from bridge.identity_models import (
+    CatalogRoleLiteral as CatalogRoleLiteral,
+)
+from bridge.identity_models import (
+    CompoundIdentity as CompoundIdentity,
+)
+from bridge.identity_models import (
+    DeliveryChannelLiteral as DeliveryChannelLiteral,
+)
+from bridge.identity_models import (
+    ShadowAgentError as ShadowAgentError,
+)
+from bridge.identity_models import (
+    SpiffeAgentPolicy as SpiffeAgentPolicy,
+)
+from bridge.identity_models import (
+    SpiffeAuthenticationError as SpiffeAuthenticationError,
+)
+from bridge.identity_models import (
+    SpiffeId as SpiffeId,
+)
+from bridge.identity_models import (
+    SvidAlgorithmLiteral as SvidAlgorithmLiteral,
+)
+from bridge.identity_models import (
+    TenantIsolationError as TenantIsolationError,
+)
+from bridge.identity_models import (
+    UserPrincipal as UserPrincipal,
+)
 from bridge.telemetry import trace_step
-
-CatalogRoleLiteral = Literal[
-    "broker",
-    "claims",
-    "underwriter",
-    "executive",
-    "client",
-    "carrier",
-]
-DeliveryChannelLiteral = Literal["gemini_app", "custom_web"]
-AuthViaLiteral = Literal["jwt", "cookie", "iap", "header", "query_dev"]
-
-DEFAULT_SPIFFE_TRUST_DOMAIN = "agents.docubridge.io"
-SPIFFE_TRUST_DOMAIN_ENV = "BRIDGE_SPIFFE_TRUST_DOMAIN"
-SPIFFE_REQUIRE_SVID_ENV = "BRIDGE_SPIFFE_REQUIRE_SVID"
-SPIFFE_SVID_SECRET_ENV = "BRIDGE_SPIFFE_SVID_SECRET"
-SPIFFE_PRIVATE_KEY_PEM_ENV = "BRIDGE_SPIFFE_PRIVATE_KEY_PEM"
-SPIFFE_PUBLIC_KEY_PEM_ENV = "BRIDGE_SPIFFE_PUBLIC_KEY_PEM"
-USER_JWT_SECRET_ENV = "BRIDGE_USER_JWT_SECRET"
-DEFAULT_DEV_SVID_SECRET = "docubridge-spiffe-svid-signing-key-v1"
-SvidAlgorithmLiteral = Literal["HS256", "RS256", "ES256"]
-ALLOWED_SVID_ALGORITHMS: frozenset[str] = frozenset({"HS256", "RS256", "ES256"})
-EXTERNAL_COUNTERPARTY_TRUST_DOMAINS: frozenset[str] = frozenset(
-    {"agents.fnb.example", "agents.fnb.example.com", "external.docubridge.io"}
-)
-
-SPIFFE_SVID_HEADER = "x-bridge-spiffe-svid"
-SPIFFE_ID_HEADER = "x-bridge-spiffe-id"
-USER_TOKEN_HEADER = "x-bridge-user-token"
-TENANT_ID_HEADER = "x-bridge-tenant-id"
-ALLOWED_ENTITIES_HEADER = "x-bridge-allowed-entities"
-CARRIER_SLUG_HEADER = "x-bridge-carrier-slug"
-MAX_APPROVAL_HEADER = "x-bridge-max-approval"
-
-_SPIFFE_URI_RE = re.compile(
-    r"^spiffe://(?P<trust_domain>[a-z0-9.-]+)/(?P<path>[a-z0-9._/-]+)$"
-)
-
-
-class SpiffeAuthenticationError(PermissionError):
-    """Raised when a SPIFFE SVID or user token is missing or invalid (HTTP 401)."""
-
-
-class ShadowAgentError(PermissionError):
-    """Raised when an unregistered or untrusted SPIFFE agent attempts access (HTTP 403)."""
-
-
-class TenantIsolationError(PermissionError):
-    """Raised when a tenant/client or carrier attempts cross-tenant access (HTTP 403)."""
-
-
-class SpiffeId(BaseModel):
-    """Parsed, validated SPIFFE ID (`spiffe://<trust_domain>/<path>`)."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    uri: str
-    trust_domain: str
-    path: str
-
-    @classmethod
-    def parse(cls, raw_uri: str) -> SpiffeId:
-        """Parse and validate a `spiffe://<trust-domain>/<path>` URI string."""
-        cleaned = raw_uri.strip()
-        match = _SPIFFE_URI_RE.fullmatch(cleaned)
-        if (
-            match is None
-            or "//" in match.group("path")
-            or match.group("path").endswith("/")
-        ):
-            raise SpiffeAuthenticationError(
-                f"Malformed SPIFFE ID '{raw_uri}'. Expected 'spiffe://<trust-domain>/<path>'."
-            )
-        return cls(
-            uri=cleaned,
-            trust_domain=match.group("trust_domain"),
-            path=match.group("path"),
-        )
-
-
-class SpiffeAgentPolicy(BaseModel):
-    """Zone 6 Knowledge Catalog registration entry for a vetted Domain Agent."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    spiffe_id: str
-    display_name: str
-    security_zone: Literal["internal", "external"]
-    allowed_channels: tuple[DeliveryChannelLiteral, ...]
-    allowed_roles: tuple[CatalogRoleLiteral, ...]
-    allowed_views: tuple[str, ...]
-    allow_vault_promotion: bool = False
-
-    @model_validator(mode="after")
-    def _validate_spiffe(self) -> SpiffeAgentPolicy:
-        SpiffeId.parse(self.spiffe_id)
-        return self
-
-
-_ALL_INTERNAL_VIEWS: tuple[str, ...] = (
-    "v_underwriter_exposure",
-    "v_broker_placement",
-    "v_claims_coverage",
-)
-
-DEFAULT_SPIFFE_AGENT_POLICIES: dict[str, SpiffeAgentPolicy] = {
-    "spiffe://agents.docubridge.io/internal/credit-officer-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.docubridge.io/internal/credit-officer-agent",
-        display_name="Internal Credit & Loan Underwriting Agent",
-        security_zone="internal",
-        allowed_channels=("gemini_app",),
-        allowed_roles=("underwriter", "broker", "executive"),
-        allowed_views=_ALL_INTERNAL_VIEWS,
-        allow_vault_promotion=True,
-    ),
-    "spiffe://agents.docubridge.io/internal/broker-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.docubridge.io/internal/broker-agent",
-        display_name="Internal Commercial Placement & Deal Desk Agent",
-        security_zone="internal",
-        allowed_channels=("gemini_app",),
-        allowed_roles=("broker", "executive"),
-        allowed_views=_ALL_INTERNAL_VIEWS,
-        allow_vault_promotion=True,
-    ),
-    "spiffe://agents.docubridge.io/internal/claims-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.docubridge.io/internal/claims-agent",
-        display_name="Internal Covenant & Claims Review Agent",
-        security_zone="internal",
-        allowed_channels=("gemini_app",),
-        allowed_roles=("claims", "broker", "executive"),
-        allowed_views=("v_claims_coverage", "v_broker_placement"),
-        allow_vault_promotion=False,
-    ),
-    "spiffe://agents.docubridge.io/internal/underwriter-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.docubridge.io/internal/underwriter-agent",
-        display_name="Internal Technical Underwriting & Risk Agent",
-        security_zone="internal",
-        allowed_channels=("gemini_app",),
-        allowed_roles=("underwriter", "broker", "executive"),
-        allowed_views=_ALL_INTERNAL_VIEWS,
-        allow_vault_promotion=True,
-    ),
-    "spiffe://agents.docubridge.io/portal/external-portal-agent": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.docubridge.io/portal/external-portal-agent",
-        display_name="External Client, Borrower & Partner Portal Agent",
-        security_zone="external",
-        allowed_channels=("custom_web",),
-        allowed_roles=("client", "carrier"),
-        allowed_views=("v_broker_placement", "v_claims_coverage"),
-        allow_vault_promotion=False,
-    ),
-    "spiffe://agents.docubridge.io/ingest/docubridge-collector": SpiffeAgentPolicy(
-        spiffe_id="spiffe://agents.docubridge.io/ingest/docubridge-collector",
-        display_name="DocuBridge Intake & Consolidation Collector",
-        security_zone="internal",
-        allowed_channels=("gemini_app",),
-        allowed_roles=("broker", "claims", "underwriter", "executive"),
-        allowed_views=_ALL_INTERNAL_VIEWS,
-        allow_vault_promotion=True,
-    ),
-    **{
-        f"spiffe://{td}/external/fnb-payoff-agent": SpiffeAgentPolicy(
-            spiffe_id=f"spiffe://{td}/external/fnb-payoff-agent",
-            display_name="FNB External Counterparty Payoff Agent",
-            security_zone="external",
-            allowed_channels=("custom_web",),
-            allowed_roles=("client", "carrier"),
-            allowed_views=("v_broker_placement",),
-            allow_vault_promotion=False,
-        )
-        for td in ("agents.fnb.example", "agents.fnb.example.com")
-    },
-}
-
-DEFAULT_ROLE_APPROVAL_LIMITS: dict[CatalogRoleLiteral, Decimal] = {
-    "broker": Decimal("10000000.00"),
-    "claims": Decimal("5000000.00"),
-    "underwriter": Decimal("25000000.00"),
-    "executive": Decimal("100000000.00"),
-    "client": Decimal("0.00"),
-    "carrier": Decimal("0.00"),
-}
-
-
-class UserPrincipal(BaseModel):
-    """Authenticated human principal (`sub`) with tenant & carrier row-level scope."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    subject: str
-    role: CatalogRoleLiteral
-    tenant_id: str | None = None
-    allowed_entities: tuple[str, ...] = ()
-    carrier_slug: str | None = None
-    max_approval_amount: Decimal | None = None
-    authenticated_via: AuthViaLiteral = "query_dev"
-    scope: str | None = None
-
-    def effective_approval_limit(self) -> Decimal:
-        """Return the maximum monetary approval limit granted to this user principal."""
-        if self.max_approval_amount is not None:
-            return self.max_approval_amount
-        return DEFAULT_ROLE_APPROVAL_LIMITS.get(self.role, Decimal("0.00"))
-
-
-class CompoundIdentity(BaseModel):
-    """RFC 8693 Compound Identity combining Human Principal (`sub`) + Agent SPIFFE (`act`)."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    user: UserPrincipal
-    agent_spiffe_id: str | None = None
-    agent_policy: SpiffeAgentPolicy | None = None
-    svid_verified: bool = False
-    audience: str | None = None
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -390,7 +264,134 @@ def _verify_asymmetric_jws(
         ) from exc
 
 
-def mint_jwt_svid(
+@dataclass(frozen=True)
+class _SvidVerifyConfig:
+    secret: str | None
+    public_key_pem: str | None
+    expected_alg: SvidAlgorithmLiteral | None
+    allowed_algorithms: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _SvidClaimPolicy:
+    expected_trust_domain: str | None
+    allowed_trust_domains: frozenset[str] | None
+    expected_audience: str | None
+    now_epoch: int | None
+
+
+def _decode_jwt_segment_dict(segment: str, label: str) -> dict[str, Any]:
+    try:
+        decoded = json.loads(_b64url_decode(segment).decode("utf-8"))
+    except Exception as exc:
+        raise SpiffeAuthenticationError(f"Invalid JWT-SVID JSON {label}.") from exc
+    if not isinstance(decoded, dict):
+        raise SpiffeAuthenticationError(f"Invalid JWT-SVID JSON {label}.")
+    return decoded
+
+
+def _verify_svid_algorithm_and_signature(
+    header: dict[str, Any],
+    segments: tuple[str, str, str],
+    cfg: _SvidVerifyConfig,
+) -> str:
+    h_b64, p_b64, s_b64 = segments
+    alg = header.get("alg")
+    if (
+        not isinstance(alg, str)
+        or alg.lower() == "none"
+        or alg not in cfg.allowed_algorithms
+        or alg not in ALLOWED_SVID_ALGORITHMS
+    ):
+        raise SpiffeAuthenticationError(f"Unsupported JWT-SVID algorithm '{alg}'.")
+    if cfg.expected_alg is not None and alg != cfg.expected_alg:
+        raise SpiffeAuthenticationError(
+            f"JWT-SVID algorithm '{alg}' does not match expected '{cfg.expected_alg}'."
+        )
+    if cfg.public_key_pem is not None and cfg.secret is None and alg == "HS256":
+        raise SpiffeAuthenticationError(
+            "Algorithm confusion blocked: refusing HS256 when public_key_pem is configured."
+        )
+    if (
+        cfg.secret is not None
+        and cfg.public_key_pem is None
+        and alg in ("RS256", "ES256")
+    ):
+        raise SpiffeAuthenticationError(
+            f"Algorithm confusion blocked: refusing {alg} when only HMAC secret is configured."
+        )
+    signing_input = f"{h_b64}.{p_b64}".encode("ascii")
+    actual_sig = _b64url_decode(s_b64)
+    if alg in ("RS256", "ES256"):
+        resolved_pub = (
+            cfg.public_key_pem or os.environ.get(SPIFFE_PUBLIC_KEY_PEM_ENV, "").strip()
+        )
+        if not resolved_pub:
+            raise SpiffeAuthenticationError(
+                f"{alg} JWT-SVID verification requires public_key_pem or {SPIFFE_PUBLIC_KEY_PEM_ENV}."
+            )
+        _verify_asymmetric_jws(
+            signing_input,
+            actual_sig,
+            algorithm="RS256" if alg == "RS256" else "ES256",
+            public_key_pem=resolved_pub,
+        )
+    else:
+        signing_secret = _resolve_svid_signing_secret(cfg.secret)
+        expected_sig = hmac.new(
+            signing_secret.encode("utf-8"), signing_input, hashlib.sha256
+        ).digest()
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            raise SpiffeAuthenticationError("Invalid JWT-SVID cryptographic signature.")
+    return alg
+
+
+def _validate_svid_trust_and_claims(
+    claims: dict[str, Any],
+    parsed_id: SpiffeId,
+    policy: _SvidClaimPolicy,
+) -> None:
+    trust_domain = (
+        policy.expected_trust_domain
+        or os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
+        or DEFAULT_SPIFFE_TRUST_DOMAIN
+    )
+    if policy.allowed_trust_domains is not None:
+        domain_ok = parsed_id.trust_domain in policy.allowed_trust_domains
+    elif (
+        policy.expected_trust_domain is None
+        and not os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
+        and parsed_id.trust_domain in EXTERNAL_COUNTERPARTY_TRUST_DOMAINS
+    ):
+        if not parsed_id.path.startswith("external/"):
+            raise ShadowAgentError(
+                f"External counterparty trust domain '{parsed_id.trust_domain}' "
+                f"may only assert external/* SPIFFE paths (got '{parsed_id.path}')."
+            )
+        domain_ok = True
+    else:
+        domain_ok = parsed_id.trust_domain == trust_domain
+    if not domain_ok:
+        raise ShadowAgentError(
+            f"Untrusted SPIFFE trust domain '{parsed_id.trust_domain}' "
+            f"(expected '{trust_domain}')."
+        )
+    now = int(policy.now_epoch if policy.now_epoch is not None else time.time())
+    exp = claims.get("exp")
+    if not isinstance(exp, int) or now > exp + 30:
+        raise SpiffeAuthenticationError("JWT-SVID has expired.")
+    if policy.expected_audience is not None:
+        aud = claims.get("aud")
+        aud_list = (
+            [aud] if isinstance(aud, str) else (aud if isinstance(aud, list) else [])
+        )
+        if policy.expected_audience not in aud_list:
+            raise SpiffeAuthenticationError(
+                f"JWT-SVID audience mismatch (expected '{policy.expected_audience}')."
+            )
+
+
+def mint_jwt_svid(  # noqa: PLR0913 - public SPIFFE JWT-SVID minting contract
     spiffe_id: str,
     *,
     audience: str = "docubridge",
@@ -418,27 +419,18 @@ def mint_jwt_svid(
         "iat": now,
         "exp": now + ttl_seconds,
     }
-    if (
-        obo_subject
-        or obo_role
-        or tenant_id
-        or allowed_entities
-        or carrier_slug
-        or max_approval_amount is not None
-    ):
-        obo_block: dict[str, Any] = {}
-        if obo_subject:
-            obo_block["sub"] = obo_subject
-        if obo_role:
-            obo_block["role"] = obo_role
-        if tenant_id:
-            obo_block["tenant_id"] = tenant_id
-        if allowed_entities:
-            obo_block["allowed_entities"] = list(allowed_entities)
-        if carrier_slug:
-            obo_block["carrier_slug"] = carrier_slug
-        if max_approval_amount is not None:
-            obo_block["max_approval_amount"] = str(max_approval_amount)
+    obo_entries = {
+        "sub": obo_subject,
+        "role": obo_role,
+        "tenant_id": tenant_id,
+        "allowed_entities": list(allowed_entities) if allowed_entities else None,
+        "carrier_slug": carrier_slug,
+        "max_approval_amount": (
+            str(max_approval_amount) if max_approval_amount is not None else None
+        ),
+    }
+    obo_block = {k: v for k, v in obo_entries.items() if v}
+    if obo_block:
         payload["obo"] = obo_block
         payload["act"] = {"sub": parsed.uri}
 
@@ -465,7 +457,7 @@ def mint_jwt_svid(
     return f"{h_b64}.{p_b64}.{_b64url_encode(sig)}"
 
 
-def verify_jwt_svid(
+def verify_jwt_svid(  # noqa: PLR0913 - public SPIFFE JWT-SVID verification contract
     token: str,
     *,
     expected_trust_domain: str | None = None,
@@ -491,66 +483,19 @@ def verify_jwt_svid(
         parts = raw.split(".")
         if len(parts) != 3:
             raise SpiffeAuthenticationError("Malformed JWT-SVID: expected 3 segments.")
-
-        h_b64, p_b64, s_b64 = parts
-        try:
-            header = json.loads(_b64url_decode(h_b64).decode("utf-8"))
-        except Exception as exc:
-            raise SpiffeAuthenticationError("Invalid JWT-SVID JSON header.") from exc
-
-        alg = header.get("alg")
-        if (
-            not isinstance(alg, str)
-            or alg.lower() == "none"
-            or alg not in allowed_algorithms
-            or alg not in ALLOWED_SVID_ALGORITHMS
-        ):
-            raise SpiffeAuthenticationError(f"Unsupported JWT-SVID algorithm '{alg}'.")
-        if expected_alg is not None and alg != expected_alg:
-            raise SpiffeAuthenticationError(
-                f"JWT-SVID algorithm '{alg}' does not match expected '{expected_alg}'."
-            )
-        if public_key_pem is not None and secret is None and alg == "HS256":
-            raise SpiffeAuthenticationError(
-                "Algorithm confusion blocked: refusing HS256 when public_key_pem is configured."
-            )
-        if secret is not None and public_key_pem is None and alg in ("RS256", "ES256"):
-            raise SpiffeAuthenticationError(
-                f"Algorithm confusion blocked: refusing {alg} when only HMAC secret is configured."
-            )
-
-        signing_input = f"{h_b64}.{p_b64}".encode("ascii")
-        actual_sig = _b64url_decode(s_b64)
-
-        if alg in ("RS256", "ES256"):
-            resolved_pub = (
-                public_key_pem or os.environ.get(SPIFFE_PUBLIC_KEY_PEM_ENV, "").strip()
-            )
-            if not resolved_pub:
-                raise SpiffeAuthenticationError(
-                    f"{alg} JWT-SVID verification requires public_key_pem or {SPIFFE_PUBLIC_KEY_PEM_ENV}."
-                )
-            _verify_asymmetric_jws(
-                signing_input,
-                actual_sig,
-                algorithm=alg,  # type: ignore[arg-type]
-                public_key_pem=resolved_pub,
-            )
-        else:
-            signing_secret = _resolve_svid_signing_secret(secret)
-            expected_sig = hmac.new(
-                signing_secret.encode("utf-8"), signing_input, hashlib.sha256
-            ).digest()
-            if not hmac.compare_digest(expected_sig, actual_sig):
-                raise SpiffeAuthenticationError(
-                    "Invalid JWT-SVID cryptographic signature."
-                )
-
-        try:
-            claims = json.loads(_b64url_decode(p_b64).decode("utf-8"))
-        except Exception as exc:
-            raise SpiffeAuthenticationError("Invalid JWT-SVID JSON payload.") from exc
-
+        segments = (parts[0], parts[1], parts[2])
+        header = _decode_jwt_segment_dict(segments[0], "header")
+        alg = _verify_svid_algorithm_and_signature(
+            header,
+            segments,
+            _SvidVerifyConfig(
+                secret=secret,
+                public_key_pem=public_key_pem,
+                expected_alg=expected_alg,
+                allowed_algorithms=allowed_algorithms,
+            ),
+        )
+        claims = _decode_jwt_segment_dict(segments[1], "payload")
         sub = claims.get("sub")
         if not isinstance(sub, str):
             raise SpiffeAuthenticationError("JWT-SVID missing 'sub' SPIFFE ID claim.")
@@ -559,50 +504,16 @@ def verify_jwt_svid(
         span.set_attribute("docubridge.trust_domain", parsed_id.trust_domain)
         span.set_attribute("docubridge.jwt_alg", str(alg))
 
-        trust_domain = (
-            expected_trust_domain
-            or os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
-            or DEFAULT_SPIFFE_TRUST_DOMAIN
+        _validate_svid_trust_and_claims(
+            claims,
+            parsed_id,
+            _SvidClaimPolicy(
+                expected_trust_domain=expected_trust_domain,
+                allowed_trust_domains=allowed_trust_domains,
+                expected_audience=expected_audience,
+                now_epoch=now_epoch,
+            ),
         )
-        if allowed_trust_domains is not None:
-            domain_ok = parsed_id.trust_domain in allowed_trust_domains
-        elif (
-            expected_trust_domain is None
-            and not os.environ.get(SPIFFE_TRUST_DOMAIN_ENV, "").strip()
-            and parsed_id.trust_domain in EXTERNAL_COUNTERPARTY_TRUST_DOMAINS
-        ):
-            if not parsed_id.path.startswith("external/"):
-                raise ShadowAgentError(
-                    f"External counterparty trust domain '{parsed_id.trust_domain}' "
-                    f"may only assert external/* SPIFFE paths (got '{parsed_id.path}')."
-                )
-            domain_ok = True
-        else:
-            domain_ok = parsed_id.trust_domain == trust_domain
-
-        if not domain_ok:
-            raise ShadowAgentError(
-                f"Untrusted SPIFFE trust domain '{parsed_id.trust_domain}' "
-                f"(expected '{trust_domain}')."
-            )
-
-        now = int(now_epoch if now_epoch is not None else time.time())
-        exp = claims.get("exp")
-        if not isinstance(exp, int) or now > exp + 30:
-            raise SpiffeAuthenticationError("JWT-SVID has expired.")
-
-        if expected_audience is not None:
-            aud = claims.get("aud")
-            aud_list = (
-                [aud]
-                if isinstance(aud, str)
-                else (aud if isinstance(aud, list) else [])
-            )
-            if expected_audience not in aud_list:
-                raise SpiffeAuthenticationError(
-                    f"JWT-SVID audience mismatch (expected '{expected_audience}')."
-                )
-
         obo = claims.get("obo")
         if isinstance(obo, dict):
             if obo.get("sub"):
@@ -610,14 +521,14 @@ def verify_jwt_svid(
             if obo.get("role"):
                 span.set_attribute("docubridge.obo_role", str(obo["role"]))
         span.set_attribute("docubridge.svid_verified", True)
-        return claims
+        return dict(claims)
 
 
 def verify_google_oidc_token(
     token: str,
     *,
     expected_audience: str | None = None,
-    request_transport: Any = None,
+    request_transport: object = None,
 ) -> dict[str, Any]:
     """Verify a Google Cloud OIDC ID token (Cloud Run / IAP / Workload Identity) via `google.oauth2.id_token`."""
     raw = token.strip()
@@ -630,7 +541,7 @@ def verify_google_oidc_token(
         from google.oauth2 import id_token
 
         transport = request_transport or google_requests.Request()
-        claims = id_token.verify_oauth2_token(
+        claims = id_token.verify_oauth2_token(  # type: ignore[no-untyped-call]
             raw,
             transport,
             audience=expected_audience,
@@ -642,7 +553,7 @@ def verify_google_oidc_token(
         ) from exc
 
 
-def authorize_spiffe_agent(
+def authorize_spiffe_agent(  # noqa: PLR0913 - public SPIFFE authorization contract
     spiffe_id: str,
     *,
     channel: DeliveryChannelLiteral,
@@ -753,12 +664,12 @@ def authorize_entity_access(
         span.set_attribute("docubridge.tenant_access_allowed", True)
 
 
-def filter_quotes_for_principal(
-    quotes: tuple[Any, ...] | list[Any],
+def filter_quotes_for_principal[T](
+    quotes: Sequence[T],
     principal: UserPrincipal,
     *,
     allow_competitor_quotes: bool,
-) -> list[Any]:
+) -> list[T]:
     """Filter carrier quotes by the caller's carrier affiliation or competitor policy."""
     items = list(quotes)
     if principal.role == "carrier" and principal.carrier_slug:
@@ -788,7 +699,7 @@ def parse_decimal_header(raw: str | None) -> Decimal | None:
     return parsed
 
 
-def mint_user_token(
+def mint_user_token(  # noqa: PLR0913 - public user JWT minting contract
     subject: str,
     role: CatalogRoleLiteral,
     *,

@@ -42,6 +42,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -76,7 +77,7 @@ class StandardRule:
     value: str | None = None
 
     @classmethod
-    def from_dict(cls, raw: dict) -> StandardRule:
+    def from_dict(cls, raw: dict[str, Any]) -> StandardRule:
         """Build a rule from a YAML rule dict, validating the ``check`` verb.
 
         Raises ``ValueError`` on an unknown ``check`` (naming the known verbs) or a
@@ -159,7 +160,9 @@ class StandardGapVerdict(BaseModel):
     route: str
 
 
-def _load_standard_doc(skill_name: str, *, skills_dir: Path | None = None) -> dict:
+def _load_standard_doc(
+    skill_name: str, *, skills_dir: Path | None = None
+) -> dict[str, Any]:
     """Resolve + parse a process skill's declared ``standard.yaml`` (the whole doc).
 
     Mirrors ``bridge.sla._load_policy_doc`` but follows the ``metadata.bridge-program-standard``
@@ -186,7 +189,7 @@ def _load_standard_doc(skill_name: str, *, skills_dir: Path | None = None) -> di
     if not standard_path.exists():
         raise ValueError(f"program-standard file {standard_path} not found")
 
-    return yaml.safe_load(standard_path.read_text())
+    return cast(dict[str, Any], yaml.safe_load(standard_path.read_text()))
 
 
 def load_program_standard(
@@ -261,6 +264,10 @@ def _evaluate(quote: NormalizedQuote, rule: StandardRule) -> StandardGap | None:
         return None
 
     if rule.check == CHECK_MUST_INCLUDE:
+        if rule.value is None:
+            raise ValueError(
+                f"rule {rule.id!r} check 'must_include' requires a 'value'"
+            )
         if rule.value.lower() not in actual.lower():
             expected = f"must include {rule.value!r}"
             return StandardGap(
@@ -274,6 +281,10 @@ def _evaluate(quote: NormalizedQuote, rule: StandardRule) -> StandardGap | None:
         return None
 
     if rule.check == CHECK_MUST_NOT_INCLUDE:
+        if rule.value is None:
+            raise ValueError(
+                f"rule {rule.id!r} check 'must_not_include' requires a 'value'"
+            )
         if rule.value.lower() in actual.lower():
             expected = f"must not include {rule.value!r}"
             return StandardGap(

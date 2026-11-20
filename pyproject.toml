@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docubridge"
-version = "1.16.0"
+version = "1.17.0"
 description = "Governed A2A document mediation engine: separate page-anchored evidence and deterministic Rule 0 conflict resolution from caller policy, with 0.0% regression skill calibration."
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -38,6 +38,7 @@ bridge-serve = "bridge.edge.server:serve_container"
 # (google-adk, a2a-sdk, fastapi, sqlalchemy+aiosqlite, ...).
 dev = [
     "ast-grep-cli>=0.35",
+    "mypy>=1.14",
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "pytest-cov>=7.0.0",
@@ -45,6 +46,7 @@ dev = [
     "pyyaml",
     "ruff>=0.16,<0.17",
     "sqlglot>=25.0.0",
+    "types-PyYAML>=6.0",
 ]
 # GCP port runtime deps, installed by the P7-9 provisioned run (BRIDGE_TEST_GCP=1):
 #   - asyncpg: the async Postgres driver for the Cloud SQL shared-store adapters
@@ -76,11 +78,31 @@ target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
-# Pragmatic core: pyflakes (F) + a curated subset of pycodestyle (E4 imports, E7
-# statements, E9 syntax — NOT E501), isort (I), pyupgrade (UP), bugbear (B),
-# flake8-simplify (SIM), flake8-annotations (ANN001, ANN201, ANN202), ruff-native (RUF).
-select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "ANN001", "ANN201", "ANN202", "RUF"]
+# Full standards baseline: pycodestyle (E/W, E501 owned by ruff format), pyflakes (F),
+# isort (I), bugbear (B), comprehensions (C4), pyupgrade (UP), bandit (S), blind-except
+# (BLE), annotations (ANN), ruff-native (RUF), McCabe complexity (C90), and pylint
+# structural caps (PLR0911/PLR0912/PLR0913/PLR0915).
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+    "S",
+    "BLE",
+    "ANN",
+    "RUF",
+    "C90",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
 ignore = [
+    # ruff format owns line wrapping.
+    "E501",
     # str+Enum → enum.StrEnum: changes __str__/wire-string behavior of the shared
     # contract/ enums (StrEnum stringifies to the value, (str, Enum) to "Cls.name").
     # Out of scope for lint config — do not touch wire semantics here.
@@ -97,11 +119,55 @@ known-first-party = ["contract", "bridge", "skills", "tests"]
 [tool.ruff.lint.per-file-ignores]
 # Package re-exports: names imported for the public surface, not used in-module.
 "**/__init__.py" = ["F401"]
-# Test fixtures, fake doubles, parametrized tests, and recording scripts omit verbose annotations.
-"tests/**" = ["ANN"]
-"**/tests/**" = ["ANN"]
+# Test fixtures, fake doubles, parametrized tests, and recording scripts stay pragmatic.
+"tests/**" = [
+    "ANN",
+    "S101",
+    "S105",
+    "S106",
+    "S108",
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"**/tests/**" = [
+    "ANN",
+    "S101",
+    "S105",
+    "S106",
+    "S108",
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
 "demo/**" = ["ANN"]
 "**/demo/**" = ["ANN"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+explicit_package_bases = true
+exclude = ["^\\.venv/", "^frontend/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "asyncpg",
+    "asyncpg.*",
+    "google.api_core.*",
+    "google.auth.*",
+    "google.cloud.*",
+    "google.oauth2.*",
+    "google.protobuf.*",
+    "opentelemetry.instrumentation.*",
+    "opentelemetry.resourcedetector.*",
+    "vertexai",
+    "vertexai.*",
+]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 markers = [

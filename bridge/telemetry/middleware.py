@@ -8,7 +8,7 @@ import os
 import re
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry import baggage, context, trace
 from opentelemetry.trace import (
@@ -35,6 +35,10 @@ from bridge.telemetry.outcome import (
     inject_outcome_headers,
     sanitize_inbound_headers,
 )
+
+if TYPE_CHECKING:
+    from opentelemetry.util.types import AttributeValue
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +200,38 @@ def inject_trace_headers(
     return merged
 
 
+_CANONICAL_MIRROR_SPECS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("entity_id", "docubridge.entity_id", ()),
+    ("source_mode", "docubridge.source_mode", ()),
+    ("skill_id", "docubridge.skill_id", ("docubridge.doctype",)),
+    ("skill_version", "docubridge.skill_version", ("docubridge.skill.version",)),
+)
+
+
+def _mirror_attr_pair(
+    span: trace.Span,
+    attrs: dict[str, Any],
+    spec: tuple[str, str, tuple[str, ...]],
+    *,
+    default_val: str | None = None,
+) -> None:
+    canonical, namespaced, fallbacks = spec
+    raw = attrs.get(canonical) or attrs.get(namespaced)
+    for fb in fallbacks:
+        if raw is not None and str(raw):
+            break
+        raw = attrs.get(fb)
+    if (raw is None or not str(raw)) and default_val:
+        raw = default_val
+    if raw is None or not str(raw):
+        return
+    s_val = str(raw)
+    if canonical not in attrs:
+        span.set_attribute(canonical, s_val)
+    if namespaced not in attrs:
+        span.set_attribute(namespaced, s_val)
+
+
 def _sync_canonical_span_attributes(span: trace.Span) -> None:
     """Mirror `docubridge.*` attributes onto top-level `_AllSpans` attributes (`source_mode`, `skill_id`, `skill_version`, `entity_id`, `finops.traffic_type`)."""
     if not span.is_recording():
@@ -205,54 +241,9 @@ def _sync_canonical_span_attributes(span: trace.Span) -> None:
         return
     attrs = dict(raw_attrs)
 
-    # 1. entity_id <-> docubridge.entity_id
-    entity_val = attrs.get("entity_id") or attrs.get("docubridge.entity_id")
-    if entity_val is not None and str(entity_val):
-        s_val = str(entity_val)
-        if "entity_id" not in attrs:
-            span.set_attribute("entity_id", s_val)
-        if "docubridge.entity_id" not in attrs:
-            span.set_attribute("docubridge.entity_id", s_val)
+    for spec in _CANONICAL_MIRROR_SPECS:
+        _mirror_attr_pair(span, attrs, spec)
 
-    # 2. source_mode <-> docubridge.source_mode
-    source_mode = attrs.get("source_mode") or attrs.get("docubridge.source_mode")
-    if source_mode is not None and str(source_mode):
-        s_val = str(source_mode)
-        if "source_mode" not in attrs:
-            span.set_attribute("source_mode", s_val)
-        if "docubridge.source_mode" not in attrs:
-            span.set_attribute("docubridge.source_mode", s_val)
-
-    # 3. skill_id <-> docubridge.skill_id / docubridge.doctype
-    skill_id = (
-        attrs.get("skill_id")
-        or attrs.get("docubridge.skill_id")
-        or attrs.get("docubridge.doctype")
-    )
-    if skill_id is not None and str(skill_id):
-        s_val = str(skill_id)
-        if "skill_id" not in attrs:
-            span.set_attribute("skill_id", s_val)
-        if "docubridge.skill_id" not in attrs:
-            span.set_attribute("docubridge.skill_id", s_val)
-
-    # 4. skill_version <-> docubridge.skill_version / docubridge.skill.version
-    skill_ver = (
-        attrs.get("skill_version")
-        or attrs.get("docubridge.skill_version")
-        or attrs.get("docubridge.skill.version")
-    )
-    if skill_ver is not None and str(skill_ver):
-        s_val = str(skill_ver)
-        if "skill_version" not in attrs:
-            span.set_attribute("skill_version", s_val)
-        if "docubridge.skill_version" not in attrs:
-            span.set_attribute("docubridge.skill_version", s_val)
-
-    # 5. finops.traffic_type <-> docubridge.finops.traffic_type
-    traffic_type = attrs.get("finops.traffic_type") or attrs.get(
-        "docubridge.finops.traffic_type"
-    )
     is_model_span = any(
         k in attrs
         for k in (
@@ -261,16 +252,13 @@ def _sync_canonical_span_attributes(span: trace.Span) -> None:
             "docubridge.model_used",
         )
     )
-    if not traffic_type and is_model_span:
-        traffic_type = "production_inference"
-    if traffic_type is not None and str(traffic_type):
-        s_val = str(traffic_type)
-        if "finops.traffic_type" not in attrs:
-            span.set_attribute("finops.traffic_type", s_val)
-        if "docubridge.finops.traffic_type" not in attrs:
-            span.set_attribute("docubridge.finops.traffic_type", s_val)
+    _mirror_attr_pair(
+        span,
+        attrs,
+        ("finops.traffic_type", "docubridge.finops.traffic_type", ()),
+        default_val="production_inference" if is_model_span else None,
+    )
 
-    # 6. outcome.id & outcome.owner from active W3C baggage
     out_id = get_current_outcome_id()
     if out_id and OUTCOME_ID_KEY not in attrs:
         span.set_attribute(OUTCOME_ID_KEY, out_id)
@@ -304,7 +292,9 @@ def trace_step(
         if attributes:
             for k, v in attributes.items():
                 if v is not None:
-                    span.set_attribute(str(k), _clean_attr_value(v))
+                    span.set_attribute(
+                        str(k), cast("AttributeValue", _clean_attr_value(v))
+                    )
         _sync_canonical_span_attributes(span)
         try:
             yield span
@@ -317,6 +307,50 @@ def trace_step(
             raise
 
 
+def _apply_response_trace_headers(
+    span: trace.Span,
+    message: Message,
+    trace_id_hex: str,
+    span_id_hex: str,
+) -> Message:
+    status_code = int(message.get("status", 200))
+    span.set_attribute("http.response.status_code", status_code)
+    if status_code >= 500:
+        span.set_status(Status(StatusCode.ERROR, f"HTTP {status_code}"))
+    else:
+        span.set_status(Status(StatusCode.OK))
+    out_headers = list(message.get("headers") or [])
+    existing_names = {k.decode("latin1").lower() for k, _ in out_headers}
+    out_headers.append(
+        (b"traceparent", f"00-{trace_id_hex}-{span_id_hex}-01".encode("latin1"))
+    )
+    out_headers.append((b"x-trace-id", trace_id_hex.encode("latin1")))
+    if "x-docubridge-trace-id" not in existing_names:
+        out_headers.append((b"x-docubridge-trace-id", trace_id_hex.encode("latin1")))
+    raw_span_attrs = (
+        getattr(span, "attributes", None) or getattr(span, "_attributes", None) or {}
+    )
+    active_outcome_id = get_current_outcome_id() or (
+        str(raw_span_attrs.get(OUTCOME_ID_KEY))
+        if raw_span_attrs.get(OUTCOME_ID_KEY)
+        else None
+    )
+    if active_outcome_id:
+        span.set_attribute(OUTCOME_ID_KEY, active_outcome_id)
+        if OUTCOME_ID_HEADER not in existing_names:
+            out_headers.append(
+                (OUTCOME_ID_HEADER.encode("latin1"), active_outcome_id.encode("latin1"))
+            )
+    active_owner = get_current_outcome_owner() or (
+        str(raw_span_attrs.get(OUTCOME_OWNER_KEY))
+        if raw_span_attrs.get(OUTCOME_OWNER_KEY)
+        else None
+    )
+    if active_owner:
+        span.set_attribute(OUTCOME_OWNER_KEY, active_owner)
+    return {**message, "headers": out_headers}
+
+
 class OtelAsgiMiddleware:
     """ASGI middleware that extracts inbound ``traceparent`` / ``X-Cloud-Trace-Context`` and sanitizes untrusted ``outcome.*`` baggage.
 
@@ -326,7 +360,7 @@ class OtelAsgiMiddleware:
 
     def __init__(
         self,
-        app: Any,
+        app: ASGIApp,
         service_name: str = "docubridge-http",
         *,
         service_component: str = "http",
@@ -336,7 +370,7 @@ class OtelAsgiMiddleware:
         self.service_component = service_component
         ensure_telemetry_initialized()
 
-    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
@@ -345,8 +379,8 @@ class OtelAsgiMiddleware:
         headers_dict = {
             k.decode("latin1").lower(): v.decode("latin1") for k, v in raw_headers
         }
-        method = scope.get("method", "GET")
-        path = scope.get("path", "/")
+        method = str(scope.get("method", "GET"))
+        path = str(scope.get("path", "/"))
         span_name = f"docubridge.http.{self.service_component} {method} {path}"
 
         parent_ctx = _build_parent_trace_context(headers_dict)
@@ -354,10 +388,7 @@ class OtelAsgiMiddleware:
 
         token = context.attach(parent_ctx) if parent_ctx is not None else None
         try:
-            with tracer.start_as_current_span(
-                span_name,
-                kind=SpanKind.SERVER,
-            ) as span:
+            with tracer.start_as_current_span(span_name, kind=SpanKind.SERVER) as span:
                 span.set_attribute("http.request.method", method)
                 span.set_attribute("url.path", path)
                 span.set_attribute("service.name", self.service_name)
@@ -381,63 +412,11 @@ class OtelAsgiMiddleware:
                     f"{span_ctx.span_id:016x}" if span_ctx.is_valid else "0" * 16
                 )
 
-                async def _send_with_trace(message: dict[str, Any]) -> None:
+                async def _send_with_trace(message: Message) -> None:
                     if message.get("type") == "http.response.start":
-                        status_code = int(message.get("status", 200))
-                        span.set_attribute("http.response.status_code", status_code)
-                        if status_code >= 500:
-                            span.set_status(
-                                Status(StatusCode.ERROR, f"HTTP {status_code}")
-                            )
-                        else:
-                            span.set_status(Status(StatusCode.OK))
-                        out_headers = list(message.get("headers") or [])
-                        existing_names = {
-                            k.decode("latin1").lower() for k, _ in out_headers
-                        }
-                        out_headers.append(
-                            (
-                                b"traceparent",
-                                f"00-{trace_id_hex}-{span_id_hex}-01".encode("latin1"),
-                            )
+                        message = _apply_response_trace_headers(
+                            span, message, trace_id_hex, span_id_hex
                         )
-                        out_headers.append(
-                            (b"x-trace-id", trace_id_hex.encode("latin1"))
-                        )
-                        if "x-docubridge-trace-id" not in existing_names:
-                            out_headers.append(
-                                (
-                                    b"x-docubridge-trace-id",
-                                    trace_id_hex.encode("latin1"),
-                                )
-                            )
-                        raw_span_attrs = (
-                            getattr(span, "attributes", None)
-                            or getattr(span, "_attributes", None)
-                            or {}
-                        )
-                        active_outcome_id = get_current_outcome_id() or (
-                            str(raw_span_attrs.get(OUTCOME_ID_KEY))
-                            if raw_span_attrs.get(OUTCOME_ID_KEY)
-                            else None
-                        )
-                        if active_outcome_id:
-                            span.set_attribute(OUTCOME_ID_KEY, active_outcome_id)
-                            if OUTCOME_ID_HEADER not in existing_names:
-                                out_headers.append(
-                                    (
-                                        OUTCOME_ID_HEADER.encode("latin1"),
-                                        active_outcome_id.encode("latin1"),
-                                    )
-                                )
-                        active_owner = get_current_outcome_owner() or (
-                            str(raw_span_attrs.get(OUTCOME_OWNER_KEY))
-                            if raw_span_attrs.get(OUTCOME_OWNER_KEY)
-                            else None
-                        )
-                        if active_owner:
-                            span.set_attribute(OUTCOME_OWNER_KEY, active_owner)
-                        message = {**message, "headers": out_headers}
                     elif (
                         message.get("type") == "http.response.body"
                         and not message.get("more_body", False)

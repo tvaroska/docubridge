@@ -16,6 +16,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from contract.extraction import (
+    ExtractedRecord,
     ExtractionFields,
     ExtractionResult,
     FieldDerivation,
@@ -32,120 +33,113 @@ def _receipt_hash(rule_id: str, inputs: dict[str, Any], output: str) -> str:
     return f"rcpt-{hashlib.sha256(payload).hexdigest()[:16]}"
 
 
-def apply_field_derivations(
-    fields: ExtractionFields,
-    *,
-    active_hints: Sequence[Any] = (),
-    requested_fields: Sequence[str] | None = None,
-) -> tuple[ExtractionFields, tuple[str, ...]]:
-    """Run Stage-B deterministic derivations and promoted ``EXTRACTION_HINT`` rules over ``fields``."""
-    updated_key_fields = dict(fields.key_fields)
-    updated_derivations = dict(fields.derivations)
+def _apply_extraction_hints(
+    key_fields: dict[str, str],
+    derivations: dict[str, FieldDerivation],
+    active_hints: Sequence[object],
+) -> list[str]:
     applied_rule_ids: list[str] = []
-
-    # 1. Apply promoted Agent Gym EXTRACTION_HINT rules matching (issuer, doctype)
     for hint in active_hints:
         field_path = getattr(hint, "field_path", "") or ""
         canonical_target = getattr(hint, "canonical_target", None)
         rule_id = getattr(hint, "rule_id", "") or ""
-        if field_path and canonical_target:
-            raw_before = updated_key_fields.get(field_path, "")
-            if raw_before != canonical_target:
-                updated_key_fields[field_path] = canonical_target
-                rcpt = _receipt_hash(
-                    rule_id or "extraction-hint",
-                    {"field_path": field_path, "raw_value": raw_before},
-                    canonical_target,
-                )
-                updated_derivations[field_path] = FieldDerivation(
-                    raw_value=raw_before,
-                    polarity="EXTRACTION_HINT_CANONICAL",
-                    normalized_value=canonical_target,
-                    derivation_rule=rule_id or "extraction-hint",
-                    derived_from=[field_path],
-                    receipt_id=rcpt,
-                )
-            if rule_id and rule_id not in applied_rule_ids:
-                applied_rule_ids.append(rule_id)
+        if not (field_path and canonical_target):
+            continue
+        raw_before = key_fields.get(field_path, "")
+        if raw_before != canonical_target:
+            key_fields[field_path] = canonical_target
+            rcpt = _receipt_hash(
+                rule_id or "extraction-hint",
+                {"field_path": field_path, "raw_value": raw_before},
+                canonical_target,
+            )
+            derivations[field_path] = FieldDerivation(
+                raw_value=raw_before,
+                polarity="EXTRACTION_HINT_CANONICAL",
+                normalized_value=canonical_target,
+                derivation_rule=rule_id or "extraction-hint",
+                derived_from=[field_path],
+                receipt_id=rcpt,
+            )
+        if rule_id and rule_id not in applied_rule_ids:
+            applied_rule_ids.append(rule_id)
+    return applied_rule_ids
 
-    # 2. Deterministic Coinsurance Polarity Inversion (100% - Member% -> Employer%)
-    raw_member_pct = updated_key_fields.get("member_coinsurance_pct")
-    if raw_member_pct and "employer_coinsurance_pct" not in updated_key_fields:
-        m = _PCT_RE.match(raw_member_pct)
-        if m:
-            try:
-                member_dec = Decimal(m.group(1))
-                if Decimal("0") <= member_dec <= Decimal("100"):
-                    emp_dec = Decimal("100") - member_dec
-                    emp_str = (
-                        f"{int(emp_dec)}%"
-                        if emp_dec == emp_dec.to_integral_value()
-                        else f"{emp_dec.normalize()}%"
-                    )
-                    rule_name = "coinsurance-polarity-inversion"
-                    rcpt = _receipt_hash(
-                        rule_name,
-                        {"member_coinsurance_pct": raw_member_pct},
-                        emp_str,
-                    )
-                    updated_key_fields["employer_coinsurance_pct"] = emp_str
-                    updated_derivations["employer_coinsurance_pct"] = FieldDerivation(
-                        raw_value=raw_member_pct,
-                        polarity="MEMBER_PAYS",
-                        normalized_value=emp_str,
-                        derivation_rule=rule_name,
-                        derived_from=["member_coinsurance_pct"],
-                        parameters={"formula": "100% - member_coinsurance_pct"},
-                        receipt_id=rcpt,
-                    )
-            except InvalidOperation:
-                pass
 
-    # 3. Deterministic Paid-in-Full Wire -> Remaining Liability Balance ($0.00)
+def _apply_coinsurance_inversion(
+    key_fields: dict[str, str], derivations: dict[str, FieldDerivation]
+) -> None:
+    raw_member_pct = key_fields.get("member_coinsurance_pct")
+    if not raw_member_pct or "employer_coinsurance_pct" in key_fields:
+        return
+    match = _PCT_RE.match(raw_member_pct)
+    if not match:
+        return
+    try:
+        member_dec = Decimal(match.group(1))
+    except InvalidOperation:
+        return
+    if not (Decimal("0") <= member_dec <= Decimal("100")):
+        return
+    emp_dec = Decimal("100") - member_dec
+    emp_str = (
+        f"{int(emp_dec)}%"
+        if emp_dec == emp_dec.to_integral_value()
+        else f"{emp_dec.normalize()}%"
+    )
+    rule_name = "coinsurance-polarity-inversion"
+    rcpt = _receipt_hash(rule_name, {"member_coinsurance_pct": raw_member_pct}, emp_str)
+    key_fields["employer_coinsurance_pct"] = emp_str
+    derivations["employer_coinsurance_pct"] = FieldDerivation(
+        raw_value=raw_member_pct,
+        polarity="MEMBER_PAYS",
+        normalized_value=emp_str,
+        derivation_rule=rule_name,
+        derived_from=["member_coinsurance_pct"],
+        parameters={"formula": "100% - member_coinsurance_pct"},
+        receipt_id=rcpt,
+    )
+
+
+def _apply_paid_in_full_balance(
+    key_fields: dict[str, str], derivations: dict[str, FieldDerivation]
+) -> None:
     wire_ref = (
-        updated_key_fields.get("wire_reference", "")
-        or updated_key_fields.get("payoff_waiver_status", "")
+        key_fields.get("wire_reference", "")
+        or key_fields.get("payoff_waiver_status", "")
         or ""
     )
-    if (
+    if not (
         ("PAID IN FULL" in wire_ref.upper() or "paid_in_full" in wire_ref.lower())
-        and "remaining_liability_balance" not in updated_key_fields
-        and (
-            "wire_reference" in updated_key_fields
-            or "payoff_waiver_status" in updated_key_fields
-        )
+        and "remaining_liability_balance" not in key_fields
+        and ("wire_reference" in key_fields or "payoff_waiver_status" in key_fields)
     ):
-        source_key = (
-            "wire_reference"
-            if "wire_reference" in updated_key_fields
-            else "payoff_waiver_status"
-        )
-        rule_name = "paid-in-full-wire-zero-balance"
-        rcpt = _receipt_hash(rule_name, {source_key: wire_ref}, "$0.00")
-        updated_key_fields["remaining_liability_balance"] = "$0.00"
-        updated_derivations["remaining_liability_balance"] = FieldDerivation(
-            raw_value=wire_ref,
-            polarity="CONTRACTUAL_EXACT",
-            normalized_value="$0.00",
-            derivation_rule=rule_name,
-            derived_from=[source_key],
-            parameters={"settlement_status": "PAID_IN_FULL"},
-            receipt_id=rcpt,
-        )
+        return
+    source_key = (
+        "wire_reference" if "wire_reference" in key_fields else "payoff_waiver_status"
+    )
+    rule_name = "paid-in-full-wire-zero-balance"
+    rcpt = _receipt_hash(rule_name, {source_key: wire_ref}, "$0.00")
+    key_fields["remaining_liability_balance"] = "$0.00"
+    derivations["remaining_liability_balance"] = FieldDerivation(
+        raw_value=wire_ref,
+        polarity="CONTRACTUAL_EXACT",
+        normalized_value="$0.00",
+        derivation_rule=rule_name,
+        derived_from=[source_key],
+        parameters={"settlement_status": "PAID_IN_FULL"},
+        receipt_id=rcpt,
+    )
 
-    # 4. Narrow to requested_fields when caller explicitly scopes datapoint targets
-    if requested_fields:
-        allowed = {f.strip() for f in requested_fields if f and f.strip()}
-        if allowed:
-            updated_key_fields = {
-                k: v for k, v in updated_key_fields.items() if k in allowed
-            }
-            updated_derivations = {
-                k: v for k, v in updated_derivations.items() if k in allowed
-            }
 
-    # 5. Apply Stage-B derivations across 1 -> N decomposed ExtractedRecord items
-    updated_records = []
+def _derive_sub_records(
+    fields: ExtractionFields,
+    *,
+    active_hints: Sequence[object],
+    requested_fields: Sequence[str] | None,
+    applied_rule_ids: list[str],
+) -> tuple[list[ExtractedRecord], bool]:
+    updated_records: list[ExtractedRecord] = []
     records_changed = False
     for rec in fields.records:
         rec_fields = ExtractionFields(
@@ -177,7 +171,40 @@ def apply_field_derivations(
             )
         else:
             updated_records.append(rec)
+    return updated_records, records_changed
 
+
+def apply_field_derivations(
+    fields: ExtractionFields,
+    *,
+    active_hints: Sequence[object] = (),
+    requested_fields: Sequence[str] | None = None,
+) -> tuple[ExtractionFields, tuple[str, ...]]:
+    """Run Stage-B deterministic derivations and promoted ``EXTRACTION_HINT`` rules over ``fields``."""
+    updated_key_fields = dict(fields.key_fields)
+    updated_derivations = dict(fields.derivations)
+    applied_rule_ids = _apply_extraction_hints(
+        updated_key_fields, updated_derivations, active_hints
+    )
+    _apply_coinsurance_inversion(updated_key_fields, updated_derivations)
+    _apply_paid_in_full_balance(updated_key_fields, updated_derivations)
+
+    if requested_fields:
+        allowed = {f.strip() for f in requested_fields if f and f.strip()}
+        if allowed:
+            updated_key_fields = {
+                k: v for k, v in updated_key_fields.items() if k in allowed
+            }
+            updated_derivations = {
+                k: v for k, v in updated_derivations.items() if k in allowed
+            }
+
+    updated_records, records_changed = _derive_sub_records(
+        fields,
+        active_hints=active_hints,
+        requested_fields=requested_fields,
+        applied_rule_ids=applied_rule_ids,
+    )
     if (
         updated_key_fields == fields.key_fields
         and updated_derivations == fields.derivations
@@ -192,16 +219,13 @@ def apply_field_derivations(
     if records_changed:
         update_payload["records"] = updated_records
 
-    return (
-        fields.model_copy(update=update_payload),
-        tuple(applied_rule_ids),
-    )
+    return fields.model_copy(update=update_payload), tuple(applied_rule_ids)
 
 
 def apply_result_derivations(
     result: ExtractionResult,
     *,
-    active_hints: Sequence[Any] = (),
+    active_hints: Sequence[object] = (),
     requested_fields: Sequence[str] | None = None,
     ontology_revision_id: str | None = None,
 ) -> ExtractionResult:

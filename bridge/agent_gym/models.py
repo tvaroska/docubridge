@@ -537,7 +537,24 @@ def _infer_rule_category(
     return TribalRuleCategory.EXTRACTION_HINT
 
 
-def _execute_rule_on_case(
+def _eval_distinct_syndicate_guard(
+    rule: TribalKnowledgeRule | None,
+    raw_observed_value: str,
+    expected_resolved_value: str,
+) -> bool:
+    if rule is None:
+        return raw_observed_value == expected_resolved_value
+    if any(d.lower() == raw_observed_value.lower() for d in rule.distinct_entities):
+        return True
+    if (
+        "syndicate 1183" in raw_observed_value.lower()
+        and "1183" not in (rule.canonical_target or "").lower()
+    ):
+        return True
+    return raw_observed_value == expected_resolved_value
+
+
+def _execute_rule_on_case(  # noqa: PLR0913 - keyword-only synthetic stress case evaluator
     rule: TribalKnowledgeRule | None,
     *,
     perturbation_type: str,
@@ -549,32 +566,18 @@ def _execute_rule_on_case(
     """Deterministically execute baseline (`rule=None`) or candidate `rule` against a stress case."""
     if not math_firewall_intact and rule is not None:
         return False
-
-    # Case 3: Distinct syndicate / SPV collision guard (must NEVER merge distinct entities)
     if perturbation_type == "distinct_syndicate_guard":
-        if rule is None:
-            return raw_observed_value == expected_resolved_value
-        if any(d.lower() == raw_observed_value.lower() for d in rule.distinct_entities):
-            return True
-        # Even when not explicitly listed, a distinct syndicate suffix ("Syndicate 1183")
-        # must not be overwritten by a rule scoped to another value.
-        if (
-            "syndicate 1183" in raw_observed_value.lower()
-            and "1183" not in (rule.canonical_target or "").lower()
-        ):
-            return True
-        return raw_observed_value == expected_resolved_value
-
-    # Case 4: Model upgrade parity (`gemini-3.8-flash` workhorse + `gemini-4-argon` teacher parity)
+        return _eval_distinct_syndicate_guard(
+            rule, raw_observed_value, expected_resolved_value
+        )
     if perturbation_type == "model_upgrade_parity":
-        if rule is None:
-            return True
-        return bool(rule.canonical_target or expected_resolved_value)
-
-    # Case 1 & Case 2: Layout shift & legal suffix variant require the candidate rule to resolve
+        return (
+            True
+            if rule is None
+            else bool(rule.canonical_target or expected_resolved_value)
+        )
     if rule is None:
         return raw_observed_value.strip() == expected_resolved_value.strip()
-
     issuer_match = (
         fnmatch.fnmatchcase(input_issuer.lower(), rule.issuer_pattern.lower())
         or rule.issuer_pattern == "*"

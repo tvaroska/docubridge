@@ -50,13 +50,16 @@ from __future__ import annotations
 
 import inspect
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, cast
 from urllib.parse import urljoin, urlsplit
 
 from bridge import netguard
+
+if TYPE_CHECKING:
+    import httpx
 
 # Suffix -> mime. The SINGLE source of truth for both the extraction engine and the
 # edge's artifact persistence (both used to carry their own copy of this table).
@@ -122,7 +125,7 @@ def mime_for(name: str) -> str:
     return SUFFIX_MIME.get(Path(name).suffix.lower(), "application/octet-stream")
 
 
-async def maybe_await(value: Any) -> Any:
+async def maybe_await[T](value: T | Awaitable[T]) -> T:
     """Await ``value`` when the resolver is async; pass a sync result straight through.
 
     The resolver became a coroutine when it grew a network leg, but every injected
@@ -130,7 +133,25 @@ async def maybe_await(value: Any) -> Any:
     function. Both call sites — ``GeminiExtractor.extract`` and
     ``persist_submission`` — go through here so a sync resolver keeps working.
     """
-    return await value if inspect.isawaitable(value) else value
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+def _resolve_corpus_path(name: str, corpus_root: Path | str) -> ResolvedDocument:
+    root = Path(corpus_root).resolve()
+    path = (root / name).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"artifact {name!r} escapes the corpus root") from exc
+    if not path.is_file() and name.lower().endswith(".pdf"):
+        from bridge.extraction.corpus_pdf import resolve_corpus_pdf_bytes
+
+        synthesized = resolve_corpus_pdf_bytes(root, name)
+        if synthesized is not None:
+            return ResolvedDocument(data=synthesized, mime_type=mime_for(name))
+    return ResolvedDocument(data=path.read_bytes(), mime_type=mime_for(name))
 
 
 async def resolve_document(
@@ -159,11 +180,7 @@ async def resolve_document(
         raise ValueError("empty artifact uri")
 
     scheme = urlsplit(name).scheme.lower()
-
     if scheme == "gs":
-        # By reference: Vertex reads the object natively. No network here, no GCS
-        # client, no credentials. An unclassifiable suffix is refused rather than
-        # sent as application/octet-stream (the backend would reject the part).
         mime = mime_for(urlsplit(name).path)
         if mime == "application/octet-stream":
             raise ValueError(
@@ -171,13 +188,17 @@ async def resolve_document(
                 f"(known suffixes: {', '.join(sorted(SUFFIX_MIME))})"
             )
         return ResolvedDocument(mime_type=mime, uri=name)
-
     if scheme in ("http", "https"):
-        if allowlist is None:
-            allowlist = netguard.allowlist_from_env(FETCH_ALLOWLIST_ENV)
+        effective_allowlist = (
+            netguard.allowlist_from_env(FETCH_ALLOWLIST_ENV)
+            if allowlist is None
+            else allowlist
+        )
         fetcher = fetch or _fetch_http
-        return await maybe_await(fetcher(name, allowlist=allowlist))
-
+        return cast(
+            ResolvedDocument,
+            await maybe_await(fetcher(name, allowlist=effective_allowlist)),
+        )
     if scheme == "file":
         if os.environ.get(ALLOW_FILE_URI_ENV) != "1":
             raise ValueError(
@@ -186,25 +207,9 @@ async def resolve_document(
             )
         path = Path(urlsplit(name).path)
         return ResolvedDocument(data=path.read_bytes(), mime_type=mime_for(path.name))
-
     if scheme:
         raise ValueError(f"unsupported artifact uri scheme {scheme!r} ({name})")
-
-    # No scheme: the eval corpus's bare relative name. Unchanged behaviour, including
-    # the traversal containment (resolve + relative_to the resolved root).
-    root = Path(corpus_root).resolve()
-    path = (root / name).resolve()
-    try:
-        path.relative_to(root)
-    except ValueError as exc:
-        raise ValueError(f"artifact {name!r} escapes the corpus root") from exc
-    if not path.is_file() and name.lower().endswith(".pdf"):
-        from bridge.extraction.corpus_pdf import resolve_corpus_pdf_bytes
-
-        synthesized = resolve_corpus_pdf_bytes(root, name)
-        if synthesized is not None:
-            return ResolvedDocument(data=synthesized, mime_type=mime_for(name))
-    return ResolvedDocument(data=path.read_bytes(), mime_type=mime_for(name))
+    return _resolve_corpus_path(name, corpus_root)
 
 
 async def _fetch_http(
@@ -213,7 +218,7 @@ async def _fetch_http(
     allowlist: frozenset[str] = frozenset(),
     timeout: float = FETCH_TIMEOUT_S,
     max_bytes: int = MAX_FETCH_BYTES,
-    client: Any = None,
+    client: httpx.AsyncClient | None = None,
 ) -> ResolvedDocument:
     """GET an http(s) artifact under the egress guard; return its bytes + mime.
 
@@ -242,10 +247,15 @@ async def _fetch_http(
     import httpx
 
     owned = client is None
-    if owned:
-        client = httpx.AsyncClient(timeout=timeout, follow_redirects=False)
+    active_client = (
+        httpx.AsyncClient(timeout=timeout, follow_redirects=False)
+        if client is None
+        else client
+    )
     try:
-        return await _fetch_hops(client, url, allowlist=allowlist, max_bytes=max_bytes)
+        return await _fetch_hops(
+            active_client, url, allowlist=allowlist, max_bytes=max_bytes
+        )
     except ValueError:
         raise  # already our own refusal/failure vocabulary
     except Exception as exc:
@@ -254,11 +264,11 @@ async def _fetch_http(
         ) from exc
     finally:
         if owned:
-            await client.aclose()
+            await active_client.aclose()
 
 
 async def _fetch_hops(
-    client: Any,
+    client: httpx.AsyncClient,
     url: str,
     *,
     allowlist: frozenset[str],
@@ -309,7 +319,7 @@ async def _fetch_hops(
     )
 
 
-def _mime_from_response(headers: Any, url: str) -> str:
+def _mime_from_response(headers: Mapping[str, str], url: str) -> str:
     """``Content-Type`` (parameters stripped), falling back to the URL suffix."""
     raw = (headers.get("content-type") or "").split(";")[0].strip().lower()
     if not raw or raw == "application/octet-stream":

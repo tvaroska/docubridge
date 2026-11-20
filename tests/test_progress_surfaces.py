@@ -168,7 +168,7 @@ async def test_all_four_surfaces_terminal_task():
         try:
             async for _ev in client.subscribe(SubscribeToTaskRequest(task_id=task_id)):
                 pass
-        except Exception:
+        except Exception:  # noqa: BLE001 - terminal resubscribe raises transport-specific protocol error
             raised_resubscribe_error = True
         # Either we got events (shouldn't happen for terminal) or a clean error.
         # The important thing is the op didn't 404/MethodNotFound.
@@ -218,15 +218,13 @@ async def test_all_four_surfaces_parked_task():
         # Surface 2: tasks/resubscribe is reachable (re-attaches to the parked task)
         # For a parked task, subscribe should work (though for the mock we just
         # verify it doesn't 404).
-        try:  # noqa: SIM105 - documented probe; the comments explain each branch
+        try:
             # Just verify the op is callable; we don't need to drain the stream
             # for this regression lock.
             _sub_iter = client.subscribe(SubscribeToTaskRequest(task_id=task_id))
             # If we get here, the op is wired (no MethodNotFound)
-        except Exception:
-            # A protocol error (e.g., already closed) is acceptable; MethodNotFound
-            # would be a failure.
-            pass
+        except Exception as exc:  # noqa: BLE001 - protocol error acceptable; MethodNotFound fails
+            assert "MethodNotFound" not in str(exc)
         # The op was reachable (either callable or a protocol error, not 404).
 
         # Surface 3: PushNotificationConfig (tested in test_push_config.py).

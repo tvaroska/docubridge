@@ -296,12 +296,12 @@ async def test_drain_processes_in_landing_order(rig):
 def test_processor_refuses_without_secret_or_mailbox(tmp_path, monkeypatch):
     monkeypatch.delenv("BRIDGE_EMAIL_TOKEN_SECRET", raising=False)
     monkeypatch.delenv("BRIDGE_EMAIL_MAILBOX", raising=False)
-    kw = dict(
-        board=make_board(),
-        port=LocalEmailIngress(tmp_path),
-        extraction=extractor(),
-        artifact_store=InMemoryArtifactService(),
-    )
+    kw = {
+        "board": make_board(),
+        "port": LocalEmailIngress(tmp_path),
+        "extraction": extractor(),
+        "artifact_store": InMemoryArtifactService(),
+    }
     with pytest.raises(RuntimeError, match="BRIDGE_EMAIL_MAILBOX"):
         EmailProcessor(secret=SECRET, **kw)
     with pytest.raises(RuntimeError, match="BRIDGE_EMAIL_TOKEN_SECRET"):

@@ -223,7 +223,7 @@ class TestChaseAggregate:
 # --------------------------------------------------------------------------- #
 class TestNudgeAndAddressing:
     def test_nudge_key_unchanged_without_seq_and_seq_keyed_with_it(self):
-        base = dict(context_id="ctx", party="p", channel="email", message="m")
+        base = {"context_id": "ctx", "party": "p", "channel": "email", "message": "m"}
         assert Nudge(step=LifecycleStatus.overdue, **base).idempotency_key == (
             "nudge:ctx:overdue"
         )

@@ -562,7 +562,7 @@ async def test_real_consumer_accepts_mapped_quote(record_id, corpus_server):
     _, _, run = await _journey(record_id, "fixture", "http", corpus_server)
     quote = map_entry_to_quote(run.entry, intake_for(record_id))
 
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 - test invokes verified local consumer venv interpreter
         [str(python), "-c", _CONSUMER_SCRIPT],
         input=quote.model_dump_json(),
         capture_output=True,

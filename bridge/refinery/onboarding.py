@@ -263,9 +263,9 @@ def _infer_metric_bucket(
     return False, None
 
 
-def _call_live_argon_inducer(
+def _call_live_argon_inducer(  # noqa: PLR0913 - keyword-only Argon induction inputs
     *,
-    client: Any,
+    client: object,
     entity_id: str,
     context_set: str,
     samples: Sequence[SampleDocumentExample],
@@ -273,7 +273,7 @@ def _call_live_argon_inducer(
     spine_entity_id: str | None,
 ) -> dict[str, Any]:
     """Invoke `gemini-4-argon` to synthesize contrastive entity/field descriptions."""
-    active_client = client
+    active_client: Any = client
     if active_client is None:
         from google import genai
 
@@ -305,7 +305,295 @@ def _call_live_argon_inducer(
     return parsed
 
 
-def build_onboarding_proposal(
+def _record_paired_projection(
+    paired_row: PairedTargetExample | None,
+    fname: str,
+    val: str,
+    labels: list[str],
+    projection_hints: dict[str, str],
+) -> None:
+    if paired_row is None:
+        return
+    for t_col, t_val in paired_row.target_record.items():
+        if _to_snake_field(t_col) == fname or _values_equivalent(val, t_val):
+            projection_hints[fname] = t_col
+            if t_col not in labels:
+                labels.append(t_col)
+
+
+def _fallback_stats_from_paired(
+    coerced_paired: Sequence[PairedTargetExample],
+) -> tuple[
+    dict[str, list[str]],
+    dict[str, list[str]],
+    dict[str, str],
+    dict[str, int],
+    dict[str, str],
+]:
+    field_labels: dict[str, list[str]] = {}
+    field_values: dict[str, list[str]] = {}
+    field_sections: dict[str, str] = {}
+    field_presence_count: dict[str, int] = {}
+    projection_hints: dict[str, str] = {}
+    for p in coerced_paired:
+        for t_col, t_val in p.target_record.items():
+            fname = _to_snake_field(t_col)
+            labels = field_labels.setdefault(fname, [])
+            if t_col not in labels:
+                labels.append(t_col)
+            field_values.setdefault(fname, []).append(t_val)
+            field_sections.setdefault(fname, "Structured schedule row.")
+            field_presence_count[fname] = field_presence_count.get(fname, 0) + 1
+            projection_hints[fname] = t_col
+    return (
+        field_labels,
+        field_values,
+        field_sections,
+        field_presence_count,
+        projection_hints,
+    )
+
+
+def _collect_sample_field_stats(
+    coerced_samples: Sequence[SampleDocumentExample],
+    coerced_paired: Sequence[PairedTargetExample],
+) -> tuple[
+    dict[str, list[str]],
+    dict[str, list[str]],
+    dict[str, str],
+    dict[str, int],
+    dict[str, str],
+]:
+    paired_by_id = {p.sample_id: p for p in coerced_paired}
+    field_labels: dict[str, list[str]] = {}
+    field_values: dict[str, list[str]] = {}
+    field_sections: dict[str, str] = {}
+    field_presence_count: dict[str, int] = {}
+    projection_hints: dict[str, str] = {}
+
+    for idx, sample in enumerate(coerced_samples):
+        paired_row = paired_by_id.get(sample.sample_id) or (
+            coerced_paired[idx] if idx < len(coerced_paired) else None
+        )
+        seen_in_sample: set[str] = set()
+        for raw_label, val, section in _extract_sample_surface_pairs(sample):
+            fname = _to_snake_field(raw_label)
+            labels = field_labels.setdefault(fname, [])
+            if raw_label not in labels:
+                labels.append(raw_label)
+            field_values.setdefault(fname, []).append(val)
+            field_sections.setdefault(fname, section)
+            if fname not in seen_in_sample:
+                seen_in_sample.add(fname)
+                field_presence_count[fname] = field_presence_count.get(fname, 0) + 1
+            _record_paired_projection(paired_row, fname, val, labels, projection_hints)
+
+    if not field_labels and coerced_paired:
+        return _fallback_stats_from_paired(coerced_paired)
+
+    return (
+        field_labels,
+        field_values,
+        field_sections,
+        field_presence_count,
+        projection_hints,
+    )
+
+
+def _merge_field_synonyms(
+    labels: Sequence[str],
+    llm_field: Mapping[str, Any] | None,
+    fname: str,
+) -> tuple[str, ...]:
+    syns = list(labels)
+    if llm_field is not None and isinstance(llm_field.get("synonyms"), list):
+        for s in llm_field["synonyms"]:
+            cleaned = str(s).strip()
+            if cleaned and cleaned not in syns:
+                syns.append(cleaned)
+    return tuple(s for s in syns if s.lower() != fname.lower()) or tuple(syns[:1])
+
+
+def _build_single_induced_field(  # noqa: PLR0913 - internal field builder consolidating per-field stats
+    *,
+    slug: str,
+    fname: str,
+    labels: Sequence[str],
+    vals: Sequence[str],
+    section: str,
+    presence_count: int,
+    sample_count: int,
+    projection_hint: str | None,
+    negative_targets: str,
+    llm_field: Mapping[str, Any] | None,
+) -> tuple[OntologyFieldSpec, OntologyEdge | None, bool]:
+    is_money, metric_bucket = _infer_metric_bucket(fname, vals)
+    if llm_field is not None:
+        if "monetary" in llm_field:
+            is_money = bool(llm_field["monetary"])
+        if llm_field.get("feeds_metric") in (
+            "total_premium",
+            "total_deductible",
+            "total_coverage_limit",
+            "total_insured_value",
+        ):
+            metric_bucket = str(llm_field["feeds_metric"])
+            is_money = True
+    if not is_money:
+        metric_bucket = None
+
+    dedup_syns = _merge_field_synonyms(labels, llm_field, fname)
+    is_req = (
+        bool(llm_field["required"])
+        if llm_field is not None and "required" in llm_field
+        else presence_count == sample_count
+    )
+
+    target_note = (
+        f" Maps to target column '{projection_hint}'." if projection_hint else ""
+    )
+    default_what = f"Extracted '{fname}' attribute for `{slug}` exact text as printed.{target_note}"
+    default_dist = (
+        f"Do NOT confuse with non-binding worksheet estimates or superseded values "
+        f"on {negative_targets}."
+    )
+    fdesc = (
+        ContrastiveDescription(
+            what_it_is=str(llm_field.get("what_it_is") or default_what).strip(),
+            where_to_read=str(llm_field.get("where_to_read") or section).strip(),
+            distinguish_from=str(
+                llm_field.get("distinguish_from") or default_dist
+            ).strip(),
+        )
+        if llm_field is not None
+        else ContrastiveDescription(
+            what_it_is=default_what,
+            where_to_read=section,
+            distinguish_from=default_dist,
+        )
+    )
+
+    spec = OntologyFieldSpec(
+        name=fname,
+        field_type="string",
+        required=is_req,
+        synonyms=dedup_syns,
+        description=fdesc,
+        feeds_metric=metric_bucket,
+        monetary=is_money,
+    )
+    edge = (
+        OntologyEdge(
+            edge_id=f"edge-{slug}-feeds-{fname.replace('_', '-')}",
+            source_id=slug,
+            relation="FEEDS_METRIC",
+            target_id=f"FinancialSummary.{metric_bucket}",
+            on_fields=(fname,),
+            metric_operation="SUM_ACTIVE_DECIMAL",
+            effective_from_revision="ont-rev-v1-2-draft",
+        )
+        if is_money and metric_bucket
+        else None
+    )
+    return spec, edge, is_money
+
+
+def _build_structural_edges(  # noqa: PLR0913 - internal structural edge builder
+    *,
+    slug: str,
+    spine_entity_id: str | None,
+    baseline_revision: OntologyRevision,
+    supersedes_spine: bool,
+    source_priority: int,
+    built_fields: Mapping[str, OntologyFieldSpec],
+) -> tuple[list[OntologyEdge], int]:
+    structural_edges: list[OntologyEdge] = []
+    effective_priority = source_priority
+    cleaned_spine = (spine_entity_id or "").strip()
+    if not cleaned_spine:
+        return structural_edges, effective_priority
+
+    spine_spec = baseline_revision.entities.get(cleaned_spine)
+    if spine_spec is not None and supersedes_spine:
+        effective_priority = max(source_priority, spine_spec.source_priority + 10)
+        shared_fields = tuple(
+            f for f in built_fields if f in spine_spec.fields and f != "currency"
+        ) or tuple(sorted(built_fields.keys())[:3])
+        structural_edges.append(
+            OntologyEdge(
+                edge_id=f"edge-{slug}-supersedes-{cleaned_spine}",
+                source_id=slug,
+                relation="SUPERSEDES",
+                target_id=cleaned_spine,
+                priority_rank=effective_priority,
+                on_fields=shared_fields,
+                condition_expr="source.effective_from >= target.effective_from",
+                effective_from_revision="ont-rev-v1-2-draft",
+            )
+        )
+    else:
+        structural_edges.append(
+            OntologyEdge(
+                edge_id=f"edge-{slug}-distinct-from-{cleaned_spine}",
+                source_id=slug,
+                relation="DISTINCT_FROM",
+                target_id=cleaned_spine,
+                effective_from_revision="ont-rev-v1-2-draft",
+            )
+        )
+    return structural_edges, effective_priority
+
+
+def _build_entity_description_and_aliases(  # noqa: PLR0913 - internal description/alias assembler
+    *,
+    slug: str,
+    context_set: str,
+    sample_count: int,
+    negative_targets: str,
+    aliases: Sequence[str],
+    llm_overrides: Mapping[str, Any],
+) -> tuple[ContrastiveDescription, tuple[str, ...]]:
+    llm_ent_desc = llm_overrides.get("entity_description")
+    if isinstance(llm_ent_desc, Mapping):
+        ent_desc = ContrastiveDescription(
+            what_it_is=str(
+                llm_ent_desc.get("what_it_is")
+                or f"Structured `{slug}` document entity induced from {sample_count} verified examples."
+            ).strip(),
+            where_to_read=str(
+                llm_ent_desc.get("where_to_read")
+                or "Title banner, issuer header, and primary structured schedule table."
+            ).strip(),
+            distinguish_from=str(
+                llm_ent_desc.get("distinguish_from")
+                or f"Distinguish strictly from {negative_targets}."
+            ).strip(),
+        )
+    else:
+        ent_desc = ContrastiveDescription(
+            what_it_is=(
+                f"Structured `{slug}` semantic document entity in context `{context_set}`, "
+                f"induced from {sample_count} verified examples."
+            ),
+            where_to_read=(
+                "Document title block, issuer header, and primary key-terms schedule."
+            ),
+            distinguish_from=(
+                f"Do NOT confuse with {negative_targets} when classifying or extracting fields."
+            ),
+        )
+
+    merged_aliases = list(aliases)
+    raw_aliases = llm_overrides.get("aliases")
+    if isinstance(raw_aliases, list):
+        for a in raw_aliases:
+            cleaned = str(a).strip()
+            if cleaned and cleaned not in merged_aliases:
+                merged_aliases.append(cleaned)
+    return ent_desc, tuple(merged_aliases)
+
+
+def build_onboarding_proposal(  # noqa: PLR0913 - keyword-only public doctype onboarding builder
     *,
     entity_id: str,
     samples: Sequence[SampleDocumentExample | Mapping[str, Any]],
@@ -317,7 +605,7 @@ def build_onboarding_proposal(
     source_priority: int = 20,
     supersedes_spine: bool = True,
     aliases: Sequence[str] = (),
-    client: Any = None,
+    client: object = None,
     use_live_llm: bool | None = None,
 ) -> tuple[RefineryProposal, OntologyEntitySpec, str, dict[str, str], str]:
     """Synthesize a candidate `RefineryProposal` and `.okf.md` bundle from 1-5 examples."""
@@ -330,50 +618,14 @@ def build_onboarding_proposal(
     coerced_paired = [
         _coerce_paired(p, i + 1) for i, p in enumerate(paired_target_examples)
     ]
-    paired_by_id = {p.sample_id: p for p in coerced_paired}
 
-    field_labels: dict[str, list[str]] = {}
-    field_values: dict[str, list[str]] = {}
-    field_sections: dict[str, str] = {}
-    field_presence_count: dict[str, int] = {}
-    projection_hints: dict[str, str] = {}
-
-    for idx, sample in enumerate(coerced_samples):
-        triples = _extract_sample_surface_pairs(sample)
-        paired_row = paired_by_id.get(sample.sample_id) or (
-            coerced_paired[idx] if idx < len(coerced_paired) else None
-        )
-        seen_in_sample: set[str] = set()
-        for raw_label, val, section in triples:
-            fname = _to_snake_field(raw_label)
-            if raw_label not in field_labels.setdefault(fname, []):
-                field_labels[fname].append(raw_label)
-            field_values.setdefault(fname, []).append(val)
-            field_sections.setdefault(fname, section)
-            if fname not in seen_in_sample:
-                seen_in_sample.add(fname)
-                field_presence_count[fname] = field_presence_count.get(fname, 0) + 1
-
-            if paired_row is not None:
-                for t_col, t_val in paired_row.target_record.items():
-                    if _to_snake_field(t_col) == fname or _values_equivalent(
-                        val, t_val
-                    ):
-                        projection_hints[fname] = t_col
-                        if t_col not in field_labels[fname]:
-                            field_labels[fname].append(t_col)
-
-    if not field_labels and coerced_paired:
-        for p in coerced_paired:
-            for t_col, t_val in p.target_record.items():
-                fname = _to_snake_field(t_col)
-                if t_col not in field_labels.setdefault(fname, []):
-                    field_labels[fname].append(t_col)
-                field_values.setdefault(fname, []).append(t_val)
-                field_sections.setdefault(fname, "Structured schedule row.")
-                field_presence_count[fname] = field_presence_count.get(fname, 0) + 1
-                projection_hints[fname] = t_col
-
+    (
+        field_labels,
+        field_values,
+        field_sections,
+        field_presence_count,
+        projection_hints,
+    ) = _collect_sample_field_stats(coerced_samples, coerced_paired)
     if not field_labels:
         raise ValueError(
             "Samples did not contain any extractable key-value fields or structured attributes"
@@ -416,92 +668,32 @@ def build_onboarding_proposal(
     built_fields: dict[str, OntologyFieldSpec] = {}
     metric_edges: list[OntologyEdge] = []
     any_monetary = False
-    llm_fields = (
-        llm_overrides.get("fields")
-        if isinstance(llm_overrides.get("fields"), Mapping)
-        else {}
+    raw_llm_fields = llm_overrides.get("fields")
+    llm_fields: Mapping[str, Any] = (
+        raw_llm_fields if isinstance(raw_llm_fields, Mapping) else {}
     )
 
     for fname in sorted(field_labels.keys()):
-        vals = field_values.get(fname, [])
-        is_money, metric_bucket = _infer_metric_bucket(fname, vals)
-        llm_f = llm_fields.get(fname) if isinstance(llm_fields, Mapping) else None
-        if isinstance(llm_f, Mapping):
-            if "monetary" in llm_f:
-                is_money = bool(llm_f["monetary"])
-            if llm_f.get("feeds_metric") in (
-                "total_premium",
-                "total_deductible",
-                "total_coverage_limit",
-                "total_insured_value",
-            ):
-                metric_bucket = str(llm_f["feeds_metric"])
-                is_money = True
-
-        if not is_money:
-            metric_bucket = None
-        if is_money:
-            any_monetary = True
-
-        syns = list(field_labels[fname])
-        if isinstance(llm_f, Mapping) and isinstance(llm_f.get("synonyms"), list):
-            for s in llm_f["synonyms"]:
-                if str(s).strip() and str(s).strip() not in syns:
-                    syns.append(str(s).strip())
-        dedup_syns = tuple(s for s in syns if s.lower() != fname.lower()) or tuple(
-            syns[:1]
+        raw_llm_f = llm_fields.get(fname)
+        llm_f = raw_llm_f if isinstance(raw_llm_f, Mapping) else None
+        fspec, edge, is_money = _build_single_induced_field(
+            slug=slug,
+            fname=fname,
+            labels=field_labels[fname],
+            vals=field_values.get(fname, []),
+            section=field_sections.get(
+                fname, "Primary schedule table or key-terms summary block."
+            ),
+            presence_count=field_presence_count.get(fname, 0),
+            sample_count=sample_count,
+            projection_hint=projection_hints.get(fname),
+            negative_targets=negative_targets,
+            llm_field=llm_f,
         )
-
-        is_req = field_presence_count.get(fname, 0) == sample_count
-        if isinstance(llm_f, Mapping) and "required" in llm_f:
-            is_req = bool(llm_f["required"])
-
-        target_note = (
-            f" Maps to target column '{projection_hints[fname]}'."
-            if fname in projection_hints
-            else ""
-        )
-        default_what = f"Extracted '{fname}' attribute for `{slug}` exact text as printed.{target_note}"
-        default_where = field_sections.get(
-            fname, "Primary schedule table or key-terms summary block."
-        )
-        default_dist = f"Do NOT confuse with non-binding worksheet estimates or superseded values on {negative_targets}."
-        if isinstance(llm_f, Mapping):
-            fdesc = ContrastiveDescription(
-                what_it_is=str(llm_f.get("what_it_is") or default_what).strip(),
-                where_to_read=str(llm_f.get("where_to_read") or default_where).strip(),
-                distinguish_from=str(
-                    llm_f.get("distinguish_from") or default_dist
-                ).strip(),
-            )
-        else:
-            fdesc = ContrastiveDescription(
-                what_it_is=default_what,
-                where_to_read=default_where,
-                distinguish_from=default_dist,
-            )
-
-        built_fields[fname] = OntologyFieldSpec(
-            name=fname,
-            field_type="string",
-            required=is_req,
-            synonyms=dedup_syns,
-            description=fdesc,
-            feeds_metric=metric_bucket,
-            monetary=is_money,
-        )
-        if is_money and metric_bucket:
-            metric_edges.append(
-                OntologyEdge(
-                    edge_id=f"edge-{slug}-feeds-{fname.replace('_', '-')}",
-                    source_id=slug,
-                    relation="FEEDS_METRIC",
-                    target_id=f"FinancialSummary.{metric_bucket}",
-                    on_fields=(fname,),
-                    metric_operation="SUM_ACTIVE_DECIMAL",
-                    effective_from_revision="ont-rev-v1-2-draft",
-                )
-            )
+        built_fields[fname] = fspec
+        if edge is not None:
+            metric_edges.append(edge)
+        any_monetary = any_monetary or is_money
 
     if any_monetary and "currency" not in built_fields:
         built_fields["currency"] = OntologyFieldSpec(
@@ -517,76 +709,24 @@ def build_onboarding_proposal(
             monetary=False,
         )
 
-    structural_edges: list[OntologyEdge] = []
-    effective_priority = source_priority
-    if spine_entity_id:
-        cleaned_spine = spine_entity_id.strip()
-        spine_spec = baseline_revision.entities.get(cleaned_spine)
-        if spine_spec is not None and supersedes_spine:
-            effective_priority = max(source_priority, spine_spec.source_priority + 10)
-            shared_fields = tuple(
-                f for f in built_fields if f in spine_spec.fields and f != "currency"
-            ) or tuple(sorted(built_fields.keys())[:3])
-            structural_edges.append(
-                OntologyEdge(
-                    edge_id=f"edge-{slug}-supersedes-{cleaned_spine}",
-                    source_id=slug,
-                    relation="SUPERSEDES",
-                    target_id=cleaned_spine,
-                    priority_rank=effective_priority,
-                    on_fields=shared_fields,
-                    condition_expr="source.effective_from >= target.effective_from",
-                    effective_from_revision="ont-rev-v1-2-draft",
-                )
-            )
-        elif cleaned_spine:
-            structural_edges.append(
-                OntologyEdge(
-                    edge_id=f"edge-{slug}-distinct-from-{cleaned_spine}",
-                    source_id=slug,
-                    relation="DISTINCT_FROM",
-                    target_id=cleaned_spine,
-                    effective_from_revision="ont-rev-v1-2-draft",
-                )
-            )
+    structural_edges, effective_priority = _build_structural_edges(
+        slug=slug,
+        spine_entity_id=spine_entity_id,
+        baseline_revision=baseline_revision,
+        supersedes_spine=supersedes_spine,
+        source_priority=source_priority,
+        built_fields=built_fields,
+    )
+    ent_desc, merged_aliases = _build_entity_description_and_aliases(
+        slug=slug,
+        context_set=context_set,
+        sample_count=sample_count,
+        negative_targets=negative_targets,
+        aliases=aliases,
+        llm_overrides=llm_overrides,
+    )
 
-    llm_ent_desc = llm_overrides.get("entity_description")
-    if isinstance(llm_ent_desc, Mapping):
-        ent_desc = ContrastiveDescription(
-            what_it_is=str(
-                llm_ent_desc.get("what_it_is")
-                or f"Structured `{slug}` document entity induced from {sample_count} verified examples."
-            ).strip(),
-            where_to_read=str(
-                llm_ent_desc.get("where_to_read")
-                or "Title banner, issuer header, and primary structured schedule table."
-            ).strip(),
-            distinguish_from=str(
-                llm_ent_desc.get("distinguish_from")
-                or f"Distinguish strictly from {negative_targets}."
-            ).strip(),
-        )
-    else:
-        ent_desc = ContrastiveDescription(
-            what_it_is=(
-                f"Structured `{slug}` semantic document entity in context `{context_set}`, "
-                f"induced from {sample_count} verified examples."
-            ),
-            where_to_read=(
-                "Document title block, issuer header, and primary key-terms schedule."
-            ),
-            distinguish_from=(
-                f"Do NOT confuse with {negative_targets} when classifying or extracting fields."
-            ),
-        )
-
-    merged_aliases = list(aliases)
-    if isinstance(llm_overrides.get("aliases"), list):
-        for a in llm_overrides["aliases"]:
-            if str(a).strip() and str(a).strip() not in merged_aliases:
-                merged_aliases.append(str(a).strip())
-
-    all_edges = tuple([*structural_edges, *metric_edges])
+    all_edges = (*structural_edges, *metric_edges)
     draft_rev_id = f"ont-rev-v1-2-draft-{slug[:24]}"
     spec = OntologyEntitySpec(
         entity_id=slug,
@@ -595,7 +735,7 @@ def build_onboarding_proposal(
         context_set=context_set,
         revision_id=draft_rev_id,
         source_priority=effective_priority,
-        aliases=tuple(merged_aliases),
+        aliases=merged_aliases,
         declares_issuer=True,
         issuer_description="Canonical legal name of the issuing carrier, lender, or counterparty.",
         entity_description=ent_desc,

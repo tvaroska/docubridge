@@ -388,10 +388,7 @@ _SCENARIO_IDENTITY_KEYS = frozenset(
 # exception with its reason. The test also fails if an entry stops naming a scenario,
 # so the list cannot rot into a blanket waiver. These predate P9-1 and are tracked
 # for removal in the roadmap's Phase 9 follow-ups.
-SCENARIO_LITERAL_ALLOWLIST = {
-    "bridge/refinery/assay.py": "historical replay corpus pins the seeded deal ids",
-    "bridge/refinery/benefits_assay.py": "historical replay corpus pins the seeded deal id",
-}
+SCENARIO_LITERAL_ALLOWLIST: dict[str, str] = {}
 
 
 def _scenario_identity_strings() -> set[str]:

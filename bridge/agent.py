@@ -4,7 +4,8 @@ from google.adk.agents import LlmAgent
 from google.adk.apps.app import App, ResumabilityConfig
 from google.adk.models import BaseLlm
 from google.adk.planners import BuiltInPlanner
-from google.adk.tools import FunctionTool, LongRunningFunctionTool
+from google.adk.tools.function_tool import FunctionTool
+from google.adk.tools.long_running_tool import LongRunningFunctionTool
 from google.genai import types
 
 from bridge.disposition import run_disposition_gate

@@ -67,7 +67,7 @@ class CreateActionProgressRequest(BaseModel):
 
     @field_validator("max_approval_amount", mode="before")
     @classmethod
-    def _validate_max_approval_amount(cls, value: Any) -> Decimal | None:
+    def _validate_max_approval_amount(cls, value: object) -> Decimal | None:
         return coerce_decimal_amount(value, field_name="max_approval_amount")
 
 

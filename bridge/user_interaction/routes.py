@@ -28,7 +28,7 @@ from bridge.user_interaction.registry_routes import (
 from bridge.user_interaction.telemetry_routes import register_telemetry_routes
 
 
-def build_user_interaction_router(
+def build_user_interaction_router(  # noqa: PLR0913 - public FastAPI router dependency injection contract
     *,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
@@ -113,7 +113,7 @@ def build_user_interaction_router(
     return router
 
 
-def build_user_interaction_app(
+def build_user_interaction_app(  # noqa: PLR0913 - public FastAPI app dependency injection contract
     *,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,

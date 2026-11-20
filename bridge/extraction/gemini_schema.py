@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from bridge.doctypes import _OntologyRevisionLike
 
 from bridge.doctypes import (
     declares_issuer,
@@ -98,7 +101,7 @@ def build_window_instruction(first: int, last: int, total: int) -> str:
     return PAGE_WINDOW_INSTRUCTION.format(first=first, last=last, total=total)
 
 
-def _int_setting(
+def _int_setting(  # noqa: PLR0913 - exported kwarg/env setting validator
     name: str, value: int | None, env: str, raw: str | None, default: int, minimum: int
 ) -> int:
     """A kwarg wins over its env; malformed/out-of-range refuses loud naming the source."""
@@ -119,7 +122,7 @@ def _int_setting(
     return parsed
 
 
-def _is_truncated(response: Any) -> bool:
+def _is_truncated(response: object) -> bool:
     """True when the response was cut at ``max_output_tokens`` (``MAX_TOKENS``)."""
     candidates = getattr(response, "candidates", None)
     if not candidates:
@@ -137,7 +140,7 @@ class _Truncated(Exception):
 
 
 def _ordered_doctypes(
-    schemas: dict[str, dict], catalog_order: Sequence[str] | None
+    schemas: dict[str, dict[str, Any]], catalog_order: Sequence[str] | None
 ) -> list[str]:
     """Catalog iteration order: sorted by default, or ``catalog_order`` first.
 
@@ -152,18 +155,49 @@ def _ordered_doctypes(
     return [*ordered, *sorted(dt for dt in schemas if dt not in seen)]
 
 
-def build_extraction_prompt(
-    schemas: dict[str, dict],
+def _render_hints_section(
+    extraction_hints: Sequence[object],
+    active_schemas: dict[str, dict[str, Any]],
     *,
-    extraction_hints: Sequence[Any] = (),
+    scoped: bool,
+) -> str:
+    hints = list(extraction_hints)
+    if scoped and hints:
+        allowed_dtypes = {"*", "", *active_schemas.keys()}
+        hints = [
+            h
+            for h in hints
+            if str(getattr(h, "doctype", "*")).strip() in allowed_dtypes
+        ]
+    if not hints:
+        return ""
+    hint_lines = [
+        "Active Agent Gym extraction hints (apply when matching issuer/doctype):"
+    ]
+    for hint in hints:
+        rid = getattr(hint, "rule_id", "")
+        issuer_pat = getattr(hint, "issuer_pattern", "*")
+        dtype = getattr(hint, "doctype", "*")
+        fpath = getattr(hint, "field_path", "")
+        instr = getattr(hint, "instruction", str(hint))
+        prefix = f"{rid} · " if rid else ""
+        hint_lines.append(f"- [{prefix}{issuer_pat}:{dtype}:{fpath}] {instr}")
+    return "\n\n" + "\n".join(hint_lines)
+
+
+def build_extraction_prompt(  # noqa: PLR0913 - public schema-driven prompt builder
+    schemas: dict[str, dict[str, Any]],
+    *,
+    extraction_hints: Sequence[object] = (),
     target_doctype: str | None = None,
     candidate_doctypes: Sequence[str] | None = None,
     requested_fields: Sequence[str] | None = None,
     context_set: str | None = None,
-    revision: Any | None = None,
+    revision: _OntologyRevisionLike | None = None,
     catalog_order: Sequence[str] | None = None,
 ) -> str:
     """``PROMPT_HEADER`` + the installed-doctype (or target-scoped) field catalog + ``PROMPT_FOOTER``."""
+    is_scoped = bool(target_doctype or candidate_doctypes or context_set)
     active_schemas = (
         slice_ontology_for_extraction(
             target_doctype=target_doctype,
@@ -172,7 +206,7 @@ def build_extraction_prompt(
             context_set=context_set,
             schemas=schemas,
         )
-        if (target_doctype or candidate_doctypes or context_set)
+        if is_scoped
         else schemas
     )
     req_set = (
@@ -180,30 +214,9 @@ def build_extraction_prompt(
         if requested_fields
         else None
     )
-    scoped_hints = list(extraction_hints)
-    if (target_doctype or candidate_doctypes or context_set) and scoped_hints:
-        allowed_dtypes = {"*", "", *active_schemas.keys()}
-        scoped_hints = [
-            h
-            for h in scoped_hints
-            if str(getattr(h, "doctype", "*")).strip() in allowed_dtypes
-        ]
-
-    hints_section = ""
-    if scoped_hints:
-        hint_lines = [
-            "Active Agent Gym extraction hints (apply when matching issuer/doctype):"
-        ]
-        for hint in scoped_hints:
-            rid = getattr(hint, "rule_id", "")
-            issuer_pat = getattr(hint, "issuer_pattern", "*")
-            dtype = getattr(hint, "doctype", "*")
-            fpath = getattr(hint, "field_path", "")
-            instr = getattr(hint, "instruction", str(hint))
-            prefix = f"{rid} · " if rid else ""
-            hint_lines.append(f"- [{prefix}{issuer_pat}:{dtype}:{fpath}] {instr}")
-        hints_section = "\n\n" + "\n".join(hint_lines)
-
+    hints_section = _render_hints_section(
+        extraction_hints, active_schemas, scoped=is_scoped
+    )
     if not active_schemas:
         return f"{PROMPT_HEADER}{hints_section}\n\n{PROMPT_FOOTER}"
 
@@ -225,10 +238,8 @@ def build_extraction_prompt(
         rendered = "; ".join(
             f"{name} ({desc})" if desc else name for name, desc in fields.items()
         )
-        if entity_desc:
-            lines.append(f"- {label} [{entity_desc}]: {rendered}")
-        else:
-            lines.append(f"- {label}: {rendered}")
+        prefix = f"- {label} [{entity_desc}]" if entity_desc else f"- {label}"
+        lines.append(f"{prefix}: {rendered}")
         for table, columns in tables.items():
             cols = "; ".join(
                 f"{col} ({desc})" if desc else col for col, desc in columns.items()
@@ -238,16 +249,33 @@ def build_extraction_prompt(
     return f"{PROMPT_HEADER}\n\n{catalog}{hints_section}\n\n{PROMPT_FOOTER}"
 
 
-def build_response_schema(
-    schemas: dict[str, dict],
+def _collect_field_enums(
+    active_schemas: dict[str, dict[str, Any]], ordered: list[str]
+) -> dict[str, list[str] | None]:
+    enums: dict[str, list[str] | None] = {}
+    for doctype in ordered:
+        for name, spec in key_field_properties(active_schemas[doctype]).items():
+            raw_enum = spec.get("enum") if isinstance(spec, dict) else None
+            enum = (
+                raw_enum
+                if isinstance(raw_enum, list)
+                and all(isinstance(v, str) for v in raw_enum)
+                else None
+            )
+            enums[name] = enum if name not in enums or enums[name] == enum else None
+    return enums
+
+
+def build_response_schema(  # noqa: PLR0913 - public structured-output schema builder
+    schemas: dict[str, dict[str, Any]],
     *,
     target_doctype: str | None = None,
     candidate_doctypes: Sequence[str] | None = None,
     requested_fields: Sequence[str] | None = None,
     context_set: str | None = None,
-    revision: Any | None = None,
+    revision: _OntologyRevisionLike | None = None,
     catalog_order: Sequence[str] | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """The pinned structured-output schema, or ``None`` when no doctype declares fields."""
     active_schemas = (
         slice_ontology_for_extraction(
@@ -272,28 +300,15 @@ def build_response_schema(
             if req_set and name not in req_set:
                 continue
             labelled = f"{doctype}: {desc}" if desc else doctype
-            if name in union:
-                union[name] = f"{union[name]} | {labelled}"
-            else:
-                union[name] = labelled
+            union[name] = f"{union[name]} | {labelled}" if name in union else labelled
     if not union:
         return None
 
-    key_fields = {
+    key_fields: dict[str, dict[str, Any]] = {
         name: {"type": "string", "nullable": True, "description": desc}
         for name, desc in union.items()
     }
-    enums: dict[str, list | None] = {}
-    for doctype in ordered:
-        for name, spec in key_field_properties(active_schemas[doctype]).items():
-            enum = spec.get("enum") if isinstance(spec, dict) else None
-            enum = (
-                enum
-                if isinstance(enum, list) and all(isinstance(v, str) for v in enum)
-                else None
-            )
-            enums[name] = enum if name not in enums or enums[name] == enum else None
-    for name, enum in enums.items():
+    for name, enum in _collect_field_enums(active_schemas, ordered).items():
         if enum and name in key_fields:
             key_fields[name]["enum"] = list(enum)
     confidences = {
@@ -311,7 +326,7 @@ def build_response_schema(
         f"the document type you observe; installed types: {installed}. "
         f"Contrastive doctype guide: {' | '.join(entity_notes)}"
     )
-    fields_properties: dict = {
+    fields_properties: dict[str, Any] = {
         "doctype": {
             "type": "string",
             "description": doctype_desc,
@@ -379,10 +394,10 @@ def build_response_schema(
 
 
 def _tables_union(
-    schemas: dict[str, dict], *, catalog_order: Sequence[str] | None = None
-) -> dict:
+    schemas: dict[str, dict[str, Any]], *, catalog_order: Sequence[str] | None = None
+) -> dict[str, Any]:
     """The pinned ``fields.tables`` properties: every installed doctype's tables."""
-    union: dict[str, dict[str, dict]] = {}
+    union: dict[str, dict[str, dict[str, Any]]] = {}
     descriptions: dict[str, str] = {}
     for doctype in _ordered_doctypes(schemas, catalog_order):
         for table, columns in table_properties(schemas[doctype]).items():
@@ -396,7 +411,7 @@ def _tables_union(
             cols = union.setdefault(table, {})
             for col, col_spec in columns.items():
                 col_spec = col_spec if isinstance(col_spec, dict) else {}
-                cell: dict = {"type": "string", "nullable": True}
+                cell: dict[str, Any] = {"type": "string", "nullable": True}
                 if col_spec.get("description"):
                     cell["description"] = str(col_spec["description"])
                 enum = col_spec.get("enum")
@@ -460,20 +475,21 @@ def _corpus_resolver(corpus_root: Path) -> Resolver:
     return _resolve
 
 
-def _coerce_resolved(value: Any) -> ResolvedDocument:
+def _coerce_resolved(value: object) -> ResolvedDocument:
     """Accept a ``ResolvedDocument`` or a legacy ``(bytes, mime_type)`` 2-tuple."""
     if isinstance(value, ResolvedDocument):
         return value
     if isinstance(value, tuple) and len(value) == 2:
         data, mime_type = value
-        return ResolvedDocument(data=data, mime_type=mime_type)
+        if isinstance(data, bytes) and isinstance(mime_type, str):
+            return ResolvedDocument(data=data, mime_type=mime_type)
     raise TypeError(
         "resolver must return a ResolvedDocument or a (bytes, mime_type) tuple; "
         f"got {type(value).__name__}"
     )
 
 
-def _prune_nulls(payload: Any) -> Any:
+def _prune_nulls[T](payload: T) -> T:
     """Drop null-valued ``key_fields`` / ``field_confidence`` entries and table cells."""
     if not isinstance(payload, dict):
         return payload

@@ -28,11 +28,13 @@ from bridge.showcase.loader import SCENARIOS_DIR, load_manifest  # noqa: E402
 from bridge.showcase.pdf_assets import render_pdf_asset  # noqa: E402
 
 
-def _gcp_credentials() -> Any:
+def _gcp_credentials() -> object:
     """Resolve ADC first; fall back to `gcloud auth print-access-token` when ADC is absent."""
+    import shutil
     import subprocess
 
     import google.auth
+    from google.auth.exceptions import GoogleAuthError
     from google.auth.transport.requests import Request as GoogleAuthRequest
     from google.oauth2.credentials import Credentials
 
@@ -42,20 +44,21 @@ def _gcp_credentials() -> Any:
         )
         creds.refresh(GoogleAuthRequest())
         return creds
-    except Exception:
-        tok = subprocess.check_output(
-            ["gcloud", "auth", "print-access-token"], text=True
+    except (GoogleAuthError, OSError, ValueError):
+        gcloud_bin = shutil.which("gcloud") or "gcloud"
+        tok = subprocess.check_output(  # noqa: S603 - fixed gcloud auth CLI command
+            [gcloud_bin, "auth", "print-access-token"], text=True
         ).strip()
         return Credentials(token=tok)
 
 
-def push_scenario(
+def push_scenario(  # noqa: PLR0913 - public CLI & test scenario push entry point
     scenario_id: str,
     *,
     bucket_uri: str,
     scenarios_root: Path = SCENARIOS_DIR,
     reload_url: str | None = None,
-    storage_client: Any = None,
+    storage_client: object = None,
     project_id: str | None = None,
 ) -> dict[str, Any]:
     """Render one scenario's PDFs in memory, upload to GCS, and optionally reload."""
@@ -67,13 +70,12 @@ def push_scenario(
     bucket_name, root_prefix = parse_gcs_uri(bucket_uri)
     prefix = f"{root_prefix.rstrip('/')}/" if root_prefix.strip("/") else ""
 
-    if storage_client is None:
+    client_obj: Any = storage_client
+    if client_obj is None:
         from google.cloud import storage
 
-        storage_client = storage.Client(
-            project=project_id, credentials=_gcp_credentials()
-        )
-    bucket = storage_client.bucket(bucket_name)
+        client_obj = storage.Client(project=project_id, credentials=_gcp_credentials())
+    bucket = client_obj.bucket(bucket_name)
 
     uploaded_docs: list[dict[str, Any]] = []
     rendered_by_id = {

@@ -6,10 +6,14 @@ import asyncio
 import os
 import threading
 from collections.abc import Coroutine, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bridge.knowledge_catalog import KnowledgeCatalog, knowledge_catalog_from_env
 from bridge.refinery.engine import InMemorySchemaRefineryEngine, SchemaRefineryEngine
+from bridge.refinery.perturbation import PerturbationExtractor
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
 from contract.refinery import (
     OntologyRevision,
     OntologyRevisionState,
@@ -33,7 +37,7 @@ class SqlSchemaRefineryEngine(InMemorySchemaRefineryEngine):
         dsn: str,
         *,
         knowledge_catalog: KnowledgeCatalog | None = None,
-        extractor: Any = None,
+        extractor: PerturbationExtractor | None = None,
         sample_documents: Sequence[str] = (),
     ) -> None:
         cleaned = (dsn or "").strip()
@@ -101,7 +105,7 @@ class SqlSchemaRefineryEngine(InMemorySchemaRefineryEngine):
             baseline = self._catalog.get_active_ontology_revision()
             seed_rows: list[str] = []
 
-            async def _create_and_seed(engine: Any) -> None:
+            async def _create_and_seed(engine: AsyncEngine) -> None:
                 async with engine.begin() as conn:
                     await conn.run_sync(meta.create_all)
                     res = await conn.execute(
@@ -140,9 +144,10 @@ class SqlSchemaRefineryEngine(InMemorySchemaRefineryEngine):
                     activate=(rev.state == OntologyRevisionState.ACTIVE),
                 )
 
-    def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
+    def _run[T](self, coro: Coroutine[Any, Any, T]) -> T:
         self._ensure_ready()
-        assert self._loop is not None
+        if self._loop is None:
+            raise RuntimeError("SqlSchemaRefineryEngine event loop is not initialized")
         if self._thread is not None and threading.current_thread() is self._thread:
             raise RuntimeError(
                 "SqlSchemaRefineryEngine synchronous API called from its own event loop thread"

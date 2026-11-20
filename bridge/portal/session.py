@@ -23,7 +23,7 @@ Isolation: imports ``contract/`` + ``bridge.*`` + stdlib only; NEVER ``agents/``
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from bridge import pathb
@@ -41,6 +41,9 @@ from bridge.policy import load_disposition_policy
 from bridge.portal.store import PortalSessionRecord, PortalStore
 from contract.enums import Disposition
 from contract.wire import ArtifactRef, ExchangeTurn
+
+if TYPE_CHECKING:
+    from bridge.signals import ExtractorLike
 
 
 class NoActivePark(ValueError):
@@ -78,14 +81,14 @@ def start_session(
     return rec
 
 
-async def upload(
+async def upload(  # noqa: PLR0913 - public keyword-only portal session API
     store: PortalStore,
     session_id: str,
     *,
     doc_id: str,
     artifact_name: str,
     artifact: ArtifactRef | None = None,
-    extractor: Any = None,
+    extractor: ExtractorLike | None = None,
 ) -> PortalSessionRecord:
     """Feed one uploaded document into the active slot's Path-B graph.
 
@@ -100,7 +103,11 @@ async def upload(
     """
     rec = store.get(session_id)
 
-    if rec.last_step is not None and rec.last_step.action is PathBAction.RESUBMIT:
+    if (
+        rec.last_step is not None
+        and rec.last_step.action is PathBAction.RESUBMIT
+        and rec.active_state is not None
+    ):
         state = rec.active_state
     else:
         state = PathBState(

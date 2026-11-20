@@ -449,7 +449,7 @@ def test_extract_xlsx_resilient_visibility_filter_and_broken_shared_strings() ->
 
     # Confirm standard ElementTree fails on broken_ss_xml directly
     with pytest.raises(ET.ParseError):
-        ET.fromstring(broken_ss_xml)
+        ET.fromstring(broken_ss_xml)  # noqa: S314 - intentional malformed XML fixture in test
 
     wb = extract_xlsx_resilient(corrupt_xlsx, respect_visibility_flag_col=True)
     assert wb.used_resilient_fallback is True

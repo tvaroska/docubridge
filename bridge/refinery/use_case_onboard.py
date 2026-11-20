@@ -76,7 +76,7 @@ with warnings.catch_warnings():
         entity_id: str
         okf_markdown: str
         skill_md: str
-        schema_json: str
+        schema_json: str  # type: ignore[assignment]
         validation_yaml: str
         onboarding_result: DoctypeOnboardingResult
         promoted_revision_id: str | None = None
@@ -150,7 +150,7 @@ def _extract_pdf_text_bytes(raw_bytes: bytes) -> str:
             try:
                 decompressed = zlib.decompress(chunk, wbits)
                 break
-            except Exception:
+            except zlib.error:
                 continue
         text = decompressed.decode("latin-1", errors="ignore")
         for tok_match in _PDF_TEXT_TOKEN_RE.finditer(text):
@@ -240,16 +240,23 @@ def load_sample_from_file(
         )
 
     if suffix in (".docx", ".rtf", ".xlsx"):
-        from bridge.extraction.office_prepass import extract_office_prepass
+        from bridge.extraction.office_prepass import (
+            extract_docx_with_redlines,
+            extract_rtf_text,
+            extract_xlsx_resilient,
+        )
 
-        pre = extract_office_prepass(resolved.read_bytes(), filename=resolved.name)
+        raw_bytes = resolved.read_bytes()
+        if suffix == ".docx":
+            office_text = extract_docx_with_redlines(raw_bytes).accepted_text
+        elif suffix == ".rtf":
+            office_text = extract_rtf_text(raw_bytes)
+        else:
+            office_text = extract_xlsx_resilient(raw_bytes).rendered_text
         return SampleDocumentExample(
             sample_id=sid,
             filename=resolved.name,
-            raw_text=pre.extracted_text,
-            extracted_fields={
-                str(k): str(v) for k, v in pre.key_value_pairs.items() if v is not None
-            },
+            raw_text=office_text,
         )
 
     raw_text = resolved.read_text(encoding="utf-8", errors="replace")
@@ -260,7 +267,7 @@ def load_sample_from_file(
     )
 
 
-def render_doctype_skill_package(
+def render_doctype_skill_package(  # noqa: PLR0913 - keyword-only doctype skill package renderer
     spec: OntologyEntitySpec,
     *,
     field_enums: dict[str, tuple[str, ...]] | None = None,
@@ -319,7 +326,7 @@ def render_doctype_skill_package(
     return skill_md, assets
 
 
-def render_process_skill_package(
+def render_process_skill_package(  # noqa: PLR0913 - keyword-only process skill package renderer
     process_name: str,
     *,
     description: str,
@@ -375,7 +382,62 @@ def render_process_skill_package(
     return skill_md, {"assets/policy.yaml": policy_yaml_str}
 
 
-def create_schema_from_documents(
+def _merge_okf_bundle_override(
+    okf_markdown: str | None,
+    entity_id: str,
+    spec: OntologyEntitySpec,
+    enums_tuple: dict[str, tuple[str, ...]],
+    tables_dict: dict[str, dict[str, Any]],
+) -> tuple[
+    OntologyEntitySpec, dict[str, tuple[str, ...]], dict[str, dict[str, Any]], str
+]:
+    if not okf_markdown:
+        return (
+            spec,
+            enums_tuple,
+            tables_dict,
+            render_okf_markdown(spec, field_enums=enums_tuple, tables=tables_dict),
+        )
+    bundle = parse_okf_doctype_bundle(okf_markdown, default_entity_id=entity_id)
+    merged_enums = enums_tuple or dict(bundle.field_enums)
+    merged_tables = tables_dict or dict(bundle.tables)
+    rendered = render_okf_markdown(
+        bundle.spec,
+        field_enums=merged_enums,
+        tables=merged_tables,
+        schema_version=bundle.schema_version,
+    )
+    return bundle.spec, merged_enums, merged_tables, rendered
+
+
+def _write_doctype_package_files(
+    write_dir: Path,
+    entity_id: str,
+    final_okf_md: str,
+    skill_md: str,
+    assets: Mapping[str, str],
+) -> list[str]:
+    base = Path(write_dir).resolve()
+    written: list[str] = []
+    okf_path = base / "catalog" / "doctypes" / f"{entity_id}.okf.md"
+    okf_path.parent.mkdir(parents=True, exist_ok=True)
+    okf_path.write_text(final_okf_md, encoding="utf-8")
+    written.append(str(okf_path))
+
+    s_dir = base / "skills" / entity_id
+    (s_dir / "assets").mkdir(parents=True, exist_ok=True)
+    skill_md_path = s_dir / "SKILL.md"
+    skill_md_path.write_text(skill_md, encoding="utf-8")
+    written.append(str(skill_md_path))
+    for rel, content in assets.items():
+        target = s_dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        written.append(str(target))
+    return written
+
+
+def create_schema_from_documents(  # noqa: PLR0913 - keyword-only public schema induction API
     *,
     entity_id: str,
     samples: Sequence[SampleDocumentExample | Mapping[str, Any]] = (),
@@ -397,7 +459,7 @@ def create_schema_from_documents(
     auto_promote: bool = False,
     install_skill: bool = False,
     write_dir: Path | None = None,
-    client: Any = None,
+    client: object = None,
     use_live_llm: bool | None = None,
 ) -> DoctypeSchemaPackage:
     """Create an OKF `.okf.md` bundle + `SKILL.md` + `schema.json` + `validation.yaml` from documents."""
@@ -417,16 +479,16 @@ def create_schema_from_documents(
 
     if okf_markdown and not combined_samples:
         bundle = parse_okf_doctype_bundle(okf_markdown, default_entity_id=entity_id)
-        spec = bundle.spec
-        if not enums_tuple and bundle.field_enums:
-            enums_tuple = dict(bundle.field_enums)
-        if not tables_dict and bundle.tables:
-            tables_dict = dict(bundle.tables)
-        synth_sample = SampleDocumentExample(
-            sample_id="sample-from-okf",
-            extracted_fields={fname: f"sample_{fname}" for fname in spec.fields},
+        enums_tuple = enums_tuple or dict(bundle.field_enums)
+        tables_dict = tables_dict or dict(bundle.tables)
+        combined_samples.append(
+            SampleDocumentExample(
+                sample_id="sample-from-okf",
+                extracted_fields={
+                    fname: f"sample_{fname}" for fname in bundle.spec.fields
+                },
+            )
         )
-        combined_samples.append(synth_sample)
 
     onboard_res = active_refinery.onboard_doctype_from_examples(
         entity_id=entity_id,
@@ -442,26 +504,9 @@ def create_schema_from_documents(
         use_live_llm=use_live_llm,
     )
 
-    spec = onboard_res.entity_spec
-    if okf_markdown:
-        bundle = parse_okf_doctype_bundle(okf_markdown, default_entity_id=entity_id)
-        spec = bundle.spec
-        if not enums_tuple and bundle.field_enums:
-            enums_tuple = dict(bundle.field_enums)
-        if not tables_dict and bundle.tables:
-            tables_dict = dict(bundle.tables)
-        final_okf_md = render_okf_markdown(
-            spec,
-            field_enums=enums_tuple,
-            tables=tables_dict,
-            schema_version=bundle.schema_version,
-        )
-    else:
-        final_okf_md = render_okf_markdown(
-            spec,
-            field_enums=enums_tuple,
-            tables=tables_dict,
-        )
+    spec, enums_tuple, tables_dict, final_okf_md = _merge_okf_bundle_override(
+        okf_markdown, entity_id, onboard_res.entity_spec, enums_tuple, tables_dict
+    )
 
     promoted_rev_id: str | None = None
     if auto_promote and onboard_res.assay_report.passed:
@@ -497,24 +542,13 @@ def create_schema_from_documents(
         reg.install_skill(spec.entity_id, skill_md, assets)
         installed = True
 
-    written: list[str] = []
-    if write_dir is not None:
-        base = Path(write_dir).resolve()
-        okf_path = base / "catalog" / "doctypes" / f"{spec.entity_id}.okf.md"
-        okf_path.parent.mkdir(parents=True, exist_ok=True)
-        okf_path.write_text(final_okf_md, encoding="utf-8")
-        written.append(str(okf_path))
-
-        s_dir = base / "skills" / spec.entity_id
-        (s_dir / "assets").mkdir(parents=True, exist_ok=True)
-        skill_md_path = s_dir / "SKILL.md"
-        skill_md_path.write_text(skill_md, encoding="utf-8")
-        written.append(str(skill_md_path))
-        for rel, content in assets.items():
-            target = s_dir / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
-            written.append(str(target))
+    written = (
+        _write_doctype_package_files(
+            write_dir, spec.entity_id, final_okf_md, skill_md, assets
+        )
+        if write_dir is not None
+        else []
+    )
 
     return DoctypeSchemaPackage(
         entity_id=spec.entity_id,
@@ -529,13 +563,13 @@ def create_schema_from_documents(
     )
 
 
-def onboard_use_case(
+def onboard_use_case(  # noqa: PLR0913 - keyword-only public use-case onboarding API
     manifest: UseCaseOnboardingManifest | Mapping[str, Any],
     *,
     base_dir: Path | None = None,
     refinery: SchemaRefineryEngine | None = None,
     write_dir: Path | None = None,
-    client: Any = None,
+    client: object = None,
     use_live_llm: bool | None = None,
 ) -> UseCaseOnboardingResult:
     """Onboard a complete use-case agent (all its doctypes + its process skill) onto DocuBridge."""

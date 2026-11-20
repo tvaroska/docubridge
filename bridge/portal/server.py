@@ -105,12 +105,125 @@ class RfpUploadBody(BaseModel):
     product_line: str
 
 
-def build_portal_app(
+def _mount_session_routes(app: FastAPI, active_store: PortalStore) -> None:
+    def _load(sid: str) -> PortalSessionRecord:
+        try:
+            return active_store.get(sid)
+        except KeyError as e:
+            raise HTTPException(
+                status_code=404, detail=f"unknown session {sid!r}"
+            ) from e
+
+    @app.post("/sessions")
+    def create_session(body: StartSessionBody) -> dict[str, Any]:
+        rec = engine.start_session(
+            active_store, process=body.process, context_id=body.context_id
+        )
+        return {
+            "session_id": rec.session_id,
+            "view": encode_a2ui_view(engine.current_view(rec)),
+        }
+
+    @app.get("/sessions/{sid}/view")
+    def get_view(sid: str) -> dict[str, Any]:
+        rec = _load(sid)
+        return encode_a2ui_view(engine.current_view(rec))
+
+    @app.post("/sessions/{sid}/uploads")
+    async def post_upload(sid: str, body: UploadBody) -> dict[str, Any]:
+        _load(sid)  # 404 for an unknown session before touching the graph
+        rec = await engine.upload(
+            active_store,
+            sid,
+            doc_id=body.doc_id,
+            artifact_name=body.artifact_name,
+            artifact=body.artifact,
+        )
+        return encode_a2ui_view(engine.current_view(rec))
+
+    @app.post("/sessions/{sid}/hitl")
+    def post_hitl(sid: str, body: HitlBody) -> dict[str, Any]:
+        _load(sid)
+        try:
+            rec = engine.resolve(
+                active_store,
+                sid,
+                resolution=Disposition(body.resolution),
+                message=body.message,
+            )
+        except NoActivePark as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        return encode_a2ui_view(engine.current_view(rec))
+
+
+def _require_portal_rfp_board(rfps: RfpBoard | None) -> RfpBoard:
+    if rfps is None:
+        raise HTTPException(status_code=404, detail="no RFP board configured")
+    return rfps
+
+
+def _resolve_portal_extraction(
+    extraction: rfp_checklist._QuoteExtractor | None,
+    engines: dict[str, rfp_checklist._QuoteExtractor],
+) -> rfp_checklist._QuoteExtractor:
+    if extraction is not None:
+        return extraction
+    if "extraction" not in engines:
+        adapter: Any = get_adapter(Port.extraction, resolve_mode(Port.extraction))
+        engines["extraction"] = adapter
+    return engines["extraction"]
+
+
+def _mount_rfp_checklist_routes(
+    app: FastAPI,
+    *,
+    rfps: RfpBoard | None,
+    reply_intake: IntakeAddressing | None,
+    extraction: rfp_checklist._QuoteExtractor | None,
+) -> None:
+    engines: dict[str, rfp_checklist._QuoteExtractor] = {}
+
+    @app.get("/rfp/legs/{context_id}")
+    def get_rfp_checklist(context_id: str) -> dict[str, Any]:
+        board = _require_portal_rfp_board(rfps)
+        try:
+            checklist = rfp_checklist.checklist_for(
+                board, context_id, intake=reply_intake
+            )
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail="unknown RFP leg") from e
+        return checklist.model_dump(mode="json")
+
+    @app.post("/rfp/legs/{context_id}/uploads")
+    async def post_rfp_upload(context_id: str, body: RfpUploadBody) -> dict[str, Any]:
+        board = _require_portal_rfp_board(rfps)
+        try:
+            checklist = await rfp_checklist.upload_quote(
+                board,
+                context_id,
+                doc_id=body.doc_id,
+                artifact_name=body.artifact_name,
+                product_line=body.product_line,
+                extraction=_resolve_portal_extraction(extraction, engines),
+                intake=reply_intake,
+            )
+        except rfp_checklist.UploadUnreadable as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        except rfp_checklist.UploadConflict as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        except KeyError as e:
+            raise HTTPException(
+                status_code=404, detail="unknown RFP leg or product line"
+            ) from e
+        return checklist.model_dump(mode="json")
+
+
+def build_portal_app(  # noqa: PLR0913 - public keyword-only portal host builder
     *,
     store: PortalStore | None = None,
     rfps: RfpBoard | None = None,
     intake: IntakeAddressing | None = None,
-    extraction: Any = None,
+    extraction: rfp_checklist._QuoteExtractor | None = None,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
 ) -> FastAPI:
@@ -126,7 +239,6 @@ def build_portal_app(
     """
     active_store: PortalStore = store or InMemoryPortalStore()
     reply_intake = intake if intake is not None else IntakeAddressing.from_env()
-    engines: dict[str, Any] = {}
     app = FastAPI(title="Provider Portal (A2UI Path-B host)")
     app.add_exception_handler(StaleExchangeWrite, _stale_exchange_write_409)
     app.add_middleware(
@@ -135,103 +247,10 @@ def build_portal_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    def _load(sid: str) -> PortalSessionRecord:
-        try:
-            return active_store.get(sid)
-        except KeyError as e:
-            raise HTTPException(
-                status_code=404, detail=f"unknown session {sid!r}"
-            ) from e
-
-    @app.post("/sessions")
-    def create_session(body: StartSessionBody) -> dict:
-        rec = engine.start_session(
-            active_store, process=body.process, context_id=body.context_id
-        )
-        return {
-            "session_id": rec.session_id,
-            "view": encode_a2ui_view(engine.current_view(rec)),
-        }
-
-    @app.get("/sessions/{sid}/view")
-    def get_view(sid: str) -> dict:
-        rec = _load(sid)
-        return encode_a2ui_view(engine.current_view(rec))
-
-    @app.post("/sessions/{sid}/uploads")
-    async def post_upload(sid: str, body: UploadBody) -> dict:
-        _load(sid)  # 404 for an unknown session before touching the graph
-        rec = await engine.upload(
-            active_store,
-            sid,
-            doc_id=body.doc_id,
-            artifact_name=body.artifact_name,
-            artifact=body.artifact,
-        )
-        return encode_a2ui_view(engine.current_view(rec))
-
-    @app.post("/sessions/{sid}/hitl")
-    def post_hitl(sid: str, body: HitlBody) -> dict:
-        _load(sid)
-        try:
-            rec = engine.resolve(
-                active_store,
-                sid,
-                resolution=Disposition(body.resolution),
-                message=body.message,
-            )
-        except NoActivePark as e:
-            raise HTTPException(status_code=409, detail=str(e)) from e
-        return encode_a2ui_view(engine.current_view(rec))
-
-    def _rfp_board() -> RfpBoard:
-        if rfps is None:
-            raise HTTPException(status_code=404, detail="no RFP board configured")
-        return rfps
-
-    def _extraction() -> Any:
-        if extraction is not None:
-            return extraction
-        if "extraction" not in engines:
-            engines["extraction"] = get_adapter(
-                Port.extraction, resolve_mode(Port.extraction)
-            )
-        return engines["extraction"]
-
-    @app.get("/rfp/legs/{context_id}")
-    def get_rfp_checklist(context_id: str) -> dict:
-        board = _rfp_board()
-        try:
-            checklist = rfp_checklist.checklist_for(
-                board, context_id, intake=reply_intake
-            )
-        except KeyError as e:
-            raise HTTPException(status_code=404, detail="unknown RFP leg") from e
-        return checklist.model_dump(mode="json")
-
-    @app.post("/rfp/legs/{context_id}/uploads")
-    async def post_rfp_upload(context_id: str, body: RfpUploadBody) -> dict:
-        board = _rfp_board()
-        try:
-            checklist = await rfp_checklist.upload_quote(
-                board,
-                context_id,
-                doc_id=body.doc_id,
-                artifact_name=body.artifact_name,
-                product_line=body.product_line,
-                extraction=_extraction(),
-                intake=reply_intake,
-            )
-        except rfp_checklist.UploadUnreadable as e:
-            raise HTTPException(status_code=422, detail=str(e)) from e
-        except rfp_checklist.UploadConflict as e:
-            raise HTTPException(status_code=409, detail=str(e)) from e
-        except KeyError as e:
-            raise HTTPException(
-                status_code=404, detail="unknown RFP leg or product line"
-            ) from e
-        return checklist.model_dump(mode="json")
+    _mount_session_routes(app, active_store)
+    _mount_rfp_checklist_routes(
+        app, rfps=rfps, reply_intake=reply_intake, extraction=extraction
+    )
 
     app.include_router(
         build_user_interaction_router(

@@ -69,10 +69,6 @@ class ExtractionTruncated(ValueError):
     """
 
 
-# --------------------------------------------------------------------------- #
-# Stdlib page count                                                           #
-# --------------------------------------------------------------------------- #
-
 _PAGES_NODE = re.compile(rb"/Type\s*/Pages\b")
 _PAGE_LEAF = re.compile(rb"/Type\s*/Page\b")
 _COUNT = re.compile(rb"/Count\s+(\d{1,9})\b")
@@ -179,14 +175,9 @@ def pdf_page_count(data: bytes) -> int | None:
             found = _count_pages(inflated)
             if found:
                 return found
-    except Exception:  # pragma: no cover - defensive: a parser must not kill extraction
+    except Exception:  # noqa: BLE001  # pragma: no cover - defensive parser boundary
         _LOG.warning("pdf page count failed; treating the page count as unknown")
     return None
-
-
-# --------------------------------------------------------------------------- #
-# Window planning                                                             #
-# --------------------------------------------------------------------------- #
 
 
 def plan_windows(total: int, size: int) -> list[tuple[int, int]]:
@@ -207,10 +198,6 @@ def bisect_window(first: int, last: int) -> tuple[tuple[int, int], tuple[int, in
     mid = (first + last) // 2
     return (first, mid), (mid + 1, last)
 
-
-# --------------------------------------------------------------------------- #
-# Merge                                                                       #
-# --------------------------------------------------------------------------- #
 
 _ROW_PATH = re.compile(
     r"^(?P<prefix>(?:fields\.)?(?:tables\.)?)(?P<table>[A-Za-z_][\w-]*)"
@@ -249,6 +236,164 @@ def _span(first: int, last: int) -> str:
     return f"pages {first}-{last}"
 
 
+def _record_conflict(
+    conflicts: dict[str, list[str]],
+    name: str,
+    kept: tuple[str, str],
+    other: tuple[str, str],
+) -> None:
+    kept_val, kept_span = kept
+    other_val, other_span = other
+    notes = conflicts.setdefault(name, [f"{kept_span} report {kept_val!r}"])
+    notes.append(f"{other_span} report {other_val!r}")
+
+
+def _merge_key_fields(
+    windows: list[tuple[int, int, ExtractionResult]],
+    conflicts: dict[str, list[str]],
+) -> tuple[dict[str, str], dict[str, int]]:
+    key_fields: dict[str, str] = {}
+    winner: dict[str, int] = {}
+    for w, (a, b, result) in enumerate(windows):
+        for key, field_val in result.fields.key_fields.items():
+            if key not in key_fields:
+                key_fields[key], winner[key] = field_val, w
+            elif field_val != key_fields[key]:
+                wa, wb, _ = windows[winner[key]]
+                _record_conflict(
+                    conflicts,
+                    key,
+                    (key_fields[key], _span(wa, wb)),
+                    (field_val, _span(a, b)),
+                )
+    return key_fields, winner
+
+
+def _merge_scalars(
+    windows: list[tuple[int, int, ExtractionResult]],
+) -> tuple[str, str | None, dict[str, str], dict[str, int], dict[str, list[str]]]:
+    first_a, first_b, head = windows[0]
+    conflicts: dict[str, list[str]] = {}
+    doctype = head.fields.doctype
+    for a, b, result in windows[1:]:
+        if result.fields.doctype != doctype:
+            _record_conflict(
+                conflicts,
+                "doctype",
+                (doctype, _span(first_a, first_b)),
+                (result.fields.doctype, _span(a, b)),
+            )
+
+    issuer: str | None = None
+    issuer_span = ""
+    for a, b, result in windows:
+        issuer_val = result.fields.issuer
+        if issuer_val is None:
+            continue
+        if issuer is None:
+            issuer, issuer_span = issuer_val, _span(a, b)
+        elif issuer_val != issuer:
+            _record_conflict(
+                conflicts,
+                "issuer",
+                (issuer, issuer_span),
+                (issuer_val, _span(a, b)),
+            )
+
+    key_fields, winner = _merge_key_fields(windows, conflicts)
+    return doctype, issuer, key_fields, winner, conflicts
+
+
+def _rebase_window_path(
+    path: str,
+    *,
+    span: tuple[int, int],
+    offsets: dict[str, int],
+    window_rows: dict[str, int],
+    tables: set[str],
+) -> str:
+    rebased, coarse = rebase_path(
+        path, offsets=offsets, window_rows=window_rows, tables=tables
+    )
+    if coarse:
+        _LOG.warning(
+            "page window %s: row path %r names a row the window did not emit; "
+            "coarsened to %r",
+            _span(*span),
+            path,
+            rebased,
+        )
+    return rebased
+
+
+def _merge_window_tables_and_reviews(
+    windows: list[tuple[int, int, ExtractionResult]],
+    tables: set[str],
+) -> tuple[
+    dict[str, list[dict[str, str]]],
+    dict[str, SourceAnchor],
+    list[str],
+    list[FieldReview],
+    dict[str, list[tuple[int, float]]],
+]:
+    merged_tables: dict[str, list[dict[str, str]]] = {}
+    merged_anchors: dict[str, SourceAnchor] = {}
+    offsets: dict[str, int] = {}
+    flagged: list[str] = []
+    reviews: list[FieldReview] = []
+    confidences: dict[str, list[tuple[int, float]]] = {}
+    for w, (a, b, result) in enumerate(windows):
+        window_rows = {t: len(rows) for t, rows in result.fields.tables.items()}
+
+        def _rebase(
+            path: str,
+            *,
+            _span_pair: tuple[int, int] = (a, b),
+            _rows: dict[str, int] = window_rows,
+        ) -> str:
+            return _rebase_window_path(
+                path,
+                span=_span_pair,
+                offsets=offsets,
+                window_rows=_rows,
+                tables=tables,
+            )
+
+        flagged.extend(_rebase(name) for name in result.flagged_fields)
+        reviews.extend(
+            review.model_copy(update={"path": _rebase(review.path)})
+            for review in result.field_reviews
+        )
+        for key, conf_val in result.field_confidence.items():
+            confidences.setdefault(_rebase(key), []).append((w, conf_val))
+        for anchor_key, anchor in result.fields.source_anchors.items():
+            rebased_anchor_key = _rebase(anchor_key)
+            if rebased_anchor_key not in merged_anchors:
+                window_span = b - a + 1
+                if a > 1 and 1 <= anchor.page_number <= window_span:
+                    anchor = anchor.model_copy(
+                        update={"page_number": anchor.page_number + (a - 1)}
+                    )
+                merged_anchors[rebased_anchor_key] = anchor
+        for table, rows in result.fields.tables.items():
+            merged_tables.setdefault(table, []).extend(rows)
+            offsets[table] = offsets.get(table, 0) + len(rows)
+    return merged_tables, merged_anchors, flagged, reviews, confidences
+
+
+def _finalize_field_confidence(
+    confidences: dict[str, list[tuple[int, float]]], winner: dict[str, int]
+) -> dict[str, float]:
+    field_confidence: dict[str, float] = {}
+    for key, reported in confidences.items():
+        if key in winner:
+            own = [v for w, v in reported if w == winner[key]]
+            field_confidence[key] = own[0] if own else min(v for _, v in reported)
+        else:
+            field_confidence[key] = min(v for _, v in reported)
+    return field_confidence
+
+
 def merge_window_results(
     windows: list[tuple[int, int, ExtractionResult]],
 ) -> ExtractionResult:
@@ -268,102 +413,14 @@ def merge_window_results(
     if len(windows) == 1:
         return windows[0][2]
 
-    first_a, first_b, head = windows[0]
     tables: set[str] = set()
     for _, _, result in windows:
         tables.update(result.fields.tables)
 
-    # -- whole-document scalars: first wins, a later disagreement is flagged ----------
-    conflicts: dict[str, list[str]] = {}  # flag name -> detail fragments (ordered)
-
-    def _conflict(
-        name: str, kept: str, kept_span: str, other: str, other_span: str
-    ) -> None:
-        notes = conflicts.setdefault(name, [f"{kept_span} report {kept!r}"])
-        notes.append(f"{other_span} report {other!r}")
-
-    doctype = head.fields.doctype
-    for a, b, result in windows[1:]:
-        if result.fields.doctype != doctype:
-            _conflict(
-                "doctype",
-                doctype,
-                _span(first_a, first_b),
-                result.fields.doctype,
-                _span(a, b),
-            )
-
-    issuer: str | None = None
-    issuer_span = ""
-    for a, b, result in windows:
-        value = result.fields.issuer
-        if value is None:
-            continue
-        if issuer is None:
-            issuer, issuer_span = value, _span(a, b)
-        elif value != issuer:
-            _conflict("issuer", issuer, issuer_span, value, _span(a, b))
-
-    key_fields: dict[str, str] = {}
-    winner: dict[str, int] = {}  # key -> index of the window that supplied the value
-    for w, (a, b, result) in enumerate(windows):
-        for key, value in result.fields.key_fields.items():
-            if key not in key_fields:
-                key_fields[key], winner[key] = value, w
-            elif value != key_fields[key]:
-                wa, wb, _ = windows[winner[key]]
-                _conflict(key, key_fields[key], _span(wa, wb), value, _span(a, b))
-
-    # -- tables + rebased review paths + source_anchors --------------------------------
-    merged_tables: dict[str, list[dict[str, str]]] = {}
-    merged_anchors: dict[str, SourceAnchor] = {}
-    offsets: dict[str, int] = {}
-    flagged: list[str] = []
-    reviews: list[FieldReview] = []
-    confidences: dict[str, list[tuple[int, float]]] = {}
-    for w, (a, b, result) in enumerate(windows):
-        window_rows = {t: len(rows) for t, rows in result.fields.tables.items()}
-
-        def _rebase(
-            path: str,
-            *,
-            _a: int = a,
-            _b: int = b,
-            _rows: dict[str, int] = window_rows,
-        ) -> str:
-            rebased, coarse = rebase_path(
-                path, offsets=offsets, window_rows=_rows, tables=tables
-            )
-            if coarse:
-                _LOG.warning(
-                    "page window %s: row path %r names a row the window did not emit; "
-                    "coarsened to %r",
-                    _span(_a, _b),
-                    path,
-                    rebased,
-                )
-            return rebased
-
-        flagged.extend(_rebase(name) for name in result.flagged_fields)
-        reviews.extend(
-            review.model_copy(update={"path": _rebase(review.path)})
-            for review in result.field_reviews
-        )
-        for key, value in result.field_confidence.items():
-            confidences.setdefault(_rebase(key), []).append((w, value))
-        for anchor_key, anchor in result.fields.source_anchors.items():
-            rebased_anchor_key = _rebase(anchor_key)
-            if rebased_anchor_key not in merged_anchors:
-                window_span = b - a + 1
-                if a > 1 and 1 <= anchor.page_number <= window_span:
-                    anchor = anchor.model_copy(
-                        update={"page_number": anchor.page_number + (a - 1)}
-                    )
-                merged_anchors[rebased_anchor_key] = anchor
-        for table, rows in result.fields.tables.items():
-            merged_tables.setdefault(table, []).extend(rows)
-            offsets[table] = offsets.get(table, 0) + len(rows)
-
+    doctype, issuer, key_fields, winner, conflicts = _merge_scalars(windows)
+    merged_tables, merged_anchors, flagged, reviews, confidences = (
+        _merge_window_tables_and_reviews(windows, tables)
+    )
     fields = ExtractionFields(
         doctype=doctype,
         issuer=issuer,
@@ -372,7 +429,6 @@ def merge_window_results(
         source_anchors=merged_anchors,
     )
 
-    # The merge's own disagreement findings lead (first-wins dedupe keeps their detail).
     conflict_reviews = [
         FieldReview(
             path=review_path(name, fields),
@@ -385,24 +441,15 @@ def merge_window_results(
     seen: set[str] = set()
     deduped: list[FieldReview] = []
     for review in [*conflict_reviews, *reviews]:
-        if review.path in seen:
-            continue
-        seen.add(review.path)
-        deduped.append(review)
-
-    field_confidence: dict[str, float] = {}
-    for key, reported in confidences.items():
-        if key in winner:
-            own = [v for w, v in reported if w == winner[key]]
-            field_confidence[key] = own[0] if own else min(v for _, v in reported)
-        else:
-            field_confidence[key] = min(v for _, v in reported)
+        if review.path not in seen:
+            seen.add(review.path)
+            deduped.append(review)
 
     return ExtractionResult.model_validate(
         {
             "fields": fields.model_dump(),
             "overall_confidence": min(r.overall_confidence for _, _, r in windows),
-            "field_confidence": field_confidence,
+            "field_confidence": _finalize_field_confidence(confidences, winner),
             "legible": all(r.legible for _, _, r in windows),
             "flagged_fields": flagged_union,
             "field_reviews": [r.model_dump() for r in deduped],

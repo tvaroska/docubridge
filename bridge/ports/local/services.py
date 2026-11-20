@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast, override
 
 from bridge.extraction.fixture import FixtureExtractor
 
@@ -18,6 +19,17 @@ from ..protocols import (
     validate_attachment_slot,
     validate_landing_key,
 )
+
+if TYPE_CHECKING:
+    from bridge.edge.skills import SkillMeta
+    from bridge.outbound import (
+        A2ASendResult,
+        OutboundClient,
+        OutboundTransport,
+        _HttpClientLike,
+    )
+    from bridge.scheduler import VirtualClock
+    from contract.extraction import ExtractionResult
 
 # The landing directory of the local email_ingress adapter (S0-arch-13). No silent
 # default: an unset dir fails loud at first use (never at construction).
@@ -44,12 +56,12 @@ class LocalSkillRegistry(SkillRegistryPort):
 
         return Path(os.environ.get("BRIDGE_SKILLS_DIR", "").strip() or SKILLS_DIR)
 
-    def list_skills(self) -> list[Any]:
+    def list_skills(self) -> list[SkillMeta]:
         """List all skill packages discovered in the local filesystem skills directory."""
         from bridge.edge.skills import listed_skill_meta
 
         root = self._root()
-        skills = []
+        skills: list[SkillMeta] = []
         if root.exists():
             for child in sorted(root.iterdir()):
                 if child.is_dir() and (child / "SKILL.md").exists():
@@ -58,7 +70,7 @@ class LocalSkillRegistry(SkillRegistryPort):
                         skills.append(meta)
         return skills
 
-    def get_skill(self, name: str) -> Any:
+    def get_skill(self, name: str) -> SkillMeta:
         """Load a single skill package definition from the local filesystem by name."""
         from bridge.edge.skills import skill_meta_from_dir
 
@@ -69,7 +81,7 @@ class LocalSkillRegistry(SkillRegistryPort):
 
     def install_skill(
         self, name: str, skill_md: str, assets: dict[str, str] | None = None
-    ) -> Any:
+    ) -> SkillMeta:
         """Copy and register a skill package directory into the local skills root."""
         import re
 
@@ -118,7 +130,7 @@ class LocalSkillRegistry(SkillRegistryPort):
 class LocalScheduler(SchedulerPort):
     """Local scheduler adapter (PORT-6): an in-process VirtualClock."""
 
-    def build_scheduler(self) -> Any:
+    def build_scheduler(self) -> VirtualClock:
         """Construct a deterministic virtual-clock scheduler for local execution."""
         from bridge.scheduler import VirtualClock
 
@@ -128,12 +140,15 @@ class LocalScheduler(SchedulerPort):
 class LocalA2AClient(A2AClientPort):
     """Local `a2a_client` adapter (PORT-7, OUT-1): outbound client over an injected fake transport."""
 
-    def build_client(self, transport: Any = None) -> Any:
+    def build_client(
+        self, transport: OutboundTransport | None = None
+    ) -> OutboundClient:
         """Construct an in-memory outbound A2A client and transport for local execution."""
         from bridge.outbound import OutboundClient
 
         return OutboundClient(transport)
 
+    @override
     def send_message(
         self,
         *,
@@ -143,9 +158,9 @@ class LocalA2AClient(A2AClientPort):
         expected_skill: str | None = None,
         context_id: str | None = None,
         headers: dict[str, str] | None = None,
-        http_client: Any = None,
+        http_client: object = None,
         timeout: float = 20.0,
-    ) -> Any:
+    ) -> A2ASendResult:
         """Discover a peer Agent Card and invoke canonical A2A v1.0 JSON-RPC ``SendMessage``."""
         from bridge.outbound import send_a2a_message
 
@@ -156,7 +171,7 @@ class LocalA2AClient(A2AClientPort):
             expected_skill=expected_skill,
             context_id=context_id,
             headers=headers,
-            http_client=http_client,
+            http_client=cast("_HttpClientLike | None", http_client),
             timeout=timeout,
         )
 
@@ -167,16 +182,17 @@ class LocalExtraction(ExtractionPort):
     def __init__(self) -> None:
         self._engine = FixtureExtractor()
 
+    @override
     async def extract(
         self,
         artifact_name: str,
         *,
         target_doctype: str | None = None,
-        candidate_doctypes: Any = None,
-        requested_fields: Any = None,
+        candidate_doctypes: Sequence[str] | None = None,
+        requested_fields: Sequence[str] | None = None,
         context_set: str | None = None,
         ontology_revision: str | None = None,
-    ) -> Any:
+    ) -> ExtractionResult:
         """Run deterministic local document extraction over bytes and filename."""
         return await self._engine.extract(
             artifact_name,
@@ -280,6 +296,7 @@ class LocalEmailIngress(EmailIngressPort):
             raise KeyError(key)
         return path.read_bytes()
 
+    @override
     def put_attachment(
         self, key: str, index: int, filename: str, data: bytes, mime_type: str
     ) -> str:
@@ -290,7 +307,7 @@ class LocalEmailIngress(EmailIngressPort):
         self._create_only(path, data)
         return f"file://{path.as_posix()}"
 
-    def mark_processed(self, key: str, outcome: dict) -> bool:
+    def mark_processed(self, key: str, outcome: dict[str, Any]) -> bool:
         """Mark an inbound email message ID as processed in the local ingress store."""
         import json
 
@@ -298,7 +315,7 @@ class LocalEmailIngress(EmailIngressPort):
         body = json.dumps(outcome, sort_keys=True).encode()
         return self._create_only(self._contained("processed", f"{key}.json"), body)
 
-    def processed(self, key: str) -> dict | None:
+    def processed(self, key: str) -> dict[str, Any] | None:
         """Return the processed outcome marker for `key`, or `None` if unprocessed."""
         import json
 
@@ -306,4 +323,4 @@ class LocalEmailIngress(EmailIngressPort):
         path = self._contained("processed", f"{key}.json")
         if not path.exists():
             return None
-        return json.loads(path.read_text())
+        return cast(dict[str, Any], json.loads(path.read_text()))

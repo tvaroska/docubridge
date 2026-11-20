@@ -22,10 +22,11 @@ Isolation: imports ``contract/`` + ``bridge.*`` + stdlib only; NEVER ``agents/``
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 from bridge.followup import FollowupLadder, dispatch
 from bridge.portal.store import PortalStore
-from bridge.scheduler import Scheduler, VirtualClock
+from bridge.scheduler import Alarm, Scheduler, VirtualClock
 from bridge.sla import load_sla_policy
 from contract.enums import LifecycleStatus
 
@@ -43,8 +44,7 @@ class TimewarpHost:
         self._ladders: dict[str, FollowupLadder] = {}  # session_id -> ladder
         self._paused = False
 
-    # ------------------------------------------------------------------ arm --
-    def arm(self, session_id: str) -> dict:
+    def arm(self, session_id: str) -> dict[str, Any]:
         """Arm a session's SLA ladder from tick 0 (idempotent: re-arm resets its ladder).
 
         Reads the session record from the shared store (``KeyError`` → host maps 404),
@@ -60,8 +60,7 @@ class TimewarpHost:
         self._store.put(replace(rec, lifecycle=LifecycleStatus.on_track))
         return self.state()
 
-    # -------------------------------------------------------------- advance --
-    def advance(self, ticks: int) -> dict:
+    def advance(self, ticks: int) -> dict[str, Any]:
         """Advance the virtual clock by ``ticks``, firing due ladder steps exactly once.
 
         Rejected while paused (``TimewarpPaused``). ``VirtualClock`` raises ``ValueError``
@@ -73,7 +72,7 @@ class TimewarpHost:
         self._drain()
         return self.state()
 
-    def advance_to(self, tick: int) -> dict:
+    def advance_to(self, tick: int) -> dict[str, Any]:
         """Advance the clock to an absolute ``tick`` (scrubber semantics)."""
         if self._paused:
             raise TimewarpPaused("time-warp is paused; resume before advancing")
@@ -81,7 +80,7 @@ class TimewarpHost:
         self._drain()
         return self.state()
 
-    def step(self) -> dict:
+    def step(self) -> dict[str, Any]:
         """Advance by one tick (single-step)."""
         return self.advance(1)
 
@@ -97,7 +96,7 @@ class TimewarpHost:
                 return
             self._apply(more)
 
-    def _apply(self, fired: list) -> None:
+    def _apply(self, fired: list[Alarm]) -> None:
         """Route fired alarms to their ladders and stamp the new lifecycle onto the store."""
         for session_id, ladder in self._ladders.items():
             events = dispatch(ladder, fired, self._clock)
@@ -105,18 +104,17 @@ class TimewarpHost:
                 rec = self._store.get(session_id)
                 self._store.put(replace(rec, lifecycle=ladder.lifecycle))
 
-    # ---------------------------------------------------------- pause/reset --
-    def pause(self) -> dict:
+    def pause(self) -> dict[str, Any]:
         """Pause automatic virtual-clock progression on the timewarp host."""
         self._paused = True
         return self.state()
 
-    def resume(self) -> dict:
+    def resume(self) -> dict[str, Any]:
         """Resume virtual-clock progression on the timewarp host."""
         self._paused = False
         return self.state()
 
-    def reset(self) -> dict:
+    def reset(self) -> dict[str, Any]:
         """Replay: rebuild the clock, clear ladders, and restore every armed record's
         lifecycle to ``on_track`` (the dashboard escalation queue empties). Re-arming from
         tick 0 is a fresh ``arm`` call."""
@@ -132,8 +130,7 @@ class TimewarpHost:
             self._store.put(replace(rec, lifecycle=LifecycleStatus.on_track))
         return self.state()
 
-    # -------------------------------------------------------------- state ---
-    def state(self) -> dict:
+    def state(self) -> dict[str, Any]:
         """The host's snake_case JSON state: clock, pause flag, pending alarms, exchanges."""
         pending = [
             {"key": a.key, "fire_at": a.fire_at, "step": _step_value(a.payload)}

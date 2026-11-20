@@ -30,8 +30,8 @@ registry afterwards (S4-usecase-4) — opens its RFP onto the same store the RFP
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Iterable
-from typing import TYPE_CHECKING, Any
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
+from typing import TYPE_CHECKING, Any, cast
 
 from a2a.server.context import ServerCallContext
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -66,11 +66,16 @@ from bridge.telemetry import OtelAsgiMiddleware
 
 if TYPE_CHECKING:
     import httpx
+    from a2a.server.agent_execution import RequestContextBuilder
+    from a2a.server.events import QueueManager
     from a2a.server.tasks import PushNotificationConfigStore, PushNotificationSender
     from starlette.authentication import AuthenticationBackend
 
     from bridge.dashboard.board import RfpBoard
     from bridge.edge.llm_leg import LlmLeg
+    from bridge.knowledge_catalog import KnowledgeCatalog
+    from bridge.operational_store import OperationalStore
+    from bridge.vault import AuditVaultStore
 
 # The JSON-RPC endpoint path (the card's interface url points here).
 RPC_PATH = "/"
@@ -92,8 +97,33 @@ class EdgeRequestHandler(DefaultRequestHandler):
     raises before its first yield, which the JSON-RPC dispatcher returns as an error.
     """
 
-    def __init__(self, *, agent_executor: CollectExecutor, **kwargs: Any) -> None:
-        super().__init__(agent_executor=agent_executor, **kwargs)
+    def __init__(  # noqa: PLR0913 - mirrors DefaultRequestHandler.__init__
+        self,
+        *,
+        agent_executor: CollectExecutor,
+        task_store: TaskStore,
+        agent_card: AgentCard,
+        queue_manager: QueueManager | None = None,
+        push_config_store: PushNotificationConfigStore | None = None,
+        push_sender: PushNotificationSender | None = None,
+        request_context_builder: RequestContextBuilder | None = None,
+        extended_agent_card: AgentCard | None = None,
+        extended_card_modifier: Callable[
+            [AgentCard, ServerCallContext], Awaitable[AgentCard]
+        ]
+        | None = None,
+    ) -> None:
+        super().__init__(
+            agent_executor=agent_executor,
+            task_store=task_store,
+            agent_card=agent_card,
+            queue_manager=queue_manager,
+            push_config_store=push_config_store,
+            push_sender=push_sender,
+            request_context_builder=request_context_builder,
+            extended_agent_card=extended_agent_card,
+            extended_card_modifier=extended_card_modifier,
+        )
         self._edge_executor = agent_executor
 
     async def _admit(
@@ -114,7 +144,7 @@ class EdgeRequestHandler(DefaultRequestHandler):
     ) -> Message | Task:
         """Handle a synchronous A2A message/send request with caller identity propagation."""
         await self._admit(params, context)
-        return await super().on_message_send(params, context)
+        return cast(Message | Task, await super().on_message_send(params, context))
 
     async def on_message_send_stream(
         self, params: SendMessageRequest, context: ServerCallContext
@@ -125,7 +155,68 @@ class EdgeRequestHandler(DefaultRequestHandler):
             yield event
 
 
-def build_a2a_app(
+def _build_proxy_a2a_app(
+    active_a2a_engine: object,
+    *,
+    url: str,
+    artifact_store: BaseArtifactService | None,
+    rfp_board: RfpBoard | None,
+    auth_backend: AuthenticationBackend | None,
+) -> Starlette:
+    if (
+        isinstance(active_a2a_engine, BridgeA2aAgentEngine)
+        and artifact_store is None
+        and active_a2a_engine._injected.get("artifact_store") is not None
+    ):
+        store = active_a2a_engine.artifact_store
+    else:
+        store = artifact_store or build_artifact_store()
+        if (
+            isinstance(active_a2a_engine, BridgeA2aAgentEngine)
+            and active_a2a_engine._app is None
+            and active_a2a_engine._injected.get("artifact_store") is None
+        ):
+            active_a2a_engine._injected["artifact_store"] = store
+
+    board = rfp_board or (
+        active_a2a_engine.rfp_board
+        if isinstance(active_a2a_engine, BridgeA2aAgentEngine)
+        else rfp_board_from_env()
+    )
+    routes = [
+        *build_remote_a2a_routes(active_a2a_engine, url=url, rpc_path=RPC_PATH),
+        Mount(
+            ARTIFACTS_PREFIX,
+            app=build_fetch_app(store, signer=build_fetch_signer()),
+        ),
+    ]
+    edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge_proxy")]
+    if auth_backend is not None:
+        edge_mw.append(Middleware(AuthenticationMiddleware, backend=auth_backend))
+    app = Starlette(routes=routes, middleware=edge_mw)
+    app.state.rfp_board = board
+    app.state.a2a_engine = active_a2a_engine
+    return app
+
+
+def _resolve_push_sender(
+    push_sender: PushNotificationSender | None,
+    push_httpx_client: httpx.AsyncClient | None,
+    config_store: PushNotificationConfigStore,
+) -> PushNotificationSender:
+    if push_sender is not None:
+        return push_sender
+    from a2a.server.tasks import BasePushNotificationSender
+
+    client = push_httpx_client
+    if client is None:
+        import httpx
+
+        client = httpx.AsyncClient()
+    return BasePushNotificationSender(httpx_client=client, config_store=config_store)
+
+
+def build_a2a_app(  # noqa: PLR0913 - keyword-only ASGI app builder
     *,
     url: str = DEFAULT_URL,
     executor: CollectExecutor | None = None,
@@ -141,10 +232,10 @@ def build_a2a_app(
     auth_backend: AuthenticationBackend | None = None,
     satisfaction: SatisfactionAssessor | str | None = None,
     rfp_board: RfpBoard | None = None,
-    a2a_engine: Any = None,
-    vault_store: Any = None,
-    operational_store: Any = None,
-    knowledge_catalog: Any = None,
+    a2a_engine: object = None,
+    vault_store: AuditVaultStore | None = None,
+    operational_store: OperationalStore | None = None,
+    knowledge_catalog: KnowledgeCatalog | None = None,
 ) -> Starlette:
     """Build the Bridge A2A Starlette app (with the ART-2 fetch endpoint).
 
@@ -225,40 +316,13 @@ def build_a2a_app(
     # mounted on the thin edge over the shared artifact store.
     active_a2a_engine = resolve_a2a_engine(a2a_engine)
     if active_a2a_engine is not None:
-        if (
-            isinstance(active_a2a_engine, BridgeA2aAgentEngine)
-            and artifact_store is None
-            and active_a2a_engine._injected.get("artifact_store") is not None
-        ):
-            store = active_a2a_engine.artifact_store
-        else:
-            store = artifact_store or build_artifact_store()
-            if (
-                isinstance(active_a2a_engine, BridgeA2aAgentEngine)
-                and active_a2a_engine._app is None
-                and active_a2a_engine._injected.get("artifact_store") is None
-            ):
-                active_a2a_engine._injected["artifact_store"] = store
-
-        board = rfp_board or (
-            active_a2a_engine.rfp_board
-            if isinstance(active_a2a_engine, BridgeA2aAgentEngine)
-            else rfp_board_from_env()
+        return _build_proxy_a2a_app(
+            active_a2a_engine,
+            url=url,
+            artifact_store=artifact_store,
+            rfp_board=rfp_board,
+            auth_backend=auth_backend,
         )
-        routes = [
-            *build_remote_a2a_routes(active_a2a_engine, url=url, rpc_path=RPC_PATH),
-            Mount(
-                ARTIFACTS_PREFIX,
-                app=build_fetch_app(store, signer=build_fetch_signer()),
-            ),
-        ]
-        edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge_proxy")]
-        if auth_backend is not None:
-            edge_mw.append(Middleware(AuthenticationMiddleware, backend=auth_backend))
-        app = Starlette(routes=routes, middleware=edge_mw)
-        app.state.rfp_board = board
-        app.state.a2a_engine = active_a2a_engine
-        return app
 
     card = agent_card or build_agent_card(url)
     # ART-2 store: GCS on deploy (BRIDGE_ARTIFACT_BUCKET) else in-memory (P7-3);
@@ -307,20 +371,9 @@ def build_a2a_app(
     active_push_config_store = guarded_push_config_store(
         push_config_store or store_port.build_push_config_store()
     )
-    if push_sender is None:
-        from a2a.server.tasks import BasePushNotificationSender
-
-        # P7: bind to app lifespan / close on shutdown
-        client = push_httpx_client
-        if client is None:
-            import httpx
-
-            client = httpx.AsyncClient()
-        active_push_sender = BasePushNotificationSender(
-            httpx_client=client, config_store=active_push_config_store
-        )
-    else:
-        active_push_sender = push_sender
+    active_push_sender = _resolve_push_sender(
+        push_sender, push_httpx_client, active_push_config_store
+    )
 
     handler = EdgeRequestHandler(
         agent_executor=active_executor,
@@ -402,7 +455,7 @@ def serve_container() -> None:  # pragma: no cover
     port = int(os.environ.get("PORT", "8080"))
     app = build_a2a_app(url=resolved_card_url(None))
     # 0.0.0.0 is required by Cloud Run; ingress is Gateway-locked on the deployed path.
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104 - Cloud Run requires 0.0.0.0 bind behind Gateway
 
 
 if __name__ == "__main__":  # pragma: no cover

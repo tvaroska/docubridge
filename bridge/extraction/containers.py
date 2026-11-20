@@ -15,47 +15,33 @@ import mimetypes
 import posixpath
 import re
 import zipfile
-from collections.abc import Sequence
+from dataclasses import dataclass
 from email import policy as email_policy
-from email.message import EmailMessage
-from html.parser import HTMLParser
-from typing import Literal
+from email.message import EmailMessage, Message, MIMEPart
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from bridge.extraction.container_advisories import (
+    AdvisoryKind as AdvisoryKind,
+)
+from bridge.extraction.container_advisories import (
+    ReplyItemAdvisory as ReplyItemAdvisory,
+)
+from bridge.extraction.container_advisories import (
+    apply_advisories_to_requirements as apply_advisories_to_requirements,
+)
+from bridge.extraction.container_advisories import (
+    parse_html_reply_advisories as parse_html_reply_advisories,
+)
 from bridge.extraction.ole2_msg import (
-    OLE2_MAGIC,
+    OLE2_MAGIC as OLE2_MAGIC,
+)
+from bridge.extraction.ole2_msg import (
     Ole2CompoundReader,
     Ole2DirEntry,
     decode_mapi_binary,
     decode_mapi_text,
 )
-from contract.wire import Requirement
-
-AdvisoryKind = Literal[
-    "deferred_external_quote",
-    "attested_carry_forward",
-    "population_wide_exempt",
-    "pending_unavailable",
-    "general_note",
-]
-
-_ISO_DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
-_SLASH_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(20\d{2})\b")
-
-
-class ReplyItemAdvisory(BaseModel):
-    """Structured item-status advisory parsed from an inline HTML email reply table."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    item_key: str
-    raw_status: str
-    kind: AdvisoryKind
-    recommended_requirement_status: Literal["waiver_recommended", "required"]
-    suggested_due_date: str | None = None
-    note: str = ""
-    source_envelope_id: str | None = None
 
 
 class ExtractedEnvelopeBody(BaseModel):
@@ -118,6 +104,16 @@ def _sanitize_member_filename(raw_name: str, fallback: str = "attachment.bin") -
     return re.sub(r"[\x00-\x1f\x7f]+", "_", base)
 
 
+_EXT_MIME: dict[str, str] = {
+    ".msg": "application/vnd.ms-outlook",
+    ".eml": "message/rfc822",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xlsm": "application/vnd.ms-excel.sheet.macroenabled.12",
+    ".rtf": "application/rtf",
+}
+
+
 def _guess_mime(filename: str, explicit_mime: str | None = None) -> str:
     """Resolve a canonical MIME type from an explicit header or filename suffix."""
     if explicit_mime and explicit_mime.strip():
@@ -125,271 +121,26 @@ def _guess_mime(filename: str, explicit_mime: str | None = None) -> str:
         if lowered and lowered != "application/octet-stream":
             return lowered
     lower_name = filename.lower()
-    if lower_name.endswith(".msg"):
-        return "application/vnd.ms-outlook"
-    if lower_name.endswith(".eml"):
-        return "message/rfc822"
-    if lower_name.endswith(".docx"):
-        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    if lower_name.endswith(".xlsx"):
-        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    if lower_name.endswith(".xlsm"):
-        return "application/vnd.ms-excel.sheet.macroenabled.12"
-    if lower_name.endswith(".rtf"):
-        return "application/rtf"
+    for ext, mime in _EXT_MIME.items():
+        if lower_name.endswith(ext):
+            return mime
     guessed, _ = mimetypes.guess_type(filename)
     return guessed or "application/octet-stream"
 
 
-def _extract_date_hint(text: str) -> str | None:
-    """Extract an ISO YYYY-MM-DD date from free-text status notes when present."""
-    iso_match = _ISO_DATE_RE.search(text)
-    if iso_match:
-        return iso_match.group(1)
-    slash_match = _SLASH_DATE_RE.search(text)
-    if slash_match:
-        month, day, year = (
-            int(slash_match.group(1)),
-            int(slash_match.group(2)),
-            int(slash_match.group(3)),
-        )
-        if 1 <= month <= 12 and 1 <= day <= 31:
-            return f"{year:04d}-{month:02d}-{day:02d}"
-    return None
-
-
-def _classify_advisory_row(
-    item_key: str,
-    raw_status: str,
-    note_text: str,
-    source_envelope_id: str | None,
-) -> ReplyItemAdvisory:
-    """Classify an HTML reply-table row into one of the five canonical advisory kinds."""
-    combined = f"{raw_status} {note_text}".strip()
-    lower = combined.lower()
-    due_date = _extract_date_hint(combined)
-
-    if any(
-        phrase in lower
-        for phrase in (
-            "carry forward",
-            "carried forward",
-            "no change",
-            "unchanged",
-            "remain in force",
-            "attested",
-            "incumbent terms",
-        )
-    ):
-        kind: AdvisoryKind = "attested_carry_forward"
-        req_status: Literal["waiver_recommended", "required"] = "waiver_recommended"
-    elif any(
-        phrase in lower
-        for phrase in (
-            "not applicable",
-            "n/a",
-            "population-wide exempt",
-            "population exempt",
-            "no eligible",
-            "exempt",
-            "waived",
-        )
-    ):
-        kind = "population_wide_exempt"
-        req_status = "waiver_recommended"
-    elif any(
-        phrase in lower
-        for phrase in (
-            "external quote",
-            "quoted separately",
-            "separate carrier",
-            "external portal",
-            "separate submission",
-            "deferred external",
-            "standalone desk",
-        )
-    ):
-        kind = "deferred_external_quote"
-        req_status = "required" if due_date is not None else "waiver_recommended"
-    elif any(
-        phrase in lower
-        for phrase in (
-            "pending",
-            "unavailable",
-            "awaiting",
-            "to follow",
-            "in progress",
-            "forthcoming",
-            "expected by",
-        )
-    ):
-        kind = "pending_unavailable"
-        req_status = "required"
-    else:
-        kind = "general_note"
-        req_status = "required"
-
-    return ReplyItemAdvisory(
-        item_key=item_key.strip(),
-        raw_status=raw_status.strip(),
-        kind=kind,
-        recommended_requirement_status=req_status,
-        suggested_due_date=due_date,
-        note=note_text.strip(),
-        source_envelope_id=source_envelope_id,
-    )
-
-
-class _HtmlTableParser(HTMLParser):
-    """Minimal stdlib HTML table extractor for structured counterparty reply tables."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.tables: list[list[list[str]]] = []
-        self._in_table = False
-        self._in_row = False
-        self._in_cell = False
-        self._current_table: list[list[str]] = []
-        self._current_row: list[str] = []
-        self._cell_buf: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        del attrs
-        t = tag.lower()
-        if t == "table":
-            self._in_table = True
-            self._current_table = []
-        elif t == "tr" and self._in_table:
-            self._in_row = True
-            self._current_row = []
-        elif t in ("td", "th") and self._in_row:
-            self._in_cell = True
-            self._cell_buf = []
-        elif t == "br" and self._in_cell:
-            self._cell_buf.append(" ")
-
-    def handle_data(self, data: str) -> None:
-        if self._in_cell:
-            self._cell_buf.append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        t = tag.lower()
-        if t in ("td", "th") and self._in_cell:
-            cell_text = re.sub(r"\s+", " ", "".join(self._cell_buf)).strip()
-            self._current_row.append(cell_text)
-            self._in_cell = False
-        elif t == "tr" and self._in_row:
-            if any(self._current_row):
-                self._current_table.append(self._current_row)
-            self._in_row = False
-        elif t == "table" and self._in_table:
-            if self._current_table:
-                self.tables.append(self._current_table)
-            self._in_table = False
-
-
-def parse_html_reply_advisories(
-    html_text: str,
-    *,
-    source_envelope_id: str | None = None,
-) -> tuple[ReplyItemAdvisory, ...]:
-    """Parse inline HTML reply status tables into structured ``ReplyItemAdvisory`` items."""
-    if not html_text or "<table" not in html_text.lower():
-        return ()
-    parser = _HtmlTableParser()
-    parser.feed(html_text)
-    advisories: list[ReplyItemAdvisory] = []
-
-    header_tokens = {
-        "item",
-        "document",
-        "requirement",
-        "line",
-        "coverage",
-        "schedule",
-    } | {"status", "disposition", "notes", "comment", "comments"}
-    for rows in parser.tables:
-        if not rows:
-            continue
-        start_idx = 0
-        first_lower = [c.lower().strip() for c in rows[0]]
-        if len(rows) >= 2 and any(
-            any(tok in col for tok in header_tokens) for col in first_lower
-        ):
-            start_idx = 1
-        for row in rows[start_idx:]:
-            if len(row) < 2:
-                continue
-            item_key = row[0].strip()
-            raw_status = row[1].strip()
-            note_text = " | ".join(c.strip() for c in row[2:] if c.strip())
-            if not item_key or not (raw_status or note_text):
-                continue
-            advisories.append(
-                _classify_advisory_row(
-                    item_key=item_key,
-                    raw_status=raw_status,
-                    note_text=note_text,
-                    source_envelope_id=source_envelope_id,
-                )
-            )
-    return tuple(advisories)
-
-
-def apply_advisories_to_requirements(
-    requirements: Sequence[Requirement],
-    advisories: Sequence[ReplyItemAdvisory],
-) -> tuple[list[Requirement], str | None]:
-    """Annotate Sense-B ``Requirement`` items with reply-table advisories (ADR-14 D4).
-
-    Never sets ``RequirementStatus.waived`` on Bridge authority; surfaces
-    ``waiver_recommended:<kind>`` for the calling agent to accept or decline.
-    """
-    by_norm_key: dict[str, ReplyItemAdvisory] = {
-        re.sub(r"[^a-z0-9]+", "", adv.item_key.lower()): adv for adv in advisories
-    }
-    updated: list[Requirement] = []
-    latest_due: str | None = None
-    for req in requirements:
-        norm_item = re.sub(r"[^a-z0-9]+", "", req.item.lower())
-        matched = by_norm_key.get(norm_item)
-        if matched is None:
-            for key_slug, cand in by_norm_key.items():
-                if key_slug and (key_slug in norm_item or norm_item in key_slug):
-                    matched = cand
-                    break
-        if matched is None:
-            updated.append(req)
-            continue
-        is_waiver_rec = matched.recommended_requirement_status == "waiver_recommended"
-        if matched.suggested_due_date and (
-            latest_due is None or matched.suggested_due_date > latest_due
-        ):
-            latest_due = matched.suggested_due_date
-        msg_parts = [matched.raw_status]
-        if is_waiver_rec:
-            msg_parts.insert(0, "waiver recommended")
-        if matched.note:
-            msg_parts.append(matched.note)
-        if matched.suggested_due_date:
-            msg_parts.append(f"due {matched.suggested_due_date}")
-        reason = f"waiver_recommended:{matched.kind}" if is_waiver_rec else matched.kind
-        updated.append(
-            req.model_copy(
-                update={
-                    "status": req.status,
-                    "reason_code": reason,
-                    "message": " — ".join(p for p in msg_parts if p),
-                }
-            )
-        )
-    return updated, latest_due
+@dataclass(frozen=True)
+class _NodeContext:
+    filename: str
+    parent_envelope_id: str | None
+    envelope_chain: tuple[str, ...]
+    depth: int
+    mime_type: str = "application/octet-stream"
 
 
 class _UnpackBudget:
     """Mutable recursion and decompression budget shared across nested unpack steps."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only unpack limits
         self,
         *,
         context_id: str,
@@ -433,16 +184,7 @@ class _UnpackBudget:
                 f"Unpacked byte total {self.total_bytes} exceeds max_total_bytes={self.max_total_bytes}"
             )
 
-    def record_leaf(
-        self,
-        *,
-        filename: str,
-        mime_type: str,
-        data: bytes,
-        parent_envelope_id: str | None,
-        envelope_chain: tuple[str, ...],
-        depth: int,
-    ) -> None:
+    def record_leaf(self, data: bytes, ctx: _NodeContext) -> None:
         self.charge_bytes(len(data))
         digest = hashlib.sha256(data).hexdigest()
         if self.deduplicate and digest in self.seen_sha256:
@@ -458,15 +200,15 @@ class _UnpackBudget:
         self.artifacts.append(
             UnpackedArtifact(
                 artifact_id=f"{self.context_id}:art-{self.file_counter}",
-                filename=_sanitize_member_filename(filename),
-                mime_type=mime_type,
+                filename=_sanitize_member_filename(ctx.filename),
+                mime_type=ctx.mime_type,
                 data=data,
                 sha256=digest,
                 size_bytes=len(data),
                 context_id=self.context_id,
-                parent_envelope_id=parent_envelope_id,
-                envelope_chain=envelope_chain,
-                depth=depth,
+                parent_envelope_id=ctx.parent_envelope_id,
+                envelope_chain=ctx.envelope_chain,
+                depth=ctx.depth,
             )
         )
 
@@ -497,29 +239,79 @@ def _is_eml_payload(data: bytes, filename: str, mime_type: str) -> bool:
     return head.startswith((b"From:", b"MIME-Version:", b"Subject:", b"Received:"))
 
 
+def _unpack_ole2_attachment(
+    reader: Ole2CompoundReader,
+    att_dir: Ole2DirEntry,
+    idx: int,
+    parent_ctx: _NodeContext,
+    budget: _UnpackBudget,
+) -> None:
+    att_streams: dict[str, bytes] = {}
+    embedded_msg_storage: Ole2DirEntry | None = None
+    for node in reader.list_children(att_dir):
+        if node.obj_type == 2:
+            att_streams[node.name] = reader.read_stream(node)
+        elif node.obj_type == 1 and node.name.upper() == "__SUBSTG1.0_3701000D":
+            embedded_msg_storage = node
+
+    att_name = (
+        decode_mapi_text(att_streams, "3707")
+        or decode_mapi_text(att_streams, "3704")
+        or f"attachment-{idx}.bin"
+    )
+    att_name = _sanitize_member_filename(att_name, fallback=f"attachment-{idx}.bin")
+    att_mime = _guess_mime(att_name, decode_mapi_text(att_streams, "370E"))
+
+    if embedded_msg_storage is not None:
+        child_name = (
+            att_name if att_name.lower().endswith(".msg") else f"{att_name}.msg"
+        )
+        _unpack_ole2_storage(
+            reader,
+            embedded_msg_storage,
+            _NodeContext(
+                filename=child_name,
+                parent_envelope_id=parent_ctx.parent_envelope_id,
+                envelope_chain=parent_ctx.envelope_chain,
+                depth=parent_ctx.depth,
+                mime_type="application/vnd.ms-outlook",
+            ),
+            budget,
+        )
+        return
+
+    att_bytes = decode_mapi_binary(att_streams, "3701")
+    if att_bytes is not None:
+        _unpack_node(
+            att_bytes,
+            _NodeContext(
+                filename=att_name,
+                mime_type=att_mime,
+                parent_envelope_id=parent_ctx.parent_envelope_id,
+                envelope_chain=parent_ctx.envelope_chain,
+                depth=parent_ctx.depth,
+            ),
+            budget,
+        )
+
+
 def _unpack_ole2_storage(
     reader: Ole2CompoundReader,
     storage_node: Ole2DirEntry,
-    *,
-    filename: str,
-    parent_envelope_id: str | None,
-    envelope_chain: tuple[str, ...],
-    depth: int,
+    ctx: _NodeContext,
     budget: _UnpackBudget,
 ) -> None:
     """Extract MAPI headers, body, advisories, and child attachments from a `.msg` storage."""
-    if depth > budget.max_depth:
+    if ctx.depth > budget.max_depth:
         raise ValueError(
-            f"Container nesting depth {depth} exceeds max_depth={budget.max_depth}"
+            f"Container nesting depth {ctx.depth} exceeds max_depth={budget.max_depth}"
         )
 
     env_id = budget.next_envelope_id()
-    next_chain = (*envelope_chain, env_id)
-    children = reader.list_children(storage_node)
-
+    next_chain = (*ctx.envelope_chain, env_id)
     streams: dict[str, bytes] = {}
     attach_storages: list[Ole2DirEntry] = []
-    for child in children:
+    for child in reader.list_children(storage_node):
         if child.obj_type == 2:
             streams[child.name] = reader.read_stream(child)
         elif child.obj_type == 1 and child.name.lower().startswith(
@@ -544,8 +336,8 @@ def _unpack_ole2_storage(
     budget.envelopes.append(
         ExtractedEnvelopeBody(
             envelope_id=env_id,
-            filename=_sanitize_member_filename(filename, fallback="message.msg"),
-            parent_envelope_id=parent_envelope_id,
+            filename=_sanitize_member_filename(ctx.filename, fallback="message.msg"),
+            parent_envelope_id=ctx.parent_envelope_id,
             envelope_chain=next_chain,
             subject=subject,
             sender=sender,
@@ -557,70 +349,27 @@ def _unpack_ole2_storage(
     )
     budget.advisories.extend(advs)
 
+    child_parent_ctx = _NodeContext(
+        filename="",
+        parent_envelope_id=env_id,
+        envelope_chain=next_chain,
+        depth=ctx.depth + 1,
+    )
     for idx, att_dir in enumerate(attach_storages, start=1):
-        att_children = reader.list_children(att_dir)
-        att_streams: dict[str, bytes] = {}
-        embedded_msg_storage: Ole2DirEntry | None = None
-        for node in att_children:
-            if node.obj_type == 2:
-                att_streams[node.name] = reader.read_stream(node)
-            elif node.obj_type == 1 and node.name.upper() == "__SUBSTG1.0_3701000D":
-                embedded_msg_storage = node
-
-        att_name = (
-            decode_mapi_text(att_streams, "3707")
-            or decode_mapi_text(att_streams, "3704")
-            or f"attachment-{idx}.bin"
-        )
-        att_name = _sanitize_member_filename(att_name, fallback=f"attachment-{idx}.bin")
-        att_mime = _guess_mime(att_name, decode_mapi_text(att_streams, "370E"))
-
-        if embedded_msg_storage is not None:
-            _unpack_ole2_storage(
-                reader,
-                embedded_msg_storage,
-                filename=att_name
-                if att_name.lower().endswith(".msg")
-                else f"{att_name}.msg",
-                parent_envelope_id=env_id,
-                envelope_chain=next_chain,
-                depth=depth + 1,
-                budget=budget,
-            )
-            continue
-
-        att_bytes = decode_mapi_binary(att_streams, "3701")
-        if att_bytes is not None:
-            _unpack_node(
-                att_bytes,
-                filename=att_name,
-                mime_type=att_mime,
-                parent_envelope_id=env_id,
-                envelope_chain=next_chain,
-                depth=depth + 1,
-                budget=budget,
-            )
+        _unpack_ole2_attachment(reader, att_dir, idx, child_parent_ctx, budget)
 
 
-def _unpack_eml_bytes(
-    data: bytes,
-    *,
-    filename: str,
-    parent_envelope_id: str | None,
-    envelope_chain: tuple[str, ...],
-    depth: int,
-    budget: _UnpackBudget,
-) -> None:
+def _unpack_eml_bytes(data: bytes, ctx: _NodeContext, budget: _UnpackBudget) -> None:
     """Parse an RFC-5322 `.eml` message, extract bodies/advisories, and recurse attachments."""
-    if depth > budget.max_depth:
+    if ctx.depth > budget.max_depth:
         raise ValueError(
-            f"Container nesting depth {depth} exceeds max_depth={budget.max_depth}"
+            f"Container nesting depth {ctx.depth} exceeds max_depth={budget.max_depth}"
         )
     budget.charge_bytes(len(data))
-    msg: EmailMessage = email.message_from_bytes(data, policy=email_policy.default)  # type: ignore[assignment]
+    msg: EmailMessage = email.message_from_bytes(data, policy=email_policy.default)
 
     env_id = budget.next_envelope_id()
-    next_chain = (*envelope_chain, env_id)
+    next_chain = (*ctx.envelope_chain, env_id)
     subject = str(msg.get("Subject") or "").strip()
     sender = str(msg.get("From") or "").strip() or None
     raw_to = ",".join(
@@ -649,8 +398,8 @@ def _unpack_eml_bytes(
     budget.envelopes.append(
         ExtractedEnvelopeBody(
             envelope_id=env_id,
-            filename=_sanitize_member_filename(filename, fallback="message.eml"),
-            parent_envelope_id=parent_envelope_id,
+            filename=_sanitize_member_filename(ctx.filename, fallback="message.eml"),
+            parent_envelope_id=ctx.parent_envelope_id,
             envelope_chain=next_chain,
             subject=subject,
             sender=sender,
@@ -665,17 +414,19 @@ def _unpack_eml_bytes(
     for att_name, att_mime, att_bytes in child_items:
         _unpack_node(
             att_bytes,
-            filename=att_name,
-            mime_type=att_mime,
-            parent_envelope_id=env_id,
-            envelope_chain=next_chain,
-            depth=depth + 1,
-            budget=budget,
+            _NodeContext(
+                filename=att_name,
+                mime_type=att_mime,
+                parent_envelope_id=env_id,
+                envelope_chain=next_chain,
+                depth=ctx.depth + 1,
+            ),
+            budget,
         )
 
 
 def _collect_eml_part(
-    part: EmailMessage,
+    part: MIMEPart[str, str],
     plain_parts: list[str],
     html_parts: list[str],
     child_items: list[tuple[str, str, bytes]],
@@ -687,10 +438,10 @@ def _collect_eml_part(
 
     if ctype == "message/rfc822" and disp != "inline":
         payload = part.get_payload()
-        if isinstance(payload, list) and payload:
-            nested_bytes = payload[0].as_bytes()
-        else:
-            nested_bytes = part.as_bytes()
+        first = payload[0] if isinstance(payload, list) and payload else None
+        nested_bytes = (
+            first.as_bytes() if isinstance(first, Message) else part.as_bytes()
+        )
         child_items.append(
             (
                 _sanitize_member_filename(fname or "nested.eml"),
@@ -718,23 +469,55 @@ def _collect_eml_part(
         html_parts.append(str(part.get_content()))
 
 
-def _unpack_zip_bytes(
-    data: bytes,
-    *,
-    filename: str,
-    parent_envelope_id: str | None,
-    envelope_chain: tuple[str, ...],
-    depth: int,
+def _read_zip_member(
+    zf: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    safe_name: str,
     budget: _UnpackBudget,
-) -> None:
-    """Safely unpack a `.zip` archive with zip-bomb ratio, count, and byte-ceiling checks."""
-    if depth > budget.max_depth:
+) -> bytes:
+    if info.file_size > budget.max_entry_bytes:
         raise ValueError(
-            f"Container nesting depth {depth} exceeds max_depth={budget.max_depth}"
+            f"ZIP entry {safe_name!r} declared size {info.file_size} exceeds "
+            f"max_entry_bytes={budget.max_entry_bytes}"
+        )
+    comp_size = max(info.compress_size, 1)
+    if (
+        info.file_size > 65536
+        and (info.file_size / comp_size) > budget.max_compression_ratio
+    ):
+        raise ValueError(
+            f"ZIP entry {safe_name!r} compression ratio "
+            f"{info.file_size / comp_size:.1f} exceeds "
+            f"max_compression_ratio={budget.max_compression_ratio}"
+        )
+    buf = bytearray()
+    with zf.open(info, mode="r") as stream:
+        while chunk := stream.read(65536):
+            buf.extend(chunk)
+            if len(buf) > budget.max_entry_bytes:
+                raise ValueError(
+                    f"ZIP entry {safe_name!r} actual size exceeds "
+                    f"max_entry_bytes={budget.max_entry_bytes}"
+                )
+            if (
+                len(buf) > 65536
+                and (len(buf) / comp_size) > budget.max_compression_ratio
+            ):
+                raise ValueError(
+                    f"ZIP entry {safe_name!r} streaming compression ratio exceeds "
+                    f"max_compression_ratio={budget.max_compression_ratio}"
+                )
+    return bytes(buf)
+
+
+def _unpack_zip_bytes(data: bytes, ctx: _NodeContext, budget: _UnpackBudget) -> None:
+    """Safely unpack a `.zip` archive with zip-bomb ratio, count, and byte-ceiling checks."""
+    if ctx.depth > budget.max_depth:
+        raise ValueError(
+            f"Container nesting depth {ctx.depth} exceeds max_depth={budget.max_depth}"
         )
     env_id = budget.next_envelope_id()
-    next_chain = (*envelope_chain, env_id)
-    del filename
+    next_chain = (*ctx.envelope_chain, env_id)
 
     with zipfile.ZipFile(io.BytesIO(data), mode="r") as zf:
         members = [info for info in zf.infolist() if not info.is_dir()]
@@ -746,110 +529,38 @@ def _unpack_zip_bytes(
             safe_name = _sanitize_member_filename(info.filename)
             if safe_name.startswith("__MACOSX") or safe_name == ".DS_Store":
                 continue
-            if info.file_size > budget.max_entry_bytes:
-                raise ValueError(
-                    f"ZIP entry {safe_name!r} declared size {info.file_size} exceeds "
-                    f"max_entry_bytes={budget.max_entry_bytes}"
-                )
-            comp_size = max(info.compress_size, 1)
-            if (
-                info.file_size > 65536
-                and (info.file_size / comp_size) > budget.max_compression_ratio
-            ):
-                raise ValueError(
-                    f"ZIP entry {safe_name!r} compression ratio "
-                    f"{info.file_size / comp_size:.1f} exceeds "
-                    f"max_compression_ratio={budget.max_compression_ratio}"
-                )
-            buf = bytearray()
-            with zf.open(info, mode="r") as stream:
-                while True:
-                    chunk = stream.read(65536)
-                    if not chunk:
-                        break
-                    buf.extend(chunk)
-                    if len(buf) > budget.max_entry_bytes:
-                        raise ValueError(
-                            f"ZIP entry {safe_name!r} actual size exceeds "
-                            f"max_entry_bytes={budget.max_entry_bytes}"
-                        )
-                    if (
-                        len(buf) > 65536
-                        and (len(buf) / comp_size) > budget.max_compression_ratio
-                    ):
-                        raise ValueError(
-                            f"ZIP entry {safe_name!r} streaming compression ratio exceeds "
-                            f"max_compression_ratio={budget.max_compression_ratio}"
-                        )
-            member_bytes = bytes(buf)
+            member_bytes = _read_zip_member(zf, info, safe_name, budget)
             _unpack_node(
                 member_bytes,
-                filename=safe_name,
-                mime_type=_guess_mime(safe_name),
-                parent_envelope_id=env_id,
-                envelope_chain=next_chain,
-                depth=depth + 1,
-                budget=budget,
+                _NodeContext(
+                    filename=safe_name,
+                    mime_type=_guess_mime(safe_name),
+                    parent_envelope_id=env_id,
+                    envelope_chain=next_chain,
+                    depth=ctx.depth + 1,
+                ),
+                budget,
             )
 
 
-def _unpack_node(
-    data: bytes,
-    *,
-    filename: str,
-    mime_type: str,
-    parent_envelope_id: str | None,
-    envelope_chain: tuple[str, ...],
-    depth: int,
-    budget: _UnpackBudget,
-) -> None:
+def _unpack_node(data: bytes, ctx: _NodeContext, budget: _UnpackBudget) -> None:
     """Dispatch a single container or leaf payload according to format magic and suffix."""
-    if _is_zip_payload(data, filename):
-        _unpack_zip_bytes(
-            data,
-            filename=filename,
-            parent_envelope_id=parent_envelope_id,
-            envelope_chain=envelope_chain,
-            depth=depth,
-            budget=budget,
-        )
+    if _is_zip_payload(data, ctx.filename):
+        _unpack_zip_bytes(data, ctx, budget)
         return
-    if _is_msg_payload(data, filename):
+    if _is_msg_payload(data, ctx.filename):
         reader = Ole2CompoundReader(data, max_stream_bytes=budget.max_entry_bytes)
         if not reader.entries or reader.entries[0].obj_type != 5:
-            raise ValueError(f"Malformed OLE2 root entry in {filename!r}")
-        _unpack_ole2_storage(
-            reader,
-            reader.entries[0],
-            filename=filename,
-            parent_envelope_id=parent_envelope_id,
-            envelope_chain=envelope_chain,
-            depth=depth,
-            budget=budget,
-        )
+            raise ValueError(f"Malformed OLE2 root entry in {ctx.filename!r}")
+        _unpack_ole2_storage(reader, reader.entries[0], ctx, budget)
         return
-    if _is_eml_payload(data, filename, mime_type):
-        _unpack_eml_bytes(
-            data,
-            filename=filename,
-            parent_envelope_id=parent_envelope_id,
-            envelope_chain=envelope_chain,
-            depth=depth,
-            budget=budget,
-        )
+    if _is_eml_payload(data, ctx.filename, ctx.mime_type):
+        _unpack_eml_bytes(data, ctx, budget)
         return
-
-    budget.record_leaf(
-        filename=filename,
-        mime_type=mime_type,
-        data=data,
-        parent_envelope_id=parent_envelope_id,
-        envelope_chain=envelope_chain,
-        depth=depth,
-    )
+    budget.record_leaf(data, ctx)
 
 
-def unpack_submission_container(
+def unpack_submission_container(  # noqa: PLR0913 - public container unpack API with keyword limits
     data: bytes,
     filename: str,
     *,
@@ -890,12 +601,14 @@ def unpack_submission_container(
     safe_root_name = _sanitize_member_filename(filename, fallback="submission.bin")
     _unpack_node(
         data,
-        filename=safe_root_name,
-        mime_type=_guess_mime(safe_root_name),
-        parent_envelope_id=root_env,
-        envelope_chain=initial_chain,
-        depth=0,
-        budget=budget,
+        _NodeContext(
+            filename=safe_root_name,
+            mime_type=_guess_mime(safe_root_name),
+            parent_envelope_id=root_env,
+            envelope_chain=initial_chain,
+            depth=0,
+        ),
+        budget,
     )
     return ContainerUnpackResult(
         context_id=cleaned_ctx,

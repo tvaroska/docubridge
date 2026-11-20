@@ -24,6 +24,22 @@ from bridge.telemetry import trace_step
 
 if TYPE_CHECKING:
     from bridge.knowledge_catalog.catalog import KnowledgeCatalog
+    from contract.refinery import OntologyRevision
+
+_TERM_TARGET_BUCKETS: dict[str, set[str]] = {
+    "term.premium": {"total_premium"},
+    "term.deductible_to_limit_ratio": {
+        "deductible_to_limit_pct",
+        "total_deductible",
+        "total_coverage_limit",
+        "total_insured_value",
+    },
+    "term.loan_to_value_ratio": {
+        "total_coverage_limit",
+        "total_insured_value",
+        "total_deductible",
+    },
+}
 
 ViolationCode = Literal[
     "UNCERTIFIED_METRIC_BUCKET",
@@ -98,46 +114,174 @@ def _resolve_target_buckets(
     leaf = raw.split(".")[-1].strip().lower()
     if leaf in _CANONICAL_METRIC_BUCKETS:
         if leaf == "deductible_to_limit_pct":
-            return (
-                {
-                    "deductible_to_limit_pct",
-                    "total_deductible",
-                    "total_coverage_limit",
-                    "total_insured_value",
-                },
-                set(),
-            )
+            return set(_TERM_TARGET_BUCKETS["term.deductible_to_limit_ratio"]), set()
         return {leaf}, set()
 
     glossary = {
         t.term_id: t for t in catalog.list_glossary_terms(include_confidential=True)
     }
     term = glossary.get(raw)
-    if term is not None:
-        if term.term_id == "term.premium":
-            return {"total_premium"}, set()
-        if term.term_id == "term.deductible_to_limit_ratio":
-            return (
-                {
-                    "deductible_to_limit_pct",
-                    "total_deductible",
-                    "total_coverage_limit",
-                    "total_insured_value",
-                },
-                set(),
-            )
-        if term.term_id == "term.loan_to_value_ratio":
-            return (
-                {
-                    "total_coverage_limit",
-                    "total_insured_value",
-                    "total_deductible",
-                },
-                set(),
-            )
-        return {term.term_id}, {f.lower() for f in term.canonical_fields}
+    if term is None:
+        return set(), set()
+    mapped = _TERM_TARGET_BUCKETS.get(term.term_id)
+    if mapped is not None:
+        return set(mapped), set()
+    return {term.term_id}, {f.lower() for f in term.canonical_fields}
 
-    return set(), set()
+
+def _collect_certified_metric_refs(
+    active: OntologyRevision,
+    target_buckets: set[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    certified_edges: list[str] = []
+    certified_fields: list[str] = []
+    for edge in active.edges:
+        if edge.relation != "FEEDS_METRIC":
+            continue
+        edge_bucket = edge.target_id.split(".")[-1].strip().lower()
+        if target_buckets is not None and edge_bucket not in target_buckets:
+            continue
+        if edge.edge_id not in certified_edges:
+            certified_edges.append(edge.edge_id)
+        for field_name in edge.on_fields:
+            leaf = field_name.lower()
+            if leaf not in certified_fields:
+                certified_fields.append(leaf)
+    return certified_edges, certified_fields
+
+
+def _validate_metric_fields(  # noqa: PLR0913 - internal validator collector with explicit keyword params
+    *,
+    fields: Sequence[str],
+    metric_bucket: str,
+    norm_op: str,
+    doctype: str | None,
+    target_buckets: set[str],
+    glossary_fields: set[str],
+    resolved_catalog: KnowledgeCatalog,
+    active: OntologyRevision,
+    violations: list[QueryValidationViolation],
+) -> tuple[list[str], list[str]]:
+    if not fields:
+        if target_buckets:
+            return _collect_certified_metric_refs(active, target_buckets)
+        return [], []
+
+    certified_edges: list[str] = []
+    certified_fields: list[str] = []
+    for raw_field in fields:
+        leaf = (raw_field or "").split(".")[-1].strip().lower()
+        if not leaf:
+            continue
+        resolved_bucket, edge_id = resolved_catalog.resolve_metric_bucket(
+            leaf, doctype=doctype
+        )
+        in_target = (
+            resolved_bucket is not None and resolved_bucket.lower() in target_buckets
+        ) or (leaf in glossary_fields)
+        if not in_target:
+            violations.append(
+                QueryValidationViolation(
+                    code="UNCERTIFIED_FIELD_FOR_METRIC",
+                    message=(
+                        f"Field '{raw_field}' has no certified [:FEEDS_METRIC] edge "
+                        f"feeding '{metric_bucket}' (resolved bucket: "
+                        f"{resolved_bucket!r})."
+                    ),
+                    field_name=raw_field,
+                    metric_bucket=metric_bucket,
+                )
+            )
+            continue
+        if norm_op in (
+            "SUM_ACTIVE_DECIMAL",
+            "RATIO_ACTIVE_DECIMAL",
+        ) and not resolved_catalog.is_monetary_field(leaf):
+            violations.append(
+                QueryValidationViolation(
+                    code="NON_MONETARY_FIELD_AGGREGATION",
+                    message=(
+                        f"Field '{raw_field}' is not declared monetary in active "
+                        f"OntologyRevision '{active.revision_id}' and cannot be "
+                        f"aggregated with '{norm_op}'."
+                    ),
+                    field_name=raw_field,
+                    metric_bucket=metric_bucket,
+                )
+            )
+            continue
+        certified_fields.append(leaf)
+        if edge_id and edge_id not in certified_edges:
+            certified_edges.append(edge_id)
+    return certified_edges, certified_fields
+
+
+def _validate_temporal_and_precedence(  # noqa: PLR0913 - internal validator helper grouping temporal/precedence flags
+    *,
+    metric_bucket: str,
+    sql: str | None,
+    has_param_watermark: bool,
+    require_bitemporal_watermark: bool,
+    include_supersedes_precedence: bool,
+    violations: list[QueryValidationViolation],
+) -> tuple[bool, bool]:
+    bitemporal_ok = True
+    precedence_ok = True
+    if sql is not None:
+        if not _sql_has_bitemporal_predicates(sql) and not has_param_watermark:
+            bitemporal_ok = False
+            violations.append(
+                QueryValidationViolation(
+                    code="MISSING_BITEMPORAL_WATERMARK",
+                    message=(
+                        "Analytical SQL query over operational facts omits "
+                        "bi-temporal watermarks (recorded_at / learned_as_of and "
+                        "effective_from / effective_on)."
+                    ),
+                    metric_bucket=metric_bucket,
+                )
+            )
+        if not _sql_has_supersedes_precedence(sql):
+            precedence_ok = False
+            violations.append(
+                QueryValidationViolation(
+                    code="MISSING_SUPERSEDES_PRECEDENCE",
+                    message=(
+                        "Analytical SQL query scans raw operational facts without "
+                        "[:SUPERSEDES] active-fact precedence resolution "
+                        "(ROW_NUMBER() OVER (PARTITION BY entity_id, field_path "
+                        "ORDER BY source_priority DESC ...) WHERE rn = 1)."
+                    ),
+                    metric_bucket=metric_bucket,
+                )
+            )
+        return bitemporal_ok, precedence_ok
+
+    if require_bitemporal_watermark and not has_param_watermark:
+        bitemporal_ok = False
+        violations.append(
+            QueryValidationViolation(
+                code="MISSING_BITEMPORAL_WATERMARK",
+                message=(
+                    f"Metric query for '{metric_bucket}' requires an explicit "
+                    f"bi-temporal watermark (learned_as_of or effective_on)."
+                ),
+                metric_bucket=metric_bucket,
+            )
+        )
+    if not include_supersedes_precedence:
+        precedence_ok = False
+        violations.append(
+            QueryValidationViolation(
+                code="MISSING_SUPERSEDES_PRECEDENCE",
+                message=(
+                    f"Metric query for '{metric_bucket}' disabled [:SUPERSEDES] "
+                    f"active-fact precedence resolution."
+                ),
+                metric_bucket=metric_bucket,
+            )
+        )
+    return bitemporal_ok, precedence_ok
 
 
 def _sql_has_supersedes_precedence(sql_text: str) -> bool:
@@ -159,7 +303,7 @@ def _sql_has_bitemporal_predicates(sql_text: str) -> bool:
     return "recorded_at" in low and "effective_from" in low
 
 
-def validate_metric_query(
+def validate_metric_query(  # noqa: PLR0913 - keyword-only public metric query validator API
     metric_bucket: str,
     *,
     fields: Sequence[str] = (),
@@ -187,9 +331,6 @@ def validate_metric_query(
         },
     ) as span:
         violations: list[QueryValidationViolation] = []
-        certified_edges: list[str] = []
-        certified_fields: list[str] = []
-
         target_buckets, glossary_fields = _resolve_target_buckets(
             metric_bucket, resolved_catalog
         )
@@ -218,127 +359,25 @@ def validate_metric_query(
                 )
             )
 
-        for raw_field in fields:
-            leaf = (raw_field or "").split(".")[-1].strip().lower()
-            if not leaf:
-                continue
-            resolved_bucket, edge_id = resolved_catalog.resolve_metric_bucket(
-                leaf, doctype=doctype
-            )
-            in_target = (
-                resolved_bucket is not None
-                and resolved_bucket.lower() in target_buckets
-            ) or (leaf in glossary_fields)
-
-            if not in_target:
-                violations.append(
-                    QueryValidationViolation(
-                        code="UNCERTIFIED_FIELD_FOR_METRIC",
-                        message=(
-                            f"Field '{raw_field}' has no certified [:FEEDS_METRIC] edge "
-                            f"feeding '{metric_bucket}' (resolved bucket: "
-                            f"{resolved_bucket!r})."
-                        ),
-                        field_name=raw_field,
-                        metric_bucket=metric_bucket,
-                    )
-                )
-                continue
-
-            if norm_op in (
-                "SUM_ACTIVE_DECIMAL",
-                "RATIO_ACTIVE_DECIMAL",
-            ) and not resolved_catalog.is_monetary_field(leaf):
-                violations.append(
-                    QueryValidationViolation(
-                        code="NON_MONETARY_FIELD_AGGREGATION",
-                        message=(
-                            f"Field '{raw_field}' is not declared monetary in active "
-                            f"OntologyRevision '{active.revision_id}' and cannot be "
-                            f"aggregated with '{norm_op}'."
-                        ),
-                        field_name=raw_field,
-                        metric_bucket=metric_bucket,
-                    )
-                )
-                continue
-
-            certified_fields.append(leaf)
-            if edge_id and edge_id not in certified_edges:
-                certified_edges.append(edge_id)
-
-        if not fields and target_buckets:
-            for edge in active.edges:
-                if edge.relation != "FEEDS_METRIC":
-                    continue
-                edge_bucket = edge.target_id.split(".")[-1].strip().lower()
-                if edge_bucket in target_buckets:
-                    if edge.edge_id not in certified_edges:
-                        certified_edges.append(edge.edge_id)
-                    for f in edge.on_fields:
-                        fl = f.lower()
-                        if fl not in certified_fields:
-                            certified_fields.append(fl)
-
-        bitemporal_ok = True
-        precedence_ok = True
-
-        has_param_watermark = learned_as_of is not None or effective_on is not None
-        if sql is not None:
-            sql_bitemp = _sql_has_bitemporal_predicates(sql)
-            sql_prec = _sql_has_supersedes_precedence(sql)
-            if not sql_bitemp and not has_param_watermark:
-                bitemporal_ok = False
-                violations.append(
-                    QueryValidationViolation(
-                        code="MISSING_BITEMPORAL_WATERMARK",
-                        message=(
-                            "Analytical SQL query over operational facts omits "
-                            "bi-temporal watermarks (recorded_at / learned_as_of and "
-                            "effective_from / effective_on)."
-                        ),
-                        metric_bucket=metric_bucket,
-                    )
-                )
-            if not sql_prec:
-                precedence_ok = False
-                violations.append(
-                    QueryValidationViolation(
-                        code="MISSING_SUPERSEDES_PRECEDENCE",
-                        message=(
-                            "Analytical SQL query scans raw operational facts without "
-                            "[:SUPERSEDES] active-fact precedence resolution "
-                            "(ROW_NUMBER() OVER (PARTITION BY entity_id, field_path "
-                            "ORDER BY source_priority DESC ...) WHERE rn = 1)."
-                        ),
-                        metric_bucket=metric_bucket,
-                    )
-                )
-        else:
-            if require_bitemporal_watermark and not has_param_watermark:
-                bitemporal_ok = False
-                violations.append(
-                    QueryValidationViolation(
-                        code="MISSING_BITEMPORAL_WATERMARK",
-                        message=(
-                            f"Metric query for '{metric_bucket}' requires an explicit "
-                            f"bi-temporal watermark (learned_as_of or effective_on)."
-                        ),
-                        metric_bucket=metric_bucket,
-                    )
-                )
-            if not include_supersedes_precedence:
-                precedence_ok = False
-                violations.append(
-                    QueryValidationViolation(
-                        code="MISSING_SUPERSEDES_PRECEDENCE",
-                        message=(
-                            f"Metric query for '{metric_bucket}' disabled [:SUPERSEDES] "
-                            f"active-fact precedence resolution."
-                        ),
-                        metric_bucket=metric_bucket,
-                    )
-                )
+        certified_edges, certified_fields = _validate_metric_fields(
+            fields=fields,
+            metric_bucket=metric_bucket,
+            norm_op=norm_op,
+            doctype=doctype,
+            target_buckets=target_buckets,
+            glossary_fields=glossary_fields,
+            resolved_catalog=resolved_catalog,
+            active=active,
+            violations=violations,
+        )
+        bitemporal_ok, precedence_ok = _validate_temporal_and_precedence(
+            metric_bucket=metric_bucket,
+            sql=sql,
+            has_param_watermark=(learned_as_of is not None or effective_on is not None),
+            require_bitemporal_watermark=require_bitemporal_watermark,
+            include_supersedes_precedence=include_supersedes_precedence,
+            violations=violations,
+        )
 
         is_valid = len(violations) == 0
         span.set_attribute("docubridge.query_valid", is_valid)
@@ -360,7 +399,7 @@ def validate_metric_query(
         return result
 
 
-def validate_consolidation_view(
+def validate_consolidation_view(  # noqa: PLR0913 - keyword-only public consolidation view validator API
     view_name: str,
     *,
     sql: str | None = None,
@@ -443,16 +482,7 @@ def validate_consolidation_view(
                 )
             )
 
-        certified_edges: list[str] = []
-        certified_fields: list[str] = []
-        for edge in active.edges:
-            if edge.relation == "FEEDS_METRIC":
-                if edge.edge_id not in certified_edges:
-                    certified_edges.append(edge.edge_id)
-                for f in edge.on_fields:
-                    fl = f.lower()
-                    if fl not in certified_fields:
-                        certified_fields.append(fl)
+        certified_edges, certified_fields = _collect_certified_metric_refs(active)
 
         is_valid = len(violations) == 0
         span.set_attribute("docubridge.query_valid", is_valid)

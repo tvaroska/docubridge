@@ -112,7 +112,7 @@ async def propose_outstanding(
             timeout,
         )
         requirements = _sanitize(items, set(candidate_doctypes))
-    except Exception as exc:  # best-effort: TimeoutError, model, parse, anything
+    except Exception as exc:  # noqa: BLE001  # advisory assessor must never fail a turn
         logger.warning(
             "satisfaction proposal failed (%s); falling back to per-entry outstanding",
             type(exc).__name__,
@@ -200,7 +200,7 @@ def resolve_assessor(
     )
 
 
-def evaluate_turn_sufficiency(
+def evaluate_turn_sufficiency(  # noqa: PLR0913  # public sufficiency facade matching strategy evaluator
     process: str,
     entries: Sequence[LedgerEntry],
     *,

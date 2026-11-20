@@ -47,7 +47,7 @@ class OperationalStore(abc.ABC):
     ) -> list[ConsolidatedFact]:
         """Return stored facts in append order, with optional bi-temporal pushdown filters."""
 
-    def ingest_entry(
+    def ingest_entry(  # noqa: PLR0913 - public keyword-only OperationalStore API
         self,
         entry: LedgerEntry,
         *,
@@ -87,7 +87,7 @@ class OperationalStore(abc.ABC):
             )
             return facts
 
-    def promote_submission(
+    def promote_submission(  # noqa: PLR0913 - public keyword-only OperationalStore API
         self,
         entry: LedgerEntry,
         *,

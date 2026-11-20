@@ -37,6 +37,7 @@ import math
 import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -195,6 +196,42 @@ def _metric_distance_sq(
     )
 
 
+def _pairwise_disagreement(
+    values: Sequence[float],
+    metric: str,
+    scale_values: Sequence[float],
+) -> float:
+    """Return twice the sum of squared distances across unordered pairs."""
+    total = 0.0
+    count = len(values)
+    for i in range(count):
+        for j in range(i + 1, count):
+            total += 2.0 * _metric_distance_sq(
+                values[i], values[j], metric, scale_values
+            )
+    return total
+
+
+def _collect_rated_units(
+    ratings_matrix: Sequence[Sequence[float | None]],
+    sorted_scale: Sequence[float],
+) -> tuple[list[list[float]], dict[float, float]]:
+    valid_units: list[list[float]] = []
+    category_counts: dict[float, float] = dict.fromkeys(sorted_scale, 0.0)
+    for row in ratings_matrix:
+        unit_vals = [float(v) for v in row if v is not None]
+        if len(unit_vals) < 2:
+            continue
+        valid_units.append(unit_vals)
+        for v in unit_vals:
+            if v not in category_counts:
+                raise ValueError(
+                    f"Rating {v} not present in scale_values {sorted_scale}"
+                )
+            category_counts[v] += 1.0 / len(unit_vals)
+    return valid_units, category_counts
+
+
 def krippendorff_alpha(
     ratings_matrix: Sequence[Sequence[float | None]],
     metric: str = "ordinal",
@@ -225,24 +262,13 @@ def krippendorff_alpha(
     if len(inferred_scale) <= 1:
         return 1.0
 
-    observed_sum = 0.0
-    for unit in valid_units:
-        m_u = len(unit)
-        unit_disagreement = 0.0
-        for i in range(m_u):
-            for j in range(i + 1, m_u):
-                unit_disagreement += 2.0 * _metric_distance_sq(
-                    unit[i], unit[j], metric, inferred_scale
-                )
-        observed_sum += unit_disagreement / (m_u - 1.0)
+    observed_sum = sum(
+        _pairwise_disagreement(unit, metric, inferred_scale) / (len(unit) - 1.0)
+        for unit in valid_units
+    )
     d_o = observed_sum / n_total
 
-    expected_sum = 0.0
-    for i in range(n_total):
-        for j in range(i + 1, n_total):
-            expected_sum += 2.0 * _metric_distance_sq(
-                all_values[i], all_values[j], metric, inferred_scale
-            )
+    expected_sum = _pairwise_disagreement(all_values, metric, inferred_scale)
     d_e = expected_sum / (n_total * (n_total - 1.0))
 
     if d_e == 0.0:
@@ -264,44 +290,26 @@ def gwets_ac2(
     if q < 2:
         raise ValueError("scale_values must contain at least 2 distinct categories.")
     sorted_scale = sorted(float(v) for v in scale_values)
-
-    valid_units: list[list[float]] = []
-    category_counts: dict[float, float] = {v: 0.0 for v in sorted_scale}
-    for row in ratings_matrix:
-        unit_vals = [float(v) for v in row if v is not None]
-        if len(unit_vals) >= 2:
-            valid_units.append(unit_vals)
-            for v in unit_vals:
-                if v not in category_counts:
-                    raise ValueError(
-                        f"Rating {v} not present in scale_values {sorted_scale}"
-                    )
-                category_counts[v] += 1.0 / len(unit_vals)
+    valid_units, category_counts = _collect_rated_units(ratings_matrix, sorted_scale)
 
     n_units = len(valid_units)
     if n_units == 0:
         return 0.0
 
-    d_o_sum = 0.0
-    for unit in valid_units:
-        m_u = len(unit)
-        pair_disagreement = 0.0
-        for i in range(m_u):
-            for j in range(i + 1, m_u):
-                pair_disagreement += 2.0 * _metric_distance_sq(
-                    unit[i], unit[j], metric, sorted_scale
-                )
-        d_o_sum += pair_disagreement / (m_u * (m_u - 1.0))
+    d_o_sum = sum(
+        _pairwise_disagreement(unit, metric, sorted_scale)
+        / (len(unit) * (len(unit) - 1.0))
+        for unit in valid_units
+    )
     d_o = d_o_sum / n_units
     p_a = 1.0 - d_o
 
     pi = {k: category_counts[k] / n_units for k in sorted_scale}
-    total_agreement_weight = 0.0
-    for k1 in sorted_scale:
-        for k2 in sorted_scale:
-            total_agreement_weight += 1.0 - _metric_distance_sq(
-                k1, k2, metric, sorted_scale
-            )
+    total_agreement_weight = sum(
+        1.0 - _metric_distance_sq(k1, k2, metric, sorted_scale)
+        for k1 in sorted_scale
+        for k2 in sorted_scale
+    )
 
     pi_complement_sum = sum(pi[k] * (1.0 - pi[k]) for k in sorted_scale)
     p_e = (total_agreement_weight / (q * (q - 1.0))) * pi_complement_sum
@@ -618,7 +626,7 @@ def compute_calibration_summary(
     )
 
 
-def _expected_gate(doc: dict) -> Gate:
+def _expected_gate(doc: dict[str, Any]) -> Gate:
     raw = doc.get("expected_gate") or doc["expected_terminal"]["gate"]
     return Gate(raw)
 

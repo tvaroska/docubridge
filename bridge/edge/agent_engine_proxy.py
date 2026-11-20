@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, cast
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -34,29 +34,31 @@ def _extract_authenticated_user(request: Request) -> str | None:
     return None
 
 
-async def _invoke_engine_card(a2a_engine: Any, *, url: str) -> dict[str, Any]:
+async def _invoke_engine_card(a2a_engine: object, *, url: str) -> dict[str, Any]:
     """Fetch the live ``AgentCard`` dict from ``a2a_engine`` (supporting both direct
     ``async_get_agent_card`` / ``get_agent_card`` methods and ``async_query`` / ``query``)."""
-    if hasattr(a2a_engine, "async_get_agent_card"):
-        res = await a2a_engine.async_get_agent_card(url=url)
-    elif hasattr(a2a_engine, "get_agent_card"):
-        res = a2a_engine.get_agent_card(url=url)
-    elif hasattr(a2a_engine, "async_query"):
-        res = await a2a_engine.async_query(op="get_agent_card", url=url)
-    elif hasattr(a2a_engine, "query"):
-        res = a2a_engine.query(op="get_agent_card", url=url)
+    async_card = getattr(a2a_engine, "async_get_agent_card", None)
+    sync_card = getattr(a2a_engine, "get_agent_card", None)
+    async_query = getattr(a2a_engine, "async_query", None)
+    sync_query = getattr(a2a_engine, "query", None)
+    if callable(async_card):
+        res = await async_card(url=url)
+    elif callable(sync_card):
+        res = sync_card(url=url)
+    elif callable(async_query):
+        res = await async_query(op="get_agent_card", url=url)
+    elif callable(sync_query):
+        res = sync_query(op="get_agent_card", url=url)
     else:
         raise TypeError(
             f"Unsupported a2a_engine {type(a2a_engine).__name__}: missing "
             "async_get_agent_card / async_query"
         )
-    if isinstance(res, dict):
-        return res
-    return dict(res)
+    return cast(dict[str, Any], res if isinstance(res, dict) else dict(res))
 
 
 async def _invoke_engine_jsonrpc(
-    a2a_engine: Any,
+    a2a_engine: object,
     *,
     payload: dict[str, Any] | str,
     user: str | None,
@@ -64,20 +66,20 @@ async def _invoke_engine_jsonrpc(
     url: str,
 ) -> dict[str, Any]:
     """Forward a unary JSON-RPC 2.0 request to ``a2a_engine``."""
-    if hasattr(a2a_engine, "async_handle_a2a_jsonrpc"):
-        res = await a2a_engine.async_handle_a2a_jsonrpc(
-            payload=payload, user=user, headers=headers, url=url
-        )
-    elif hasattr(a2a_engine, "handle_a2a_jsonrpc"):
-        res = a2a_engine.handle_a2a_jsonrpc(
-            payload=payload, user=user, headers=headers, url=url
-        )
-    elif hasattr(a2a_engine, "async_query"):
-        res = await a2a_engine.async_query(
+    async_rpc = getattr(a2a_engine, "async_handle_a2a_jsonrpc", None)
+    sync_rpc = getattr(a2a_engine, "handle_a2a_jsonrpc", None)
+    async_query = getattr(a2a_engine, "async_query", None)
+    sync_query = getattr(a2a_engine, "query", None)
+    if callable(async_rpc):
+        res = await async_rpc(payload=payload, user=user, headers=headers, url=url)
+    elif callable(sync_rpc):
+        res = sync_rpc(payload=payload, user=user, headers=headers, url=url)
+    elif callable(async_query):
+        res = await async_query(
             op="a2a_jsonrpc", payload=payload, user=user, headers=headers, url=url
         )
-    elif hasattr(a2a_engine, "query"):
-        res = a2a_engine.query(
+    elif callable(sync_query):
+        res = sync_query(
             op="a2a_jsonrpc", payload=payload, user=user, headers=headers, url=url
         )
     else:
@@ -85,13 +87,11 @@ async def _invoke_engine_jsonrpc(
             f"Unsupported a2a_engine {type(a2a_engine).__name__}: missing "
             "async_handle_a2a_jsonrpc / async_query"
         )
-    if isinstance(res, dict):
-        return res
-    return dict(res)
+    return cast(dict[str, Any], res if isinstance(res, dict) else dict(res))
 
 
 async def _invoke_engine_jsonrpc_stream(
-    a2a_engine: Any,
+    a2a_engine: object,
     *,
     payload: dict[str, Any] | str,
     user: str | None,
@@ -99,34 +99,44 @@ async def _invoke_engine_jsonrpc_stream(
     url: str,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """Forward a streaming JSON-RPC 2.0 request to ``a2a_engine``."""
-    if hasattr(a2a_engine, "async_handle_a2a_jsonrpc_stream"):
-        async for chunk in a2a_engine.async_handle_a2a_jsonrpc_stream(
+    async_stream = getattr(a2a_engine, "async_handle_a2a_jsonrpc_stream", None)
+    sync_stream = getattr(a2a_engine, "handle_a2a_jsonrpc_stream", None)
+    async_query = getattr(a2a_engine, "async_stream_query", None)
+    sync_query = getattr(a2a_engine, "stream_query", None)
+    if callable(async_stream):
+        async for chunk in async_stream(
             payload=payload, user=user, headers=headers, url=url
         ):
-            yield dict(chunk) if not isinstance(chunk, dict) else chunk
-    elif hasattr(a2a_engine, "handle_a2a_jsonrpc_stream"):
-        for chunk in a2a_engine.handle_a2a_jsonrpc_stream(
-            payload=payload, user=user, headers=headers, url=url
-        ):
-            yield dict(chunk) if not isinstance(chunk, dict) else chunk
-    elif hasattr(a2a_engine, "async_stream_query"):
-        async for chunk in a2a_engine.async_stream_query(
+            yield cast(
+                dict[str, Any], chunk if isinstance(chunk, dict) else dict(chunk)
+            )
+    elif callable(sync_stream):
+        for chunk in sync_stream(payload=payload, user=user, headers=headers, url=url):
+            yield cast(
+                dict[str, Any], chunk if isinstance(chunk, dict) else dict(chunk)
+            )
+    elif callable(async_query):
+        async for chunk in async_query(
             op="a2a_jsonrpc_stream",
             payload=payload,
             user=user,
             headers=headers,
             url=url,
         ):
-            yield dict(chunk) if not isinstance(chunk, dict) else chunk
-    elif hasattr(a2a_engine, "stream_query"):
-        for chunk in a2a_engine.stream_query(
+            yield cast(
+                dict[str, Any], chunk if isinstance(chunk, dict) else dict(chunk)
+            )
+    elif callable(sync_query):
+        for chunk in sync_query(
             op="a2a_jsonrpc_stream",
             payload=payload,
             user=user,
             headers=headers,
             url=url,
         ):
-            yield dict(chunk) if not isinstance(chunk, dict) else chunk
+            yield cast(
+                dict[str, Any], chunk if isinstance(chunk, dict) else dict(chunk)
+            )
     else:
         raise TypeError(
             f"Unsupported a2a_engine {type(a2a_engine).__name__}: missing "
@@ -153,7 +163,7 @@ def _forwarded_a2a_headers(request: Request) -> dict[str, str]:
 
 
 def build_remote_a2a_routes(
-    a2a_engine: Any,
+    a2a_engine: object,
     *,
     url: str = DEFAULT_URL,
     rpc_path: str = "/",

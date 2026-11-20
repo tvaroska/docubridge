@@ -7,6 +7,7 @@ design/disposition.md, "The review contract".
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -113,6 +114,61 @@ class ThresholdCorridor:
         return r_gt is None or a_le is None or r_gt < a_le
 
 
+@dataclass
+class _CorridorAcc:
+    r_gt: tuple[float, str] | None = None
+    r_le: tuple[float, str] | None = None
+    a_gt: tuple[float, str] | None = None
+    a_le: tuple[float, str] | None = None
+
+
+def _raise_corridor(p: CorridorPoint, why: str) -> None:
+    raise ValueError(
+        f"corpus record {p.record_id!r} expects gate {p.expected_gate.value!r} "
+        f"but {why} — no thresholds can reproduce it"
+    )
+
+
+def _max_bound(cur: tuple[float, str] | None, p: CorridorPoint) -> tuple[float, str]:
+    c = p.overall_confidence
+    return (c, p.record_id) if cur is None or c > cur[0] else cur
+
+
+def _min_bound(cur: tuple[float, str] | None, p: CorridorPoint) -> tuple[float, str]:
+    c = p.overall_confidence
+    return (c, p.record_id) if cur is None or c < cur[0] else cur
+
+
+def _apply_legible_point(acc: _CorridorAcc, p: CorridorPoint) -> None:
+    if p.expected_gate is Gate.resubmit:
+        acc.r_gt = _max_bound(acc.r_gt, p)
+        return
+    acc.r_le = _min_bound(acc.r_le, p)
+    if p.expected_gate is Gate.hitl_review:
+        if not p.flagged:
+            acc.a_gt = _max_bound(acc.a_gt, p)
+    elif p.expected_gate is Gate.auto_approve:
+        if p.flagged:
+            _raise_corridor(p, "it is flagged (a flagged document never auto-approves)")
+        acc.a_le = _min_bound(acc.a_le, p)
+    else:  # pragma: no cover - Gate has exactly four members
+        _raise_corridor(p, "the gate is unknown")
+
+
+def _apply_corridor_point(acc: _CorridorAcc, p: CorridorPoint) -> None:
+    if not p.in_label_space:
+        if p.expected_gate is not Gate.unsupported:
+            _raise_corridor(p, "its doctype is outside the label space")
+        return
+    if p.expected_gate is Gate.unsupported:
+        _raise_corridor(p, "its doctype is inside the label space")
+    if not p.legible:
+        if p.expected_gate is not Gate.resubmit:
+            _raise_corridor(p, "it is illegible")
+        return
+    _apply_legible_point(acc, p)
+
+
 def threshold_corridor(points: Iterable[CorridorPoint]) -> ThresholdCorridor:
     """Intersect the threshold constraints every point imposes, mirroring ``dispose``.
 
@@ -128,52 +184,11 @@ def threshold_corridor(points: Iterable[CorridorPoint]) -> ThresholdCorridor:
     A record no threshold pair could reproduce raises ``ValueError``. On ties the
     first record id is kept as the binding one.
     """
-    r_gt: tuple[float, str] | None = None
-    r_le: tuple[float, str] | None = None
-    a_gt: tuple[float, str] | None = None
-    a_le: tuple[float, str] | None = None
-
-    def _raise(p: CorridorPoint, why: str) -> None:
-        raise ValueError(
-            f"corpus record {p.record_id!r} expects gate {p.expected_gate.value!r} "
-            f"but {why} — no thresholds can reproduce it"
-        )
-
-    def _max(cur: tuple[float, str] | None, p: CorridorPoint) -> tuple[float, str]:
-        c = p.overall_confidence
-        return (c, p.record_id) if cur is None or c > cur[0] else cur
-
-    def _min(cur: tuple[float, str] | None, p: CorridorPoint) -> tuple[float, str]:
-        c = p.overall_confidence
-        return (c, p.record_id) if cur is None or c < cur[0] else cur
-
+    acc = _CorridorAcc()
     n = 0
     for p in points:
         n += 1
-        if not p.in_label_space:
-            if p.expected_gate is not Gate.unsupported:
-                _raise(p, "its doctype is outside the label space")
-            continue
-        if p.expected_gate is Gate.unsupported:
-            _raise(p, "its doctype is inside the label space")
-        if not p.legible:
-            if p.expected_gate is not Gate.resubmit:
-                _raise(p, "it is illegible")
-            continue
-        if p.expected_gate is Gate.resubmit:
-            r_gt = _max(r_gt, p)
-            continue
-        # legible, in label space, expected hitl_review or auto_approve
-        r_le = _min(r_le, p)
-        if p.expected_gate is Gate.hitl_review:
-            if not p.flagged:
-                a_gt = _max(a_gt, p)
-        elif p.expected_gate is Gate.auto_approve:
-            if p.flagged:
-                _raise(p, "it is flagged (a flagged document never auto-approves)")
-            a_le = _min(a_le, p)
-        else:  # pragma: no cover - Gate has exactly four members
-            _raise(p, "the gate is unknown")
+        _apply_corridor_point(acc, p)
 
     def _bound(gt: tuple[float, str] | None, le: tuple[float, str] | None) -> Bound:
         return Bound(
@@ -184,8 +199,8 @@ def threshold_corridor(points: Iterable[CorridorPoint]) -> ThresholdCorridor:
         )
 
     return ThresholdCorridor(
-        resubmit_below=_bound(r_gt, r_le),
-        auto_approve_at=_bound(a_gt, a_le),
+        resubmit_below=_bound(acc.r_gt, acc.r_le),
+        auto_approve_at=_bound(acc.a_gt, acc.a_le),
         points=n,
     )
 
@@ -199,7 +214,80 @@ class DispositionVerdict(BaseModel, extra="forbid"):
     message: str
 
 
-def dispose(
+def _quality_gate_verdict(
+    *,
+    legible: bool,
+    overall_confidence: float,
+    document_age_days: int | None,
+    effective_max_age: int | None,
+    thresholds: DispositionThresholds,
+) -> DispositionVerdict | None:
+    if not legible:
+        return DispositionVerdict(
+            disposition=Disposition.rejected,
+            gate=Gate.resubmit,
+            reason_code="illegible",
+            message="The document was unreadable — please resubmit a clearer copy.",
+        )
+    if overall_confidence < thresholds.resubmit_below:
+        return DispositionVerdict(
+            disposition=Disposition.rejected,
+            gate=Gate.resubmit,
+            reason_code="low_quality",
+            message=f"The document quality was too low (confidence: {overall_confidence:.2f}) — please resubmit a clearer copy.",
+        )
+    if (
+        document_age_days is not None
+        and effective_max_age is not None
+        and document_age_days > effective_max_age
+    ):
+        return DispositionVerdict(
+            disposition=Disposition.rejected,
+            gate=Gate.resubmit,
+            reason_code="stale_document",
+            message=(
+                f"The document is {document_age_days} days old "
+                f"(maximum allowed: {effective_max_age} days) — please submit a more recent copy."
+            ),
+        )
+    return None
+
+
+def _review_gate_verdict(
+    *,
+    flagged: list[str],
+    rule_failures: list[str],
+    overall_confidence: float,
+    thresholds: DispositionThresholds,
+) -> DispositionVerdict | None:
+    if flagged:
+        return DispositionVerdict(
+            disposition=Disposition.pending,
+            gate=Gate.hitl_review,
+            reason_code="flagged_fields",
+            message=f"The following fields require human review: {', '.join(flagged)}.",
+        )
+    if rule_failures:
+        return DispositionVerdict(
+            disposition=Disposition.pending,
+            gate=Gate.hitl_review,
+            reason_code="corroboration_required",
+            message=(
+                f"The document requires corroboration or rule review: "
+                f"{', '.join(rule_failures)}."
+            ),
+        )
+    if overall_confidence < thresholds.auto_approve_at:
+        return DispositionVerdict(
+            disposition=Disposition.pending,
+            gate=Gate.hitl_review,
+            reason_code="needs_review",
+            message=f"The document requires human review (confidence: {overall_confidence:.2f}).",
+        )
+    return None
+
+
+def dispose(  # noqa: PLR0913  # public 4-signal disposition gate contract
     *,
     doctype: str,
     candidate_doctypes: list[str],
@@ -235,17 +323,11 @@ def dispose(
     Returns:
         DispositionVerdict with disposition, gate, reason_code, and message.
     """
-    # Treat None as empty list
-    flagged = flagged_fields or []
-    rule_failures = failed_rules or []
     effective_max_age = (
         max_age_days if max_age_days is not None else thresholds.max_age_days
     )
 
-    # 1. Label-space / type gate
     if not is_in_label_space(doctype, candidate_doctypes):
-        # An empty label space (an unresolved process, S0-arch-18) accepts nothing;
-        # the non-empty message is relayed by the corpus goldens — keep it verbatim.
         accepted = (
             f"Accepted types: {', '.join(candidate_doctypes)}."
             if candidate_doctypes
@@ -258,67 +340,25 @@ def dispose(
             message=f"The document type '{doctype}' is not supported for this process. {accepted}",
         )
 
-    # 2. Quality & freshness gate
-    if not legible:
-        return DispositionVerdict(
-            disposition=Disposition.rejected,
-            gate=Gate.resubmit,
-            reason_code="illegible",
-            message="The document was unreadable — please resubmit a clearer copy.",
-        )
+    quality_verdict = _quality_gate_verdict(
+        legible=legible,
+        overall_confidence=overall_confidence,
+        document_age_days=document_age_days,
+        effective_max_age=effective_max_age,
+        thresholds=thresholds,
+    )
+    if quality_verdict is not None:
+        return quality_verdict
 
-    if overall_confidence < thresholds.resubmit_below:
-        return DispositionVerdict(
-            disposition=Disposition.rejected,
-            gate=Gate.resubmit,
-            reason_code="low_quality",
-            message=f"The document quality was too low (confidence: {overall_confidence:.2f}) — please resubmit a clearer copy.",
-        )
+    review_verdict = _review_gate_verdict(
+        flagged=flagged_fields or [],
+        rule_failures=failed_rules or [],
+        overall_confidence=overall_confidence,
+        thresholds=thresholds,
+    )
+    if review_verdict is not None:
+        return review_verdict
 
-    if (
-        document_age_days is not None
-        and effective_max_age is not None
-        and document_age_days > effective_max_age
-    ):
-        return DispositionVerdict(
-            disposition=Disposition.rejected,
-            gate=Gate.resubmit,
-            reason_code="stale_document",
-            message=(
-                f"The document is {document_age_days} days old "
-                f"(maximum allowed: {effective_max_age} days) — please submit a more recent copy."
-            ),
-        )
-
-    # 3. Confidence & corroboration gate
-    if flagged:
-        return DispositionVerdict(
-            disposition=Disposition.pending,
-            gate=Gate.hitl_review,
-            reason_code="flagged_fields",
-            message=f"The following fields require human review: {', '.join(flagged)}.",
-        )
-
-    if rule_failures:
-        return DispositionVerdict(
-            disposition=Disposition.pending,
-            gate=Gate.hitl_review,
-            reason_code="corroboration_required",
-            message=(
-                f"The document requires corroboration or rule review: "
-                f"{', '.join(rule_failures)}."
-            ),
-        )
-
-    if overall_confidence < thresholds.auto_approve_at:
-        return DispositionVerdict(
-            disposition=Disposition.pending,
-            gate=Gate.hitl_review,
-            reason_code="needs_review",
-            message=f"The document requires human review (confidence: {overall_confidence:.2f}).",
-        )
-
-    # 4. Auto-approve (fell through all gates)
     return DispositionVerdict(
         disposition=Disposition.accepted,
         gate=Gate.auto_approve,
@@ -333,7 +373,7 @@ def run_disposition_gate(
     legible: bool,
     overall_confidence: float,
     flagged_fields: list[str],
-) -> dict:
+) -> dict[str, Any]:
     """Tool-facing wrapper for the disposition gate.
 
     This function is exposed as a FunctionTool to the LLM agent. It determines

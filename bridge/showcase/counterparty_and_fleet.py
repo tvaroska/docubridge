@@ -11,8 +11,9 @@ import json
 import os
 import time
 import uuid
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from fastapi import HTTPException
@@ -26,6 +27,7 @@ from bridge.outbound import stringify_decimals
 from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.showcase.engine import ScenarioEngine
 from bridge.showcase.live_extraction import (
+    GenaiClientLike,
     _build_genai_client,
     build_initial_live_telemetry,
     is_live_gemini_configured,
@@ -41,7 +43,47 @@ from bridge.telemetry.outcome import inject_outcome_headers, without_outcome_bag
 from bridge.telemetry.payload_log import emit_trace_payload_log
 from bridge.user_interaction.surfaces import ingest_accepted_submission
 from bridge.vault import VaultImmutabilityError
-from contract.wire import ArtifactRef
+from contract.scenario import ScenarioManifest
+from contract.wire import ArtifactRef, LedgerEntry
+
+if TYPE_CHECKING:
+    from bridge.showcase.context import OperationContext
+
+
+@dataclass(frozen=True)
+class _PayoffRequest:
+    borrower_name: str
+    account_ref: str
+    requested_amount: str | None
+
+
+@dataclass(frozen=True)
+class _PayoffStateUpdate:
+    entry: LedgerEntry
+    ingest_vault_uri: str
+    raw_sha256: str
+    counterparty_spiffe: str
+    a2a_ms: int
+    schema_ms: int
+    used_live: bool
+
+
+@dataclass(frozen=True)
+class _FleetDealParams:
+    case_id: str
+    case_type: str
+    deal_entity_id: str
+    borrower_name: str
+    pdf_uris: list[str]
+    wire_amount: str
+    wire_facility_ref: str
+    wire_memo: str
+    policy_ceiling_usd: str
+    skill_doctype: str
+    effective_version: str
+    outcome_id: str
+    use_live: bool
+    genai_client: GenaiClientLike | None
 
 
 def _parse_money(raw: str) -> Decimal:
@@ -54,7 +96,9 @@ def _parse_money(raw: str) -> Decimal:
         return Decimal("0")
 
 
-def _select_counterparty(manifest: Any, counterparty_id: str | None) -> dict[str, Any]:
+def _select_counterparty(
+    manifest: ScenarioManifest, counterparty_id: str | None
+) -> dict[str, Any]:
     stage = manifest.stage
     parties = list(stage.a2a_counterparties) if stage else []
     if not parties:
@@ -75,10 +119,8 @@ def _select_counterparty(manifest: Any, counterparty_id: str | None) -> dict[str
 
 def _fetch_counterparty_assertion(
     spec: dict[str, Any],
+    query: _PayoffRequest,
     *,
-    borrower_name: str,
-    account_ref: str,
-    requested_amount: str | None,
     mode: str,
     http_client: httpx.Client | None = None,
 ) -> tuple[dict[str, Any], str, bool]:
@@ -100,26 +142,29 @@ def _fetch_counterparty_assertion(
 
     if mode == "live" and (endpoint_url or http_client is not None):
         raw_amount = (
-            requested_amount
-            if requested_amount not in (None, "")
+            query.requested_amount
+            if query.requested_amount not in (None, "")
             else spec.get("expected_amount", "")
         )
         amount_str = str(raw_amount)
-        payload = stringify_decimals(
-            {
-                "borrower_name": borrower_name,
-                "loan_account": account_ref,
-                "payoff_amount": amount_str,
-                "payoff_amount_decimal": _parse_money(amount_str),
-                "doctype": spec["doctype"],
-            }
+        payload = cast(
+            dict[str, Any],
+            stringify_decimals(
+                {
+                    "borrower_name": query.borrower_name,
+                    "loan_account": query.account_ref,
+                    "payoff_amount": amount_str,
+                    "payoff_amount_decimal": _parse_money(amount_str),
+                    "doctype": spec["doctype"],
+                }
+            ),
         )
         a2a_port = get_adapter(Port.a2a_client, resolve_mode(Port.a2a_client))
         a2a_res = a2a_port.send_message(
             endpoint_url=endpoint_url,
             payload=payload,
             expected_skill=str(spec["doctype"]),
-            context_id=f"payoff:{spec.get('counterparty_id', 'counterparty')}:{account_ref}",
+            context_id=f"payoff:{spec.get('counterparty_id', 'counterparty')}:{query.account_ref}",
             headers=outbound_headers,
             http_client=http_client,
             timeout=15.0,
@@ -149,15 +194,77 @@ def _fetch_counterparty_assertion(
             status_code=503,
             detail=f"Counterparty {spec.get('counterparty_id')!r} unreachable and no fallback configured.",
         )
-    if requested_amount and "fields" in fallback:
+    if query.requested_amount and "fields" in fallback:
         fields = dict(fallback["fields"])
         kf = dict(fields.get("key_fields") or {})
-        kf["payoff_amount"] = requested_amount
-        kf["loan_account"] = account_ref
-        kf["borrower_name"] = borrower_name
+        kf["payoff_amount"] = query.requested_amount
+        kf["loan_account"] = query.account_ref
+        kf["borrower_name"] = query.borrower_name
         fields["key_fields"] = kf
         fallback["fields"] = fields
     return fallback, str(spec.get("agent_spiffe_id", "")), False
+
+
+def _record_a2a_payoff_in_state(
+    ctx: OperationContext,
+    spec: dict[str, Any],
+    update: _PayoffStateUpdate,
+) -> None:
+    entry = update.entry
+    target_item_id = spec.get("checklist_item_id")
+    payoff_amt = entry.key_fields.get("payoff_amount", spec.get("expected_amount", ""))
+    for item in ctx.state.get("borrower_checklist", []):
+        if item.get("id") == target_item_id:
+            item.update(
+                {
+                    "status": "satisfied",
+                    "badge_text": f"A2A PATH-A · 0 TOKENS ({update.a2a_ms} ms)",
+                    "reason": (
+                        f"Verified signed A2A structured payoff assertion from {entry.issuer} "
+                        f"({spec.get('account_ref')} · {payoff_amt}, 0 LLM tokens, schema check {update.schema_ms} ms)."
+                    ),
+                    "source_citation": f"A2A Path-A · {update.counterparty_spiffe}",
+                    "doc_id": entry.doc_id,
+                    "vault_uri": update.ingest_vault_uri,
+                    "sha256": update.raw_sha256,
+                    "source_mode": "A2A_PATH_A",
+                }
+            )
+    recompute_counts(ctx.state)
+    telem = ctx.state.setdefault("live_telemetry", build_initial_live_telemetry())
+    telem["last_action_latency_ms"] = update.a2a_ms
+    telem["worm_objects_locked"] = int(telem.get("worm_objects_locked", 0)) + 1
+    telem["a2a_path_a_payoff"] = {
+        "counterparty_id": spec["counterparty_id"],
+        "creditor": entry.issuer,
+        "account_ref": spec.get("account_ref"),
+        "payoff_amount": payoff_amt,
+        "source_mode": "A2A_PATH_A",
+        "llm_tokens": 0,
+        "schema_check_ms": update.schema_ms,
+        "a2a_latency_ms": update.a2a_ms,
+        "used_live_agent": update.used_live,
+        "counterparty_spiffe_id": update.counterparty_spiffe,
+        "vault_uri": update.ingest_vault_uri,
+    }
+    telem.setdefault("recent_extractions", []).insert(
+        0,
+        {
+            "filename": f"A2A {spec.get('account_ref', '')} ({entry.issuer})",
+            "doc_role": "a2a_payoff",
+            "model": "Path-A Schema Check (0 tokens)",
+            "mode": "live_gcp" if update.used_live else "instant_cached",
+            "latency_ms": update.a2a_ms,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "pii_redacted": 0,
+            "sha256": update.raw_sha256,
+            "vault_uri": update.ingest_vault_uri,
+            "pdf_url": "",
+            "highlight_page": 1,
+            "summary": f"Signed Path-A payoff {payoff_amt} (0 LLM tokens)",
+        },
+    )
 
 
 def request_a2a_payoff(
@@ -193,11 +300,10 @@ def request_a2a_payoff(
             f"projects/{_gcp_project_number()}/locations/us-central1/agents/agentregistry-fnb-payoff-agent",
         )
     ).replace("projects/0/", f"projects/{_gcp_project_number()}/")
-    target_res = ctx.render(raw_target)
     gw = engine.gym.evaluate_gateway_route(
         governed_access_path="AGENT_TO_ANYWHERE",
         source_principal="spiffe://agents.docubridge.io/ingest/docubridge-collector",
-        target_resource=target_res,
+        target_resource=ctx.render(raw_target),
         protocol="A2A",
     )
     if not gw.get("allowed", False):
@@ -207,9 +313,11 @@ def request_a2a_payoff(
 
     assertion_raw, counterparty_spiffe, used_live = _fetch_counterparty_assertion(
         spec,
-        borrower_name=manifest.display.client,
-        account_ref=str(spec.get("account_ref", "")),
-        requested_amount=str(spec.get("expected_amount", "")),
+        _PayoffRequest(
+            borrower_name=manifest.display.client,
+            account_ref=str(spec.get("account_ref", "")),
+            requested_amount=str(spec.get("expected_amount", "")),
+        ),
         mode=mode,
         http_client=http_client,
     )
@@ -290,59 +398,18 @@ def request_a2a_payoff(
                 if doc_version >= 100:
                     raise
 
-    target_item_id = spec.get("checklist_item_id")
-    payoff_amt = entry.key_fields.get("payoff_amount", spec.get("expected_amount", ""))
-    for item in ctx.state.get("borrower_checklist", []):
-        if item.get("id") == target_item_id:
-            item.update(
-                {
-                    "status": "satisfied",
-                    "badge_text": f"A2A PATH-A · 0 TOKENS ({a2a_ms} ms)",
-                    "reason": (
-                        f"Verified signed A2A structured payoff assertion from {entry.issuer} "
-                        f"({spec.get('account_ref')} · {payoff_amt}, 0 LLM tokens, schema check {schema_ms} ms)."
-                    ),
-                    "source_citation": f"A2A Path-A · {counterparty_spiffe}",
-                    "doc_id": doc_id,
-                    "vault_uri": ingest_res.vault_record.vault_uri,
-                    "sha256": hashlib.sha256(raw_json_bytes).hexdigest(),
-                    "source_mode": "A2A_PATH_A",
-                }
-            )
-    recompute_counts(ctx.state)
-    telem = ctx.state.setdefault("live_telemetry", build_initial_live_telemetry())
-    telem["last_action_latency_ms"] = a2a_ms
-    telem["worm_objects_locked"] = int(telem.get("worm_objects_locked", 0)) + 1
-    telem["a2a_path_a_payoff"] = {
-        "counterparty_id": spec["counterparty_id"],
-        "creditor": entry.issuer,
-        "account_ref": spec.get("account_ref"),
-        "payoff_amount": payoff_amt,
-        "source_mode": "A2A_PATH_A",
-        "llm_tokens": 0,
-        "schema_check_ms": schema_ms,
-        "a2a_latency_ms": a2a_ms,
-        "used_live_agent": used_live,
-        "counterparty_spiffe_id": counterparty_spiffe,
-        "vault_uri": ingest_res.vault_record.vault_uri,
-    }
-    telem.setdefault("recent_extractions", []).insert(
-        0,
-        {
-            "filename": f"A2A {spec.get('account_ref', '')} ({entry.issuer})",
-            "doc_role": "a2a_payoff",
-            "model": "Path-A Schema Check (0 tokens)",
-            "mode": "live_gcp" if used_live else "instant_cached",
-            "latency_ms": a2a_ms,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "pii_redacted": 0,
-            "sha256": hashlib.sha256(raw_json_bytes).hexdigest(),
-            "vault_uri": ingest_res.vault_record.vault_uri,
-            "pdf_url": "",
-            "highlight_page": 1,
-            "summary": f"Signed Path-A payoff {payoff_amt} (0 LLM tokens)",
-        },
+    _record_a2a_payoff_in_state(
+        ctx,
+        spec,
+        _PayoffStateUpdate(
+            entry=entry,
+            ingest_vault_uri=ingest_res.vault_record.vault_uri,
+            raw_sha256=hashlib.sha256(raw_json_bytes).hexdigest(),
+            counterparty_spiffe=counterparty_spiffe,
+            a2a_ms=a2a_ms,
+            schema_ms=schema_ms,
+            used_live=used_live,
+        ),
     )
     return engine.state(scenario_id).payload
 
@@ -394,7 +461,174 @@ def promote_compiled_skill(
     return engine.state(scenario_id).payload
 
 
-def run_meridian_fleet_deal(
+def _run_fleet_flash_extractions(deal: _FleetDealParams) -> tuple[int, int, int]:
+    flash_in, flash_out, flash_think = 0, 0, 0
+    for uri in deal.pdf_uris:
+        if deal.use_live:
+            from google.genai import types
+
+            client = _build_genai_client(deal.genai_client)
+            part = (
+                types.Part.from_uri(file_uri=uri, mime_type="application/pdf")
+                if uri.startswith("gs://")
+                else types.Part.from_bytes(
+                    data=b"%PDF-1.4\n%fleet\n", mime_type="application/pdf"
+                )
+            )
+            prompt_txt = (
+                f"Extract payoff facility, wire amount, and PAID IN FULL settlement status for "
+                f"{deal.borrower_name} (skill {deal.skill_doctype}@{deal.effective_version}, case {deal.case_id}). "
+                f"Return concise JSON with borrower, facility_ref, wire_amount, and paid_in_full."
+            )
+            resp = client.models.generate_content(
+                model=WORKHORSE_MODEL,
+                contents=[prompt_txt, part],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.0,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+            usage = getattr(resp, "usage_metadata", None)
+            in_t = int(getattr(usage, "prompt_token_count", 0) or 0)
+            out_t = int(getattr(usage, "candidates_token_count", 0) or 0)
+            th_t = int(getattr(usage, "thoughts_token_count", 0) or 0)
+        else:
+            in_t, out_t, th_t = 920, 140, 0
+        flash_in += in_t
+        flash_out += out_t
+        flash_think += th_t
+        with trace_step(
+            "docubridge.fleet.flash_pdf_extract",
+            {
+                "entity_id": deal.deal_entity_id,
+                "skill_id": deal.skill_doctype,
+                "skill_version": deal.effective_version,
+                "source_mode": "PDF_PATH_B_FLASH",
+                "gen_ai.system": "gemini_platform",
+                "gen_ai.operation.name": "extract_document",
+                "gen_ai.agent.name": "document_bridge_sense_a",
+                "gen_ai.request.model": WORKHORSE_MODEL,
+                "gen_ai.response.model": WORKHORSE_MODEL,
+                "gen_ai.usage.input_tokens": in_t,
+                "gen_ai.usage.output_tokens": out_t,
+                "gen_ai.usage.reasoning.output_tokens": th_t,
+                "finops.traffic_type": "production_inference",
+            },
+        ):
+            pass
+    return flash_in, flash_out, flash_think
+
+
+def _run_fleet_day1_stage(
+    deal: _FleetDealParams,
+) -> tuple[str, bool, int, str, int, int]:
+    if deal.use_live:
+        from google.genai import types
+
+        client = _build_genai_client(deal.genai_client)
+        bank_uri = deal.pdf_uris[-1] if deal.pdf_uris else ""
+        contents: list[Any] = [
+            f"Reconcile prior-year debt facility {deal.wire_facility_ref} for {deal.borrower_name} "
+            f"against the 28-page operating bank statement outgoing wire ({deal.wire_amount}, "
+            f"memo '{deal.wire_memo}') and recommend Underwriter Overwatch action."
+        ]
+        if bank_uri.startswith("gs://"):
+            contents.append(
+                types.Part.from_uri(file_uri=bank_uri, mime_type="application/pdf")
+            )
+        resp = client.models.generate_content(
+            model=REASONING_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=1024,
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW
+                ),
+            ),
+        )
+        usage = getattr(resp, "usage_metadata", None)
+        argon_in = int(getattr(usage, "prompt_token_count", 0) or 0)
+        argon_out = int(getattr(usage, "candidates_token_count", 0) or 0)
+        argon_think = int(getattr(usage, "thoughts_token_count", 0) or 0)
+    else:
+        argon_in, argon_out, argon_think = 6800, 210, 180
+
+    with trace_step(
+        "docubridge.fleet.argon_cross_doc_reconcile",
+        {
+            "entity_id": deal.deal_entity_id,
+            "skill_id": deal.skill_doctype,
+            "skill_version": "1.0.0",
+            "source_mode": "PDF_PATH_B_ARGON",
+            "gen_ai.system": "gemini_platform",
+            "gen_ai.operation.name": "cross_document_reconcile",
+            "gen_ai.agent.name": "credit_underwriting_sense_b",
+            "gen_ai.request.model": REASONING_MODEL,
+            "gen_ai.response.model": REASONING_MODEL,
+            "gen_ai.usage.input_tokens": argon_in,
+            "gen_ai.usage.output_tokens": argon_out,
+            "gen_ai.usage.reasoning.output_tokens": argon_think,
+            "finops.traffic_type": "conflict_escalation",
+        },
+    ):
+        pass
+    with trace_step(
+        "docubridge.collab.underwriter_approve_waiver",
+        {
+            "entity_id": deal.deal_entity_id,
+            "skill_id": deal.skill_doctype,
+            "skill_version": "1.0.0",
+            "hitl.review": "true",
+            "finops.traffic_type": "production_inference",
+        },
+    ):
+        pass
+    return "succeeded", True, 1, "PDF_PATH_B_ARGON", argon_in, argon_out
+
+
+def _run_fleet_day2_stage(
+    engine: ScenarioEngine, deal: _FleetDealParams
+) -> tuple[str, bool, int, str]:
+    amt_dec = _parse_money(deal.wire_amount)
+    ceiling_dec = _parse_money(deal.policy_ceiling_usd)
+    memo_upper = deal.wire_memo.upper()
+    in_policy = (
+        deal.effective_version != "1.0.0"
+        and amt_dec <= ceiling_dec
+        and deal.wire_facility_ref.upper() in memo_upper
+        and ("PAID IN FULL" in memo_upper or "FINAL PAYOFF" in memo_upper)
+        and deal.case_type != "day2_out_of_policy"
+    )
+    if in_policy:
+        return "succeeded", True, 0, "PDF_PATH_B_FLASH"
+    with trace_step(
+        "docubridge.collab.overwatch_policy_escalation",
+        {
+            "entity_id": deal.deal_entity_id,
+            "skill_id": deal.skill_doctype,
+            "skill_version": deal.effective_version,
+            "hitl.review": "true",
+            "docubridge.policy_violation": "outside_skill_policy_limits",
+            "finops.traffic_type": "production_inference",
+        },
+    ):
+        engine.inbox.create_action(
+            entity_id=deal.deal_entity_id,
+            title=f"Escalate Out-of-Policy Payoff Wire ({deal.wire_facility_ref} · {deal.wire_amount})",
+            hint=f"Wire {deal.wire_amount} / memo '{deal.wire_memo}' exceeds {deal.skill_doctype}@{deal.effective_version} policy limits (<= ${ceiling_dec:,.2f} + exact PAID IN FULL match).",
+            assigned_role="underwriter",
+            target_view="v_underwriter_exposure",
+            risk_level="HIGH",
+            confidence_score=0.91,
+            pause_for_review=True,
+            outcome_id=deal.outcome_id,
+        )
+    return "escalated", False, 1, "PDF_PATH_B_FLASH"
+
+
+def run_meridian_fleet_deal(  # noqa: PLR0913 - public fleet evaluation runner contract
     engine: ScenarioEngine,
     scenario_id: str,
     *,
@@ -411,7 +645,7 @@ def run_meridian_fleet_deal(
     policy_ceiling_usd: str = "100000.00",
     parent_outcome_id: str | None = None,
     mode: str = "live",
-    genai_client: Any = None,
+    genai_client: GenaiClientLike | None = None,
     http_client: httpx.Client | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Execute one real Day-1 or Day-2 commercial loan deal for `run_live_eval_fleet.py`."""
@@ -430,15 +664,32 @@ def run_meridian_fleet_deal(
     )
     otel_context.attach(without_outcome_baggage())
     outcome_id = start_outcome(owner=owner)
-    use_live = mode == "live" and is_live_gemini_configured(genai_client)
+    deal = _FleetDealParams(
+        case_id=case_id,
+        case_type=case_type,
+        deal_entity_id=deal_entity_id,
+        borrower_name=borrower_name,
+        pdf_uris=pdf_uris,
+        wire_amount=wire_amount,
+        wire_facility_ref=wire_facility_ref,
+        wire_memo=wire_memo,
+        policy_ceiling_usd=policy_ceiling_usd,
+        skill_doctype=skill_doctype,
+        effective_version=effective_version,
+        outcome_id=outcome_id,
+        use_live=mode == "live" and is_live_gemini_configured(genai_client),
+        genai_client=genai_client,
+    )
 
     try:
         spec = _select_counterparty(manifest, None)
         assertion_raw, cp_spiffe, _ = _fetch_counterparty_assertion(
             spec,
-            borrower_name=borrower_name,
-            account_ref=fnb_account,
-            requested_amount=fnb_amount,
+            _PayoffRequest(
+                borrower_name=borrower_name,
+                account_ref=fnb_account,
+                requested_amount=fnb_amount,
+            ),
             mode=mode,
             http_client=http_client,
         )
@@ -465,175 +716,21 @@ def run_meridian_fleet_deal(
                 require_installed_schema=True,
             )
 
-        flash_in, flash_out, flash_think = 0, 0, 0
-        for uri in pdf_uris:
-            if use_live:
-                from google.genai import types
-
-                client = _build_genai_client(genai_client)
-                part = (
-                    types.Part.from_uri(file_uri=uri, mime_type="application/pdf")
-                    if uri.startswith("gs://")
-                    else types.Part.from_bytes(
-                        data=b"%PDF-1.4\n%fleet\n", mime_type="application/pdf"
-                    )
-                )
-                prompt_txt = (
-                    f"Extract payoff facility, wire amount, and PAID IN FULL settlement status for "
-                    f"{borrower_name} (skill {skill_doctype}@{effective_version}, case {case_id}). "
-                    f"Return concise JSON with borrower, facility_ref, wire_amount, and paid_in_full."
-                )
-                resp = client.models.generate_content(
-                    model=WORKHORSE_MODEL,
-                    contents=[prompt_txt, part],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.0,
-                        thinking_config=types.ThinkingConfig(thinking_budget=0),
-                    ),
-                )
-                usage = getattr(resp, "usage_metadata", None)
-                in_t = int(getattr(usage, "prompt_token_count", 0) or 0)
-                out_t = int(getattr(usage, "candidates_token_count", 0) or 0)
-                th_t = int(getattr(usage, "thoughts_token_count", 0) or 0)
-            else:
-                in_t, out_t, th_t = 920, 140, 0
-            flash_in += in_t
-            flash_out += out_t
-            flash_think += th_t
-            with trace_step(
-                "docubridge.fleet.flash_pdf_extract",
-                {
-                    "entity_id": deal_entity_id,
-                    "skill_id": skill_doctype,
-                    "skill_version": effective_version,
-                    "source_mode": "PDF_PATH_B_FLASH",
-                    "gen_ai.system": "gemini_platform",
-                    "gen_ai.operation.name": "extract_document",
-                    "gen_ai.agent.name": "document_bridge_sense_a",
-                    "gen_ai.request.model": WORKHORSE_MODEL,
-                    "gen_ai.response.model": WORKHORSE_MODEL,
-                    "gen_ai.usage.input_tokens": in_t,
-                    "gen_ai.usage.output_tokens": out_t,
-                    "gen_ai.usage.reasoning.output_tokens": th_t,
-                    "finops.traffic_type": "production_inference",
-                },
-            ):
-                pass
-
-        argon_in, argon_out, argon_think = 0, 0, 0
+        flash_in, flash_out, _ = _run_fleet_flash_extractions(deal)
+        argon_in, argon_out = 0, 0
         if is_day1:
-            if use_live:
-                from google.genai import types
-
-                client = _build_genai_client(genai_client)
-                bank_uri = pdf_uris[-1] if pdf_uris else ""
-                contents: list[Any] = [
-                    f"Reconcile prior-year debt facility {wire_facility_ref} for {borrower_name} "
-                    f"against the 28-page operating bank statement outgoing wire ({wire_amount}, "
-                    f"memo '{wire_memo}') and recommend Underwriter Overwatch action."
-                ]
-                if bank_uri.startswith("gs://"):
-                    contents.append(
-                        types.Part.from_uri(
-                            file_uri=bank_uri, mime_type="application/pdf"
-                        )
-                    )
-                resp = client.models.generate_content(
-                    model=REASONING_MODEL,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        temperature=0.1,
-                        max_output_tokens=1024,
-                        thinking_config=types.ThinkingConfig(
-                            thinking_level=types.ThinkingLevel.LOW
-                        ),
-                    ),
-                )
-                usage = getattr(resp, "usage_metadata", None)
-                argon_in = int(getattr(usage, "prompt_token_count", 0) or 0)
-                argon_out = int(getattr(usage, "candidates_token_count", 0) or 0)
-                argon_think = int(getattr(usage, "thoughts_token_count", 0) or 0)
-            else:
-                argon_in, argon_out, argon_think = 6800, 210, 180
-
-            with trace_step(
-                "docubridge.fleet.argon_cross_doc_reconcile",
-                {
-                    "entity_id": deal_entity_id,
-                    "skill_id": skill_doctype,
-                    "skill_version": "1.0.0",
-                    "source_mode": "PDF_PATH_B_ARGON",
-                    "gen_ai.system": "gemini_platform",
-                    "gen_ai.operation.name": "cross_document_reconcile",
-                    "gen_ai.agent.name": "credit_underwriting_sense_b",
-                    "gen_ai.request.model": REASONING_MODEL,
-                    "gen_ai.response.model": REASONING_MODEL,
-                    "gen_ai.usage.input_tokens": argon_in,
-                    "gen_ai.usage.output_tokens": argon_out,
-                    "gen_ai.usage.reasoning.output_tokens": argon_think,
-                    "finops.traffic_type": "conflict_escalation",
-                },
-            ):
-                pass
-            with trace_step(
-                "docubridge.collab.underwriter_approve_waiver",
-                {
-                    "entity_id": deal_entity_id,
-                    "skill_id": skill_doctype,
-                    "skill_version": "1.0.0",
-                    "hitl.review": "true",
-                    "finops.traffic_type": "production_inference",
-                },
-            ):
-                pass
-            outcome_status = "succeeded"
-            ledger_locked = True
-            human_reviews = 1
-            closing_mode = "PDF_PATH_B_ARGON"
+            (
+                outcome_status,
+                ledger_locked,
+                human_reviews,
+                closing_mode,
+                argon_in,
+                argon_out,
+            ) = _run_fleet_day1_stage(deal)
         else:
-            amt_dec = _parse_money(wire_amount)
-            ceiling_dec = _parse_money(policy_ceiling_usd)
-            memo_upper = wire_memo.upper()
-            in_policy = (
-                effective_version != "1.0.0"
-                and amt_dec <= ceiling_dec
-                and wire_facility_ref.upper() in memo_upper
-                and ("PAID IN FULL" in memo_upper or "FINAL PAYOFF" in memo_upper)
-                and case_type != "day2_out_of_policy"
+            outcome_status, ledger_locked, human_reviews, closing_mode = (
+                _run_fleet_day2_stage(engine, deal)
             )
-            if in_policy:
-                outcome_status = "succeeded"
-                ledger_locked = True
-                human_reviews = 0
-                closing_mode = "PDF_PATH_B_FLASH"
-            else:
-                with trace_step(
-                    "docubridge.collab.overwatch_policy_escalation",
-                    {
-                        "entity_id": deal_entity_id,
-                        "skill_id": skill_doctype,
-                        "skill_version": effective_version,
-                        "hitl.review": "true",
-                        "docubridge.policy_violation": "outside_skill_policy_limits",
-                        "finops.traffic_type": "production_inference",
-                    },
-                ):
-                    engine.inbox.create_action(
-                        entity_id=deal_entity_id,
-                        title=f"Escalate Out-of-Policy Payoff Wire ({wire_facility_ref} · {wire_amount})",
-                        hint=f"Wire {wire_amount} / memo '{wire_memo}' exceeds {skill_doctype}@{effective_version} policy limits (<= ${ceiling_dec:,.2f} + exact PAID IN FULL match).",
-                        assigned_role="underwriter",
-                        target_view="v_underwriter_exposure",
-                        risk_level="HIGH",
-                        confidence_score=0.91,
-                        pause_for_review=True,
-                        outcome_id=outcome_id,
-                    )
-                outcome_status = "escalated"
-                ledger_locked = False
-                human_reviews = 1
-                closing_mode = "PDF_PATH_B_FLASH"
 
         emit_trace_payload_log(
             user_prompt=(

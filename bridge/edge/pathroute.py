@@ -30,10 +30,12 @@ from __future__ import annotations
 
 import os
 from enum import Enum
+from typing import Any
 
 from a2a.helpers import proto_helpers as ph
 from a2a.types import Message, TaskState
 from google.protobuf.json_format import MessageToDict
+from pydantic import ValidationError
 
 from bridge.edge.wire import (
     KIND_HUMAN_REVIEW_RESOLUTION,
@@ -53,7 +55,7 @@ class Path(str, Enum):
     B = "B"  # file upload / free text -> portal / extraction graph
 
 
-def _is_extraction_assertion(data: dict) -> bool:
+def _is_extraction_assertion(data: dict[str, Any]) -> bool:
     """True iff a data part validates as an extraction assertion (shape-select).
 
     Requires the full ``ExtractionResult`` shape (fields + the self-reported signals a
@@ -66,7 +68,7 @@ def _is_extraction_assertion(data: dict) -> bool:
     try:
         ExtractionResult.model_validate(data)
         return True
-    except Exception:
+    except ValidationError:
         return False
 
 
@@ -94,7 +96,7 @@ def decode_assertion(message: Message) -> ExtractionResult:
             continue
         try:
             return ExtractionResult.model_validate(data)
-        except Exception:
+        except ValidationError:
             continue
     raise ValueError(
         "no extraction-assertion data part found in inbound message "
@@ -102,9 +104,6 @@ def decode_assertion(message: Message) -> ExtractionResult:
     )
 
 
-# --------------------------------------------------------------------------- #
-# The hybrid edge: routing mode (D2) + route table (D3)                        #
-# --------------------------------------------------------------------------- #
 class EdgeMode(str, Enum):
     """The edge routing mode (``BRIDGE_EDGE_MODE``, S3-edge-1 D2)."""
 
@@ -222,6 +221,4 @@ def classify_route(
         return Route.PATH_A
     if _has_collect_request(message) or _has_file_part(message):
         return Route.COLLECT
-    if _has_text(message):
-        return Route.LLM
-    return Route.COLLECT
+    return Route.LLM if _has_text(message) else Route.COLLECT

@@ -81,7 +81,8 @@ import math
 import os
 import re
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, Literal
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from fastapi import BackgroundTasks, FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -108,23 +109,46 @@ from bridge.email_ingress.graph import (
     MessageTooLarge,
     client_state_from_env,
 )
-from bridge.email_ingress.mime import landing_key, max_mail_bytes, parse_mime
+from bridge.email_ingress.mime import (
+    InboundMail,
+    MailAttachment,
+    landing_key,
+    max_mail_bytes,
+    parse_mime,
+)
 from bridge.exchange_store import StaleExchangeWrite
 from bridge.extraction.resolve import SUFFIX_MIME
-from bridge.ports import EmailIngressPort, Port, PortMode, get_adapter, resolve_mode
+from bridge.ports import (
+    EmailIngressPort,
+    Port,
+    PortMode,
+    get_adapter,
+    resolve_mode,
+)
 from bridge.ports.gcp import EMAIL_BUCKET_ENV
 from bridge.ports.local import EMAIL_DIR_ENV
 from bridge.ports.protocols import EMAIL_KEY_PATTERN
-from bridge.rfp import RfpPolicy, acknowledge, note_unreadable, receive
+from bridge.rfp import (
+    RfpCollection,
+    RfpLeg,
+    RfpPolicy,
+    acknowledge,
+    note_unreadable,
+    receive,
+)
 from bridge.signals import dispose_signals, signals_from_result
 from contract.enums import RfpItemStatus
 from contract.wire import ArtifactRef, LedgerEntry
 
 if TYPE_CHECKING:
+    from google.adk.artifacts import BaseArtifactService
+
     # Annotation-only: importing ``bridge.dashboard`` at module top would run
     # ``bridge.dashboard.server``, which lazily binds this module — a fresh-process
     # ``import bridge.edge.email_ingress`` must not hit a partially-initialized cycle.
     from bridge.dashboard.board import RfpBoard
+    from bridge.disposition import DispositionVerdict
+    from contract.extraction import ExtractionResult
 
 _LOG = logging.getLogger("bridge.edge.email_ingress")
 
@@ -145,7 +169,7 @@ READABLE_MIME_TYPES = frozenset(SUFFIX_MIME.values())
 
 # Quarantine / outcome reason tokens.
 REASON_SENDER_AUTH = "sender_authentication_failed"
-REASON_NO_TOKEN = "no_exchange_token"
+REASON_NO_TOKEN = "no_exchange_token"  # noqa: S105 - outcome reason token, not a secret
 REASON_AMBIGUOUS = "ambiguous_token"
 REASON_NO_ATTACHMENTS = "no_attachments"
 REASON_UNSUPPORTED = "unsupported_media_type"
@@ -207,18 +231,22 @@ def _default_port() -> EmailIngressPort:
     return get_adapter(Port.email_ingress, resolve_mode(Port.email_ingress))
 
 
+class _ExtractorLike(Protocol):
+    async def extract(self, artifact_name: str) -> ExtractionResult: ...
+
+
 class EmailProcessor:
     """Drain landed mail onto the ``RfpBoard`` (see the module docstring for the order)."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only processor collaborators
         self,
         *,
         board: RfpBoard,
         port: EmailIngressPort | None = None,
         mailbox: str | None = None,
         secret: bytes | str | None = None,
-        extraction: Any = None,
-        artifact_store: Any = None,
+        extraction: _ExtractorLike | None = None,
+        artifact_store: BaseArtifactService | None = None,
         base_url: str | None = None,
     ) -> None:
         max_mail_bytes()  # a malformed BRIDGE_EMAIL_MAX_BYTES fails loud here, not per mail
@@ -276,26 +304,24 @@ class EmailProcessor:
         key: str,
         reason: str,
         *,
-        sender: str | None = None,
-        subject: str | None = None,
-        skipped_inline: int = 0,
+        mail: InboundMail | None = None,
     ) -> MailOutcome:
         outcome = MailOutcome(
             key=key,
             status="quarantined",
             reason=reason,
-            sender=sender,
-            subject=subject,
-            skipped_inline=skipped_inline,
+            sender=mail.sender if mail is not None else None,
+            subject=mail.subject if mail is not None else None,
+            skipped_inline=mail.skipped_inline if mail is not None else 0,
         )
-        _LOG.warning("email %s quarantined: %s (from %s)", key, reason, sender)
+        _LOG.warning("email %s quarantined: %s (from %s)", key, reason, outcome.sender)
         await asyncio.to_thread(
             self.port.mark_processed, key, outcome.model_dump(mode="json")
         )
         return outcome
 
     def _filed(
-        self, att: Any, entry: LedgerEntry, policy: RfpPolicy
+        self, att: MailAttachment, entry: LedgerEntry, policy: RfpPolicy
     ) -> FiledAttachment:
         """The outcome line for one attachment filed as ``entry`` (``policy``: the RFP's
         own process policy — its ``item_field`` names the item)."""
@@ -311,41 +337,34 @@ class EmailProcessor:
             artifact_uri=entry.artifact.uri if entry.artifact is not None else "",
         )
 
-    async def process(self, key: str) -> MailOutcome:
-        """Process one landed key (idempotent: an already-processed key returns its marker)."""
-        existing = await asyncio.to_thread(self.port.processed, key)
-        if existing is not None:
-            return MailOutcome.model_validate(existing)
-        raw = await asyncio.to_thread(self.port.read, key)
-        try:
-            mail = parse_mime(raw)
-        except ValueError as exc:
-            return await self._quarantine(key, str(exc))
-        meta = {
-            "sender": mail.sender,
-            "subject": mail.subject,
-            "skipped_inline": mail.skipped_inline,
-        }
+    def _resolve_mail_target(
+        self, mail: InboundMail
+    ) -> tuple[RfpCollection, RfpLeg, RfpPolicy] | str:
         if any(_DMARC_FAIL_RE.search(v) for v in mail.auth_results):
-            return await self._quarantine(key, REASON_SENDER_AUTH, **meta)
+            return REASON_SENDER_AUTH
         tokens = find_tokens(mail, self.mailbox)
         try:
             match = correlate(tokens, list(self.board.rfps.values()), self._secret)
         except AmbiguousToken:
-            return await self._quarantine(key, REASON_AMBIGUOUS, **meta)
+            return REASON_AMBIGUOUS
         if match is None:
-            return await self._quarantine(key, REASON_NO_TOKEN, **meta)
+            return REASON_NO_TOKEN
         rfp, leg = match
-        # The RFP's OWN process policy (S4-usecase-4: the board's home process, or a
-        # process installed live in the registry), resolved once, BEFORE any attachment
-        # is stored or extracted. Unresolvable → quarantine; the board is not touched.
         try:
             policy = self.board.policy_for(rfp.process)
         except ValueError:
-            return await self._quarantine(key, REASON_PROCESS_UNAVAILABLE, **meta)
+            return REASON_PROCESS_UNAVAILABLE
+        return rfp, leg, policy
 
-        # Phase 1 — extract every attachment; the board is NOT touched.
-        extracted = []
+    async def _extract_attachments(
+        self, key: str, mail: InboundMail, policy: RfpPolicy
+    ) -> tuple[
+        list[tuple[MailAttachment, str, ExtractionResult, DispositionVerdict]],
+        list[UnreadableAttachment],
+    ]:
+        extracted: list[
+            tuple[MailAttachment, str, ExtractionResult, DispositionVerdict]
+        ] = []
         unreadable: list[UnreadableAttachment] = []
         for att in mail.attachments:
             uri = await asyncio.to_thread(
@@ -383,23 +402,38 @@ class EmailProcessor:
                 )
             )
             extracted.append((att, uri, result, verdict))
+        return extracted, unreadable
 
-        # Phase 2 — persist the bytes leg-scoped (an ArtifactRef by reference).
+    async def _persist_attachments(
+        self,
+        key: str,
+        leg: RfpLeg,
+        extracted: list[
+            tuple[MailAttachment, str, ExtractionResult, DispositionVerdict]
+        ],
+    ) -> list[ArtifactRef]:
         refs: list[ArtifactRef] = []
         for att, uri, _result, _verdict in extracted:
+            raw_ref = ArtifactRef(uri=uri, mime_type=att.mime_type, name=att.filename)
             submission = DocumentSubmission(
                 doc_id=f"email-{key}-{att.index}",
                 artifact_name=uri,
-                artifact=ArtifactRef(
-                    uri=uri, mime_type=att.mime_type, name=att.filename
-                ),
+                artifact=raw_ref,
             )
+
+            def _resolve_att(
+                _uri: str,
+                data: bytes = att.data,
+                mime: str = att.mime_type,
+            ) -> tuple[bytes, str]:
+                return data, mime
+
             version = await persist_submission(
                 self.artifact_store,
                 party=leg.party,
                 context_id=leg.context_id,
                 submission=submission,
-                resolver=lambda _uri, att=att: (att.data, att.mime_type),
+                resolver=_resolve_att,
             )
             refs.append(
                 ArtifactRef(
@@ -413,12 +447,81 @@ class EmailProcessor:
                     name=att.filename,
                 )
                 if version is not None
-                else submission.artifact
+                else raw_ref
             )
+        return refs
 
-        # Phase 3 — apply to a FRESH read of the RFP, then put (no await in between).
-        # The ledger entries depend only on the extraction + the persisted refs, so a
-        # retry reuses them: phases 1-2 are never redone.
+    def _apply_filing_cas(
+        self,
+        key: str,
+        target: tuple[RfpCollection, RfpLeg, RfpPolicy],
+        entries: list[tuple[MailAttachment, LedgerEntry]],
+        unreadable: list[UnreadableAttachment],
+    ) -> list[FiledAttachment] | None:
+        rfp, leg, policy = target
+        doc_ids = {entry.doc_id for _att, entry in entries}
+        for attempt in range(1, _STALE_RETRIES + 1):
+            now = self.board.clock()
+            current = self.board.rfps.get(rfp.rfp_id)
+            if current is None:
+                return None
+            stored = {e.doc_id: e for e in current.entries if e.doc_id in doc_ids}
+            if stored:
+                _LOG.info(
+                    "email %s: already filed on RFP %s; writing the marker only",
+                    key,
+                    current.rfp_id,
+                )
+                return [
+                    self._filed(att, stored.get(entry.doc_id, entry), policy)
+                    for att, entry in entries
+                ]
+            updated = current
+            if any(
+                c.party == leg.party and c.status is RfpItemStatus.invited
+                for c in updated.cells
+            ):
+                updated = acknowledge(updated, leg.party, now=now)
+            for _att, entry in entries:
+                updated = receive(updated, leg.party, entry, now=now, policy=policy)
+            for item in unreadable:
+                updated = note_unreadable(
+                    updated,
+                    leg.party,
+                    filename=item.filename,
+                    reason=item.reason,
+                    now=now,
+                )
+            try:
+                self.board.put(updated)
+            except StaleExchangeWrite:
+                if attempt == _STALE_RETRIES:
+                    raise
+                _LOG.info(
+                    "email %s: RFP %s changed concurrently; retrying",
+                    key,
+                    updated.rfp_id,
+                )
+                continue
+            return [self._filed(att, entry, policy) for att, entry in entries]
+        return None  # pragma: no cover - loop always returns or raises
+
+    async def process(self, key: str) -> MailOutcome:
+        """Process one landed key (idempotent: an already-processed key returns its marker)."""
+        existing = await asyncio.to_thread(self.port.processed, key)
+        if existing is not None:
+            return MailOutcome.model_validate(existing)
+        raw = await asyncio.to_thread(self.port.read, key)
+        try:
+            mail = parse_mime(raw)
+        except ValueError as exc:
+            return await self._quarantine(key, str(exc))
+        resolved = self._resolve_mail_target(mail)
+        if isinstance(resolved, str):
+            return await self._quarantine(key, resolved, mail=mail)
+        rfp, leg, policy = resolved
+        extracted, unreadable = await self._extract_attachments(key, mail, policy)
+        refs = await self._persist_attachments(key, leg, extracted)
         entries = [
             (
                 att,
@@ -431,64 +534,20 @@ class EmailProcessor:
             )
             for (att, _uri, result, verdict), ref in zip(extracted, refs, strict=True)
         ]
-        doc_ids = {entry.doc_id for _att, entry in entries}
-        for attempt in range(1, _STALE_RETRIES + 1):
-            now = self.board.clock()
-            current = self.board.rfps.get(rfp.rfp_id)
-            if current is None:
-                return await self._quarantine(key, REASON_NO_TOKEN, **meta)
-            stored = {e.doc_id: e for e in current.entries if e.doc_id in doc_ids}
-            if stored:
-                # Re-file guard: another replica — or a crash between ``board.put``
-                # and the marker — already filed this mail. Never file it twice; the
-                # marker reports what the RFP actually holds.
-                _LOG.info(
-                    "email %s: already filed on RFP %s; writing the marker only",
-                    key,
-                    current.rfp_id,
-                )
-                rfp = current
-                filed = [
-                    self._filed(att, stored.get(entry.doc_id, entry), policy)
-                    for att, entry in entries
-                ]
-                break
-            rfp = current
-            if any(
-                c.party == leg.party and c.status is RfpItemStatus.invited
-                for c in rfp.cells
-            ):
-                rfp = acknowledge(rfp, leg.party, now=now)
-            for _att, entry in entries:
-                rfp = receive(rfp, leg.party, entry, now=now, policy=policy)
-            for item in unreadable:
-                rfp = note_unreadable(
-                    rfp, leg.party, filename=item.filename, reason=item.reason, now=now
-                )
-            try:
-                self.board.put(rfp)
-            except StaleExchangeWrite:
-                # Compare-and-set lost to a concurrent writer: redo read → apply → put.
-                # Exhausted → propagate (no marker; the key stays pending for the
-                # next drain tick).
-                if attempt == _STALE_RETRIES:
-                    raise
-                _LOG.info(
-                    "email %s: RFP %s changed concurrently; retrying", key, rfp.rfp_id
-                )
-                continue
-            filed = [self._filed(att, entry, policy) for att, entry in entries]
-            break
-
+        filed = self._apply_filing_cas(key, resolved, entries, unreadable)
+        if filed is None:
+            return await self._quarantine(key, REASON_NO_TOKEN, mail=mail)
         outcome = MailOutcome(
             key=key,
             status="filed",
             reason=None if mail.attachments else REASON_NO_ATTACHMENTS,
             rfp_id=rfp.rfp_id,
             party=leg.party,
+            sender=mail.sender,
+            subject=mail.subject,
+            skipped_inline=mail.skipped_inline,
             filed=filed,
             unreadable=unreadable,
-            **meta,
         )
         await asyncio.to_thread(
             self.port.mark_processed, key, outcome.model_dump(mode="json")
@@ -552,8 +611,8 @@ def _landing_configured() -> bool:
 def email_processor_from_env(
     board: RfpBoard,
     *,
-    extraction: Any = None,
-    artifact_store: Any = None,
+    extraction: _ExtractorLike | None = None,
+    artifact_store: BaseArtifactService | None = None,
     base_url: str | None = None,
 ) -> EmailProcessor | None:
     """The env-wired processor for the host that owns ``board`` — or ``None``.
@@ -596,7 +655,7 @@ async def email_drain_loop(
             await asyncio.sleep(interval)
             try:
                 await processor.drain()
-            except Exception:  # retried next tick; CancelledError still propagates
+            except Exception:  # noqa: BLE001 - periodic loop must log and retry on next tick
                 _LOG.exception("periodic email drain failed; will retry next tick")
 
     task = asyncio.create_task(_loop(), name="bridge-email-drain")
@@ -623,14 +682,124 @@ def mount_email_drain_routes(
         outcomes = await processor.drain()
         return [o.model_dump(mode="json") for o in outcomes]
 
-    @app.get("/email/outcomes/{key}")
-    async def outcome(key: str) -> Any:
+    @app.get("/email/outcomes/{key}", response_model=None)
+    async def outcome(key: str) -> Response | dict[str, Any]:
         if not _KEY_RE.fullmatch(key):
             return Response(status_code=404)
         marker = await run_in_threadpool(marker_port.processed, key)
         if marker is None:
             return Response(status_code=404)
         return marker
+
+
+def _validate_graph_item(
+    item: object, *, client_state: str, tenant_id: str | None
+) -> str | None:
+    if not isinstance(item, dict):
+        return None
+    state = item.get("clientState")
+    resource = item.get("resourceData")
+    message_id = resource.get("id") if isinstance(resource, dict) else None
+    if not isinstance(state, str) or not hmac.compare_digest(
+        state.encode(), client_state.encode()
+    ):
+        _LOG.warning("email notification ignored: clientState mismatch")
+        return None
+    if tenant_id and item.get("tenantId") != tenant_id:
+        _LOG.warning("email notification ignored: tenantId mismatch")
+        return None
+    if not isinstance(message_id, str) or not MESSAGE_ID_RE.fullmatch(message_id):
+        _LOG.warning("email notification ignored: invalid message id")
+        return None
+    return message_id
+
+
+async def _ingest_graph_message(
+    message_id: str, *, graph: GraphMailClient, port: EmailIngressPort
+) -> Literal["landed", "duplicate", "ignored", "retry"]:
+    try:
+        raw = await run_in_threadpool(graph.fetch_mime, message_id)
+    except MessageTooLarge:
+        key = oversize_key(message_id)
+        outcome = MailOutcome(key=key, status="quarantined", reason="oversize")
+        _LOG.warning("email %s quarantined: oversize (graph id)", key)
+        try:
+            await run_in_threadpool(
+                port.mark_processed, key, outcome.model_dump(mode="json")
+            )
+        except Exception:  # noqa: BLE001 - marker write error asks Graph to retry via 503
+            _LOG.exception("email oversize marker failed; asking Graph to retry")
+            return "retry"
+        return "ignored"
+    except GraphError as exc:
+        _LOG.warning("email fetch failed (%s); asking Graph to retry", exc)
+        return "retry"
+    key = landing_key(raw)
+    try:
+        fresh = await run_in_threadpool(port.land, key, raw)
+    except Exception:  # noqa: BLE001 - landing write error asks Graph to retry via 503
+        _LOG.exception("email landing failed; asking Graph to retry")
+        return "retry"
+    return "landed" if fresh else "duplicate"
+
+
+@dataclass(frozen=True)
+class _WebhookDeps:
+    port: EmailIngressPort
+    graph: GraphMailClient | None
+    client_state: str | None
+    processor: EmailProcessor | None
+    tenant_id: str | None
+
+
+async def _run_background_drain(processor: EmailProcessor) -> None:
+    try:
+        await processor.drain()
+    except Exception:  # noqa: BLE001 - background drain retries on next webhook/tick
+        _LOG.exception("background email drain failed; will retry on next drain")
+
+
+async def _handle_graph_notifications(
+    request: Request,
+    background: BackgroundTasks,
+    validation_token: str | None,
+    deps: _WebhookDeps,
+) -> Response:
+    if deps.graph is None or not deps.client_state:
+        return Response(status_code=404)
+    if validation_token is not None:
+        return (
+            Response(status_code=400)
+            if len(validation_token) > MAX_VALIDATION_TOKEN
+            else PlainTextResponse(validation_token, status_code=200)
+        )
+    body = await _read_capped(request, MAX_NOTIFICATION_BYTES)
+    if body is None:
+        return Response(status_code=413)
+    try:
+        items = json.loads(body)["value"]
+        if not isinstance(items, list):
+            raise TypeError
+    except (ValueError, KeyError, TypeError):
+        return Response(status_code=400)
+
+    counts = {"landed": 0, "duplicates": 0, "ignored": 0}
+    for item in items:
+        message_id = _validate_graph_item(
+            item, client_state=deps.client_state, tenant_id=deps.tenant_id
+        )
+        if message_id is None:
+            counts["ignored"] += 1
+            continue
+        verdict = await _ingest_graph_message(
+            message_id, graph=deps.graph, port=deps.port
+        )
+        if verdict == "retry":
+            return Response(status_code=503)
+        counts["duplicates" if verdict == "duplicate" else verdict] += 1
+    if deps.processor is not None and counts["landed"]:
+        background.add_task(_run_background_drain, deps.processor)
+    return JSONResponse(counts, status_code=202)
 
 
 def build_email_app(
@@ -653,15 +822,19 @@ def build_email_app(
         raise ValueError("build_email_app(graph=...) requires client_state")
     if graph is not None:
         max_mail_bytes()  # a malformed BRIDGE_EMAIL_MAX_BYTES fails at startup
-    if port is None:
-        port = processor.port if processor is not None else _default_port()
+    resolved_port = (
+        port
+        if port is not None
+        else (processor.port if processor is not None else _default_port())
+    )
+    deps = _WebhookDeps(
+        port=resolved_port,
+        graph=graph,
+        client_state=client_state,
+        processor=processor,
+        tenant_id=tenant_id,
+    )
     app = FastAPI(title="Document Bridge — email intake")
-
-    async def _background_drain() -> None:
-        try:
-            await processor.drain()
-        except Exception:  # retried by the next drain; never crash the host
-            _LOG.exception("background email drain failed; will retry on next drain")
 
     @app.post(NOTIFICATIONS_PATH)
     async def graph_notifications(
@@ -669,92 +842,12 @@ def build_email_app(
         background: BackgroundTasks,
         validationToken: str | None = None,
     ) -> Response:
-        if graph is None:
-            return Response(status_code=404)
-        if validationToken is not None:
-            if len(validationToken) > MAX_VALIDATION_TOKEN:
-                return Response(status_code=400)
-            return PlainTextResponse(validationToken, status_code=200)
-        body = await _read_capped(request, MAX_NOTIFICATION_BYTES)
-        if body is None:
-            return Response(status_code=413)
-        try:
-            payload = json.loads(body)
-            items = payload["value"]
-            if not isinstance(items, list):
-                raise TypeError
-        except (ValueError, KeyError, TypeError):
-            return Response(status_code=400)
-
-        landed = duplicates = ignored = 0
-        for item in items:
-            if not isinstance(item, dict):
-                ignored += 1
-                continue
-            state = item.get("clientState")
-            resource = item.get("resourceData")
-            message_id = resource.get("id") if isinstance(resource, dict) else None
-            if not isinstance(state, str) or not hmac.compare_digest(
-                state.encode(), client_state.encode()
-            ):
-                _LOG.warning("email notification ignored: clientState mismatch")
-                ignored += 1
-                continue
-            if tenant_id and item.get("tenantId") != tenant_id:
-                _LOG.warning("email notification ignored: tenantId mismatch")
-                ignored += 1
-                continue
-            if not isinstance(message_id, str) or not MESSAGE_ID_RE.fullmatch(
-                message_id
-            ):
-                _LOG.warning("email notification ignored: invalid message id")
-                ignored += 1
-                continue
-            try:
-                raw = await run_in_threadpool(graph.fetch_mime, message_id)
-            except MessageTooLarge:
-                # Oversize: never landed, but recorded — a 5xx would make Graph retry forever.
-                # ONLY this refusal is acked; every other failure is a 503 (no mail lost).
-                key = oversize_key(message_id)
-                outcome = MailOutcome(key=key, status="quarantined", reason="oversize")
-                _LOG.warning("email %s quarantined: oversize (graph id)", key)
-                try:
-                    await run_in_threadpool(
-                        port.mark_processed, key, outcome.model_dump(mode="json")
-                    )
-                except Exception:
-                    _LOG.exception(
-                        "email oversize marker failed; asking Graph to retry"
-                    )
-                    return Response(status_code=503)
-                ignored += 1
-                continue
-            except GraphError as exc:
-                _LOG.warning("email fetch failed (%s); asking Graph to retry", exc)
-                return Response(status_code=503)
-            key = landing_key(raw)
-            try:
-                fresh = await run_in_threadpool(port.land, key, raw)
-            except Exception:
-                _LOG.exception("email landing failed; asking Graph to retry")
-                return Response(status_code=503)
-            if fresh:
-                landed += 1
-            else:
-                duplicates += 1
-        if processor is not None and landed:
-            background.add_task(_background_drain)
-        return JSONResponse(
-            {"landed": landed, "duplicates": duplicates, "ignored": ignored},
-            status_code=202,
+        return await _handle_graph_notifications(
+            request, background, validationToken, deps
         )
 
-    # The drain and the outcome read live only on the board-owning host. The deployed
-    # webhook is PUBLIC (allUsers): it must not serve markers (sender, subject, RFP,
-    # carrier) to anyone holding a key — and its create-only SA could not read them.
     if processor is not None:
-        mount_email_drain_routes(app, processor, port=port)
-
+        mount_email_drain_routes(app, processor, port=resolved_port)
     return app
 
 
@@ -779,7 +872,7 @@ def serve_email_webhook_container() -> None:  # pragma: no cover
     port = int(os.environ.get("PORT", "8080"))
     # 0.0.0.0 is required by Cloud Run; this service is public by design (Graph cannot
     # present a Google identity) and authenticates each notification by clientState.
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104 - Cloud Run requires 0.0.0.0 bind
 
 
 __all__ = [

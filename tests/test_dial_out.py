@@ -34,13 +34,13 @@ def _directory() -> FakePeerDirectory:
 
 
 def _dialout(**overrides) -> DialOut:
-    base = dict(
-        context_id="ctx-a",
-        party="carrier-a",
-        process="benefits-procurement",
-        card_url="card://carrier-a",
-        message="request benefits-quote for program:acme-2026",
-    )
+    base = {
+        "context_id": "ctx-a",
+        "party": "carrier-a",
+        "process": "benefits-procurement",
+        "card_url": "card://carrier-a",
+        "message": "request benefits-quote for program:acme-2026",
+    }
     base.update(overrides)
     return DialOut(**base)
 

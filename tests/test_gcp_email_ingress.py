@@ -142,4 +142,6 @@ def test_importing_the_gcp_adapters_does_not_import_storage():
         "import sys, bridge.ports.gcp; "
         "sys.exit(1 if 'google.cloud.storage' in sys.modules else 0)"
     )
-    assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+    assert (
+        subprocess.run([sys.executable, "-c", code]).returncode == 0  # noqa: S603 - test spawns trusted sys.executable probe
+    )

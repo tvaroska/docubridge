@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.params import Depends
 
 from bridge.a2ui_inbox import ActionInboxStore
 from bridge.agent_gym import (
     AgentGymEngine,
+    ProgrammableTrustPolicy,
     TribalRuleCategory,
     TribalRuleStatus,
     build_a2ui_trust_readiness_surface,
@@ -33,29 +36,22 @@ if TYPE_CHECKING:
     from bridge.showcase import ScenarioEngine
 
 
-def register_gym_routes(
-    router: APIRouter,
-    *,
-    store: OperationalStore,
-    catalog: KnowledgeCatalog,
-    inbox: ActionInboxStore,
-    gym: AgentGymEngine,
-    principal_roles: dict[str, CatalogRole] | None,
-    require_auth: bool,
-    scenario_engine: ScenarioEngine | None = None,
-) -> None:
-    """Register Agent Gym distillation, 3-tier evaluation, skill compilation, and trust dial routes."""
-    gym_internal_auth = mutating_auth_dependency(
-        default_role="broker",
-        principal_roles=principal_roles,
-        require_auth=require_auth,
-        allow_external_roles=False,
-        external_role_error="External roles cannot mutate Agent Gym rules, skills, or trust policies.",
-    )
+@dataclass(frozen=True)
+class _GymRouteDeps:
+    inbox: ActionInboxStore
+    gym: AgentGymEngine
+    principal_roles: dict[str, CatalogRole] | None
+    require_auth: bool
+    gym_internal_auth: Depends
+    scenario_engine: ScenarioEngine | None
 
+
+def _register_gym_signal_and_skill_routes(
+    router: APIRouter, deps: _GymRouteDeps
+) -> None:
     @router.post(
         "/v1/gym/signals/from-quarantine",
-        dependencies=[gym_internal_auth],
+        dependencies=[deps.gym_internal_auth],
     )
     def distill_from_quarantine_endpoint(
         request: Request,
@@ -73,7 +69,7 @@ def register_gym_routes(
             if body.page_number is not None
             else None
         )
-        signal, rule = gym.distill_from_quarantine_correction(
+        signal, rule = deps.gym.distill_from_quarantine_correction(
             entity_id=body.entity_id,
             doc_id=body.doc_id,
             doctype=body.doctype,
@@ -97,7 +93,7 @@ def register_gym_routes(
         }
 
     @router.post(
-        "/v1/gym/signals/from-inbox/{item_id}", dependencies=[gym_internal_auth]
+        "/v1/gym/signals/from-inbox/{item_id}", dependencies=[deps.gym_internal_auth]
     )
     def distill_from_inbox_endpoint(
         item_id: str,
@@ -106,14 +102,14 @@ def register_gym_routes(
     ) -> dict[str, Any]:
         """Distill a candidate Tribal Knowledge Rule from a Zone 5 A2UI Inbox RFC 6902 patch audit."""
         del role
-        audits = inbox.list_audit_records(item_id)
+        audits = deps.inbox.list_audit_records(item_id)
         if not audits:
             raise HTTPException(
                 status_code=404,
                 detail=f"No InboxAuditRecord found for action item '{item_id}'.",
             )
         latest_audit = audits[-1]
-        signal, rule = gym.distill_from_inbox_audit(
+        signal, rule = deps.gym.distill_from_inbox_audit(
             latest_audit,
             doc_id=body.doc_id,
             doctype=body.doctype,
@@ -129,7 +125,9 @@ def register_gym_routes(
             "candidate_rule": rule.model_dump(mode="json"),
         }
 
-    @router.post("/v1/gym/rules/{rule_id}/evaluate", dependencies=[gym_internal_auth])
+    @router.post(
+        "/v1/gym/rules/{rule_id}/evaluate", dependencies=[deps.gym_internal_auth]
+    )
     def evaluate_gym_rule_endpoint(
         rule_id: str,
         auto_promote: bool = True,
@@ -138,8 +136,10 @@ def register_gym_routes(
         """Run the 3-tier Agent Gym evaluation gate on a candidate rule and promote on zero regression."""
         del role
         try:
-            report = gym.evaluate_candidate_rule(rule_id, auto_promote=auto_promote)
-            rule = next(r for r in gym.list_rules() if r.rule_id == rule_id)
+            report = deps.gym.evaluate_candidate_rule(
+                rule_id, auto_promote=auto_promote
+            )
+            rule = next(r for r in deps.gym.list_rules() if r.rule_id == rule_id)
             return {
                 "report_card": report.model_dump(mode="json"),
                 "rule": rule.model_dump(mode="json"),
@@ -147,20 +147,20 @@ def register_gym_routes(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    @router.post("/v1/gym/compile-skill", dependencies=[gym_internal_auth])
+    @router.post("/v1/gym/compile-skill", dependencies=[deps.gym_internal_auth])
     def compile_gym_skill_endpoint(
         body: CompileSkillRequest,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
         """Compile promoted Tribal Knowledge Rules into an immutable versioned SKILL.md revision via gemini-4-argon."""
         del role
-        return gym.compile_rules_to_skill(
+        return deps.gym.compile_rules_to_skill(
             doctype=body.doctype,
             issuer_pattern=body.issuer_pattern,
         )
 
     @router.post(
-        "/v1/gym/skills/{skill_name}/rollback", dependencies=[gym_internal_auth]
+        "/v1/gym/skills/{skill_name}/rollback", dependencies=[deps.gym_internal_auth]
     )
     def rollback_gym_skill_endpoint(
         skill_name: str,
@@ -170,7 +170,7 @@ def register_gym_routes(
         """Roll back a doctype skill defaultRevision pointer to its parent or target revision."""
         del role
         req = body or RollbackSkillRequest()
-        rev = gym.rollback_skill_revision(
+        rev = deps.gym.rollback_skill_revision(
             skill_name,
             target_revision_id=req.target_revision_id,
             reason=req.reason,
@@ -180,8 +180,8 @@ def register_gym_routes(
     @router.get("/v1/gym/skills/{skill_name}/revisions")
     def list_gym_skill_revisions_endpoint(skill_name: str) -> dict[str, Any]:
         """List the active defaultRevision and full immutable revision history for a skill."""
-        active = gym.get_active_skill_revision(skill_name)
-        revs = gym.list_skill_revisions(skill_name)
+        active = deps.gym.get_active_skill_revision(skill_name)
+        revs = deps.gym.list_skill_revisions(skill_name)
         return {
             "skill_name": skill_name,
             "active_revision": active.model_dump(mode="json"),
@@ -190,6 +190,17 @@ def register_gym_routes(
             else [active.model_dump(mode="json")],
         }
 
+
+def _serialize_trust_policy(policy: ProgrammableTrustPolicy) -> dict[str, Any]:
+    dumped: dict[str, Any] = policy.model_dump(mode="json")
+    dumped["accuracy_rate"] = policy.accuracy_rate
+    dumped["ready_for_promotion"] = policy.ready_for_promotion
+    dumped["recommended_next_level"] = policy.recommended_next_level.value
+    dumped["a2ui_messages"] = build_a2ui_trust_readiness_surface(policy)
+    return dumped
+
+
+def _register_gym_read_routes(router: APIRouter, deps: _GymRouteDeps) -> None:
     @router.get("/v1/gym/rules")
     def list_gym_rules_endpoint(
         category: TribalRuleCategory | None = None,
@@ -200,7 +211,7 @@ def register_gym_routes(
         """List Tribal Knowledge Rules filtered by category, status, issuer, or doctype."""
         return [
             r.model_dump(mode="json")
-            for r in gym.list_rules(
+            for r in deps.gym.list_rules(
                 category=category,
                 status=status,
                 issuer=issuer,
@@ -216,7 +227,7 @@ def register_gym_routes(
         """Return promoted Stage 1 extraction hint rules for a given issuer and doctype."""
         return [
             r.model_dump(mode="json")
-            for r in gym.get_extraction_hints(issuer=issuer, doctype=doctype)
+            for r in deps.gym.get_extraction_hints(issuer=issuer, doctype=doctype)
         ]
 
     @router.get("/v1/gym/export/docai-dataset")
@@ -225,7 +236,7 @@ def register_gym_routes(
         verified_only: bool = True,
     ) -> dict[str, Any]:
         """Export verified SME feedback signals and SourceAnchor bounding polygons in Document AI ImportDocuments format."""
-        return gym.export_docai_uptraining_dataset(
+        return deps.gym.export_docai_uptraining_dataset(
             doctype=doctype,
             verified_only=verified_only,
         )
@@ -233,23 +244,17 @@ def register_gym_routes(
     @router.get("/v1/gym/trust-policies")
     def list_gym_trust_policies_endpoint() -> list[dict[str, Any]]:
         """List all Programmable Trust slice policies with readiness status and A2UI v0.9 controls."""
-        results: list[dict[str, Any]] = []
-        for p in gym.list_trust_policies():
-            dumped = p.model_dump(mode="json")
-            dumped["accuracy_rate"] = p.accuracy_rate
-            dumped["ready_for_promotion"] = p.ready_for_promotion
-            dumped["recommended_next_level"] = p.recommended_next_level.value
-            dumped["a2ui_messages"] = build_a2ui_trust_readiness_surface(p)
-            results.append(dumped)
-        return results
+        return [_serialize_trust_policy(p) for p in deps.gym.list_trust_policies()]
 
+
+def _register_gym_trust_write_routes(router: APIRouter, deps: _GymRouteDeps) -> None:
     @router.post(
         "/v1/gym/trust-policies/{slice_id}/shadow",
         dependencies=[
             mutating_auth_dependency(
                 default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
+                principal_roles=deps.principal_roles,
+                require_auth=deps.require_auth,
                 allow_external_roles=False,
                 external_role_error="External roles cannot record Agent Gym shadow comparisons.",
             )
@@ -260,7 +265,7 @@ def register_gym_routes(
         body: RecordShadowComparisonRequest,
     ) -> dict[str, Any]:
         """Record a Shadow Mode AI vs. human comparison and auto-demote autonomy on drift."""
-        record, policy = gym.record_shadow_comparison(
+        record, policy = deps.gym.record_shadow_comparison(
             slice_id=slice_id,
             entity_id=body.entity_id,
             doc_id=body.doc_id,
@@ -280,7 +285,7 @@ def register_gym_routes(
 
     @router.post(
         "/v1/gym/trust-policies/{slice_id}/dial",
-        dependencies=[gym_internal_auth],
+        dependencies=[deps.gym_internal_auth],
     )
     def dial_trust_policy_endpoint(
         request: Request,
@@ -292,7 +297,7 @@ def register_gym_routes(
         del role
         compound = verified_mutating_identity(request)
         try:
-            policy = gym.dial_trust_policy(
+            policy = deps.gym.dial_trust_policy(
                 slice_id,
                 target_level=body.target_level,
                 actor_principal=compound.user.subject,
@@ -318,8 +323,8 @@ def register_gym_routes(
         dependencies=[
             mutating_auth_dependency(
                 default_role="broker",
-                principal_roles=principal_roles,
-                require_auth=require_auth,
+                principal_roles=deps.principal_roles,
+                require_auth=deps.require_auth,
                 allow_external_roles=False,
                 external_role_error="External roles cannot reset Agent Gym trust policies.",
             )
@@ -330,16 +335,43 @@ def register_gym_routes(
         reseed_demo: bool = False,
     ) -> list[dict[str, Any]]:
         """Reset Programmable Trust policies (and optionally clear rules or reseed demo scenarios)."""
-        if scenario_engine is not None:
-            scenario_engine.reset_all()
+        if deps.scenario_engine is not None:
+            deps.scenario_engine.reset_all()
             if reseed_demo:
-                scenario_engine.seed_all()
-        results: list[dict[str, Any]] = []
-        for p in gym.reset_trust_policies(clear_rules=clear_rules):
-            dumped = p.model_dump(mode="json")
-            dumped["accuracy_rate"] = p.accuracy_rate
-            dumped["ready_for_promotion"] = p.ready_for_promotion
-            dumped["recommended_next_level"] = p.recommended_next_level.value
-            dumped["a2ui_messages"] = build_a2ui_trust_readiness_surface(p)
-            results.append(dumped)
-        return results
+                deps.scenario_engine.seed_all()
+        return [
+            _serialize_trust_policy(p)
+            for p in deps.gym.reset_trust_policies(clear_rules=clear_rules)
+        ]
+
+
+def register_gym_routes(  # noqa: PLR0913 - public FastAPI route registrar
+    router: APIRouter,
+    *,
+    store: OperationalStore,
+    catalog: KnowledgeCatalog,
+    inbox: ActionInboxStore,
+    gym: AgentGymEngine,
+    principal_roles: dict[str, CatalogRole] | None,
+    require_auth: bool,
+    scenario_engine: ScenarioEngine | None = None,
+) -> None:
+    """Register Agent Gym distillation, 3-tier evaluation, skill compilation, and trust dial routes."""
+    del store, catalog
+    deps = _GymRouteDeps(
+        inbox=inbox,
+        gym=gym,
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+        gym_internal_auth=mutating_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+            external_role_error="External roles cannot mutate Agent Gym rules, skills, or trust policies.",
+        ),
+        scenario_engine=scenario_engine,
+    )
+    _register_gym_signal_and_skill_routes(router, deps)
+    _register_gym_read_routes(router, deps)
+    _register_gym_trust_write_routes(router, deps)

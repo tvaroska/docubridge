@@ -10,16 +10,16 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict
 
 from bridge.classification import canonicalize_issuer
 from bridge.disposition import DispositionVerdict
 from bridge.ports import Port, get_adapter, resolve_mode
-from bridge.ports.protocols import ExtractionPort
-from bridge.signals import dispose_signals, signals_from_result
+from bridge.signals import ExtractorLike, dispose_signals, signals_from_result
 from bridge.strategy import evaluate_process_sufficiency
 from bridge.telemetry import trace_step
 from bridge.vault import redact_personal_data
@@ -121,6 +121,15 @@ def project_collection_status(
     )
 
 
+class _CandidateAwareExtractor(Protocol):
+    async def extract(
+        self,
+        artifact_name: str,
+        *,
+        candidate_doctypes: Sequence[str] | None = None,
+    ) -> ExtractionResult: ...
+
+
 class Collector:
     """The deterministic one-turn collect path (COLL-4). Reads the extraction port,
     disposes per the pure gate, projects the classified ledger, and optionally promotes
@@ -128,7 +137,7 @@ class Collector:
 
     def __init__(
         self,
-        extractor: ExtractionPort | None = None,
+        extractor: ExtractorLike | None = None,
         *,
         redact_pii: bool | None = None,
         vault_store: AuditVaultStore | None = None,
@@ -157,7 +166,7 @@ class Collector:
         the LLM leg's gate pin from them without re-extracting. ``None`` (the default)
         leaves the behaviour identical.
         """
-        extractor = self._extractor or get_adapter(
+        extractor: ExtractorLike = self._extractor or get_adapter(
             Port.extraction, resolve_mode(Port.extraction)
         )
         context_id = request.context_id or uuid.uuid4().hex
@@ -192,7 +201,9 @@ class Collector:
                     },
                 ) as doc_span:
                     try:
-                        result = await extractor.extract(
+                        result = await cast(
+                            _CandidateAwareExtractor, extractor
+                        ).extract(
                             sub.artifact_name,
                             candidate_doctypes=candidate_doctypes or None,
                         )
@@ -217,9 +228,10 @@ class Collector:
                         "docubridge.disposition", entry.disposition.value
                     )
                     doc_span.set_attribute("docubridge.gate", entry.gate.value)
-                    doc_span.set_attribute(
-                        "docubridge.confidence", entry.overall_confidence
-                    )
+                    if entry.overall_confidence is not None:
+                        doc_span.set_attribute(
+                            "docubridge.confidence", entry.overall_confidence
+                        )
                     if entry.disposition is Disposition.accepted and (
                         self._vault_store is not None
                         or self._operational_store is not None
@@ -250,7 +262,10 @@ class Collector:
                 sum(1 for e in entries if e.disposition is Disposition.accepted),
             )
             turn_span.set_attribute(
-                "docubridge.outstanding_count", len(status.outstanding.requirements)
+                "docubridge.outstanding_count",
+                len(status.outstanding.requirements)
+                if status.outstanding is not None
+                else 0,
             )
             if sufficiency is not None:
                 turn_span.set_attribute(

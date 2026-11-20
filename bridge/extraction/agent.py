@@ -1,11 +1,13 @@
 """Extraction agent (ADK layer) — wraps the extraction port as an AgentTool."""
 
 import os
+from typing import Any
 
 from google.adk.agents import LlmAgent
 from google.adk.models import BaseLlm
 from google.adk.planners import BuiltInPlanner
-from google.adk.tools import FunctionTool, ToolContext
+from google.adk.tools.function_tool import FunctionTool
+from google.adk.tools.tool_context import ToolContext
 from google.genai import types
 
 from bridge import gatepin
@@ -21,7 +23,7 @@ EXTRACTION_INSTRUCTION = """You are the extraction agent. Given a document artif
 
 async def extract_document(
     artifact_name: str, tool_context: ToolContext | None = None
-) -> dict:
+) -> dict[str, Any]:
     """Extract normalized fields and disposition signals from a document artifact.
 
     Args:

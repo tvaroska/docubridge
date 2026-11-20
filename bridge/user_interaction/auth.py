@@ -5,7 +5,9 @@ from __future__ import annotations
 import inspect
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal, cast
 
 from fastapi import Request
@@ -224,7 +226,51 @@ def _extract_user_token_claims(
     return {}, None
 
 
-def resolve_caller_role(
+@dataclass(frozen=True)
+class _RoleLookupContext:
+    principal_name: str
+    iap_email: str
+    iap_email_raw: str
+    principal_roles: dict[str, CatalogRole] | None
+    user: object
+    is_scope_authed: bool
+    header_role: str
+
+
+@dataclass(frozen=True)
+class _SvidContext:
+    agent_spiffe_id: str | None
+    svid_verified: bool
+    obo_claims: dict[str, Any]
+    audience: str | None
+
+
+@dataclass(frozen=True)
+class _PrincipalAttributes:
+    tenant_id: str | None
+    allowed_entities: tuple[str, ...]
+    carrier_slug: str | None
+    max_approval: Decimal | None
+
+
+def _lookup_mapped_role(ctx: _RoleLookupContext) -> CatalogRole | None:
+    if ctx.principal_roles:
+        for candidate_key in (ctx.principal_name, ctx.iap_email, ctx.iap_email_raw):
+            if candidate_key and candidate_key in ctx.principal_roles:
+                return ctx.principal_roles[candidate_key]
+    scope_role = getattr(ctx.user, "role", None) if ctx.is_scope_authed else None
+    if isinstance(scope_role, str) and scope_role in _VALID_ROLES:
+        return cast(CatalogRole, scope_role)
+    if ctx.header_role in _VALID_ROLES:
+        return cast(CatalogRole, ctx.header_role)
+    if ctx.principal_name.startswith("role:"):
+        candidate = ctx.principal_name.split(":", 1)[1].strip()
+        if candidate in _VALID_ROLES:
+            return cast(CatalogRole, candidate)
+    return None
+
+
+def resolve_caller_role(  # noqa: PLR0913 - public caller role resolution contract
     request: Request,
     *,
     query_role: CatalogRole | None = None,
@@ -289,27 +335,18 @@ def resolve_caller_role(
     )
 
     verified_role: CatalogRole | None = token_role or iap_claim_role
-    if has_auth_identity:
-        if verified_role is None and principal_roles:
-            if principal_name in principal_roles:
-                verified_role = principal_roles[principal_name]
-            elif iap_email and iap_email in principal_roles:
-                verified_role = principal_roles[iap_email]
-            elif iap_email and iap_email_raw and iap_email_raw in principal_roles:
-                verified_role = principal_roles[iap_email_raw]
-        if (
-            verified_role is None
-            and is_scope_authed
-            and hasattr(user, "role")
-            and user.role in _VALID_ROLES
-        ):
-            verified_role = cast(CatalogRole, user.role)
-        if verified_role is None and header_role in _VALID_ROLES:
-            verified_role = cast(CatalogRole, header_role)
-        if verified_role is None and principal_name.startswith("role:"):
-            candidate = principal_name.split(":", 1)[1].strip()
-            if candidate in _VALID_ROLES:
-                verified_role = cast(CatalogRole, candidate)
+    if has_auth_identity and verified_role is None:
+        verified_role = _lookup_mapped_role(
+            _RoleLookupContext(
+                principal_name=principal_name,
+                iap_email=iap_email,
+                iap_email_raw=iap_email_raw,
+                principal_roles=principal_roles,
+                user=user,
+                is_scope_authed=is_scope_authed,
+                header_role=header_role,
+            )
+        )
 
     if verified_role is not None:
         if query_role is not None and query_role != verified_role:
@@ -358,47 +395,33 @@ def _resolve_workload_svid_role(
     return policy.allowed_roles[0], policy
 
 
-def resolve_compound_identity(
+def _resolve_spiffe_svid_context(
     request: Request,
     *,
-    query_role: CatalogRole | None = None,
-    default_role: CatalogRole | None = None,
-    principal_roles: dict[str, CatalogRole] | None = None,
-    require_auth: bool = False,
-    require_svid: bool = False,
-    require_mutating: bool = False,
-    oidc_verifier: Callable[..., dict[str, Any]] | None = None,
-) -> CompoundIdentity:
-    """Resolve and verify both the Human Principal (`sub`) and SPIFFE Agent (`act`)."""
-    enforce_auth = is_auth_enforced(require_auth)
-    enforce_svid = require_svid or (
-        os.environ.get(SPIFFE_REQUIRE_SVID_ENV, "").strip() == "1"
-    )
+    enforce_auth: bool,
+    enforce_svid: bool,
+) -> _SvidContext:
     svid_header = request.headers.get(SPIFFE_SVID_HEADER, "").strip()
     spiffe_id_header = request.headers.get(SPIFFE_ID_HEADER, "").strip()
-
-    agent_spiffe_id: str | None = None
-    agent_policy: SpiffeAgentPolicy | None = None
-    svid_verified = False
-    obo_claims: dict[str, Any] = {}
-    audience: str | None = None
-
     if svid_header:
         try:
             claims = verify_jwt_svid(svid_header)
         except SpiffeAuthenticationError as exc:
             raise AuthenticationRequiredError(str(exc)) from exc
-        agent_spiffe_id = str(claims["sub"])
-        svid_verified = True
         aud_claim = claims.get("aud")
         audience = (
             aud_claim[0]
             if isinstance(aud_claim, list) and aud_claim
             else (str(aud_claim) if aud_claim else None)
         )
-        if isinstance(claims.get("obo"), dict):
-            obo_claims = dict(claims["obo"])
-    elif spiffe_id_header:
+        obo_raw = claims.get("obo")
+        return _SvidContext(
+            agent_spiffe_id=str(claims["sub"]),
+            svid_verified=True,
+            obo_claims=dict(obo_raw) if isinstance(obo_raw, dict) else {},
+            audience=audience,
+        )
+    if spiffe_id_header:
         if enforce_svid or enforce_auth:
             raise AuthenticationRequiredError(
                 "Cryptographically signed SPIFFE JWT-SVID header 'X-Bridge-Spiffe-Svid' "
@@ -408,87 +431,32 @@ def resolve_compound_identity(
             parsed = SpiffeId.parse(spiffe_id_header)
         except SpiffeAuthenticationError as exc:
             raise AuthenticationRequiredError(str(exc)) from exc
-        agent_spiffe_id = parsed.uri
-    elif enforce_svid:
+        return _SvidContext(
+            agent_spiffe_id=parsed.uri,
+            svid_verified=False,
+            obo_claims={},
+            audience=None,
+        )
+    if enforce_svid:
         raise AuthenticationRequiredError(
             "Missing SPIFFE JWT-SVID header 'X-Bridge-Spiffe-Svid' "
             "(BRIDGE_SPIFFE_REQUIRE_SVID=1)."
         )
-
-    user_token_claims, token_source = _extract_user_token_claims(
-        request, enforce_auth=enforce_auth
-    )
-    if (
-        svid_verified
-        and token_source == "cookie"
-        and (
-            obo_claims
-            or str(user_token_claims.get("scope") or "").strip() == READ_ONLY_SCOPE
-        )
-    ):
-        user_token_claims = {}
-        token_source = None
-
-    iap_email, _iap_email_raw, _iap_claims = _verify_iap_request(
-        request, oidc_verifier=oidc_verifier
+    return _SvidContext(
+        agent_spiffe_id=None,
+        svid_verified=False,
+        obo_claims={},
+        audience=None,
     )
 
-    obo_role_raw = obo_claims.get("role") or user_token_claims.get("role")
-    obo_role: CatalogRole | None = (
-        cast(CatalogRole, obo_role_raw)
-        if isinstance(obo_role_raw, str) and obo_role_raw in _VALID_ROLES
-        else None
-    )
-    if obo_role is not None and query_role is not None and query_role != obo_role:
-        raise PermissionError(
-            f"OBO principal in token/SVID has role '{obo_role}', cannot impersonate "
-            f"role '{query_role}'."
-        )
 
-    if obo_role is not None:
-        resolved_role = obo_role
-    elif (
-        svid_verified
-        and agent_spiffe_id is not None
-        and not user_token_claims
-        and not iap_email
-    ):
-        resolved_role, agent_policy = _resolve_workload_svid_role(
-            agent_spiffe_id,
-            query_role=query_role,
-            default_role=default_role,
-        )
-    else:
-        resolved_role = resolve_caller_role(
-            request,
-            query_role=query_role,
-            default_role=default_role,
-            principal_roles=principal_roles,
-            require_auth=require_auth,
-            oidc_verifier=oidc_verifier,
-        )
-
-    token_scope_raw = str(
-        obo_claims.get("scope") or user_token_claims.get("scope") or ""
-    ).strip()
-    token_scope = token_scope_raw or None
-    if enforce_auth and require_mutating and token_scope == READ_ONLY_SCOPE:
-        raise PermissionError(
-            "Read-only viewer session cannot invoke mutating endpoints. "
-            "Authenticate via POST /v1/auth/demo-session or a signed token header."
-        )
-
-    header_principal = (
-        "" if enforce_auth else request.headers.get("x-bridge-principal", "").strip()
-    )
-    subject = (
-        str(obo_claims.get("sub") or user_token_claims.get("sub") or "")
-        or iap_email
-        or (agent_spiffe_id if (svid_verified and agent_policy is not None) else "")
-        or header_principal
-        or f"role:{resolved_role}"
-    )
-
+def _extract_principal_attributes(
+    request: Request,
+    *,
+    enforce_auth: bool,
+    obo_claims: dict[str, Any],
+    user_token_claims: dict[str, Any],
+) -> _PrincipalAttributes:
     tenant_id = (
         str(obo_claims.get("tenant_id") or user_token_claims.get("tenant_id") or "")
         or ("" if enforce_auth else request.headers.get(TENANT_ID_HEADER, "").strip())
@@ -509,8 +477,6 @@ def resolve_compound_identity(
             else ()
         )
     )
-    allowed_entities = obo_entities or header_entities
-
     carrier_slug = (
         str(
             obo_claims.get("carrier_slug")
@@ -522,30 +488,139 @@ def resolve_compound_identity(
         )
         or None
     )
-    max_approval_raw = (
-        str(obo_claims["max_approval_amount"])
-        if "max_approval_amount" in obo_claims
-        else (
-            str(user_token_claims["max_approval_amount"])
-            if "max_approval_amount" in user_token_claims
-            else (
-                ""
-                if enforce_auth
-                else request.headers.get(MAX_APPROVAL_HEADER, "").strip()
-            )
+    if "max_approval_amount" in obo_claims:
+        max_approval_raw = str(obo_claims["max_approval_amount"])
+    elif "max_approval_amount" in user_token_claims:
+        max_approval_raw = str(user_token_claims["max_approval_amount"])
+    else:
+        max_approval_raw = (
+            "" if enforce_auth else request.headers.get(MAX_APPROVAL_HEADER, "").strip()
         )
-    )
     try:
         max_approval = parse_decimal_header(max_approval_raw)
     except SpiffeAuthenticationError as exc:
         raise AuthenticationRequiredError(str(exc)) from exc
+    return _PrincipalAttributes(
+        tenant_id=tenant_id,
+        allowed_entities=obo_entities or header_entities,
+        carrier_slug=carrier_slug,
+        max_approval=max_approval,
+    )
+
+
+def resolve_compound_identity(  # noqa: PLR0913 - public compound identity resolution contract
+    request: Request,
+    *,
+    query_role: CatalogRole | None = None,
+    default_role: CatalogRole | None = None,
+    principal_roles: dict[str, CatalogRole] | None = None,
+    require_auth: bool = False,
+    require_svid: bool = False,
+    require_mutating: bool = False,
+    oidc_verifier: Callable[..., dict[str, Any]] | None = None,
+) -> CompoundIdentity:
+    """Resolve and verify both the Human Principal (`sub`) and SPIFFE Agent (`act`)."""
+    enforce_auth = is_auth_enforced(require_auth)
+    enforce_svid = require_svid or (
+        os.environ.get(SPIFFE_REQUIRE_SVID_ENV, "").strip() == "1"
+    )
+    svid = _resolve_spiffe_svid_context(
+        request, enforce_auth=enforce_auth, enforce_svid=enforce_svid
+    )
+    agent_policy: SpiffeAgentPolicy | None = None
+
+    user_token_claims, auth_source = _extract_user_token_claims(
+        request, enforce_auth=enforce_auth
+    )
+    if (
+        svid.svid_verified
+        and auth_source == "cookie"
+        and (
+            svid.obo_claims
+            or str(user_token_claims.get("scope") or "").strip() == READ_ONLY_SCOPE
+        )
+    ):
+        user_token_claims = {}
+        auth_source = None
+
+    iap_email, _iap_email_raw, _iap_claims = _verify_iap_request(
+        request, oidc_verifier=oidc_verifier
+    )
+
+    obo_role_raw = svid.obo_claims.get("role") or user_token_claims.get("role")
+    obo_role: CatalogRole | None = (
+        cast(CatalogRole, obo_role_raw)
+        if isinstance(obo_role_raw, str) and obo_role_raw in _VALID_ROLES
+        else None
+    )
+    if obo_role is not None and query_role is not None and query_role != obo_role:
+        raise PermissionError(
+            f"OBO principal in token/SVID has role '{obo_role}', cannot impersonate "
+            f"role '{query_role}'."
+        )
+
+    if obo_role is not None:
+        resolved_role = obo_role
+    elif (
+        svid.svid_verified
+        and svid.agent_spiffe_id is not None
+        and not user_token_claims
+        and not iap_email
+    ):
+        resolved_role, agent_policy = _resolve_workload_svid_role(
+            svid.agent_spiffe_id,
+            query_role=query_role,
+            default_role=default_role,
+        )
+    else:
+        resolved_role = resolve_caller_role(
+            request,
+            query_role=query_role,
+            default_role=default_role,
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            oidc_verifier=oidc_verifier,
+        )
+
+    token_scope = (
+        str(
+            svid.obo_claims.get("scope") or user_token_claims.get("scope") or ""
+        ).strip()
+        or None
+    )
+    if enforce_auth and require_mutating and token_scope == READ_ONLY_SCOPE:
+        raise PermissionError(
+            "Read-only viewer session cannot invoke mutating endpoints. "
+            "Authenticate via POST /v1/auth/demo-session or a signed token header."
+        )
+
+    header_principal = (
+        "" if enforce_auth else request.headers.get("x-bridge-principal", "").strip()
+    )
+    subject = (
+        str(svid.obo_claims.get("sub") or user_token_claims.get("sub") or "")
+        or iap_email
+        or (
+            svid.agent_spiffe_id
+            if (svid.svid_verified and agent_policy is not None)
+            else ""
+        )
+        or header_principal
+        or f"role:{resolved_role}"
+    )
+    attrs = _extract_principal_attributes(
+        request,
+        enforce_auth=enforce_auth,
+        obo_claims=svid.obo_claims,
+        user_token_claims=user_token_claims,
+    )
 
     via: Literal["jwt", "cookie", "iap", "header", "query_dev"]
     if (
-        svid_verified and (obo_claims or agent_policy is not None)
-    ) or token_source == "jwt":
+        svid.svid_verified and (svid.obo_claims or agent_policy is not None)
+    ) or auth_source == "jwt":
         via = "jwt"
-    elif token_source == "cookie":
+    elif auth_source == "cookie":
         via = "cookie"
     elif iap_email:
         via = "iap"
@@ -554,20 +629,19 @@ def resolve_compound_identity(
     else:
         via = "query_dev"
 
-    user_principal = UserPrincipal(
-        subject=subject,
-        role=resolved_role,
-        tenant_id=tenant_id,
-        allowed_entities=allowed_entities,
-        carrier_slug=carrier_slug,
-        max_approval_amount=max_approval,
-        authenticated_via=via,
-        scope=token_scope,
-    )
     return CompoundIdentity(
-        user=user_principal,
-        agent_spiffe_id=agent_spiffe_id,
+        user=UserPrincipal(
+            subject=subject,
+            role=resolved_role,
+            tenant_id=attrs.tenant_id,
+            allowed_entities=attrs.allowed_entities,
+            carrier_slug=attrs.carrier_slug,
+            max_approval_amount=attrs.max_approval,
+            authenticated_via=via,
+            scope=token_scope,
+        ),
+        agent_spiffe_id=svid.agent_spiffe_id,
         agent_policy=agent_policy,
-        svid_verified=svid_verified,
-        audience=audience,
+        svid_verified=svid.svid_verified,
+        audience=svid.audience,
     )

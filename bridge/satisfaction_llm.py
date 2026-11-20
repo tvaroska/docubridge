@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from typing import Any
 
-from google.adk.models import BaseLlm, LlmRequest
+from google.adk.models import BaseLlm
+from google.adk.models.llm_request import LlmRequest
 from google.adk.models.registry import LLMRegistry
 from google.genai import types
 from pydantic import BaseModel
@@ -48,7 +50,7 @@ class _Proposal(BaseModel):
     items: list[ProposedItem]
 
 
-def _ledger_view(entries: Sequence[LedgerEntry]) -> list[dict]:
+def _ledger_view(entries: Sequence[LedgerEntry]) -> list[dict[str, Any]]:
     """The minimized ledger the model sees (no party data: no key fields/tables)."""
     return [
         {

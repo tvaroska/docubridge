@@ -40,7 +40,7 @@ class Scheduler(Protocol):
         """Return the current UTC timestamp from the scheduler clock."""
         ...
 
-    def schedule(self, key: str, fire_at: int, payload: Any = None) -> Alarm:
+    def schedule(self, key: str, fire_at: int, payload: object = None) -> Alarm:
         """Schedule a callback to fire at a target UTC timestamp under a unique key."""
         ...
 
@@ -81,7 +81,7 @@ class VirtualClock:
         """Return the current virtual UTC timestamp."""
         return self._now
 
-    def schedule(self, key: str, fire_at: int, payload: Any = None) -> Alarm:
+    def schedule(self, key: str, fire_at: int, payload: object = None) -> Alarm:
         # fire_at in the past-or-now relative to _now is allowed: it fires on the next advance.
         """Register a callback at a due timestamp on the deterministic virtual clock."""
         alarm = Alarm(key=key, fire_at=fire_at, payload=payload)

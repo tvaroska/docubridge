@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING, cast, override
 
 from ..protocols import (
     ActionInboxPort,
@@ -13,6 +13,13 @@ from ..protocols import (
     OperationalStorePort,
 )
 from .common import DATABASE_URL_ENV, _require_async_store_driver
+
+if TYPE_CHECKING:
+    from bridge.a2ui_inbox import SqlActionInboxStore
+    from bridge.agent_gym.sql_store import SqlAgentGymEngine
+    from bridge.knowledge_catalog.sql_store import SqlKnowledgeCatalog
+    from bridge.operational_store import SqlOperationalStore
+    from bridge.vault import GcpAuditVaultStore, _GcsClientLike
 
 
 class GcpAuditVault(AuditVaultPort):
@@ -25,7 +32,7 @@ class GcpAuditVault(AuditVaultPort):
         prefix: str | None = None,
         retention_days: int | None = None,
         retention_mode: str | None = None,
-        storage_client: Any = None,
+        storage_client: object = None,
     ) -> None:
         self._bucket_name = bucket_name
         self._prefix = prefix
@@ -33,6 +40,7 @@ class GcpAuditVault(AuditVaultPort):
         self._retention_mode = retention_mode
         self._storage_client = storage_client
 
+    @override
     def build_vault(
         self,
         bucket_name: str | None = None,
@@ -40,8 +48,8 @@ class GcpAuditVault(AuditVaultPort):
         prefix: str | None = None,
         retention_days: int | None = None,
         retention_mode: str | None = None,
-        storage_client: Any = None,
-    ) -> Any:
+        storage_client: object = None,
+    ) -> GcpAuditVaultStore:
         """Construct a Cloud Storage-backed :class:`GcpAuditVaultStore` (refuses in-memory fallback)."""
         from bridge.vault import (
             VAULT_BUCKET_ENV,
@@ -87,7 +95,9 @@ class GcpAuditVault(AuditVaultPort):
             prefix=resolved_prefix,
             retention_days=resolved_days,
             retention_mode=resolved_mode,
-            client=storage_client or self._storage_client,
+            client=cast(
+                "_GcsClientLike | None", storage_client or self._storage_client
+            ),
         )
 
 
@@ -97,7 +107,7 @@ class GcpOperationalStore(OperationalStorePort):
     def __init__(self, db_url: str | None = None) -> None:
         self._db_url = db_url
 
-    def build_operational_store(self, db_url: str | None = None) -> Any:
+    def build_operational_store(self, db_url: str | None = None) -> SqlOperationalStore:
         """Construct a durable :class:`SqlOperationalStore` (refuses in-memory fallback)."""
         from bridge.operational_store import (
             _SQL_CACHE_LOCK,
@@ -132,7 +142,9 @@ class GcpActionInbox(ActionInboxPort):
     def __init__(self, db_url: str | None = None) -> None:
         self._db_url = db_url
 
-    def build_action_inbox_store(self, db_url: str | None = None) -> Any:
+    def build_action_inbox_store(
+        self, db_url: str | None = None
+    ) -> SqlActionInboxStore:
         """Construct a durable :class:`SqlActionInboxStore` (refuses in-memory fallback)."""
         from bridge.a2ui_inbox import (
             _SQL_INBOX_CACHE,
@@ -168,7 +180,7 @@ class GcpAgentGym(AgentGymPort):
     def __init__(self, db_url: str | None = None) -> None:
         self._db_url = db_url
 
-    def build_agent_gym(self, db_url: str | None = None) -> Any:
+    def build_agent_gym(self, db_url: str | None = None) -> SqlAgentGymEngine:
         """Construct a durable :class:`SqlAgentGymEngine` (refuses in-memory fallback)."""
         from bridge.agent_gym.models import (
             DATABASE_URL_ENV as GYM_DATABASE_URL_ENV,
@@ -211,7 +223,7 @@ class GcpKnowledgeCatalog(KnowledgeCatalogPort):
     def __init__(self, db_url: str | None = None) -> None:
         self._db_url = db_url
 
-    def build_knowledge_catalog(self, db_url: str | None = None) -> Any:
+    def build_knowledge_catalog(self, db_url: str | None = None) -> SqlKnowledgeCatalog:
         """Construct a durable :class:`SqlKnowledgeCatalog` (refuses in-memory fallback)."""
         from bridge.knowledge_catalog.sql_store import (
             _SQL_CATALOG_CACHE,

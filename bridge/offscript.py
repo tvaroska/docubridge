@@ -11,8 +11,10 @@ Imports contract + google.adk.tools (ToolContext typing) + stdlib only —
 NEVER agents/.
 """
 
+from typing import Any
+
 from google.adk.artifacts import BaseArtifactService
-from google.adk.tools import ToolContext
+from google.adk.tools.tool_context import ToolContext
 
 # Off-script reason codes (machine-readable; travel with the ack alongside a human message)
 REASON_DELETED = "deletion_completed"
@@ -72,7 +74,7 @@ async def _erase_artifact(
 
 async def handle_deletion_request(
     artifact_name: str, tool_context: ToolContext
-) -> dict:
+) -> dict[str, Any]:
     """Handle an off-script deletion/erasure request: really erase the document's bytes.
 
     Deletion is a real erase (ArtifactService.delete_artifact), never a soft flag
@@ -110,7 +112,7 @@ async def handle_deletion_request(
     }
 
 
-def reject_submission(reason: str) -> dict:
+def reject_submission(reason: str) -> dict[str, Any]:
     """Reject an OFF-SCRIPT submission — a wrong/unrelated file or out-of-scope message.
 
     This is NOT the compliance reject: a genuine candidate document is only ever
@@ -130,7 +132,7 @@ def reject_submission(reason: str) -> dict:
     }
 
 
-def escalate_submission(reason: str) -> dict:
+def escalate_submission(reason: str) -> dict[str, Any]:
     """Escalate an off-script/ambiguous submission for human review.
 
     Use this for off-script ambiguous intents that need a person's eyes — a

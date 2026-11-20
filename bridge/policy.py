@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from bridge.disposition import DispositionThresholds
 from bridge.sla import _load_policy_doc
@@ -56,7 +57,9 @@ def load_disposition_policy(
     )
 
 
-def disposition_policy_from_doc(skill_name: str, policy_doc: dict) -> DispositionPolicy:
+def disposition_policy_from_doc(
+    skill_name: str, policy_doc: dict[str, Any]
+) -> DispositionPolicy:
     """Parse + validate the ``disposition:`` block of an already-loaded policy doc.
 
     The pure half of ``load_disposition_policy``, shared with the live port reader (the

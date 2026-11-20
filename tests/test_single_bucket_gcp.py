@@ -325,7 +325,7 @@ def test_real_gcs_blob_object_retention_in_isolated_subprocess() -> None:
         "assert meta['retention']['mode'] == 'Locked', meta; "
         "assert meta['retention']['retainUntilTime'].startswith('2033-01-01T00:00:00'), meta"
     )
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 - test spawns trusted sys.executable probe
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,

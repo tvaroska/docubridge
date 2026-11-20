@@ -21,7 +21,7 @@ Isolation: imports ``contract/`` + ``pydantic`` only; NEVER ``agents/``.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -211,6 +211,6 @@ def render_hitl_review(turn: ExchangeTurn, entry: LedgerEntry) -> A2uiView:
     )
 
 
-def encode_a2ui_view(view: A2uiView) -> dict:
+def encode_a2ui_view(view: A2uiView) -> dict[str, Any]:
     """Serialize an ``A2uiView`` for the portal transport (P6-2). JSON-mode dump."""
     return view.model_dump(mode="json")

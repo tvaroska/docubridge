@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..protocols import (
     ExchangeStorePort,
@@ -11,6 +11,13 @@ from ..protocols import (
     SessionsPort,
     TaskStorePort,
 )
+
+if TYPE_CHECKING:
+    from a2a.server.tasks import PushNotificationConfigStore, TaskStore
+    from google.adk.memory import BaseMemoryService
+    from google.adk.sessions import BaseSessionService
+
+    from bridge.exchange_store import ExchangeStore
 
 # The DSN of the local exchange_store adapter (S0-arch-14). Unset -> in-memory records.
 EXCHANGE_DB_URL_ENV = "BRIDGE_EXCHANGE_DB_URL"
@@ -51,7 +58,7 @@ class LocalSessions(SessionsPort):
     in-memory service (keeps the default test/dev path file-free).
     """
 
-    def build_session_service(self, db_url: str | None = None) -> Any:
+    def build_session_service(self, db_url: str | None = None) -> BaseSessionService:
         """Construct an in-memory or SQLite-backed ADK session service for local execution."""
         dsn = db_url or os.environ.get("BRIDGE_SESSION_DB_URL", "").strip()
         if not dsn:
@@ -62,7 +69,9 @@ class LocalSessions(SessionsPort):
         from google.adk.sessions import DatabaseSessionService
         from sqlalchemy.pool import NullPool
 
-        kwargs = {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+        kwargs: dict[str, Any] = (
+            {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+        )
         return DatabaseSessionService(db_url=dsn, **kwargs)
 
 
@@ -74,7 +83,7 @@ class LocalTaskStore(TaskStorePort):
     store. Note `DatabaseTaskStore` takes an engine, not a URL.
     """
 
-    def build_task_store(self, db_url: str | None = None) -> Any:
+    def build_task_store(self, db_url: str | None = None) -> TaskStore:
         """Construct an in-memory or SQLite-backed A2A task store for local execution."""
         dsn = db_url or os.environ.get("BRIDGE_TASK_DB_URL", "").strip()
         if not dsn:
@@ -86,10 +95,14 @@ class LocalTaskStore(TaskStorePort):
         from sqlalchemy.ext.asyncio import create_async_engine
         from sqlalchemy.pool import NullPool
 
-        kwargs = {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+        kwargs: dict[str, Any] = (
+            {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+        )
         return DatabaseTaskStore(engine=create_async_engine(dsn, **kwargs))
 
-    def build_push_config_store(self, db_url: str | None = None) -> Any:
+    def build_push_config_store(
+        self, db_url: str | None = None
+    ) -> PushNotificationConfigStore:
         """Build a push notification config store (in-memory or durable).
 
         Mirrors `build_task_store` exactly (Decision 1): both are a2a-sdk
@@ -105,7 +118,9 @@ class LocalTaskStore(TaskStorePort):
         from sqlalchemy.ext.asyncio import create_async_engine
         from sqlalchemy.pool import NullPool
 
-        kwargs = {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+        kwargs: dict[str, Any] = (
+            {"poolclass": NullPool} if dsn.startswith("sqlite") else {}
+        )
         return DatabasePushNotificationConfigStore(
             engine=create_async_engine(dsn, **kwargs), create_table=True
         )
@@ -120,7 +135,7 @@ class LocalExchangeStore(ExchangeStorePort):
     `LocalSessions`). The SQL store opens nothing until its first operation.
     """
 
-    def build_exchange_store(self, db_url: str | None = None) -> Any:
+    def build_exchange_store(self, db_url: str | None = None) -> ExchangeStore:
         """Construct an in-memory or SQLite-backed exchange store for local execution."""
         from bridge.exchange_store import InMemoryExchangeStore, SqlExchangeStore
 
@@ -138,7 +153,7 @@ class LocalMemoryBank(MemoryBankPort):
     `LocalSessions`).
     """
 
-    def build_memory_service(self, db_path: str | None = None) -> Any:
+    def build_memory_service(self, db_path: str | None = None) -> BaseMemoryService:
         """Construct an in-memory or SQLite-backed ADK memory service for local execution."""
         path = (db_path or os.environ.get(MEMORY_DB_PATH_ENV, "")).strip()
         if not path:

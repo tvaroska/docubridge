@@ -10,7 +10,7 @@ from a2a.helpers import proto_helpers as ph
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from a2a.types import Message, Role, TaskState
+from a2a.types import Message, Role, Task, TaskState
 from a2a.utils.errors import InvalidParamsError, InvalidRequestError
 from google.protobuf.json_format import MessageToDict
 from pydantic import ValidationError
@@ -81,6 +81,13 @@ class ReviewScope:
     pending: tuple[str, ...]
 
 
+def _require_context_ids(context: RequestContext) -> tuple[str, str]:
+    """Return ``(task_id, context_id)``, raising if the A2A context omits either."""
+    if context.task_id is None or context.context_id is None:
+        raise RuntimeError("RequestContext missing task_id or context_id")
+    return context.task_id, context.context_id
+
+
 class ExecutorHitlMixin:
     """Mixin implementing HITL review park/resume (R3/R6/G) and LLM leg dispatch (R4)."""
 
@@ -101,7 +108,7 @@ class ExecutorHitlMixin:
         scope = await self._review_scope(context.current_task)
         return scope is not None and bool(scope.pending)
 
-    async def _review_scope(self, task: Any) -> ReviewScope | None:
+    async def _review_scope(self, task: Task | None) -> ReviewScope | None:
         """The parked task's :class:`ReviewScope`, else ``None``."""
         if self._llm_leg is None or task is None:
             return None
@@ -124,7 +131,7 @@ class ExecutorHitlMixin:
         return ReviewScope(key=key, call_ids=call_ids, pending=pending)
 
     def _validate_resolution(
-        self, message: Message | None, user: Any, scope: ReviewScope
+        self, message: Message | None, user: object, scope: ReviewScope
     ) -> HumanReviewResolution:
         """R6 checks, in order (D-h), all before any task event."""
         try:
@@ -141,11 +148,11 @@ class ExecutorHitlMixin:
             raise InvalidParamsError(message=REVIEW_CALL_ID_MISMATCH_TEXT)
         return resolution
 
-    async def _execute_hitl_handoff(
+    async def _execute_hitl_handoff(  # noqa: PLR0913 - HITL handoff payload
         self,
         context: RequestContext,
         event_queue: EventQueue,
-        message: Any,
+        message: Message | None,
         *,
         turn: ExchangeTurn,
         party: str,
@@ -154,20 +161,22 @@ class ExecutorHitlMixin:
     ) -> None:
         """R3: hand a Collector turn with a ``hitl_review`` entry to the LLM leg,
         which parks the task on ``request_human_review`` (D5, D7)."""
-        assert self._llm_leg is not None  # guarded by the caller (park)
+        if self._llm_leg is None:
+            raise RuntimeError("LLM leg is not bound")
+        task_id, context_id = _require_context_ids(context)
         if context.current_task is None:
             await event_queue.enqueue_event(
                 ph.new_task(
-                    context.task_id,
-                    context.context_id,
+                    task_id,
+                    context_id,
                     TaskState.TASK_STATE_SUBMITTED,
                     history=[message] if message is not None else [],
                 )
             )
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        updater = TaskUpdater(event_queue, task_id, context_id)
         await updater.update_status(
             TaskState.TASK_STATE_WORKING,
-            message=_text_message(LLM_WORKING_TEXT, context.context_id),
+            message=_text_message(LLM_WORKING_TEXT, context_id),
         )
         from bridge.edge.llm_leg import pending_review_calls
         from bridge.gatepin import recorded_from_result
@@ -196,12 +205,12 @@ class ExecutorHitlMixin:
                 label_space=doctypes,
                 seed_signals=signals,
                 seed_entries=turn.status.entries,
-                review_task_id=context.task_id,
+                review_task_id=task_id,
             )
             pending = pending_review_calls(result.events)
             projected = result.turn
         except Exception:
-            logger.exception("HITL handoff failed for task %s", context.task_id)
+            logger.exception("HITL handoff failed for task %s", task_id)
             pending = []
 
         if not pending or projected is None:
@@ -219,7 +228,7 @@ class ExecutorHitlMixin:
             "session_id": result.key.session_id,
             "call_ids": list(pending),
         }
-        await self._park(updater, context.context_id, pending[0], session)
+        await self._park(updater, context_id, pending[0], session)
 
     async def _park(
         self,
@@ -251,9 +260,10 @@ class ExecutorHitlMixin:
         resolution: HumanReviewResolution,
     ) -> None:
         """R6: resume the parked invocation with a validated resolution (D-h step 4)."""
-        assert self._llm_leg is not None  # a scope implies a bound leg
-        context_id = context.context_id
-        updater = TaskUpdater(event_queue, context.task_id, context_id)
+        if self._llm_leg is None:
+            raise RuntimeError("LLM leg is not bound")
+        task_id, context_id = _require_context_ids(context)
+        updater = TaskUpdater(event_queue, task_id, context_id)
         await updater.update_status(
             TaskState.TASK_STATE_WORKING,
             message=_text_message(LLM_WORKING_TEXT, context_id),
@@ -265,11 +275,11 @@ class ExecutorHitlMixin:
                 resolution=resolution.resolution,
                 message=resolution.message,
                 reviewer=resolution.reviewer,
-                task_id=context.task_id,
+                task_id=task_id,
                 call_ids=scope.call_ids,
             )
         except Exception:
-            logger.exception("HITL resume failed for task %s", context.task_id)
+            logger.exception("HITL resume failed for task %s", task_id)
             await updater.failed(message=_text_message(LLM_FAILED_TEXT, context_id))
             return
 
@@ -298,29 +308,31 @@ class ExecutorHitlMixin:
         await updater.update_status(state, message=status_message)
 
     async def _execute_llm_leg(
-        self, context: RequestContext, event_queue: EventQueue, message: Any
+        self, context: RequestContext, event_queue: EventQueue, message: Message | None
     ) -> None:
         """R4: hand a text-only intent to the ``document_bridge`` LlmAgent leg."""
         if self._llm_leg is None:  # bind_edge forbids hybrid without a leg
             raise RuntimeError("LLM route reached without a bound LLM leg")
-        context_id = context.context_id
+        task_id, context_id = _require_context_ids(context)
         if context.current_task is None:
             await event_queue.enqueue_event(
                 ph.new_task(
-                    context.task_id,
+                    task_id,
                     context_id,
                     TaskState.TASK_STATE_SUBMITTED,
                     history=[message] if message is not None else [],
                 )
             )
-        updater = TaskUpdater(event_queue, context.task_id, context_id)
+        updater = TaskUpdater(event_queue, task_id, context_id)
         await updater.update_status(
             TaskState.TASK_STATE_WORKING,
             message=_text_message(LLM_WORKING_TEXT, context_id),
         )
 
         text = " ".join(
-            t.strip() for t in ph.get_text_parts(message.parts) if t and t.strip()
+            t.strip()
+            for t in ph.get_text_parts(message.parts if message is not None else [])
+            if t and t.strip()
         )
         try:
             result = await self._llm_leg.run(
@@ -330,7 +342,7 @@ class ExecutorHitlMixin:
                 label_space=self._llm_label_space(text),
             )
         except Exception:
-            logger.exception("LLM leg failed for task %s", context.task_id)
+            logger.exception("LLM leg failed for task %s", task_id)
             await updater.failed(message=_text_message(LLM_FAILED_TEXT, context_id))
             return
 
@@ -360,7 +372,7 @@ def llm_status(projection: LlmProjection, turn: ExchangeTurn) -> tuple[str, str 
     return text, (None if turn.status.entries else REASON_UNROUTED)
 
 
-def _turn_artifact_id(task: Any) -> str | None:
+def _turn_artifact_id(task: Task | None) -> str | None:
     """The id of the task's existing ``exchange_turn`` artifact (the last one), so a
     resumed turn REPLACES it; ``None`` (a fresh id) when the task has none."""
     if task is None:

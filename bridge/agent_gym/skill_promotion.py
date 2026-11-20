@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-from typing import Any
+from typing import TYPE_CHECKING
 
 from bridge.agent_gym.models import (
     REASONING_MODEL,
@@ -12,6 +12,9 @@ from bridge.agent_gym.models import (
     SkillRevisionRecord,
 )
 from bridge.telemetry import trace_step
+
+if TYPE_CHECKING:
+    from bridge.agent_gym.compiler import SkillCompilerMixin
 
 DEFAULT_CEILING_NOTE = "any item above ceiling escalates to human review"
 DEFAULT_EXACT_MATCH_CONDITION = (
@@ -63,7 +66,7 @@ def resolve_compiled_schema_json(
     return json.dumps(schema_payload, indent=2, sort_keys=True)
 
 
-def render_compiled_skill_markdown(
+def render_compiled_skill_markdown(  # noqa: PLR0913 - keyword-only SKILL.md template fields
     *,
     doctype: str,
     semver: str,
@@ -75,20 +78,29 @@ def render_compiled_skill_markdown(
     policy_ceiling_usd: str,
     skill_urn: str,
     target_state: str,
-    ceiling_note: str = DEFAULT_CEILING_NOTE,
-    exact_match_condition: str = DEFAULT_EXACT_MATCH_CONDITION,
-    fallback_target: str = DEFAULT_FALLBACK_TARGET,
+    ceiling_note: str | None = None,
+    exact_match_condition: str | None = None,
+    fallback_target: str | None = None,
     guardrail_bullets: list[str] | None = None,
 ) -> str:
     """Render the governed `SKILL.md` document with explicit policy guardrails (`Decision 20`)."""
     rules_block = "\n".join(rule_bullets)
+    resolved_ceiling = DEFAULT_CEILING_NOTE if ceiling_note is None else ceiling_note
+    resolved_match = (
+        DEFAULT_EXACT_MATCH_CONDITION
+        if exact_match_condition is None
+        else exact_match_condition
+    )
+    resolved_fallback = (
+        DEFAULT_FALLBACK_TARGET if fallback_target is None else fallback_target
+    )
     resolved_guardrails = (
         guardrail_bullets
         if guardrail_bullets is not None
         else [
-            f"- **Amount Ceiling:** `<= ${policy_ceiling_usd}` USD ({ceiling_note})",
-            f"- **Exact Match Condition:** {exact_match_condition}",
-            f"- **Out-of-Policy Fallback:** Route all non-matching or over-ceiling items to {fallback_target}",
+            f"- **Amount Ceiling:** `<= ${policy_ceiling_usd}` USD ({resolved_ceiling})",
+            f"- **Exact Match Condition:** {resolved_match}",
+            f"- **Out-of-Policy Fallback:** Route all non-matching or over-ceiling items to {resolved_fallback}",
             "- **Continuous Verification:** Sampled Step-2 `AI.GENERATE_TABLE` audit over skill-approved outcomes",
         ]
     )
@@ -126,7 +138,7 @@ def render_compiled_skill_markdown(
 
 
 def execute_skill_promotion(
-    engine: Any,
+    engine: SkillCompilerMixin,
     skill_name: str,
     revision_id: str,
     *,

@@ -21,9 +21,7 @@ import {
 export { mapEntry };
 export type { LedgerEntry, RfpStatus, WireLedgerEntry, WireRfpStatus };
 
-// --------------------------------------------------------------------------- //
-// Wire types (snake_case from the dashboard host) — app-specific views        //
-// --------------------------------------------------------------------------- //
+// Wire types (snake_case from the dashboard host) — app-specific views.
 export interface WireExchange {
   session_id: string;
   context_id: string;
@@ -89,9 +87,7 @@ export interface WireSnapshot {
   programs?: WireComparison[];
 }
 
-// --------------------------------------------------------------------------- //
-// App-side types (camelCase)                                                  //
-// --------------------------------------------------------------------------- //
+// App-side types (camelCase).
 export interface OpsExchange {
   sessionId: string;
   contextId: string;
@@ -156,9 +152,7 @@ export interface Snapshot {
   programs: Comparison[];
 }
 
-// --------------------------------------------------------------------------- //
-// View mappers (compose the shared mapEntry)                                  //
-// --------------------------------------------------------------------------- //
+// View mappers (compose the shared mapEntry).
 export function mapExchange(wire: WireExchange): OpsExchange {
   return {
     sessionId: wire.session_id,

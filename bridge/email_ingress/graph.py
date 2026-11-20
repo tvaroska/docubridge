@@ -34,10 +34,13 @@ import re
 import threading
 import time
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
 from bridge.email_ingress.mime import max_mail_bytes
+
+if TYPE_CHECKING:
+    import httpx
 
 LOGIN_HOST = "https://login.microsoftonline.com"
 GRAPH_HOST = "https://graph.microsoft.com"
@@ -45,7 +48,7 @@ GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 
 TENANT_ENV = "BRIDGE_EMAIL_GRAPH_TENANT"
 CLIENT_ID_ENV = "BRIDGE_EMAIL_GRAPH_CLIENT_ID"
-CLIENT_SECRET_ENV = "BRIDGE_EMAIL_GRAPH_CLIENT_SECRET"
+CLIENT_SECRET_ENV = "BRIDGE_EMAIL_GRAPH_CLIENT_SECRET"  # noqa: S105 - env var name, not a secret
 MAILBOX_ENV = "BRIDGE_EMAIL_MAILBOX"
 CLIENT_STATE_ENV = "BRIDGE_EMAIL_CLIENT_STATE"
 
@@ -96,14 +99,14 @@ def client_state_from_env() -> str:
 class GraphMailClient:
     """A minimal client-credentials Graph client for ONE mailbox."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only OAuth/mailbox config
         self,
         *,
         tenant_id: str,
         client_id: str,
         client_secret: str,
         mailbox: str,
-        transport: Any = None,
+        transport: httpx.BaseTransport | None = None,
         timeout: float = DEFAULT_TIMEOUT_S,
     ) -> None:
         for name, value in (
@@ -125,17 +128,23 @@ class GraphMailClient:
         self._lock = threading.Lock()
 
     @classmethod
-    def from_env(cls, **kwargs) -> GraphMailClient:
+    def from_env(
+        cls,
+        *,
+        transport: httpx.BaseTransport | None = None,
+        timeout: float = DEFAULT_TIMEOUT_S,
+    ) -> GraphMailClient:
         """Build from ``BRIDGE_EMAIL_GRAPH_{TENANT,CLIENT_ID,CLIENT_SECRET}`` + ``BRIDGE_EMAIL_MAILBOX``."""
         return cls(
             tenant_id=_require_env(TENANT_ENV),
             client_id=_require_env(CLIENT_ID_ENV),
             client_secret=_require_env(CLIENT_SECRET_ENV),
             mailbox=_require_env(MAILBOX_ENV),
-            **kwargs,
+            transport=transport,
+            timeout=timeout,
         )
 
-    def _http(self) -> Any:
+    def _http(self) -> httpx.Client:
         import httpx
 
         return httpx.Client(
@@ -175,7 +184,7 @@ class GraphMailClient:
                 # A garbled 2xx (a proxy page, a non-object) is transient, never
                 # "oversize": a ValueError here would ack the mail without landing it.
                 raise GraphError("token response was not a JSON token object") from exc
-            if not token or not isinstance(token, str):
+            if not isinstance(token, str) or not token:
                 raise GraphError("token response carried no access_token")
             self._token = token
             self._token_expiry = time.monotonic() + max(expires_in - 60, 0)
@@ -248,7 +257,7 @@ class GraphMailClient:
         at = datetime.now(UTC) + timedelta(minutes=minutes)
         return at.strftime("%Y-%m-%dT%H:%M:%S.0000000Z")
 
-    def _send(self, method: str, url: str, body: dict) -> dict:
+    def _send(self, method: str, url: str, body: dict[str, Any]) -> dict[str, Any]:
         import httpx
 
         try:
@@ -261,7 +270,7 @@ class GraphMailClient:
                 f"{method} {url} failed: HTTP {resp.status_code}",
                 status=resp.status_code,
             )
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
     def create_subscription(
         self,
@@ -269,7 +278,7 @@ class GraphMailClient:
         client_state: str,
         *,
         minutes: int = DEFAULT_SUBSCRIPTION_MINUTES,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """POST ``/subscriptions`` for ``created`` messages in the mailbox's Inbox."""
         if not notification_url.startswith("https://"):
             raise ValueError("Graph requires an https notification URL")
@@ -289,7 +298,7 @@ class GraphMailClient:
 
     def renew_subscription(
         self, subscription_id: str, *, minutes: int = DEFAULT_SUBSCRIPTION_MINUTES
-    ) -> dict:
+    ) -> dict[str, Any]:
         """PATCH ``/subscriptions/{id}`` with a new expiry."""
         if not re.fullmatch(r"[A-Za-z0-9-]{1,128}", subscription_id or ""):
             raise ValueError(f"invalid subscription id {subscription_id!r}")

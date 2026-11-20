@@ -37,8 +37,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import AsyncIterator, Iterable, Iterator
-from typing import TYPE_CHECKING, Any
+from collections.abc import AsyncIterator, Coroutine, Iterable, Iterator, MutableMapping
+from typing import TYPE_CHECKING, Any, cast
 
 from a2a.server.request_handlers.response_helpers import agent_card_to_dict
 from a2a.types import AgentCard
@@ -71,6 +71,7 @@ from bridge.telemetry import (
 )
 
 if TYPE_CHECKING:
+    import google.genai.types as genai_types
     import httpx
     from a2a.server.tasks import (
         PushNotificationConfigStore,
@@ -96,7 +97,7 @@ def is_agent_engine_a2a_enabled(value: str | bool | None = None) -> bool:
     return raw.strip().lower() in {"1", "true", "yes"}
 
 
-def resolve_a2a_engine(a2a_engine: Any = None) -> Any | None:
+def resolve_a2a_engine(a2a_engine: object = None) -> object | None:
     """Resolve the A2A Agent Engine target when ``a2a_engine`` is passed or
     ``BRIDGE_AGENT_ENGINE_A2A=1`` is set in the environment.
 
@@ -122,10 +123,10 @@ def resolve_a2a_engine(a2a_engine: Any = None) -> Any | None:
         if proj and loc
         else eid
     )
-    return vertexai.agent_engines.get(resource_name)
+    return cast(object, vertexai.agent_engines.get(resource_name))
 
 
-def _run_coro_sync(coro: Any) -> Any:
+def _run_coro_sync[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run a coroutine from a synchronous Agent Engine entrypoint, even if an event
     loop is already running on the current thread."""
     try:
@@ -172,7 +173,7 @@ class BridgeA2aAgentEngine:
     ``self`` prior to :meth:`set_up`.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only picklable config and test collaborators
         self,
         *,
         url: str = DEFAULT_URL,
@@ -246,9 +247,8 @@ class BridgeA2aAgentEngine:
         encounters ``google._upb._message.Descriptor`` objects from ``a2a.types``."""
         return {
             "_config": dict(self._config),
-            "_injected": {
-                k: None
-                for k in (
+            "_injected": dict.fromkeys(
+                (
                     "executor",
                     "task_store",
                     "artifact_store",
@@ -260,7 +260,7 @@ class BridgeA2aAgentEngine:
                     "satisfaction_obj",
                     "rfp_board",
                 )
-            },
+            ),
             "_app": None,
             "_artifact_store": None,
             "_task_store": None,
@@ -275,17 +275,12 @@ class BridgeA2aAgentEngine:
     def _resolved_url(self, override_url: str | None = None) -> str:
         if override_url:
             return override_url
-        cfg_url = self._config.get("url", DEFAULT_URL)
+        cfg_url = str(self._config.get("url", DEFAULT_URL))
         if cfg_url == DEFAULT_URL:
             return resolved_card_url()
         return cfg_url
 
-    def set_up(self) -> None:
-        """Construct the A2A Starlette dispatcher, ``CollectExecutor``, ``EdgeRequestHandler``,
-        and port-backed stores inside the Gemini platform Agent Engine worker."""
-        if self._app is not None:
-            return
-
+    def _configure_runtime_env(self) -> None:
         project = self._config.get("project")
         if project and not os.environ.get("GOOGLE_CLOUD_PROJECT"):
             os.environ["GOOGLE_CLOUD_PROJECT"] = project
@@ -316,6 +311,30 @@ class BridgeA2aAgentEngine:
                 "BRIDGE_EXCHANGE_DB_URL",
                 "sqlite+aiosqlite:////tmp/bridge_exchange.sqlite",
             )
+
+    def _build_push_sender(
+        self, config_store: PushNotificationConfigStore
+    ) -> PushNotificationSender:
+        push_sender = self._injected.get("push_sender")
+        if push_sender is not None:
+            return cast("PushNotificationSender", push_sender)
+        from a2a.server.tasks import BasePushNotificationSender
+
+        client = self._injected.get("push_httpx_client")
+        if client is None:
+            import httpx
+
+            client = httpx.AsyncClient()
+        return BasePushNotificationSender(
+            httpx_client=client, config_store=config_store
+        )
+
+    def set_up(self) -> None:
+        """Construct the A2A Starlette dispatcher, ``CollectExecutor``, ``EdgeRequestHandler``,
+        and port-backed stores inside the Gemini platform Agent Engine worker."""
+        if self._app is not None:
+            return
+        self._configure_runtime_env()
 
         from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 
@@ -360,21 +379,7 @@ class BridgeA2aAgentEngine:
             self._injected.get("push_config_store")
             or store_port.build_push_config_store()
         )
-
-        push_sender = self._injected.get("push_sender")
-        if push_sender is None:
-            from a2a.server.tasks import BasePushNotificationSender
-
-            client = self._injected.get("push_httpx_client")
-            if client is None:
-                import httpx
-
-                client = httpx.AsyncClient()
-            active_push_sender = BasePushNotificationSender(
-                httpx_client=client, config_store=active_push_config_store
-            )
-        else:
-            active_push_sender = push_sender
+        active_push_sender = self._build_push_sender(active_push_config_store)
 
         handler = EdgeRequestHandler(
             agent_executor=active_executor,
@@ -392,13 +397,12 @@ class BridgeA2aAgentEngine:
         ) + create_jsonrpc_routes(handler, RPC_PATH)
 
         auth_backend = self._injected.get("auth_backend")
-        if auth_backend is None:
-            app = Starlette(routes=routes)
-        else:
-            app = Starlette(
-                routes=routes,
-                middleware=[Middleware(AuthenticationMiddleware, backend=auth_backend)],
-            )
+        middleware = (
+            [Middleware(AuthenticationMiddleware, backend=auth_backend)]
+            if auth_backend is not None
+            else None
+        )
+        app = Starlette(routes=routes, middleware=middleware)
         app.state.rfp_board = board
 
         self._app = app
@@ -412,21 +416,24 @@ class BridgeA2aAgentEngine:
     def artifact_store(self) -> BaseArtifactService:
         """The shared ``BaseArtifactService`` bound to the engine's executor."""
         self.set_up()
-        assert self._artifact_store is not None
+        if self._artifact_store is None:
+            raise RuntimeError("artifact_store is not initialized")
         return self._artifact_store
 
     @property
     def task_store(self) -> TaskStore:
         """The ``TaskStore`` bound to the engine's ``EdgeRequestHandler``."""
         self.set_up()
-        assert self._task_store is not None
+        if self._task_store is None:
+            raise RuntimeError("task_store is not initialized")
         return self._task_store
 
     @property
     def executor(self) -> CollectExecutor:
         """The ``CollectExecutor`` running inside the engine."""
         self.set_up()
-        assert self._executor is not None
+        if self._executor is None:
+            raise RuntimeError("executor is not initialized")
         return self._executor
 
     @property
@@ -435,48 +442,45 @@ class BridgeA2aAgentEngine:
         self.set_up()
         return self._rfp_board
 
-    async def _dispatch_asgi(
-        self,
-        *,
-        method: str,
-        path: str,
-        body: bytes = b"",
-        user: str | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> tuple[int, dict[str, str], bytes]:
-        """Drive the internal Starlette A2A app in-memory for a request."""
-        self.set_up()
-        assert self._app is not None
-        if user is not None and self._executor is not None:
-            # Ensure base_url stays aligned with resolved_url
-            self._executor.bind_store(
-                self._artifact_store, base_url=self._resolved_url()
-            )
-
+    @staticmethod
+    def _build_asgi_headers(
+        headers: dict[str, str] | None, body: bytes
+    ) -> tuple[list[tuple[bytes, bytes]], str | None]:
         raw_headers: list[tuple[bytes, bytes]] = [
             (b"content-type", b"application/json"),
         ]
         has_version_header = False
-        if headers:
-            for k, v in headers.items():
-                k_lower = k.lower()
-                if k_lower == "a2a-version":
-                    has_version_header = True
-                if k_lower != "content-type":
-                    raw_headers.append((k_lower.encode("latin-1"), v.encode("latin-1")))
-        if not has_version_header and body:
+        for k, v in (headers or {}).items():
+            k_lower = k.lower()
+            if k_lower == "a2a-version":
+                has_version_header = True
+            if k_lower != "content-type":
+                raw_headers.append((k_lower.encode("latin-1"), v.encode("latin-1")))
+        parsed_rpc_method: str | None = None
+        if body:
             try:
                 parsed_body = json.loads(body.decode("utf-8"))
-                rpc_method = (
-                    parsed_body.get("method", "")
-                    if isinstance(parsed_body, dict)
-                    else ""
-                )
-                if isinstance(rpc_method, str) and rpc_method and "/" not in rpc_method:
-                    raw_headers.append((b"a2a-version", b"1.0"))
-            except Exception:
-                pass
+                if isinstance(parsed_body, dict) and isinstance(
+                    parsed_body.get("method"), str
+                ):
+                    parsed_rpc_method = parsed_body["method"]
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                parsed_rpc_method = None
+        if (
+            not has_version_header
+            and parsed_rpc_method
+            and "/" not in parsed_rpc_method
+        ):
+            raw_headers.append((b"a2a-version", b"1.0"))
+        return raw_headers, parsed_rpc_method
 
+    @staticmethod
+    def _build_asgi_scope(
+        method: str,
+        path: str,
+        raw_headers: list[tuple[bytes, bytes]],
+        user: str | None,
+    ) -> dict[str, Any]:
         scope: dict[str, Any] = {
             "type": "http",
             "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -493,6 +497,52 @@ class BridgeA2aAgentEngine:
         if user:
             scope["user"] = SimpleUser(user)
             scope["auth"] = AuthCredentials(["authenticated"])
+        return scope
+
+    @staticmethod
+    def _apply_asgi_message(
+        message: MutableMapping[str, Any],
+        resp_headers: dict[str, str],
+        chunks: list[bytes],
+        disconnect_event: asyncio.Event,
+    ) -> int | None:
+        msg_type = message.get("type")
+        if msg_type == "http.response.start":
+            for k, v in message.get("headers", ()):
+                resp_headers[k.decode("latin-1").lower()] = v.decode("latin-1")
+            return int(message.get("status", 200))
+        if msg_type == "http.response.body":
+            chunk = message.get("body", b"")
+            if chunk:
+                chunks.append(bytes(chunk))
+            if not message.get("more_body", False):
+                disconnect_event.set()
+        return None
+
+    async def _dispatch_asgi(
+        self,
+        *,
+        method: str,
+        path: str,
+        body: bytes = b"",
+        user: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, str], bytes]:
+        """Drive the internal Starlette A2A app in-memory for a request."""
+        self.set_up()
+        if self._app is None:
+            raise RuntimeError("A2A ASGI app is not initialized")
+        if (
+            user is not None
+            and self._executor is not None
+            and self._artifact_store is not None
+        ):
+            self._executor.bind_store(
+                self._artifact_store, base_url=self._resolved_url()
+            )
+
+        raw_headers, parsed_rpc_method = self._build_asgi_headers(headers, body)
+        scope = self._build_asgi_scope(method, path, raw_headers, user)
 
         request_sent = False
         disconnect_event = asyncio.Event()
@@ -501,11 +551,7 @@ class BridgeA2aAgentEngine:
             nonlocal request_sent
             if not request_sent:
                 request_sent = True
-                return {
-                    "type": "http.request",
-                    "body": body,
-                    "more_body": False,
-                }
+                return {"type": "http.request", "body": body, "more_body": False}
             await disconnect_event.wait()
             return {"type": "http.disconnect"}
 
@@ -513,30 +559,13 @@ class BridgeA2aAgentEngine:
         resp_headers: dict[str, str] = {}
         chunks: list[bytes] = []
 
-        async def _send(message: dict[str, Any]) -> None:
+        async def _send(message: MutableMapping[str, Any]) -> None:
             nonlocal status_code
-            msg_type = message.get("type")
-            if msg_type == "http.response.start":
-                status_code = int(message.get("status", 200))
-                for k, v in message.get("headers", ()):
-                    resp_headers[k.decode("latin-1").lower()] = v.decode("latin-1")
-            elif msg_type == "http.response.body":
-                chunk = message.get("body", b"")
-                if chunk:
-                    chunks.append(bytes(chunk))
-                if not message.get("more_body", False):
-                    disconnect_event.set()
-
-        rpc_method_attr: str | None = None
-        if body:
-            try:
-                parsed_rpc = json.loads(body.decode("utf-8"))
-                if isinstance(parsed_rpc, dict) and isinstance(
-                    parsed_rpc.get("method"), str
-                ):
-                    rpc_method_attr = parsed_rpc["method"]
-            except Exception:
-                pass
+            updated = self._apply_asgi_message(
+                message, resp_headers, chunks, disconnect_event
+            )
+            if updated is not None:
+                status_code = updated
 
         with (
             parent_trace_context_from_headers(headers),
@@ -546,7 +575,7 @@ class BridgeA2aAgentEngine:
                     "docubridge.zone": "2_intake_validation",
                     "http.method": method,
                     "http.target": path,
-                    "a2a.rpc_method": rpc_method_attr,
+                    "a2a.rpc_method": parsed_rpc_method,
                     "docubridge.caller": user,
                 },
             ) as span,
@@ -556,7 +585,7 @@ class BridgeA2aAgentEngine:
         return status_code, resp_headers, b"".join(chunks)
 
     async def async_get_agent_card(
-        self, *, url: str | None = None, **kwargs: Any
+        self, *, url: str | None = None, **kwargs: object
     ) -> dict[str, Any]:
         """Return the live ``AgentCard`` JSON dictionary built from ``loaded_skills()``."""
         del kwargs
@@ -566,7 +595,7 @@ class BridgeA2aAgentEngine:
         return agent_card_to_dict(card)
 
     def get_agent_card(
-        self, *, url: str | None = None, **kwargs: Any
+        self, *, url: str | None = None, **kwargs: object
     ) -> dict[str, Any]:
         """Synchronous wrapper for :meth:`async_get_agent_card`."""
         return _run_coro_sync(self.async_get_agent_card(url=url, **kwargs))
@@ -578,7 +607,7 @@ class BridgeA2aAgentEngine:
         user: str | None = None,
         headers: dict[str, str] | None = None,
         url: str | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> dict[str, Any]:
         """Execute a unary A2A JSON-RPC 2.0 request inside Agent Engine."""
         self.set_up()
@@ -597,7 +626,7 @@ class BridgeA2aAgentEngine:
             user=user,
             headers=headers,
         )
-        return json.loads(body_bytes.decode("utf-8"))
+        return cast(dict[str, Any], json.loads(body_bytes.decode("utf-8")))
 
     def handle_a2a_jsonrpc(
         self,
@@ -606,7 +635,7 @@ class BridgeA2aAgentEngine:
         user: str | None = None,
         headers: dict[str, str] | None = None,
         url: str | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> dict[str, Any]:
         """Synchronous wrapper for :meth:`async_handle_a2a_jsonrpc`."""
         return _run_coro_sync(
@@ -622,7 +651,7 @@ class BridgeA2aAgentEngine:
         user: str | None = None,
         headers: dict[str, str] | None = None,
         url: str | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> AsyncIterator[dict[str, Any]]:
         """Execute a streaming A2A JSON-RPC 2.0 request (``SendStreamingMessage``,
         ``message/stream``, ``SubscribeToTask``, ``tasks/resubscribe``) inside Agent Engine.
@@ -664,7 +693,7 @@ class BridgeA2aAgentEngine:
         user: str | None = None,
         headers: dict[str, str] | None = None,
         url: str | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> Iterator[dict[str, Any]]:
         """Synchronous streaming wrapper for :meth:`async_handle_a2a_jsonrpc_stream`."""
 
@@ -686,7 +715,7 @@ class BridgeA2aAgentEngine:
         user: str | None = None,
         headers: dict[str, str] | None = None,
         url: str | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> dict[str, Any]:
         """Unified async query entrypoint supporting ``op="get_agent_card"`` and
         ``op="a2a_jsonrpc"`` (or direct JSON-RPC kwargs)."""
@@ -704,7 +733,7 @@ class BridgeA2aAgentEngine:
         user: str | None = None,
         headers: dict[str, str] | None = None,
         url: str | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> dict[str, Any]:
         """Unified sync query entrypoint."""
         return _run_coro_sync(
@@ -718,7 +747,7 @@ class BridgeA2aAgentEngine:
             )
         )
 
-    async def async_stream_query(
+    async def async_stream_query(  # noqa: PLR0913 - Agent Engine A2A + ADK dual-mode entrypoint
         self,
         *,
         op: str | None = None,
@@ -728,8 +757,8 @@ class BridgeA2aAgentEngine:
         url: str | None = None,
         user_id: str | None = None,
         session_id: str | None = None,
-        message: Any = None,
-        **kwargs: Any,
+        message: genai_types.Content | dict[str, Any] | None = None,
+        **kwargs: object,
     ) -> AsyncIterator[dict[str, Any]]:
         """Unified async streaming entrypoint supporting both:
         1. Option B A2A JSON-RPC streaming (``op="a2a_jsonrpc_stream"`` or ``payload``/``jsonrpc``), and
@@ -773,7 +802,7 @@ class BridgeA2aAgentEngine:
             "payload (payload=/jsonrpc=) or ADK parameters (user_id=, session_id=, message=)."
         )
 
-    def stream_query(
+    def stream_query(  # noqa: PLR0913 - Agent Engine A2A + ADK dual-mode entrypoint
         self,
         *,
         op: str | None = None,
@@ -783,8 +812,8 @@ class BridgeA2aAgentEngine:
         url: str | None = None,
         user_id: str | None = None,
         session_id: str | None = None,
-        message: Any = None,
-        **kwargs: Any,
+        message: genai_types.Content | dict[str, Any] | None = None,
+        **kwargs: object,
     ) -> Iterator[dict[str, Any]]:
         """Unified sync streaming entrypoint."""
 

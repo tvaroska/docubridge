@@ -7,9 +7,9 @@ contrastive descriptions across in-memory and durable SQL backends.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from bridge.knowledge_catalog import KnowledgeCatalog, knowledge_catalog_from_env
 from bridge.refinery.assay import (
@@ -24,7 +24,10 @@ from bridge.refinery.onboarding import (
     SampleDocumentExample,
     build_onboarding_proposal,
 )
-from bridge.refinery.perturbation import resolve_perturbation_inputs
+from bridge.refinery.perturbation import (
+    PerturbationExtractor,
+    resolve_perturbation_inputs,
+)
 from contract.refinery import (
     OntologyEdge,
     OntologyRevision,
@@ -33,6 +36,15 @@ from contract.refinery import (
     RefineryProposal,
     RefineryProposalStatus,
 )
+
+
+class _InboxItemLike(Protocol):
+    ontology_revision_id: str
+
+
+@runtime_checkable
+class _ActionInboxLike(Protocol):
+    def list_items(self) -> Iterable[_InboxItemLike]: ...
 
 
 class SchemaRefineryEngine(ABC):
@@ -90,7 +102,7 @@ class SchemaRefineryEngine(ABC):
         """Run bimodal field sparsity & contrastive description assay for a domain/entity."""
 
     @abstractmethod
-    def onboard_doctype_from_examples(
+    def onboard_doctype_from_examples(  # noqa: PLR0913 - keyword-only doctype onboarding API
         self,
         *,
         entity_id: str,
@@ -102,7 +114,7 @@ class SchemaRefineryEngine(ABC):
         source_priority: int = 20,
         supersedes_spine: bool = True,
         aliases: Sequence[str] = (),
-        client: Any = None,
+        client: object = None,
         use_live_llm: bool | None = None,
     ) -> DoctypeOnboardingResult:
         """Induce a DRAFT doctype spec + `.okf.md` bundle from 1-5 examples and run the 3-Tier Assay Gate."""
@@ -114,7 +126,7 @@ class SchemaRefineryEngine(ABC):
         *,
         revision_id: str | None = None,
         version: str = "1.2.0",
-        action_inbox: Any = None,
+        action_inbox: object = None,
     ) -> OntologyRevision:
         """Promote an assay-passed proposal into a new active OntologyRevision."""
 
@@ -130,7 +142,7 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
         self,
         *,
         knowledge_catalog: KnowledgeCatalog | None = None,
-        extractor: Any = None,
+        extractor: PerturbationExtractor | None = None,
         sample_documents: Sequence[str] = (),
     ) -> None:
         self._catalog = knowledge_catalog or knowledge_catalog_from_env()
@@ -244,7 +256,7 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
         )
         return self.register_proposal(raw_proposal)
 
-    def onboard_doctype_from_examples(
+    def onboard_doctype_from_examples(  # noqa: PLR0913 - keyword-only doctype onboarding API
         self,
         *,
         entity_id: str,
@@ -256,7 +268,7 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
         source_priority: int = 20,
         supersedes_spine: bool = True,
         aliases: Sequence[str] = (),
-        client: Any = None,
+        client: object = None,
         use_live_llm: bool | None = None,
     ) -> DoctypeOnboardingResult:
         """Induce a DRAFT doctype spec + `.okf.md` bundle from 1-5 examples and run the 3-Tier Assay Gate."""
@@ -293,7 +305,7 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
         *,
         revision_id: str | None = None,
         version: str = "1.2.0",
-        action_inbox: Any = None,
+        action_inbox: object = None,
     ) -> OntologyRevision:
         """Promote an assay-passed proposal into a new active OntologyRevision."""
         proposal = self.get_proposal(proposal_id)
@@ -332,7 +344,7 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
         self._save_proposal(promoted_proposal)
 
         # Snapshot re-evaluation for parked HITL Inbox tasks pinned to older revisions
-        if action_inbox is not None and hasattr(action_inbox, "list_items"):
+        if isinstance(action_inbox, _ActionInboxLike):
             for item in action_inbox.list_items():
                 if (
                     getattr(item, "task_state", "") == "input_required"

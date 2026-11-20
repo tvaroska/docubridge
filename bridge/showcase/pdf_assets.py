@@ -12,9 +12,12 @@ import hashlib
 import io
 import zipfile
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from contract.scenario import ScenarioPdfAsset
+
+if TYPE_CHECKING:
+    from bridge.showcase.gcs_scenarios import GcsStorageClientLike
 
 Rgb = tuple[float, float, float]
 
@@ -51,7 +54,8 @@ class _PdfPageCanvas:
     def __init__(self) -> None:
         self._ops: list[str] = []
 
-    def rect_fill(self, x: float, y: float, w: float, h: float, rgb: Rgb) -> None:
+    def rect_fill(self, rect: tuple[float, float, float, float], rgb: Rgb) -> None:
+        x, y, w, h = rect
         r, g, b = rgb
         self._ops.append(
             f"q {r:.3f} {g:.3f} {b:.3f} rg {x:.1f} {y:.1f} {w:.1f} {h:.1f} re f Q"
@@ -59,13 +63,11 @@ class _PdfPageCanvas:
 
     def rect_stroke(
         self,
-        x: float,
-        y: float,
-        w: float,
-        h: float,
+        rect: tuple[float, float, float, float],
         rgb: Rgb = (0.82, 0.85, 0.89),
         line_width: float = 0.8,
     ) -> None:
+        x, y, w, h = rect
         r, g, b = rgb
         self._ops.append(
             f"q {line_width:.2f} w {r:.3f} {g:.3f} {b:.3f} RG "
@@ -88,14 +90,14 @@ class _PdfPageCanvas:
 
     def text(
         self,
-        x: float,
-        y: float,
+        pos: tuple[float, float],
         value: str,
         *,
         font: str = "F1",
         size: float = 10.0,
         rgb: Rgb = (0.12, 0.14, 0.18),
     ) -> None:
+        x, y = pos
         r, g, b = rgb
         self._ops.append(
             f"BT /{font} {size:.1f} Tf {r:.3f} {g:.3f} {b:.3f} rg "
@@ -161,8 +163,7 @@ def _draw(canvas: _PdfPageCanvas, element: dict[str, Any]) -> None:
     kind = element.get("op")
     if kind == "text":
         canvas.text(
-            float(element["x"]),
-            float(element["y"]),
+            (float(element["x"]), float(element["y"])),
             str(element["value"]),
             font=str(element.get("font", "F1")),
             size=float(element.get("size", 10.0)),
@@ -170,18 +171,22 @@ def _draw(canvas: _PdfPageCanvas, element: dict[str, Any]) -> None:
         )
     elif kind == "rect_fill":
         canvas.rect_fill(
-            float(element["x"]),
-            float(element["y"]),
-            float(element["w"]),
-            float(element["h"]),
+            (
+                float(element["x"]),
+                float(element["y"]),
+                float(element["w"]),
+                float(element["h"]),
+            ),
             tuple(element["rgb"]),
         )
     elif kind == "rect_stroke":
         canvas.rect_stroke(
-            float(element["x"]),
-            float(element["y"]),
-            float(element["w"]),
-            float(element["h"]),
+            (
+                float(element["x"]),
+                float(element["y"]),
+                float(element["w"]),
+                float(element["h"]),
+            ),
             tuple(element.get("rgb", (0.82, 0.85, 0.89))),
             float(element.get("line_width", 0.8)),
         )
@@ -198,7 +203,9 @@ def _draw(canvas: _PdfPageCanvas, element: dict[str, Any]) -> None:
 
 
 def render_pdf_asset(
-    asset: ScenarioPdfAsset, *, storage_client: Any = None
+    asset: ScenarioPdfAsset,
+    *,
+    storage_client: GcsStorageClientLike | None = None,
 ) -> RenderedPdf:
     if asset.gcs_uri and not asset.pages:
         from bridge.showcase.gcs_scenarios import fetch_gcs_bytes

@@ -33,8 +33,6 @@ Which tables and columns a doctype carries is declared by its skill schema
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from contract.enums import ReviewReason
@@ -193,7 +191,7 @@ class ExtractionResult(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_conflicting_review_keys(cls, data: Any) -> Any:
+    def _reject_conflicting_review_keys(cls, data: object) -> object:
         """Fail loud when a payload carries BOTH review keys with different values.
 
         Pydantic would otherwise silently pick the first alias choice — a silent data
@@ -202,12 +200,9 @@ class ExtractionResult(BaseModel):
         payload validates (``extra="forbid"`` would otherwise reject the unconsumed
         alias key with a confusing "extra inputs" error).
         """
-        both = (
-            isinstance(data, dict)
-            and "flagged_fields" in data
-            and "fields_requiring_review" in data
-        )
-        if not both:
+        if not isinstance(data, dict):
+            return data
+        if "flagged_fields" not in data or "fields_requiring_review" not in data:
             return data
         if data["flagged_fields"] != data["fields_requiring_review"]:
             raise ValueError(

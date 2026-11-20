@@ -23,6 +23,14 @@ from bridge.telemetry import trace_step
 
 if TYPE_CHECKING:
     from bridge.knowledge_catalog.catalog import KnowledgeCatalog
+    from bridge.knowledge_catalog.models import BusinessGlossaryTerm
+    from contract.refinery import OntologyEntitySpec, OntologyRevision
+
+_TERM_ID_TO_BUCKET: dict[str, str] = {
+    "term.premium": "total_premium",
+    "term.deductible_to_limit_ratio": "deductible_to_limit_pct",
+    "term.loan_to_value_ratio": "total_coverage_limit",
+}
 
 ONTOLOGY_MCP_ALLOWED_TOOLS: tuple[str, ...] = (
     "get_entity_ontology",
@@ -238,6 +246,98 @@ def _resolve_catalog(catalog: KnowledgeCatalog | None) -> KnowledgeCatalog:
     return knowledge_catalog_from_env()
 
 
+def _find_entity_spec(active: OntologyRevision, norm: str) -> OntologyEntitySpec | None:
+    matched = active.entities.get(norm)
+    if matched is not None:
+        return matched
+    for spec in active.entities.values():
+        if norm in (a.lower() for a in spec.aliases):
+            return spec
+    candidates = [
+        (len(tok), spec.source_priority, spec)
+        for spec in active.entities.values()
+        for tok in (spec.entity_id.lower(), *(a.lower() for a in spec.aliases))
+        if tok and tok in norm
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return candidates[0][2]
+
+
+def _resolve_metric_bucket_and_term(
+    catalog: KnowledgeCatalog,
+    raw: str,
+    doctype: str | None,
+) -> tuple[str | None, BusinessGlossaryTerm | None, str]:
+    glossary_by_id = {
+        t.term_id: t for t in catalog.list_glossary_terms(include_confidential=True)
+    }
+    matched_term = glossary_by_id.get(raw)
+    leaf_target = raw.split(".")[-1].strip().lower()
+
+    canonical_bucket: str | None = None
+    if leaf_target in _CANONICAL_METRIC_BUCKETS:
+        canonical_bucket = leaf_target
+    elif matched_term is not None:
+        canonical_bucket = _TERM_ID_TO_BUCKET.get(
+            matched_term.term_id, matched_term.term_id
+        )
+    else:
+        canonical_bucket, _ = catalog.resolve_metric_bucket(
+            leaf_target, doctype=doctype
+        )
+
+    if canonical_bucket is None:
+        return None, matched_term, "BITEMPORAL_AS_OF_LOOKUP"
+
+    default_op, default_term_id = _CANONICAL_METRIC_BUCKETS.get(
+        canonical_bucket,
+        ("BITEMPORAL_AS_OF_LOOKUP", raw if matched_term else ""),
+    )
+    if matched_term is None and default_term_id:
+        matched_term = glossary_by_id.get(default_term_id)
+    return canonical_bucket, matched_term, default_op
+
+
+def _collect_feeding_edges_and_fields(
+    catalog: KnowledgeCatalog,
+    active: OntologyRevision,
+    buckets_to_match: set[str],
+    target_entity_id: str | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    feeding_edges = [
+        edge.model_dump(mode="json")
+        for edge in active.edges
+        if edge.relation == "FEEDS_METRIC"
+        and (not target_entity_id or edge.source_id == target_entity_id)
+        and edge.target_id.split(".")[-1].strip().lower() in buckets_to_match
+    ]
+    feeding_fields: list[dict[str, Any]] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    for spec in active.entities.values():
+        if target_entity_id and spec.entity_id != target_entity_id:
+            continue
+        for fname, fspec in spec.fields.items():
+            f_bucket = (fspec.feeds_metric or "").strip().lower()
+            pair = (spec.entity_id, fname)
+            if f_bucket not in buckets_to_match or pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            _, edge_id = catalog.resolve_metric_bucket(fname, doctype=spec.entity_id)
+            feeding_fields.append(
+                {
+                    "entity_id": spec.entity_id,
+                    "field_name": fname,
+                    "feeds_metric": fspec.feeds_metric,
+                    "monetary": fspec.monetary,
+                    "source_priority": spec.source_priority,
+                    "edge_id": edge_id,
+                }
+            )
+    return feeding_edges, feeding_fields
+
+
 class OntologyMcpSurface:
     """Strictly read-only, allow-listed MCP tool surface over Zone 6 KnowledgeCatalog."""
 
@@ -267,24 +367,7 @@ class OntologyMcpSurface:
             if not norm:
                 raise KeyError("doctype must be a non-empty string")
 
-            matched = active.entities.get(norm)
-            if matched is None:
-                for spec in active.entities.values():
-                    if norm in (a.lower() for a in spec.aliases):
-                        matched = spec
-                        break
-            if matched is None:
-                candidates = []
-                for spec in active.entities.values():
-                    for tok in (
-                        spec.entity_id.lower(),
-                        *(a.lower() for a in spec.aliases),
-                    ):
-                        if tok and tok in norm:
-                            candidates.append((len(tok), spec.source_priority, spec))
-                if candidates:
-                    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-                    matched = candidates[0][2]
+            matched = _find_entity_spec(active, norm)
 
             if matched is None:
                 span.set_attribute("docubridge.entity_found", False)
@@ -364,32 +447,9 @@ class OntologyMcpSurface:
             if not raw:
                 raise KeyError("metric_id must be a non-empty string")
 
-            glossary_by_id = {
-                t.term_id: t
-                for t in self._catalog.list_glossary_terms(include_confidential=True)
-            }
-            matched_term = glossary_by_id.get(raw)
-            leaf_target = raw.split(".")[-1].strip().lower()
-
-            canonical_bucket: str | None = None
-            if leaf_target in _CANONICAL_METRIC_BUCKETS:
-                canonical_bucket = leaf_target
-            elif matched_term is not None:
-                if matched_term.term_id == "term.premium":
-                    canonical_bucket = "total_premium"
-                elif matched_term.term_id == "term.deductible_to_limit_ratio":
-                    canonical_bucket = "deductible_to_limit_pct"
-                elif matched_term.term_id == "term.loan_to_value_ratio":
-                    canonical_bucket = "total_coverage_limit"
-                else:
-                    canonical_bucket = matched_term.term_id
-            else:
-                bucket_from_field, _ = self._catalog.resolve_metric_bucket(
-                    leaf_target, doctype=doctype
-                )
-                if bucket_from_field is not None:
-                    canonical_bucket = bucket_from_field
-
+            canonical_bucket, matched_term, default_op = (
+                _resolve_metric_bucket_and_term(self._catalog, raw, doctype)
+            )
             if canonical_bucket is None:
                 span.set_attribute("docubridge.metric_found", False)
                 raise KeyError(
@@ -397,18 +457,9 @@ class OntologyMcpSurface:
                     f"revision '{active.revision_id}'."
                 )
 
-            default_op, default_term_id = _CANONICAL_METRIC_BUCKETS.get(
-                canonical_bucket,
-                ("BITEMPORAL_AS_OF_LOOKUP", raw if matched_term else ""),
+            target_entity_id = (
+                self.get_entity_ontology(doctype).entity_id if doctype else None
             )
-            if matched_term is None and default_term_id:
-                matched_term = glossary_by_id.get(default_term_id)
-
-            target_entity_id: str | None = None
-            if doctype:
-                ent_resp = self.get_entity_ontology(doctype)
-                target_entity_id = ent_resp.entity_id
-
             buckets_to_match = {canonical_bucket}
             if canonical_bucket == "deductible_to_limit_pct":
                 buckets_to_match.update(
@@ -419,44 +470,14 @@ class OntologyMcpSurface:
                     }
                 )
 
-            feeding_edges: list[dict[str, Any]] = []
-            for edge in active.edges:
-                if edge.relation != "FEEDS_METRIC":
-                    continue
-                if target_entity_id and edge.source_id != target_entity_id:
-                    continue
-                edge_bucket = edge.target_id.split(".")[-1].strip().lower()
-                if edge_bucket in buckets_to_match:
-                    feeding_edges.append(edge.model_dump(mode="json"))
-
-            feeding_fields: list[dict[str, Any]] = []
-            seen_pairs: set[tuple[str, str]] = set()
-            for spec in active.entities.values():
-                if target_entity_id and spec.entity_id != target_entity_id:
-                    continue
-                for fname, fspec in spec.fields.items():
-                    f_bucket = (fspec.feeds_metric or "").strip().lower()
-                    if f_bucket in buckets_to_match:
-                        _, edge_id = self._catalog.resolve_metric_bucket(
-                            fname, doctype=spec.entity_id
-                        )
-                        pair = (spec.entity_id, fname)
-                        if pair not in seen_pairs:
-                            seen_pairs.add(pair)
-                            feeding_fields.append(
-                                {
-                                    "entity_id": spec.entity_id,
-                                    "field_name": fname,
-                                    "feeds_metric": fspec.feeds_metric,
-                                    "monetary": fspec.monetary,
-                                    "source_priority": spec.source_priority,
-                                    "edge_id": edge_id,
-                                }
-                            )
-
-            metric_op = default_op
-            if feeding_edges and feeding_edges[0].get("metric_operation"):
-                metric_op = str(feeding_edges[0]["metric_operation"])
+            feeding_edges, feeding_fields = _collect_feeding_edges_and_fields(
+                self._catalog, active, buckets_to_match, target_entity_id
+            )
+            metric_op = (
+                str(feeding_edges[0]["metric_operation"])
+                if feeding_edges and feeding_edges[0].get("metric_operation")
+                else default_op
+            )
 
             span.set_attribute("docubridge.metric_found", True)
             span.set_attribute("docubridge.canonical_bucket", canonical_bucket)

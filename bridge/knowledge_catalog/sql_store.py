@@ -7,7 +7,10 @@ import os
 import threading
 import uuid
 from collections.abc import Coroutine
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
 from bridge.identity import SpiffeAgentPolicy
 from bridge.knowledge_catalog.catalog import (
@@ -46,7 +49,7 @@ _OP_TIMEOUT_S = 30.0
 class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
     """Durable SQL-backed Zone 6 Knowledge Catalog & TBox Ontology Graph multiplexed on ``DsnSqlRuntime``."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - mirrors InMemoryKnowledgeCatalog keyword-only signature
         self,
         dsn: str,
         *,
@@ -153,7 +156,7 @@ class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
             baseline = build_baseline_ontology_revision()
             seed_rows: list[str] = []
 
-            async def _create_and_seed(engine: Any) -> None:
+            async def _create_and_seed(engine: AsyncEngine) -> None:
                 async with engine.begin() as conn:
                     await conn.run_sync(meta.create_all)
                     res = await conn.execute(
@@ -179,9 +182,7 @@ class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
                                     revision_id=baseline.revision_id,
                                     edge_id=edge.edge_id,
                                     source_id=edge.source_id,
-                                    relation=edge.relation.value
-                                    if hasattr(edge.relation, "value")
-                                    else str(edge.relation),
+                                    relation=str(edge.relation),
                                     target_id=edge.target_id,
                                     priority_rank=edge.priority_rank,
                                     payload_json=edge.model_dump_json(),
@@ -220,9 +221,10 @@ class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
             active, activate=(active.state == OntologyRevisionState.ACTIVE)
         )
 
-    def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
+    def _run[T](self, coro: Coroutine[Any, Any, T]) -> T:
         self._ensure_ready()
-        assert self._loop is not None
+        if self._loop is None:
+            raise RuntimeError("SqlKnowledgeCatalog event loop is not initialized")
         if self._thread is not None and threading.current_thread() is self._thread:
             raise RuntimeError(
                 "SqlKnowledgeCatalog synchronous API called from its own event loop thread"
@@ -270,7 +272,8 @@ class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
     def get_active_ontology_revision(self) -> OntologyRevision:
         """Return the currently active OntologyRevision in Zone 6 (synced across SQL replicas)."""
         self._sync_revisions_from_sql()
-        assert self._active_revision is not None
+        if self._active_revision is None:
+            raise RuntimeError("no active ontology revision initialized")
         return self._active_revision
 
     def list_ontology_revisions(self) -> list[OntologyRevision]:
@@ -344,9 +347,7 @@ class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
                                 revision_id=rev.revision_id,
                                 edge_id=edge.edge_id,
                                 source_id=edge.source_id,
-                                relation=edge.relation.value
-                                if hasattr(edge.relation, "value")
-                                else str(edge.relation),
+                                relation=str(edge.relation),
                                 target_id=edge.target_id,
                                 priority_rank=edge.priority_rank,
                                 payload_json=edge.model_dump_json(),
@@ -389,9 +390,7 @@ class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
                             revision_id=baseline.revision_id,
                             edge_id=edge.edge_id,
                             source_id=edge.source_id,
-                            relation=edge.relation.value
-                            if hasattr(edge.relation, "value")
-                            else str(edge.relation),
+                            relation=str(edge.relation),
                             target_id=edge.target_id,
                             priority_rank=edge.priority_rank,
                             payload_json=edge.model_dump_json(),

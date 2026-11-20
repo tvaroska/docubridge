@@ -19,7 +19,6 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterable
-from typing import Any
 
 REVIEWERS_ENV = "BRIDGE_EDGE_REVIEWERS"
 
@@ -41,7 +40,7 @@ def resolve_reviewers(value: Iterable[str] | str | None = None) -> frozenset[str
     return frozenset(n.strip() for n in names if n and n.strip())
 
 
-def is_authorized_reviewer(user: Any, reviewers: frozenset[str]) -> bool:
+def is_authorized_reviewer(user: object, reviewers: frozenset[str]) -> bool:
     """Whether the call-context ``user`` is an authenticated, allow-listed reviewer.
 
     ``user`` is an ``a2a.auth.user.User`` (``UnauthenticatedUser`` by default, a

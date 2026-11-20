@@ -28,7 +28,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from bridge.email_ingress.graph import (
     DEFAULT_SUBSCRIPTION_MINUTES,
@@ -70,7 +70,7 @@ def _renew(subscription_id: str, minutes: int) -> int:
     return 0
 
 
-def _outcome_line(outcome: dict) -> str:
+def _outcome_line(outcome: dict[str, Any]) -> str:
     key = outcome.get("key")
     if outcome.get("status") == "filed":
         return (

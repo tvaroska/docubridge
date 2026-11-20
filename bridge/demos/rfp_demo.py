@@ -67,6 +67,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -106,7 +107,7 @@ def run_sync[T](coro: Coroutine[Any, Any, T]) -> T:
         return pool.submit(asyncio.run, coro).result()
 
 
-def _seed(board: RfpBoard, extraction: Any, *, now: datetime) -> None:
+def _seed(board: RfpBoard, extraction: FixtureExtractor, *, now: datetime) -> None:
     policy = board.policy
     request = CollectRequest(
         process=policy.process,
@@ -171,7 +172,7 @@ def seeded_rfp_board(
     return board, extraction
 
 
-def build_rfp_demo_app(
+def build_rfp_demo_app(  # noqa: PLR0913 - public keyword-only demo host builder
     *,
     now: datetime | None = None,
     store: PortalStore | None = None,
@@ -226,7 +227,7 @@ def build_rfp_demo_app(
     lifespan = None
     if processor is not None and interval > 0:
 
-        def lifespan(_app: FastAPI) -> Any:
+        def lifespan(_app: FastAPI) -> AbstractAsyncContextManager[None]:
             return email_drain_loop(processor, interval)
 
     app = FastAPI(

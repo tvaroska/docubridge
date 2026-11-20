@@ -74,7 +74,7 @@ class FixtureExtractor:
         """
         self._corpus_path = str(corpus_path)
 
-    async def extract(
+    async def extract(  # noqa: PLR0913 - matches ExtractionPort.extract contract
         self,
         artifact_name: str,
         *,

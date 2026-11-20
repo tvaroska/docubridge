@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -30,7 +31,135 @@ from contract.enums import Disposition, Gate
 from contract.wire import LedgerEntry
 
 
-def register_intake_and_demo_routes(
+def _serve_safe_demo_asset(
+    subdir: str,
+    filename: str,
+    *,
+    allowed_types: dict[str, str],
+    cache_control: str | None = None,
+) -> Response:
+    if (
+        not filename
+        or "\x00" in filename
+        or "\\" in filename
+        or filename.startswith("/")
+    ):
+        raise HTTPException(status_code=400, detail="Invalid static asset path.")
+    rel = Path(filename)
+    if ".." in rel.parts:
+        raise HTTPException(status_code=400, detail="Invalid static asset path.")
+    base = (demo_static_root() / subdir).resolve()
+    target = (base / rel).resolve()
+    if not target.is_relative_to(base) or target == base:
+        raise HTTPException(status_code=400, detail="Invalid static asset path.")
+    media_type = allowed_types.get(target.suffix.lower())
+    if media_type is None:
+        raise HTTPException(status_code=404, detail="Unsupported static asset.")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Static asset not found.")
+    headers = {"Cache-Control": cache_control} if cache_control else None
+    return Response(
+        content=target.read_bytes(),
+        media_type=media_type,
+        headers=headers,
+    )
+
+
+def _register_demo_static_routes(router: APIRouter) -> None:
+    """Register `/demo/fonts/*` and `/demo/modules/*` static asset routes."""
+
+    @router.get("/demo/fonts/{filename:path}")
+    def get_demo_font_asset(filename: str) -> Response:
+        """Serve bundled offline font CSS and WOFF2 assets with strict path containment."""
+        is_binary_font = filename.lower().endswith((".woff2", ".woff"))
+        return _serve_safe_demo_asset(
+            "fonts",
+            filename,
+            allowed_types={
+                ".css": "text/css; charset=utf-8",
+                ".woff2": "font/woff2",
+                ".woff": "font/woff",
+            },
+            cache_control=(
+                "public, max-age=31536000, immutable" if is_binary_font else None
+            ),
+        )
+
+    @router.get("/demo/modules/{filename:path}")
+    def get_demo_module_asset(filename: str) -> Response:
+        """Serve modular Enterprise Showcase ES module scripts with strict path containment."""
+        return _serve_safe_demo_asset(
+            "modules",
+            filename,
+            allowed_types={
+                ".js": "application/javascript; charset=utf-8",
+                ".mjs": "application/javascript; charset=utf-8",
+            },
+        )
+
+
+def _register_demo_console_routes(router: APIRouter) -> None:
+    @router.api_route("/demo", methods=["GET", "HEAD"], response_class=HTMLResponse)
+    @router.api_route("/console", methods=["GET", "HEAD"], response_class=HTMLResponse)
+    def get_interactive_enterprise_console(
+        request: Request,
+        domain: str | None = None,
+    ) -> HTMLResponse:
+        """Serve the 5-scene interactive Enterprise Showcase HTML console (/demo and /console)."""
+        demo_path = demo_static_root() / "enterprise-demo.html"
+        if not demo_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="Interactive console (enterprise-demo.html) not found.",
+            )
+        html_text = demo_path.read_text(encoding="utf-8")
+        chosen_domain = (
+            (domain or os.environ.get("BRIDGE_DEFAULT_DEMO_DOMAIN") or "")
+            .strip()
+            .lower()
+        )
+        if chosen_domain in ("banking", "mortgage", "insurance"):
+            inject_script = (
+                f'<script>window.DEFAULT_DEMO_DOMAIN = "{chosen_domain}";</script>\n'
+            )
+            if "</head>" in html_text:
+                html_text = html_text.replace("</head>", f"{inject_script}</head>", 1)
+            else:
+                html_text = inject_script + html_text
+        resp = HTMLResponse(content=html_text)
+        issue_viewer_cookie(request, resp)
+        return resp
+
+    @router.get("/demo/enterprise-demo.css")
+    def get_interactive_enterprise_console_css() -> Response:
+        """Serve the modular stylesheet for the Enterprise Showcase console."""
+        css_path = demo_static_root() / "enterprise-demo.css"
+        if not css_path.is_file():
+            raise HTTPException(
+                status_code=404, detail="Stylesheet (enterprise-demo.css) not found."
+            )
+        return Response(
+            content=css_path.read_text(encoding="utf-8"),
+            media_type="text/css; charset=utf-8",
+        )
+
+    @router.get("/demo/enterprise-demo.js")
+    def get_interactive_enterprise_console_js() -> Response:
+        """Serve the modular JavaScript controller for the Enterprise Showcase console."""
+        js_path = demo_static_root() / "enterprise-demo.js"
+        if not js_path.is_file():
+            raise HTTPException(
+                status_code=404, detail="Script (enterprise-demo.js) not found."
+            )
+        return Response(
+            content=js_path.read_text(encoding="utf-8"),
+            media_type="application/javascript; charset=utf-8",
+        )
+
+    _register_demo_static_routes(router)
+
+
+def register_intake_and_demo_routes(  # noqa: PLR0913 - public FastAPI route registrar
     router: APIRouter,
     *,
     store: OperationalStore,
@@ -141,59 +270,4 @@ def register_intake_and_demo_routes(
         )
         return batch.model_dump(mode="json")
 
-    @router.api_route("/demo", methods=["GET", "HEAD"], response_class=HTMLResponse)
-    @router.api_route("/console", methods=["GET", "HEAD"], response_class=HTMLResponse)
-    def get_interactive_enterprise_console(
-        request: Request,
-        domain: str | None = None,
-    ) -> HTMLResponse:
-        """Serve the 5-scene interactive Enterprise Showcase HTML console (/demo and /console)."""
-        demo_path = demo_static_root() / "enterprise-demo.html"
-        if not demo_path.is_file():
-            raise HTTPException(
-                status_code=404,
-                detail="Interactive console (enterprise-demo.html) not found.",
-            )
-        html_text = demo_path.read_text(encoding="utf-8")
-        chosen_domain = (
-            (domain or os.environ.get("BRIDGE_DEFAULT_DEMO_DOMAIN") or "")
-            .strip()
-            .lower()
-        )
-        if chosen_domain in ("banking", "mortgage", "insurance"):
-            inject_script = (
-                f'<script>window.DEFAULT_DEMO_DOMAIN = "{chosen_domain}";</script>\n'
-            )
-            if "</head>" in html_text:
-                html_text = html_text.replace("</head>", f"{inject_script}</head>", 1)
-            else:
-                html_text = inject_script + html_text
-        resp = HTMLResponse(content=html_text)
-        issue_viewer_cookie(request, resp)
-        return resp
-
-    @router.get("/demo/enterprise-demo.css")
-    def get_interactive_enterprise_console_css() -> Response:
-        """Serve the modular stylesheet for the Enterprise Showcase console."""
-        css_path = demo_static_root() / "enterprise-demo.css"
-        if not css_path.is_file():
-            raise HTTPException(
-                status_code=404, detail="Stylesheet (enterprise-demo.css) not found."
-            )
-        return Response(
-            content=css_path.read_text(encoding="utf-8"),
-            media_type="text/css; charset=utf-8",
-        )
-
-    @router.get("/demo/enterprise-demo.js")
-    def get_interactive_enterprise_console_js() -> Response:
-        """Serve the modular JavaScript controller for the Enterprise Showcase console."""
-        js_path = demo_static_root() / "enterprise-demo.js"
-        if not js_path.is_file():
-            raise HTTPException(
-                status_code=404, detail="Script (enterprise-demo.js) not found."
-            )
-        return Response(
-            content=js_path.read_text(encoding="utf-8"),
-            media_type="application/javascript; charset=utf-8",
-        )
+    _register_demo_console_routes(router)

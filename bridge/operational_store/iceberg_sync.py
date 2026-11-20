@@ -22,26 +22,32 @@ _ACTIVE_FACTS_CTE: str = (
 
 # Governed SQL definitions for the three Zone 4 Role-Based Views & BigQuery Iceberg DDL.
 SQL_VIEW_DEFINITIONS: dict[str, str] = {
-    "v_broker_placement": (
-        "CREATE OR REPLACE VIEW v_broker_placement AS "
-        + _ACTIVE_FACTS_CTE
-        + "SELECT entity_id, issuer, doc_id, doctype, field_path, field_value, "
-        "numeric_value, currency, effective_from, recorded_at, vault_uri, "
-        "source_anchor_json FROM active_facts WHERE rn = 1;"
+    "v_broker_placement": "".join(
+        (
+            "CREATE OR REPLACE VIEW v_broker_placement AS ",
+            _ACTIVE_FACTS_CTE,
+            "SELECT entity_id, issuer, doc_id, doctype, field_path, field_value, "
+            "numeric_value, currency, effective_from, recorded_at, vault_uri, "
+            "source_anchor_json FROM active_facts WHERE rn = 1;",
+        )
     ),
-    "v_claims_coverage": (
-        "CREATE OR REPLACE VIEW v_claims_coverage AS "
-        + _ACTIVE_FACTS_CTE
-        + "SELECT entity_id, issuer, doc_id, doctype, field_path, field_value, "
-        "numeric_value, currency, source_priority, effective_from, recorded_at, "
-        "vault_uri, source_anchor_json FROM active_facts WHERE rn = 1;"
+    "v_claims_coverage": "".join(
+        (
+            "CREATE OR REPLACE VIEW v_claims_coverage AS ",
+            _ACTIVE_FACTS_CTE,
+            "SELECT entity_id, issuer, doc_id, doctype, field_path, field_value, "
+            "numeric_value, currency, source_priority, effective_from, recorded_at, "
+            "vault_uri, source_anchor_json FROM active_facts WHERE rn = 1;",
+        )
     ),
-    "v_underwriter_exposure": (
-        "CREATE OR REPLACE VIEW v_underwriter_exposure AS "
-        + _ACTIVE_FACTS_CTE
-        + "SELECT entity_id, doc_id, doctype, field_path, field_value, numeric_value, "
-        "currency, flagged_for_review, effective_from, recorded_at, vault_uri, "
-        "source_anchor_json FROM active_facts WHERE rn = 1;"
+    "v_underwriter_exposure": "".join(
+        (
+            "CREATE OR REPLACE VIEW v_underwriter_exposure AS ",
+            _ACTIVE_FACTS_CTE,
+            "SELECT entity_id, doc_id, doctype, field_path, field_value, numeric_value, "
+            "currency, flagged_for_review, effective_from, recorded_at, vault_uri, "
+            "source_anchor_json FROM active_facts WHERE rn = 1;",
+        )
     ),
 }
 

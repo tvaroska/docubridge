@@ -6,10 +6,11 @@ import asyncio
 import threading
 from collections.abc import Coroutine
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bridge.a2ui_inbox.catalogs import (
     ActionStepStatus,
+    RiskTier,
     TaskLifecycleState,
 )
 from bridge.a2ui_inbox.memory_store import (
@@ -19,9 +20,17 @@ from bridge.a2ui_inbox.memory_store import (
 from bridge.a2ui_inbox.models import (
     A2uiClientActionRequest,
     ActionInboxItem,
+    ActionProgressStep,
     InboxAuditRecord,
 )
 from bridge.knowledge_catalog import CatalogRole, DeliveryChannel
+from bridge.operational_store import FactConflict
+
+if TYPE_CHECKING:
+    from sqlalchemy import Table
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+    from bridge.sql_runtime import DsnSqlRuntime
 
 INBOX_DB_ENV = "BRIDGE_INBOX_DB_URL"
 INBOX_ITEMS_TABLE_NAME = "bridge_a2ui_inbox_items"
@@ -49,13 +58,13 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
             )
         self.dsn = cleaned
         self._init_lock = threading.Lock()
-        self._runtime: Any = None
+        self._runtime: DsnSqlRuntime | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
-        self._engine: Any = None
+        self._engine: AsyncEngine | None = None
         self._closed = False
-        self._items_table: Any = None
-        self._audits_table: Any = None
+        self._items_table: Table | None = None
+        self._audits_table: Table | None = None
 
     def _ensure_ready(self) -> None:
         if self._engine is not None:
@@ -95,7 +104,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
                 Column("payload_json", Text, nullable=False),
             )
 
-            async def _create(engine: Any) -> None:
+            async def _create(engine: AsyncEngine) -> None:
                 async with engine.begin() as conn:
                     await conn.run_sync(meta.create_all)
 
@@ -109,6 +118,16 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
             self._loop = runtime.loop
             self._thread = runtime.thread
             self._engine = runtime.engine
+
+    def _ready_handles(self) -> tuple[Table, Table, AsyncEngine]:
+        self._ensure_ready()
+        if (
+            self._items_table is None
+            or self._audits_table is None
+            or self._engine is None
+        ):
+            raise RuntimeError("SqlActionInboxStore runtime is not initialized")
+        return self._items_table, self._audits_table, self._engine
 
     def close(self) -> None:
         """Release the underlying per-DSN SQLAlchemy runtime lease."""
@@ -125,15 +144,14 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         release_dsn_runtime(self.dsn, runtime, timeout_s=_INBOX_OP_TIMEOUT_S)
         _SQL_INBOX_CACHE.pop(self.dsn, None)
 
-    def _run(self, coro: Coroutine[Any, Any, Any]) -> Any:
+    def _run[T](self, coro: Coroutine[Any, Any, T]) -> T:
         self._ensure_ready()
-        assert self._runtime is not None
+        if self._runtime is None:
+            raise RuntimeError("SqlActionInboxStore runtime is not initialized")
         return self._runtime.run(coro, timeout_s=_INBOX_OP_TIMEOUT_S)
 
     def _save_item_sql(self, item: ActionInboxItem) -> None:
-        self._ensure_ready()
-        table = self._items_table
-        engine = self._engine
+        table, _, engine = self._ready_handles()
 
         async def _op() -> None:
             from sqlalchemy import delete
@@ -153,9 +171,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         self._run(_op())
 
     def _save_audit_sql(self, audit: InboxAuditRecord) -> None:
-        self._ensure_ready()
-        table = self._audits_table
-        engine = self._engine
+        _, table, engine = self._ready_handles()
 
         async def _op() -> None:
             from sqlalchemy import delete
@@ -175,9 +191,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         self._run(_op())
 
     def _load_item_sql(self, item_id: str) -> ActionInboxItem | None:
-        self._ensure_ready()
-        table = self._items_table
-        engine = self._engine
+        table, _, engine = self._ready_handles()
 
         async def _op() -> ActionInboxItem | None:
             from sqlalchemy import select
@@ -196,9 +210,53 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
             self._items[item.item_id] = item
         return item
 
-    def create_action(self, **kwargs: Any) -> ActionInboxItem:
+    def create_action(  # noqa: PLR0913 - public ActionInboxStore contract
+        self,
+        *,
+        entity_id: str,
+        context_id: str | None = None,
+        session_id: str | None = None,
+        invocation_id: str | None = None,
+        confirmation_call_id: str | None = None,
+        title: str,
+        external_title: str | None = None,
+        hint: str,
+        external_hint: str | None = None,
+        assigned_role: CatalogRole = "broker",
+        target_view: str = "v_broker_placement",
+        risk_level: RiskTier = "MEDIUM",
+        confidence_score: float = 0.95,
+        steps: list[ActionProgressStep] | None = None,
+        data_model: dict[str, Any] | None = None,
+        conflicts: list[FactConflict] | None = None,
+        pause_for_review: bool = False,
+        max_approval_amount: Decimal | str | int | None = None,
+        blind_pre_commitment: bool = False,
+        outcome_id: str | None = None,
+    ) -> ActionInboxItem:
         """Create a new human-in-the-loop action inbox item and persist it in SQL."""
-        item = super().create_action(**kwargs)
+        item = super().create_action(
+            entity_id=entity_id,
+            context_id=context_id,
+            session_id=session_id,
+            invocation_id=invocation_id,
+            confirmation_call_id=confirmation_call_id,
+            title=title,
+            external_title=external_title,
+            hint=hint,
+            external_hint=external_hint,
+            assigned_role=assigned_role,
+            target_view=target_view,
+            risk_level=risk_level,
+            confidence_score=confidence_score,
+            steps=steps,
+            data_model=data_model,
+            conflicts=conflicts,
+            pause_for_review=pause_for_review,
+            max_approval_amount=max_approval_amount,
+            blind_pre_commitment=blind_pre_commitment,
+            outcome_id=outcome_id,
+        )
         self._save_item_sql(item)
         return item
 
@@ -213,9 +271,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         task_state: TaskLifecycleState | None = None,
     ) -> list[ActionInboxItem]:
         """List SQL-backed action inbox items filtered by entity ID or task state."""
-        self._ensure_ready()
-        table = self._items_table
-        engine = self._engine
+        table, _, engine = self._ready_handles()
 
         async def _op() -> list[ActionInboxItem]:
             from sqlalchemy import select
@@ -234,7 +290,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
 
         return self._run(_op())
 
-    def advance_step(
+    def advance_step(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
         item_id: str,
         *,
@@ -257,7 +313,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         self._save_item_sql(item)
         return item, delta
 
-    def resolve_action(
+    def resolve_action(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
         item_id: str,
         *,
@@ -291,9 +347,7 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
 
     def list_audit_records(self, item_id: str | None = None) -> list[InboxAuditRecord]:
         """Return immutable audit log records from SQL, optionally filtered by action ID."""
-        self._ensure_ready()
-        table = self._audits_table
-        engine = self._engine
+        _, table, engine = self._ready_handles()
 
         async def _op() -> list[InboxAuditRecord]:
             from sqlalchemy import select

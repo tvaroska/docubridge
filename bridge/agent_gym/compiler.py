@@ -95,7 +95,71 @@ class SkillCompilerMixin:
     def _clear_rules_and_signals(self) -> None:
         """Clear accumulated demo signals, candidate/promoted rules, and report cards."""
 
-    def compile_rules_to_skill(
+    @staticmethod
+    def _build_skill_zip(
+        skill_markdown: str, schema_json_str: str, lineage_manifest: str
+    ) -> tuple[bytes, str]:
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("SKILL.md", skill_markdown)
+            zf.writestr("assets/schema.json", schema_json_str)
+            zf.writestr("assets/lineage.json", lineage_manifest)
+        zip_bytes = zip_buf.getvalue()
+        return zip_bytes, hashlib.sha256(zip_bytes).hexdigest()
+
+    @staticmethod
+    def _install_compiled_skill(
+        doctype: str,
+        skill_markdown: str,
+        schema_json_str: str,
+        lineage_manifest: str,
+    ) -> None:
+        import contextlib
+
+        from bridge.ports import Port, get_adapter, resolve_mode
+
+        registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
+        install_assets: dict[str, str] = {
+            "assets/schema.json": schema_json_str,
+            "assets/lineage.json": lineage_manifest,
+        }
+        with contextlib.suppress(KeyError, ValueError, OSError):
+            install_assets["assets/validation.yaml"] = registry.read_asset(
+                doctype, "assets/validation.yaml"
+            )
+        registry.install_skill(doctype, skill_markdown, install_assets)
+
+    def _select_compile_rules(
+        self, doctype: str, issuer_pattern: str
+    ) -> tuple[list[TribalKnowledgeRule], list[str], bool]:
+        all_rules = self._list_all_rules()
+        matched = [
+            r
+            for r in all_rules
+            if r.status
+            in (
+                TribalRuleStatus.PROMOTED,
+                TribalRuleStatus.VERIFIED,
+                TribalRuleStatus.CANDIDATE,
+            )
+            and (r.doctype in ("*", doctype) or doctype == "*")
+        ]
+        if not matched and all_rules:
+            matched = list(all_rules)
+        has_verified = any(
+            r.status in (TribalRuleStatus.PROMOTED, TribalRuleStatus.VERIFIED)
+            for r in matched
+        )
+        rule_bullets = [
+            f"- **[{r.rule_id} · {r.category.value}]** ({r.issuer_pattern} / `{r.field_path}`): {r.instruction}"
+            for r in matched
+        ] or [
+            f"- **[rule-default-precedence · extraction_hint]** ({issuer_pattern} / `origination_fee`): "
+            "Prioritize executed Schedule B / Page 3 Section A addendum tables over cover-page estimates."
+        ]
+        return matched, rule_bullets, has_verified
+
+    def compile_rules_to_skill(  # noqa: PLR0913 - keyword-only Harness Evolve compiler options
         self,
         *,
         doctype: str = "closing-disclosure",
@@ -135,48 +199,21 @@ class SkillCompilerMixin:
                 "gen_ai.usage.output_tokens": out_tok,
             },
         ) as span:
+            from bridge.agent_gym.skill_promotion import (
+                render_compiled_skill_markdown,
+                resolve_compiled_schema_json,
+            )
             from bridge.edge.skills import validate_skill_upload
 
-            all_rules = self._list_all_rules()
-            matched = [
-                r
-                for r in all_rules
-                if r.status
-                in (
-                    TribalRuleStatus.PROMOTED,
-                    TribalRuleStatus.VERIFIED,
-                    TribalRuleStatus.CANDIDATE,
-                )
-                and (r.doctype in ("*", doctype) or doctype == "*")
-            ]
-            if not matched and all_rules:
-                matched = list(all_rules)
-
-            verified_or_promoted = [
-                r
-                for r in matched
-                if r.status in (TribalRuleStatus.PROMOTED, TribalRuleStatus.VERIFIED)
-            ]
-            target_state: Literal["DRAFT", "ACTIVE"] = (
-                "ACTIVE"
-                if auto_promote and (verified_or_promoted or not matched)
-                else "DRAFT"
+            matched, rule_bullets, has_verified = self._select_compile_rules(
+                doctype, issuer_pattern
             )
-
-            rule_bullets = [
-                f"- **[{r.rule_id} · {r.category.value}]** ({r.issuer_pattern} / `{r.field_path}`): {r.instruction}"
-                for r in matched
-            ]
-            if not rule_bullets:
-                rule_bullets = [
-                    f"- **[rule-default-precedence · extraction_hint]** ({issuer_pattern} / `origination_fee`): "
-                    "Prioritize executed Schedule B / Page 3 Section A addendum tables over cover-page estimates."
-                ]
-
+            target_state: Literal["DRAFT", "ACTIVE"] = (
+                "ACTIVE" if auto_promote and (has_verified or not matched) else "DRAFT"
+            )
             existing_revs = self.list_skill_revisions(doctype)
             current_default = next(
-                (rev for rev in existing_revs if rev.is_default_revision),
-                None,
+                (rev for rev in existing_revs if rev.is_default_revision), None
             )
             parent_revision_id = (
                 current_default.revision_id
@@ -188,36 +225,17 @@ class SkillCompilerMixin:
             skill_version = f"v{semver}"
             skill_urn = f"urn:skill:projects-{_gcp_project_id()}:locations:global:private-{doctype}"
             sorted_rule_ids = tuple(sorted(r.rule_id for r in matched))
-
-            from bridge.agent_gym.skill_promotion import (
-                render_compiled_skill_markdown,
-                resolve_compiled_schema_json,
-            )
-
             schema_json_str = resolve_compiled_schema_json(
-                doctype,
-                semver=semver,
-                sorted_rule_ids=sorted_rule_ids,
+                doctype, semver=semver, sorted_rule_ids=sorted_rule_ids
             )
             digest_input = f"{doctype}|{semver}|{','.join(sorted_rule_ids)}|{'\n'.join(rule_bullets)}".encode()
-            short_hash = hashlib.sha256(digest_input).hexdigest()[:8]
-            revision_id = f"rev-v1-{minor_num}-{short_hash}"
+            revision_id = (
+                f"rev-v1-{minor_num}-{hashlib.sha256(digest_input).hexdigest()[:8]}"
+            )
             resource_name = f"projects/{_gcp_project_id()}/locations/global/skills/private-{doctype}/revisions/{revision_id}"
             gcs_source_uri = (
                 f"gs://{_skills_bucket()}/revisions/{doctype}/{revision_id}.zip"
             )
-            skill_uri = f"gs://{_skills_bucket()}/{doctype}/SKILL.md"
-
-            guardrail_kwargs: dict[str, Any] = {}
-            if ceiling_note is not None:
-                guardrail_kwargs["ceiling_note"] = ceiling_note
-            if exact_match_condition is not None:
-                guardrail_kwargs["exact_match_condition"] = exact_match_condition
-            if fallback_target is not None:
-                guardrail_kwargs["fallback_target"] = fallback_target
-            if guardrail_bullets is not None:
-                guardrail_kwargs["guardrail_bullets"] = guardrail_bullets
-
             skill_markdown = render_compiled_skill_markdown(
                 doctype=doctype,
                 semver=semver,
@@ -229,18 +247,14 @@ class SkillCompilerMixin:
                 policy_ceiling_usd=policy_ceiling_usd,
                 skill_urn=skill_urn,
                 target_state=target_state,
-                **guardrail_kwargs,
+                ceiling_note=ceiling_note,
+                exact_match_condition=exact_match_condition,
+                fallback_target=fallback_target,
+                guardrail_bullets=guardrail_bullets,
             )
-
-            # Validate against ADK + DocuBridge SkillMeta validator before creating revision
             validate_skill_upload(
-                doctype,
-                skill_markdown,
-                {"assets/schema.json": schema_json_str},
+                doctype, skill_markdown, {"assets/schema.json": schema_json_str}
             )
-
-            # Build deterministic in-memory ZIP package for Gemini platform Skill Registry
-            zip_buf = io.BytesIO()
             lineage_manifest = json.dumps(
                 {
                     "skill_name": doctype,
@@ -256,60 +270,41 @@ class SkillCompilerMixin:
                 indent=2,
                 sort_keys=True,
             )
-            with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("SKILL.md", skill_markdown)
-                zf.writestr("assets/schema.json", schema_json_str)
-                zf.writestr("assets/lineage.json", lineage_manifest)
-            zip_bytes = zip_buf.getvalue()
-            archive_sha256 = hashlib.sha256(zip_bytes).hexdigest()
-
+            zip_bytes, archive_sha256 = self._build_skill_zip(
+                skill_markdown, schema_json_str, lineage_manifest
+            )
             is_default = target_state == "ACTIVE"
             if is_default:
                 for prev in existing_revs:
                     if prev.is_default_revision:
-                        prev_copy = prev.model_copy(
-                            update={"is_default_revision": False}
+                        self._save_skill_revision(
+                            prev.model_copy(update={"is_default_revision": False})
                         )
-                        self._save_skill_revision(prev_copy)
-
-            rev_record = SkillRevisionRecord(
-                revision_id=revision_id,
-                skill_name=doctype,
-                skill_urn=skill_urn,
-                resource_name=resource_name,
-                version=semver,
-                parent_revision_id=parent_revision_id,
-                target_state=target_state,
-                is_default_revision=is_default,
-                compiled_by_model=REASONING_MODEL,
-                workhorse_model=WORKHORSE_MODEL,
-                compiled_rule_ids=sorted_rule_ids,
-                compiled_rules_count=len(rule_bullets),
-                gcs_source_uri=gcs_source_uri,
-                archive_sha256=archive_sha256,
-                archive_size_bytes=len(zip_bytes),
-                skill_markdown=skill_markdown,
-                assets_schema_json=schema_json_str,
-            )
-            self._save_skill_revision(rev_record)
-
-            if install_to_port and is_default:
-                import contextlib
-
-                from bridge.ports import Port, get_adapter, resolve_mode
-
-                registry = get_adapter(
-                    Port.skill_registry, resolve_mode(Port.skill_registry)
+            self._save_skill_revision(
+                SkillRevisionRecord(
+                    revision_id=revision_id,
+                    skill_name=doctype,
+                    skill_urn=skill_urn,
+                    resource_name=resource_name,
+                    version=semver,
+                    parent_revision_id=parent_revision_id,
+                    target_state=target_state,
+                    is_default_revision=is_default,
+                    compiled_by_model=REASONING_MODEL,
+                    workhorse_model=WORKHORSE_MODEL,
+                    compiled_rule_ids=sorted_rule_ids,
+                    compiled_rules_count=len(rule_bullets),
+                    gcs_source_uri=gcs_source_uri,
+                    archive_sha256=archive_sha256,
+                    archive_size_bytes=len(zip_bytes),
+                    skill_markdown=skill_markdown,
+                    assets_schema_json=schema_json_str,
                 )
-                install_assets: dict[str, str] = {
-                    "assets/schema.json": schema_json_str,
-                    "assets/lineage.json": lineage_manifest,
-                }
-                with contextlib.suppress(KeyError, ValueError, OSError):
-                    install_assets["assets/validation.yaml"] = registry.read_asset(
-                        doctype, "assets/validation.yaml"
-                    )
-                registry.install_skill(doctype, skill_markdown, install_assets)
+            )
+            if install_to_port and is_default:
+                self._install_compiled_skill(
+                    doctype, skill_markdown, schema_json_str, lineage_manifest
+                )
 
             span.set_attribute("docubridge.compiled_rule_count", len(rule_bullets))
             span.set_attribute("docubridge.skill_version", skill_version)
@@ -327,7 +322,7 @@ class SkillCompilerMixin:
                 "resource_name": resource_name,
                 "target_state": target_state,
                 "is_default_revision": is_default,
-                "skill_uri": skill_uri,
+                "skill_uri": f"gs://{_skills_bucket()}/{doctype}/SKILL.md",
                 "gcs_source_uri": gcs_source_uri,
                 "archive_sha256": archive_sha256,
                 "archive_size_bytes": len(zip_bytes),
@@ -457,7 +452,7 @@ class SkillCompilerMixin:
             span.set_attribute("docubridge.active_version", target_rev.version)
             return target_rev
 
-    def record_process_skill_lineage(
+    def record_process_skill_lineage(  # noqa: PLR0913 - keyword-only lineage record fields
         self,
         *,
         context_id: str,
@@ -619,10 +614,6 @@ class SkillCompilerMixin:
                 "documents": documents,
             }
 
-    # ------------------------------------------------------------------ #
-    # Programmable Trust & Shadow Mode Comparisons                       #
-    # ------------------------------------------------------------------ #
-
     def list_trust_policies(self) -> list[ProgrammableTrustPolicy]:
         """List all registered Programmable Trust slice policies."""
         return self._list_all_trust_policies()
@@ -638,7 +629,7 @@ class SkillCompilerMixin:
         self._save_trust_policy(policy)
         return policy
 
-    def record_shadow_comparison(
+    def record_shadow_comparison(  # noqa: PLR0913 - keyword-only shadow comparison fields
         self,
         *,
         slice_id: str,
@@ -743,7 +734,7 @@ class SkillCompilerMixin:
             span.set_attribute("docubridge.skill.revision_id", active_rev.revision_id)
             return record, policy
 
-    def dial_trust_policy(
+    def dial_trust_policy(  # noqa: PLR0913 - keyword-only trust policy audit inputs
         self,
         slice_id: str,
         *,

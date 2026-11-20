@@ -10,7 +10,7 @@ import time
 from collections import deque
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -41,7 +41,10 @@ def _ns_to_iso8601(ns: int | None) -> str:
     return datetime.fromtimestamp(sec, tz=UTC).isoformat().replace("+00:00", "Z")
 
 
-def _clean_attr_value(val: Any) -> Any:
+CleanAttrValue = str | int | float | bool | None | Sequence[object]
+
+
+def _clean_attr_value(val: object) -> CleanAttrValue:
     if isinstance(val, (str, int, float, bool)) or val is None:
         return val
     if isinstance(val, (list, tuple)):
@@ -144,16 +147,15 @@ def configure_genai_telemetry_env(project_id: str | None = None) -> dict[str, st
     for key, val in defaults.items():
         applied[key] = os.environ.setdefault(key, val)
     try:
-        from opentelemetry.instrumentation.google_genai import (  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.google_genai import (
             GoogleGenAiSdkInstrumentor,
         )
 
         instrumentor = GoogleGenAiSdkInstrumentor()
         if not getattr(instrumentor, "is_instrumented_by_opentelemetry", False):
             instrumentor.instrument()
-    except Exception:
-        # Optional instrumentation package; safe no-op when not installed.
-        pass
+    except (ImportError, RuntimeError, ValueError, AttributeError) as exc:
+        logger.debug("Optional GenAI OTel instrumentation skipped: %s", exc)
     return applied
 
 
@@ -200,8 +202,8 @@ def build_gcp_resource() -> Resource:
 
             detected = GoogleCloudResourceDetector().detect()
             return detected.merge(base_resource)
-        except Exception:
-            pass
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
+            logger.debug("GCP resource detector skipped: %s", exc)
     return base_resource
 
 
@@ -342,7 +344,7 @@ class CloudTraceV2SpanExporter(SpanExporter):
                 if proj:
                     headers["x-goog-user-project"] = proj
                 return headers
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - OTLP auth must never break request path
                 logger.debug("Telemetry API OTLP auth skipped: %s", exc)
                 return None
 
@@ -360,18 +362,19 @@ class CloudTraceV2SpanExporter(SpanExporter):
                 client_hdrs.update(auth_headers)
         try:
             return self._otlp_exporter.export(spans)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - OTLP export must never break request path
             logger.debug("OTLP span export non-fatal error: %s", exc)
             return SpanExportResult.SUCCESS
 
     def shutdown(self) -> None:
         with contextlib.suppress(Exception):
-            self._otlp_exporter.shutdown()
+            cast(SpanExporter, self._otlp_exporter).shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         try:
             return bool(self._otlp_exporter.force_flush(timeout_millis))
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - OTLP flush must never break request path
+            logger.debug("OTLP force_flush non-fatal error: %s", exc)
             return True
 
 

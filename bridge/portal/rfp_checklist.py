@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -51,6 +51,7 @@ from contract.extraction import FieldReview
 if TYPE_CHECKING:
     from bridge.dashboard.board import RfpBoard
     from bridge.email_ingress.correlation import IntakeAddressing
+    from contract.extraction import ExtractionResult
 
 
 class UploadConflict(ValueError):
@@ -184,14 +185,18 @@ def _require_requested(rfp: RfpCollection, party: str, product_line: str) -> Non
         )
 
 
-async def upload_quote(
+class _QuoteExtractor(Protocol):
+    async def extract(self, artifact_name: str) -> ExtractionResult: ...
+
+
+async def upload_quote(  # noqa: PLR0913 - public keyword-only RFP upload API
     board: RfpBoard,
     context_id: str,
     *,
     doc_id: str,
     artifact_name: str,
     product_line: str,
-    extraction: Any,
+    extraction: _QuoteExtractor,
     intake: IntakeAddressing | None,
 ) -> RfpChecklist:
     """File one uploaded quote into the leg's ``product_line`` row; return the new checklist.

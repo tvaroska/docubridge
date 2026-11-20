@@ -51,7 +51,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, cast
 
 from bridge.extraction.resolve import ResolvedDocument, maybe_await
 from contract.extraction import SourceAnchor
@@ -140,13 +140,17 @@ def resolve_processor(explicit: str | None = None) -> ProcessorRef:
     return parse_processor(value)
 
 
+class _DocAIClientLike(Protocol):
+    def process_document(self, *, request: dict[str, Any]) -> object: ...
+
+
 def build_process_request(
     processor: str,
     *,
     mime_type: str,
     data: bytes | None = None,
     uri: str | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """The ``process_document`` request dict, or ``None`` for an unsupported mime.
 
     Pure. Exactly one of ``data``/``uri``. A ``gs://`` uri rides by reference
@@ -173,29 +177,35 @@ def build_process_request(
     }
 
 
-def _block_text(block: Any) -> list[str]:
+def _table_block_text(table_block: object) -> list[str]:
+    out: list[str] = []
+    rows = [
+        *(getattr(table_block, "header_rows", None) or []),
+        *(getattr(table_block, "body_rows", None) or []),
+    ]
+    for row in rows:
+        cells: list[str] = []
+        for cell in getattr(row, "cells", None) or []:
+            for child in getattr(cell, "blocks", None) or []:
+                cells.extend(_block_text(child))
+        if cells:
+            out.append(" | ".join(cells))
+    return out
+
+
+def _block_text(block: object) -> list[str]:
     """Text of one Layout Parser block, depth-first, in reading order."""
     out: list[str] = []
     text_block = getattr(block, "text_block", None)
     if text_block is not None:
-        text = getattr(text_block, "text", "") or ""
+        text = str(getattr(text_block, "text", "") or "")
         if text.strip():
             out.append(text.strip())
         for child in getattr(text_block, "blocks", None) or []:
             out.extend(_block_text(child))
     table_block = getattr(block, "table_block", None)
     if table_block is not None:
-        rows = [
-            *(getattr(table_block, "header_rows", None) or []),
-            *(getattr(table_block, "body_rows", None) or []),
-        ]
-        for row in rows:
-            cells: list[str] = []
-            for cell in getattr(row, "cells", None) or []:
-                for child in getattr(cell, "blocks", None) or []:
-                    cells.extend(_block_text(child))
-            if cells:
-                out.append(" | ".join(cells))
+        out.extend(_table_block_text(table_block))
     list_block = getattr(block, "list_block", None)
     if list_block is not None:
         for entry in getattr(list_block, "list_entries", None) or []:
@@ -204,7 +214,7 @@ def _block_text(block: Any) -> list[str]:
     return out
 
 
-def document_text(document: Any) -> str:
+def document_text(document: object) -> str:
     """The plain text layer of a Document AI ``Document``.
 
     OCR and Form Parser fill ``document.text``. A Layout Parser response leaves it
@@ -213,7 +223,7 @@ def document_text(document: Any) -> str:
     entries). Attribute-tolerant, so it reads a proto-plus object or a plain test
     double alike.
     """
-    text = getattr(document, "text", "") or ""
+    text = str(getattr(document, "text", "") or "")
     if text.strip():
         return text
     layout = getattr(document, "document_layout", None)
@@ -233,7 +243,7 @@ def build_ocr_context(text: str) -> str:
     return OCR_CONTEXT.format(truncated=truncated, text=body)
 
 
-def _bbox_from_poly(poly: Any) -> tuple[float, float, float, float] | None:
+def _bbox_from_poly(poly: object) -> tuple[float, float, float, float] | None:
     """Convert a Document AI ``bounding_poly.normalized_vertices`` list to ``(x0, y0, x1, y1)``."""
     verts = getattr(poly, "normalized_vertices", None) or []
     if not verts:
@@ -244,7 +254,7 @@ def _bbox_from_poly(poly: Any) -> tuple[float, float, float, float] | None:
 
 
 def extract_docai_source_anchors(
-    document: Any, *, artifact_uri: str | None = None
+    document: object, *, artifact_uri: str | None = None
 ) -> dict[str, SourceAnchor]:
     """Extract ``SourceAnchor`` (page number + normalized bounding box) per field from a
     Document AI ``Document`` response (``entities`` and ``pages[*].form_fields``)."""
@@ -320,7 +330,11 @@ class DocAIPrepass:
     """
 
     def __init__(
-        self, processor: str | None = None, *, client: Any = None, log: Any = _LOG
+        self,
+        processor: str | None = None,
+        *,
+        client: _DocAIClientLike | None = None,
+        log: logging.Logger = _LOG,
     ) -> None:
         self._ref = resolve_processor(processor)
         self._client = client  # injected fake wins; else built lazily on first use
@@ -336,12 +350,15 @@ class DocAIPrepass:
         """Return the regional Document AI API endpoint hostname."""
         return self._ref.endpoint
 
-    def _get_client(self) -> Any:
+    def _get_client(self) -> _DocAIClientLike:
         if self._client is None:
             from google.cloud import documentai
 
-            self._client = documentai.DocumentProcessorServiceClient(
-                client_options={"api_endpoint": self.endpoint}
+            self._client = cast(
+                _DocAIClientLike,
+                documentai.DocumentProcessorServiceClient(
+                    client_options={"api_endpoint": self.endpoint}
+                ),
             )
         return self._client
 
