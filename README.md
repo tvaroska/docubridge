@@ -1,6 +1,6 @@
-# DocuBridge: Evidence-First A2A Document Mediation
+# DocuBridge: Stop Letting Prompts Reconcile Documents
 
-Putting a multi-document loan or insurance packet straight into an agent prompt breaks three ways: late one-page addenda tie with base contracts, token summaries corrupt dollar math, and tired reviewers rubber-stamp bad OCR. DocuBridge isolates collection, PDF polygon evidence, and pure Python `Decimal` conflict overrides behind one A2A boundary so calling agents only own business policy.
+I built DocuBridge because multi-document workflows break the moment an LLM guesses which version wins. Late one-page addenda tie with base contracts, summary math drifts on dollars, and tired reviewers rubber-stamp bad scans. DocuBridge keeps intake, page-pinned fields, and code-only overrides behind one service boundary so calling agents don't touch raw paperwork.
 
 ![DocuBridge Evidence Left, Policy Right Boundary](docs/assets/architecture_card.svg)
 
