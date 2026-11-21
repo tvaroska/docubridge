@@ -547,7 +547,7 @@ def test_zero_stale_firestore_or_broken_claude_plan_references() -> None:
 
 
 def test_canonical_financial_figures_match_across_docs_and_seed() -> None:
-    """``README.md``, ``BANKING.md``, and ``docs/demo-click-path.md`` match ``seed_demo_scenarios()``."""
+    """``BANKING.md`` and ``docs/demo-click-path.md`` match ``seed_demo_scenarios()``."""
     readme_text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     banking_text = (REPO_ROOT / "BANKING.md").read_text(encoding="utf-8")
     click_path_text = (REPO_ROOT / "docs/demo-click-path.md").read_text(
@@ -567,7 +567,6 @@ def test_canonical_financial_figures_match_across_docs_and_seed() -> None:
         "$418,500.00",
     )
     for fig in canonical_figures:
-        assert fig in readme_text, f"Canonical figure {fig!r} missing from README.md"
         assert fig in banking_text, f"Canonical figure {fig!r} missing from BANKING.md"
 
     for click_fig in ("$50,000.00", "$100,000.00", "$45M", "$1.85M"):

@@ -2615,6 +2615,9 @@ def test_multimodel_split_otel_genai_and_3tier_harness_evolve() -> None:
     from bridge.agent_gym import InMemoryAgentGymEngine
     from bridge.extraction.gemini import DEFAULT_MODEL as GEMINI_DEFAULT
     from bridge.extraction.gemini import REASONING_MODEL as GEMINI_REASONING
+    from bridge.telemetry import clear_recorded_spans
+
+    clear_recorded_spans()
 
     assert AGENT_DEFAULT == "gemini-3.8-flash"
     assert AGENT_WORKHORSE == "gemini-3.8-flash"

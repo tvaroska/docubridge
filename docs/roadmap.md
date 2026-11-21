@@ -18,6 +18,8 @@ All scheduled milestones (`P10`–`P12`) are shipped (see `## Shipped` below); o
 - **Role-Isolated `/portal`, `/overwatch` & `/registry` Surfaces (`Demo M3`)**: Dedicated role-scoped web surfaces composed by `/ebc` over SSE.
 - **Managed Agent Runtime, Agent Registry & Network Services `AgentGateway` (`Demo M4`)**: Swap in-process Registry/Gateway shims for managed platform APIs once GA-stable.
 - **Staged A2UI Widgets (`AR-2`), Prefix-Cache / Signed-URL Compaction (`AR-3`) & SQL/SSE Resilience (`AR-4`)**: Session-staged `after_agent_callback` widget flushing ([bridge/edge/a2ui.py](../bridge/edge/a2ui.py)), byte-identical `ContextCacheConfig` prompt prefixes ([bridge/agent.py](../bridge/agent.py)), and `_StreamDedupConverter` / `asyncio.shield` SSE disconnect cleanup / Cloud SQL `pool_pre_ping` failover retries ([bridge/sql_runtime.py](../bridge/sql_runtime.py), [bridge/edge/agent_engine_a2a.py](../bridge/edge/agent_engine_a2a.py)).
+- **Open-Loop Noisy-PDF Prompt-vs-Code Benchmark (`R3`)**: Run a controlled before-vs-after eval over `N >= 50–100` degraded/out-of-order multi-document packets (late addenda, currency tables, blurry/expired scans) comparing direct prompt reconciliation against DocuBridge code overrides, reporting wrong-version rate, decimal drift, bad-scan slip rate, and `95%` CIs to unlock `Class 3` empirical proof and `1:1 Proof` in `README.md`.
+- **Multi-Caller Policy-Reuse Receipt (`R3-B`)**: Add an end-to-end A2A v1.0 contract check proving `>= 2` calling agents with distinct freshness/risk policies consume `1` shared extracted packet with `0` duplicate extraction calls.
 
 ## Shipped
 
