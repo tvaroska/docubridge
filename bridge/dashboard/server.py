@@ -34,6 +34,7 @@ from __future__ import annotations
 import math
 import os
 from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
@@ -51,6 +52,10 @@ from bridge.portal.session import NoActivePark
 from bridge.portal.store import InMemoryPortalStore, PortalSessionRecord, PortalStore
 from bridge.telemetry import OtelAsgiMiddleware
 from bridge.user_interaction import build_user_interaction_router
+from bridge.user_interaction.demo_session import (
+    mutating_auth_dependency,
+    read_auth_dependency,
+)
 from contract.enums import Disposition
 
 if TYPE_CHECKING:
@@ -139,13 +144,29 @@ def _mount_exchange_routes(
     *,
     active_store: PortalStore,
     rfps: RfpBoard | None,
+    require_auth: bool = False,
 ) -> None:
-    @app.get("/exchanges")
+    read_deps = [
+        read_auth_dependency(
+            default_role="broker",
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
+    mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
+
+    @app.get("/exchanges", dependencies=read_deps)
     def get_exchanges() -> list[dict[str, Any]]:
         # Newest-first for the UI (store keeps insertion order, so reverse).
         return list(reversed(readmodel.list_exchanges(active_store, rfps=rfps)))
 
-    @app.get("/exchanges/{sid}")
+    @app.get("/exchanges/{sid}", dependencies=read_deps)
     def get_exchange(sid: str) -> dict[str, Any]:
         if rfps is not None and sid in rfps.rfps:
             rfp = rfps.rfps[sid]
@@ -153,15 +174,15 @@ def _mount_exchange_routes(
         rec = _load_portal_session(active_store, sid)  # 404 for an unknown session
         return readmodel.project_exchange(rec)
 
-    @app.get("/queues/hitl")
+    @app.get("/queues/hitl", dependencies=read_deps)
     def get_hitl_queue() -> list[dict[str, Any]]:
         return readmodel.hitl_queue(active_store, rfps=rfps)
 
-    @app.get("/queues/escalation")
+    @app.get("/queues/escalation", dependencies=read_deps)
     def get_escalation_queue() -> list[dict[str, Any]]:
         return readmodel.escalation_queue(active_store, rfps=rfps)
 
-    @app.post("/exchanges/{sid}/resolve")
+    @app.post("/exchanges/{sid}/resolve", dependencies=mutating_deps)
     def post_resolve(sid: str, body: ResolveBody) -> dict[str, Any]:
         _load_portal_session(
             active_store, sid
@@ -178,39 +199,52 @@ def _mount_exchange_routes(
         return readmodel.project_exchange(rec)
 
 
-def _mount_program_and_sse_routes(
-    app: FastAPI,
-    *,
-    active_store: PortalStore,
-    board: ProgramBoard | None,
-    rfps: RfpBoard | None,
-    max_ticks: int,
-) -> None:
-    @app.get("/programs")
+@dataclass(frozen=True)
+class _ProgramSseConfig:
+    active_store: PortalStore
+    board: ProgramBoard | None
+    rfps: RfpBoard | None
+    max_ticks: int
+    require_auth: bool = False
+
+
+def _mount_program_and_sse_routes(app: FastAPI, cfg: _ProgramSseConfig) -> None:
+    read_deps = [
+        read_auth_dependency(
+            default_role="broker",
+            require_auth=cfg.require_auth,
+            allow_external_roles=False,
+        )
+    ]
+
+    @app.get("/programs", dependencies=read_deps)
     def get_programs() -> list[dict[str, Any]]:
         # Recompute-on-read (S1-benefits-7): a landed revision surfaces here immediately.
-        if board is None:
+        if cfg.board is None:
             return []
-        return [readmodel.project_comparison(c) for c in board.comparisons()]
+        return [readmodel.project_comparison(c) for c in cfg.board.comparisons()]
 
-    @app.get("/programs/{program_id}")
+    @app.get("/programs/{program_id}", dependencies=read_deps)
     def get_program(program_id: str) -> dict[str, Any]:
-        if board is None:
+        if cfg.board is None:
             raise HTTPException(status_code=404, detail="no program board configured")
         try:
-            comparison = board.get(program_id)
+            comparison = cfg.board.get(program_id)
         except KeyError as e:
             raise HTTPException(
                 status_code=404, detail=f"unknown program {program_id!r}"
             ) from e
         return readmodel.project_comparison(comparison)
 
-    @app.get("/events")
+    @app.get("/events", dependencies=read_deps)
     def stream_events() -> StreamingResponse:
         # Cross-exchange stream is always valid (no 404).
         return StreamingResponse(
             readmodel.sse_frames(
-                active_store, board=board, rfps=rfps, max_ticks=max_ticks
+                cfg.active_store,
+                board=cfg.board,
+                rfps=cfg.rfps,
+                max_ticks=cfg.max_ticks,
             ),
             media_type="text/event-stream",
         )
@@ -228,6 +262,7 @@ def build_dashboard_app(  # noqa: PLR0913 - public keyword-only dashboard host b
     max_ticks: int = 2000,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
+    require_auth: bool = False,
 ) -> FastAPI:
     """Build the Ops Dashboard FastAPI host.
 
@@ -293,18 +328,34 @@ def build_dashboard_app(  # noqa: PLR0913 - public keyword-only dashboard host b
         allow_headers=["*"],
         expose_headers=["x-docubridge-trace-id", "traceparent"],
     )
-    _mount_exchange_routes(app, active_store=active_store, rfps=rfps)
-    _mount_program_and_sse_routes(
-        app, active_store=active_store, board=board, rfps=rfps, max_ticks=max_ticks
+    _mount_exchange_routes(
+        app, active_store=active_store, rfps=rfps, require_auth=require_auth
     )
-    mount_rfp_routes(app, rfps=rfps, intake=reply_intake, outbound=outbound)
-    mount_rfp_procurement_routes(app, rfps=rfps)
+    _mount_program_and_sse_routes(
+        app,
+        _ProgramSseConfig(
+            active_store=active_store,
+            board=board,
+            rfps=rfps,
+            max_ticks=max_ticks,
+            require_auth=require_auth,
+        ),
+    )
+    mount_rfp_routes(
+        app,
+        rfps=rfps,
+        intake=reply_intake,
+        outbound=outbound,
+        require_auth=require_auth,
+    )
+    mount_rfp_procurement_routes(app, rfps=rfps, require_auth=require_auth)
     if processor is not None:
         mount_email_drain_routes(app, processor)
     app.include_router(
         build_user_interaction_router(
             operational_store=operational_store,
             knowledge_catalog=knowledge_catalog,
+            require_auth=require_auth,
         )
     )
     app.state.email_processor = processor

@@ -11,7 +11,10 @@ from fastapi.params import Depends
 from bridge.agent_gym import AgentGymEngine
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.operational_store import OperationalStore
-from bridge.user_interaction.demo_session import mutating_auth_dependency
+from bridge.user_interaction.demo_session import (
+    mutating_auth_dependency,
+    read_auth_dependency,
+)
 from bridge.user_interaction.schemas import (
     CreateBindingRequest,
     EvaluateGatewayRouteRequest,
@@ -27,15 +30,16 @@ class _RegistryRouteDeps:
     principal_roles: dict[str, CatalogRole] | None
     require_auth: bool
     registry_internal_deps: list[Depends]
+    registry_read_deps: list[Depends]
 
 
 def _register_registry_read_routes(router: APIRouter, deps: _RegistryRouteDeps) -> None:
-    @router.get("/v1/registry/catalog")
+    @router.get("/v1/registry/catalog", dependencies=deps.registry_read_deps)
     def get_registry_catalog_endpoint() -> dict[str, Any]:
         """Return the unified Gemini platform Agent Registry, Skill Registry, and Agent Gateway catalog."""
         return deps.gym.get_registry_catalog()
 
-    @router.get("/v1/registry/agents")
+    @router.get("/v1/registry/agents", dependencies=deps.registry_read_deps)
     def list_registry_agents_endpoint() -> list[dict[str, Any]]:
         """List all registered agents in the Gemini platform Agent Registry."""
         return cast(
@@ -43,7 +47,7 @@ def _register_registry_read_routes(router: APIRouter, deps: _RegistryRouteDeps) 
             deps.gym.get_registry_catalog()["agent_registry"]["agents"],
         )
 
-    @router.get("/v1/registry/mcp-servers")
+    @router.get("/v1/registry/mcp-servers", dependencies=deps.registry_read_deps)
     def list_registry_mcp_servers_endpoint() -> list[dict[str, Any]]:
         """List all registered MCP servers and tool specs in the Gemini platform Agent Registry."""
         return cast(
@@ -51,7 +55,7 @@ def _register_registry_read_routes(router: APIRouter, deps: _RegistryRouteDeps) 
             deps.gym.get_registry_catalog()["agent_registry"]["mcp_servers"],
         )
 
-    @router.get("/v1/registry/endpoints")
+    @router.get("/v1/registry/endpoints", dependencies=deps.registry_read_deps)
     def list_registry_endpoints_endpoint() -> list[dict[str, Any]]:
         """List all registered service endpoints in the Gemini platform Agent Registry."""
         return cast(
@@ -59,12 +63,12 @@ def _register_registry_read_routes(router: APIRouter, deps: _RegistryRouteDeps) 
             deps.gym.get_registry_catalog()["agent_registry"]["endpoints"],
         )
 
-    @router.get("/v1/registry/skills")
+    @router.get("/v1/registry/skills", dependencies=deps.registry_read_deps)
     def list_registry_skills_endpoint() -> dict[str, Any]:
         """Return the Gemini platform Skill Registry catalog and active skill containers."""
         return cast(dict[str, Any], deps.gym.get_registry_catalog()["skill_registry"])
 
-    @router.get("/v1/registry/bindings")
+    @router.get("/v1/registry/bindings", dependencies=deps.registry_read_deps)
     def list_registry_bindings_endpoint() -> list[dict[str, Any]]:
         """List all explicit source-to-target authentication bindings in the Agent Registry."""
         return cast(
@@ -115,7 +119,7 @@ def _register_registry_write_and_gateway_routes(
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    @router.get("/v1/gateway/status")
+    @router.get("/v1/gateway/status", dependencies=deps.registry_read_deps)
     def get_gateway_status_endpoint() -> dict[str, Any]:
         """Return the Gemini platform Agent Gateway and IAM v3 Unified Access Policy control-plane status."""
         return deps.gym.get_gateway_catalog()
@@ -148,7 +152,10 @@ def _register_registry_write_and_gateway_routes(
 def _register_catalog_and_lineage_routes(
     router: APIRouter, deps: _RegistryRouteDeps
 ) -> None:
-    @router.get("/v1/registry/lineage/{entity_or_context_id}")
+    @router.get(
+        "/v1/registry/lineage/{entity_or_context_id}",
+        dependencies=deps.registry_read_deps,
+    )
     def get_process_skill_lineage_endpoint(
         entity_or_context_id: str,
     ) -> dict[str, Any]:
@@ -190,7 +197,7 @@ def _register_catalog_and_lineage_routes(
             "consolidated_fact_skill_lineage": fact_skill_lineage,
         }
 
-    @router.get("/v1/catalog/spiffe-agents")
+    @router.get("/v1/catalog/spiffe-agents", dependencies=deps.registry_read_deps)
     def get_catalog_spiffe_agents(
         security_zone: Literal["internal", "external"] | None = None,
     ) -> list[dict[str, Any]]:
@@ -200,7 +207,7 @@ def _register_catalog_and_lineage_routes(
             for p in deps.catalog.list_spiffe_agents(security_zone=security_zone)
         ]
 
-    @router.get("/v1/catalog/assets")
+    @router.get("/v1/catalog/assets", dependencies=deps.registry_read_deps)
     def get_catalog_assets(
         external_safe_only: bool = False,
     ) -> list[dict[str, Any]]:
@@ -210,7 +217,7 @@ def _register_catalog_and_lineage_routes(
             for a in deps.catalog.list_assets(external_safe_only=external_safe_only)
         ]
 
-    @router.get("/v1/catalog/glossary")
+    @router.get("/v1/catalog/glossary", dependencies=deps.registry_read_deps)
     def get_catalog_glossary(
         domain: str | None = None,
         include_confidential: bool = True,
@@ -223,7 +230,10 @@ def _register_catalog_and_lineage_routes(
             )
         ]
 
-    @router.get("/v1/catalog/lineage/{entity_id}/{field_name}")
+    @router.get(
+        "/v1/catalog/lineage/{entity_id}/{field_name}",
+        dependencies=deps.registry_read_deps,
+    )
     def get_field_lineage(
         entity_id: str,
         field_name: str,
@@ -261,6 +271,14 @@ def register_registry_and_catalog_routes(  # noqa: PLR0913 - public FastAPI rout
                 require_auth=require_auth,
                 allow_external_roles=False,
                 external_role_error="External roles cannot mutate Agent Registry or evaluate internal gateway routes.",
+            )
+        ],
+        registry_read_deps=[
+            read_auth_dependency(
+                default_role="broker",
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+                allow_external_roles=False,
             )
         ],
     )

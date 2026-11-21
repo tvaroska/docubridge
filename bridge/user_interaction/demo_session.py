@@ -240,6 +240,42 @@ def mutating_auth_dependency(  # noqa: PLR0913 - public mutating auth dependency
     return cast(DependsParam, Depends(_gate))
 
 
+def read_auth_dependency(
+    *,
+    default_role: CatalogRole | None = "broker",
+    principal_roles: dict[str, CatalogRole] | None = None,
+    require_auth: bool = False,
+    allow_external_roles: bool = True,
+) -> DependsParam:
+    """FastAPI route dependency enforcing read-route auth when enforcement is active."""
+
+    def _gate(request: Request) -> CompoundIdentity:
+        raw_role = (request.query_params.get("role") or "").strip().lower()
+        query_role: CatalogRole | None = (
+            cast(CatalogRole, raw_role) if raw_role in _VALID_ROLES else None
+        )
+        try:
+            compound = resolve_compound_identity(
+                request,
+                query_role=query_role,
+                default_role=default_role,
+                principal_roles=principal_roles,
+                require_auth=require_auth,
+                require_mutating=False,
+            )
+            if not allow_external_roles and compound.user.role in ("client", "carrier"):
+                raise PermissionError(
+                    f"External role '{compound.user.role}' is not permitted on this internal read endpoint."
+                )
+            return compound
+        except AuthenticationRequiredError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    return cast(DependsParam, Depends(_gate))
+
+
 def register_demo_session_routes(
     router: APIRouter,
     *,

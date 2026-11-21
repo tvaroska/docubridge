@@ -1095,3 +1095,83 @@ def test_p10_6_decimal_max_approval_amount_across_models_stores_and_routes(
         },
     )
     assert r_exact.status_code == 200
+
+
+def test_sensitive_get_routes_and_dashboard_routes_enforce_auth_and_404_unknown_scenario(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sensitive /v1/* GET routes and Ops Dashboard routes reject forged headers with 401 and return 404 on unknown scenarios."""
+    from bridge.dashboard.server import build_dashboard_app
+
+    _enable_cloud_run_env(monkeypatch)
+    app, *_ = _build_full_test_app()
+    forged = {
+        "X-Bridge-Role": "underwriter",
+        "X-Bridge-Principal": "spoof@docubridge.io",
+    }
+
+    anon = _https_client(app)
+    sensitive_gets = [
+        "/v1/telemetry/spans",
+        "/v1/telemetry/analytics",
+        "/v1/telemetry/sql-eval",
+        "/v1/bigquery/sync",
+        "/v1/gym/rules",
+        "/v1/gym/export/docai-dataset",
+        "/v1/gym/trust-policies",
+        "/v1/gym/skills/closing-disclosure/revisions",
+        "/v1/registry/catalog",
+        "/v1/registry/agents",
+        "/v1/registry/mcp-servers",
+        "/v1/registry/endpoints",
+        "/v1/registry/skills",
+        "/v1/registry/bindings",
+        "/v1/gateway/status",
+        "/v1/registry/lineage/LOAN-MERIDIAN-001",
+        "/v1/catalog/spiffe-agents",
+        "/v1/catalog/assets",
+        "/v1/catalog/glossary",
+        "/v1/refinery/revisions",
+        "/v1/demo/scenarios",
+        "/v1/demo/scenarios/does-not-exist/pdfs",
+        "/v1/demo/scenarios/does-not-exist/pdfs.zip",
+        "/v1/demo/scenarios/does-not-exist/pdfs/missing.pdf",
+    ]
+    for path in sensitive_gets:
+        assert anon.get(path).status_code == 401, f"anonymous GET {path}"
+        assert anon.get(path, headers=forged).status_code == 401, f"forged GET {path}"
+
+    # Signed viewer cookie from GET /demo unlocks read routes and returns 404 (not 500) on unknown scenarios
+    viewer = _https_client(app)
+    assert viewer.get("/demo").status_code == 200
+    for path in (
+        "/v1/telemetry/spans",
+        "/v1/bigquery/sync",
+        "/v1/gym/rules",
+        "/v1/registry/catalog",
+        "/v1/refinery/revisions",
+        "/v1/demo/scenarios",
+    ):
+        assert viewer.get(path).status_code == 200, f"viewer cookie GET {path}"
+    for missing_path in (
+        "/v1/demo/scenarios/does-not-exist/pdfs",
+        "/v1/demo/scenarios/does-not-exist/pdfs.zip",
+        "/v1/demo/scenarios/does-not-exist/pdfs/missing.pdf",
+    ):
+        assert viewer.get(missing_path).status_code == 404, missing_path
+
+    # Ops Dashboard app enforces auth on /exchanges*, /queues/*, /rfps*, and mutating resolve/chase under K_SERVICE
+    dash_app = build_dashboard_app()
+    dash_anon = _https_client(dash_app)
+    for dash_get in ("/exchanges", "/queues/hitl", "/queues/escalation", "/rfps"):
+        assert dash_anon.get(dash_get).status_code == 401, dash_get
+        assert dash_anon.get(dash_get, headers=forged).status_code == 401, dash_get
+    assert (
+        dash_anon.post(
+            "/exchanges/s1/resolve",
+            json={"resolution": "accepted", "message": "spoof"},
+            headers=forged,
+        ).status_code
+        == 401
+    )
+    assert dash_anon.post("/rfps/r1/chase", json={}, headers=forged).status_code == 401

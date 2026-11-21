@@ -1305,8 +1305,22 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
     )
     client = TestClient(app)
 
-    # 1. Zone 6 Knowledge Catalog exposes registered SPIFFE Agent Registry
-    agents_resp = client.get("/v1/catalog/spiffe-agents?security_zone=internal")
+    broker_svid = mint_jwt_svid(
+        "spiffe://agents.docubridge.io/internal/broker-agent",
+        obo_subject="usr:alice.broker@docubridge.io",
+        obo_role="broker",
+        max_approval_amount="50000.00",
+    )
+
+    # 1. Zone 6 Knowledge Catalog requires auth and exposes registered SPIFFE Agent Registry
+    assert (
+        client.get("/v1/catalog/spiffe-agents?security_zone=internal").status_code
+        == 401
+    )
+    agents_resp = client.get(
+        "/v1/catalog/spiffe-agents?security_zone=internal",
+        headers={"X-Bridge-Spiffe-Svid": f"Bearer {broker_svid}"},
+    )
     assert agents_resp.status_code == 200
     internal_spiffe_ids = {a["spiffe_id"] for a in agents_resp.json()}
     assert "spiffe://agents.docubridge.io/internal/broker-agent" in internal_spiffe_ids
@@ -1320,12 +1334,6 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
     )
 
     # 2. Valid signed SPIFFE JWT-SVID + OBO broker principal succeeds on gemini_app
-    broker_svid = mint_jwt_svid(
-        "spiffe://agents.docubridge.io/internal/broker-agent",
-        obo_subject="usr:alice.broker@docubridge.io",
-        obo_role="broker",
-        max_approval_amount="50000.00",
-    )
     ok_resp = client.get(
         "/v1/a2ui/gemini_app/SUB-ACME-001",
         headers={"X-Bridge-Spiffe-Svid": f"Bearer {broker_svid}"},

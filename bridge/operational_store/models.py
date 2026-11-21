@@ -40,7 +40,15 @@ _MONEY_KEYS = frozenset(
     }
 )
 
-_NUMBER_RE = re.compile(r"[-+]?\d[\d,]*(?:\.\d+)?")
+_NUMBER_RE = re.compile(
+    r"(?P<outer_sign>[-+])?"
+    r"(?:(?P<iso>[A-Za-z]{3})\s+)?"
+    r"(?P<sym>[$€£¥])?"
+    r"\s*"
+    r"(?P<inner_sign>[-+])?"
+    r"(?P<digits>\d[\d,]*(?:\.\d+)?)"
+    r"(?P<exp>[eE][-+]?\d+)?"
+)
 
 
 def _utc_dt(dt: datetime) -> datetime:

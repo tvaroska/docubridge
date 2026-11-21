@@ -148,26 +148,57 @@ def _resolve_ontology_graph_context(
     return 10, rev_id, None, active_rev
 
 
+_MAX_DECIMAL_EXPONENT = 18
+
+
+def _extract_decimal_token(
+    inner: str, *, accounting_neg: bool
+) -> tuple[str, bool, str] | None:
+    match = _NUMBER_RE.search(inner)
+    if not match:
+        return None
+    outer_sign = match.group("outer_sign") or ""
+    inner_sign = match.group("inner_sign") or ""
+    sign = outer_sign or inner_sign
+    if (outer_sign and inner_sign) or (accounting_neg and sign):
+        return None
+    exp_part = match.group("exp") or ""
+    if exp_part and abs(int(exp_part[1:])) > _MAX_DECIMAL_EXPONENT:
+        return None
+    digits = match.group("digits").replace(",", "")
+    token = f"{'-' if accounting_neg else sign}{digits}{exp_part}"
+    return token, bool(exp_part), inner[match.end() :].strip().upper()
+
+
 def parse_decimal_money(raw: str | None) -> Decimal | None:
-    """Deterministically parse a monetary string into ``Decimal(0.01)`` (or ``None``)."""
+    """Deterministically parse a monetary string into ``Decimal(0.01)`` (or ``None``).
+
+    Preserves leading negative signs (``-$250,000.00``, ``$-250,000.00``), accounting
+    parentheses (``($250,000.00)``), scientific notation (``1e6``), and ``K``/``M``
+    multipliers while failing closed (``None``) on conflicting signs or overflow.
+    """
     if not raw or not isinstance(raw, str):
         return None
     cleaned = raw.strip()
-    match = _NUMBER_RE.search(cleaned)
-    if not match:
+    accounting_neg = cleaned.startswith("(") and cleaned.endswith(")")
+    extracted = _extract_decimal_token(
+        cleaned[1:-1].strip() if accounting_neg else cleaned,
+        accounting_neg=accounting_neg,
+    )
+    if extracted is None:
         return None
-    token = match.group(0).replace(",", "")
+    token, has_exp, rest = extracted
     try:
         val = Decimal(token)
+        if not val.is_finite():
+            return None
+        if not has_exp and rest.startswith(("M", "MILLION")):
+            val *= Decimal("1000000")
+        elif not has_exp and rest.startswith(("K", "THOUSAND")):
+            val *= Decimal("1000")
+        return val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except InvalidOperation:
         return None
-    suffix_pos = match.end()
-    rest = cleaned[suffix_pos:].strip().upper()
-    if rest.startswith(("M", "MILLION")):
-        val *= Decimal("1000000")
-    elif rest.startswith(("K", "THOUSAND")):
-        val *= Decimal("1000")
-    return val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def source_priority_for_doctype(doctype: str) -> int:

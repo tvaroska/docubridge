@@ -198,10 +198,10 @@ class ExpertFeedbackSignal(BaseModel):
     agent_spiffe_id: str | None = None
     source_anchor: SourceAnchor | None = None
     patches: tuple[Rfc6902PatchOp, ...] = ()
-    citation_verified: bool = True
-    review_dwell_ms: int = 4200
+    citation_verified: bool = False
+    review_dwell_ms: int = 0
     pre_committed: bool = False
-    oversight_rsr_score: float = 0.98
+    oversight_rsr_score: float = 0.0
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

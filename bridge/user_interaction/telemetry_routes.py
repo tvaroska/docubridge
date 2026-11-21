@@ -13,7 +13,10 @@ from bridge.telemetry import (
     compute_trace_analytics,
     get_recorded_spans,
 )
-from bridge.user_interaction.demo_session import mutating_auth_dependency
+from bridge.user_interaction.demo_session import (
+    mutating_auth_dependency,
+    read_auth_dependency,
+)
 
 
 def register_telemetry_routes(
@@ -23,6 +26,14 @@ def register_telemetry_routes(
     require_auth: bool = False,
 ) -> None:
     """Register OpenTelemetry span inspection, trace analytics, and SQL evaluation routes."""
+    read_deps = [
+        read_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
     mutating_deps = [
         mutating_auth_dependency(
             default_role="broker",
@@ -32,7 +43,7 @@ def register_telemetry_routes(
         )
     ]
 
-    @router.get("/v1/telemetry/spans")
+    @router.get("/v1/telemetry/spans", dependencies=read_deps)
     def list_telemetry_spans_endpoint(
         trace_id: str | None = None,
         name_prefix: str | None = None,
@@ -57,7 +68,7 @@ def register_telemetry_routes(
         clear_recorded_spans()
         return {"status": "cleared"}
 
-    @router.get("/v1/telemetry/analytics")
+    @router.get("/v1/telemetry/analytics", dependencies=read_deps)
     def get_telemetry_analytics_endpoint(
         trace_id: str | None = None,
         entity_id: str | None = None,
@@ -70,7 +81,7 @@ def register_telemetry_routes(
             limit=limit,
         )
 
-    @router.get("/v1/telemetry/sql-eval")
+    @router.get("/v1/telemetry/sql-eval", dependencies=read_deps)
     def get_telemetry_sql_eval_endpoint(
         trace_id: str | None = None,
         entity_id: str | None = None,

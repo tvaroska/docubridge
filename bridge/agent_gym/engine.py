@@ -30,7 +30,6 @@ from bridge.agent_gym.models import (
 )
 from bridge.agent_gym.registry_gateway import RegistryGatewayMixin
 from bridge.agent_gym.rule_evaluator import RuleEvaluatorMixin as RuleEvaluatorMixin
-from bridge.calibration import compute_rair_rsr
 from bridge.knowledge_catalog import CatalogRole
 from bridge.telemetry import trace_step
 from contract.extraction import SourceAnchor
@@ -119,39 +118,31 @@ class AgentGymEngine(
         pre_committed: bool = False,
         historical_outcomes: tuple[bool, ...] = (),
     ) -> float:
-        """Compute Relative Self-Reliance (RSR) using Schemmer et al. two-sided oversight math.
+        """Compute reviewer scrutiny score from citation, dwell time, and observed outcomes.
 
-        Combines continuous dwell-time saturation, source citation verification, and optional
-        blind pre-commitment with empirical ``compute_rair_rsr`` trials over observed signals.
+        Uses only the observed single-event behavioral signals (plus observed
+        ``historical_outcomes`` when supplied) without fabricating synthetic prior trials.
         """
         dwell_ratio = min(1.0, max(0.0, float(review_dwell_ms) / 1500.0))
         citation_score = 1.0 if citation_verified else 0.0
         pre_commit_bonus = 0.02 if pre_committed else 0.0
 
         if citation_verified and review_dwell_ms >= 1500:
-            empirical_prob = min(0.99, 0.96 + 0.02 * dwell_ratio + pre_commit_bonus)
+            behavioral_score = min(0.99, 0.96 + 0.02 * dwell_ratio + pre_commit_bonus)
         elif citation_verified or review_dwell_ms >= 1500:
-            empirical_prob = min(
+            behavioral_score = min(
                 0.78,
                 0.52 + 0.10 * max(citation_score, dwell_ratio) + pre_commit_bonus,
             )
         else:
-            empirical_prob = max(0.18, 0.30 + 0.12 * dwell_ratio + pre_commit_bonus)
+            behavioral_score = max(0.18, 0.30 + 0.12 * dwell_ratio + pre_commit_bonus)
 
-        n_prior = 50
-        prior_successes = round(empirical_prob * n_prior)
-        final_decisions = (
-            [1] * prior_successes
-            + [0] * (n_prior - prior_successes)
-            + [1 if ok else 0 for ok in historical_outcomes]
-        )
-        total_trials = len(final_decisions)
-        res = compute_rair_rsr(
-            human_initial_correct=[1] * total_trials,
-            ai_correct=[0] * total_trials,
-            final_decision_correct=final_decisions,
-        )
-        return round(res.rsr, 2)
+        if historical_outcomes:
+            observed_rate = sum(1 for ok in historical_outcomes if ok) / len(
+                historical_outcomes
+            )
+            return round(0.5 * behavioral_score + 0.5 * observed_rate, 2)
+        return round(behavioral_score, 2)
 
     def _invoke_reasoning_model_if_enabled(
         self,

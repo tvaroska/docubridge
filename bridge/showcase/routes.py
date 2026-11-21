@@ -36,6 +36,7 @@ from bridge.showcase.pdf_assets import build_pdf_zip, pdf_metadata
 from bridge.user_interaction.demo_session import (
     issue_viewer_cookie,
     mutating_auth_dependency,
+    read_auth_dependency,
 )
 from bridge.user_interaction.schemas import (
     AdvanceConsolidationCollabRequest,
@@ -253,32 +254,48 @@ def _zip_response(engine: ScenarioEngine, scenario_id: str) -> Response:
     )
 
 
-def _register_generic_read_routes(router: APIRouter, engine: ScenarioEngine) -> None:
-    @router.get("/v1/demo/scenarios")
+def _register_generic_read_routes(
+    router: APIRouter,
+    engine: ScenarioEngine,
+    *,
+    read_deps: Sequence[Depends],
+) -> None:
+    @router.get("/v1/demo/scenarios", dependencies=read_deps)
     def list_scenarios_endpoint() -> dict[str, Any]:
         """List every loaded scenario manifest (seed + stage bodies omitted)."""
         return {"scenarios": engine.list()}
 
-    @router.get("/v1/demo/scenarios/{scenario_id}/state")
+    @router.get("/v1/demo/scenarios/{scenario_id}/state", dependencies=read_deps)
     def scenario_state_endpoint(scenario_id: str) -> dict[str, Any]:
         try:
             return engine.state(scenario_id).model_dump(mode="json")
         except UnknownScenarioError as exc:
             raise _not_found(scenario_id) from exc
 
-    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs")
+    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs", dependencies=read_deps)
     def scenario_pdfs_endpoint(scenario_id: str) -> dict[str, Any]:
-        return _pdf_listing(
-            engine, scenario_id, f"/v1/demo/scenarios/{scenario_id}/pdfs.zip"
-        )
+        try:
+            return _pdf_listing(
+                engine, scenario_id, f"/v1/demo/scenarios/{scenario_id}/pdfs.zip"
+            )
+        except UnknownScenarioError as exc:
+            raise _not_found(scenario_id) from exc
 
-    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs.zip")
+    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs.zip", dependencies=read_deps)
     def scenario_pdfs_zip_endpoint(scenario_id: str) -> Response:
-        return _zip_response(engine, scenario_id)
+        try:
+            return _zip_response(engine, scenario_id)
+        except UnknownScenarioError as exc:
+            raise _not_found(scenario_id) from exc
 
-    @router.get("/v1/demo/scenarios/{scenario_id}/pdfs/{filename}")
+    @router.get(
+        "/v1/demo/scenarios/{scenario_id}/pdfs/{filename}", dependencies=read_deps
+    )
     def scenario_pdf_file_endpoint(scenario_id: str, filename: str) -> Response:
-        return _serve_pdf(engine, scenario_id, filename)
+        try:
+            return _serve_pdf(engine, scenario_id, filename)
+        except UnknownScenarioError as exc:
+            raise _not_found(scenario_id) from exc
 
 
 def _register_generic_lifecycle_routes(
@@ -441,7 +458,15 @@ def register_scenario_routes(
             allow_external_roles=True,
         )
     ]
-    _register_generic_read_routes(router, engine)
+    read_deps = [
+        read_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=True,
+        )
+    ]
+    _register_generic_read_routes(router, engine, read_deps=read_deps)
     _register_generic_lifecycle_routes(
         router,
         engine,
@@ -451,7 +476,7 @@ def register_scenario_routes(
     _register_generic_action_routes(
         router, engine, internal_mutating_deps=internal_mutating_deps
     )
-    _register_legacy_consolidation_read_aliases(router, engine)
+    _register_legacy_consolidation_read_aliases(router, engine, read_deps=read_deps)
     _register_legacy_consolidation_write_aliases(
         router,
         engine,
@@ -469,15 +494,17 @@ def register_scenario_routes(
 def _register_legacy_consolidation_read_aliases(
     router: APIRouter,
     engine: ScenarioEngine,
+    *,
+    read_deps: Sequence[Depends],
 ) -> None:
     consolidation = ScenarioStageKind.consolidation
 
-    @router.get("/v1/demo/consolidation-collab/state")
+    @router.get("/v1/demo/consolidation-collab/state", dependencies=read_deps)
     def get_consolidation_collab_state_endpoint() -> dict[str, Any]:
         """Current beat state of the default consolidation scenario (legacy alias)."""
         return engine.state(_require(engine, consolidation)).payload
 
-    @router.get("/v1/demo/consolidation-collab/pdfs")
+    @router.get("/v1/demo/consolidation-collab/pdfs", dependencies=read_deps)
     def list_consolidation_pdfs_endpoint() -> dict[str, Any]:
         return _pdf_listing(
             engine,
@@ -485,11 +512,11 @@ def _register_legacy_consolidation_read_aliases(
             "/v1/demo/consolidation-collab/pdfs.zip",
         )
 
-    @router.get("/v1/demo/consolidation-collab/pdfs.zip")
+    @router.get("/v1/demo/consolidation-collab/pdfs.zip", dependencies=read_deps)
     def download_consolidation_pdfs_zip_endpoint() -> Response:
         return _zip_response(engine, _require(engine, consolidation))
 
-    @router.get("/v1/demo/consolidation-collab/pdfs/{filename}")
+    @router.get("/v1/demo/consolidation-collab/pdfs/{filename}", dependencies=read_deps)
     def get_consolidation_pdf_file_endpoint(filename: str) -> Response:
         return _serve_pdf(engine, _require(engine, consolidation), filename)
 

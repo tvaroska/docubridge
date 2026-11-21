@@ -20,13 +20,13 @@ DocuBridge checks document integrity (legible scan, type, fields); callers pass 
 
 ## What the Code Guarantees
 
-`1,912 / 1,967` Python tests pass offline (`55` cloud-adapter tests skipped without credentials; `14/14` local adapters; `0` live noisy-PDF runs measured here).
+`1,936 / 1,991` Python tests pass offline (`55` cloud-adapter tests skipped without credentials; `14/14` local adapters; `0` live noisy-PDF runs measured here).
 
 | Guarantee | Code check | Verified offline receipt (synthetic) |
 | :--- | :--- | :--- |
 | **Chase missing files; reject bad scans; `$0` JSON** | JSON skips the model; scans pass legibility, type, confidence, and caller freshness checks before WORM vault lock; missing items trigger follow-ups. Models cannot self-approve. | `133/133` gate checks over `8` synthetic docs + `3` adversaries ([test_edge_gate_inversion.py](tests/test_edge_gate_inversion.py)); `27/27` collect + `10/10` follow-up ([test_collect.py](tests/test_collect.py), [test_followup.py](tests/test_followup.py)) |
-| **Code-only overrides & WORM vault** | Declared precedence resolves late addenda by arrival and effective date in `Decimal` math; append-only ledger and write-once vault reject silent overwrites. | `29/29` across `3` conflict scenarios + offline vault tamper refusal, `0` float drift ([test_enterprise_data_architecture.py](tests/test_enterprise_data_architecture.py)) |
-| **Zero-regression gate on rule updates** | Edits need a page citation and dwell time before updating hints; promotions fail closed on regressions; agreement checks reject hardcoded matrices. | `8/8` zero-regression assay ([test_schema_refinery_engine.py](tests/test_schema_refinery_engine.py)); `29/29` dwell/citation ([test_enterprise_data_architecture.py](tests/test_enterprise_data_architecture.py)); `6/6` honesty ([test_calibration_honesty.py](tests/test_calibration_honesty.py)) |
+| **Code-only overrides & WORM vault** | Declared precedence resolves late addenda by arrival and effective date in `Decimal` math; append-only ledger and write-once vault reject silent overwrites. | `29/29` enterprise architecture checks across `3` conflict scenarios + vault tamper refusal, `0` float drift ([test_enterprise_data_architecture.py](tests/test_enterprise_data_architecture.py)) |
+| **Zero-regression gate on rule updates** | Edits need a page citation and dwell time before updating hints; promotions fail closed on regressions and reject hardcoded test data. | `8/8` zero-regression checks ([test_schema_refinery_engine.py](tests/test_schema_refinery_engine.py)); `8/8` calibration honesty & fail-closed oversight guards ([test_calibration_honesty.py](tests/test_calibration_honesty.py)) |
 | **Caller policy stays outside** | Callers use A2A v1.0 + `contract/` types only; AST guards forbid consumer imports or hardcoded skill names. | `6/6` A2A consumer ([test_a2a_consumer_contract.py](tests/test_a2a_consumer_contract.py)); `12/12` isolation ([test_isolation_guard.py](tests/test_isolation_guard.py)) |
 
 ## Where This Breaks

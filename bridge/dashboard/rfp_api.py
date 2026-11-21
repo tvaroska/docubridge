@@ -40,6 +40,10 @@ from bridge.dashboard import readmodel
 from bridge.outbound import Nudge
 from bridge.ports import Port, get_adapter, resolve_mode
 from bridge.rfp import RfpCollection, chase_message, chaseable_items, record_chase
+from bridge.user_interaction.demo_session import (
+    mutating_auth_dependency,
+    read_auth_dependency,
+)
 
 if TYPE_CHECKING:
     from bridge.dashboard.board import RfpBoard
@@ -179,11 +183,26 @@ def mount_rfp_routes(
     rfps: RfpBoard | None,
     intake: IntakeAddressing | None,
     outbound: A2AClient | None = None,
+    require_auth: bool = False,
 ) -> None:
     """Add the consumer RFP read API + the manual chase route to ``app``."""
     built: dict[str, A2AClient] = {}
+    read_deps = [
+        read_auth_dependency(
+            default_role="broker",
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
+    mutating_deps = [
+        mutating_auth_dependency(
+            default_role="broker",
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
 
-    @app.get("/rfps")
+    @app.get("/rfps", dependencies=read_deps)
     def get_rfps() -> list[dict[str, Any]]:
         if rfps is None:
             return []
@@ -192,11 +211,11 @@ def mount_rfp_routes(
             for _, view in rfps.items()
         ]
 
-    @app.get("/rfps/{rfp_id}")
+    @app.get("/rfps/{rfp_id}", dependencies=read_deps)
     def get_rfp(rfp_id: str) -> dict[str, Any]:
         return _project_rfp_or_404(rfps, rfp_id, intake)
 
-    @app.post("/rfps/{rfp_id}/chase")
+    @app.post("/rfps/{rfp_id}/chase", dependencies=mutating_deps)
     async def post_chase(rfp_id: str, body: ChaseBody | None = None) -> dict[str, Any]:
         board = _require_rfp_board(rfps)
         party = body.party if body is not None else None

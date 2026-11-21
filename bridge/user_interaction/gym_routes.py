@@ -20,6 +20,7 @@ from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.operational_store import OperationalStore
 from bridge.user_interaction.demo_session import (
     mutating_auth_dependency,
+    read_auth_dependency,
     verified_mutating_identity,
 )
 from bridge.user_interaction.schemas import (
@@ -43,6 +44,7 @@ class _GymRouteDeps:
     principal_roles: dict[str, CatalogRole] | None
     require_auth: bool
     gym_internal_auth: Depends
+    gym_read_auth: Depends
     scenario_engine: ScenarioEngine | None
 
 
@@ -177,7 +179,9 @@ def _register_gym_signal_and_skill_routes(
         )
         return rev.model_dump(mode="json")
 
-    @router.get("/v1/gym/skills/{skill_name}/revisions")
+    @router.get(
+        "/v1/gym/skills/{skill_name}/revisions", dependencies=[deps.gym_read_auth]
+    )
     def list_gym_skill_revisions_endpoint(skill_name: str) -> dict[str, Any]:
         """List the active defaultRevision and full immutable revision history for a skill."""
         active = deps.gym.get_active_skill_revision(skill_name)
@@ -201,7 +205,7 @@ def _serialize_trust_policy(policy: ProgrammableTrustPolicy) -> dict[str, Any]:
 
 
 def _register_gym_read_routes(router: APIRouter, deps: _GymRouteDeps) -> None:
-    @router.get("/v1/gym/rules")
+    @router.get("/v1/gym/rules", dependencies=[deps.gym_read_auth])
     def list_gym_rules_endpoint(
         category: TribalRuleCategory | None = None,
         status: TribalRuleStatus | None = None,
@@ -219,7 +223,7 @@ def _register_gym_read_routes(router: APIRouter, deps: _GymRouteDeps) -> None:
             )
         ]
 
-    @router.get("/v1/gym/extraction-hints")
+    @router.get("/v1/gym/extraction-hints", dependencies=[deps.gym_read_auth])
     def get_gym_extraction_hints_endpoint(
         issuer: str,
         doctype: str = "quote",
@@ -230,7 +234,7 @@ def _register_gym_read_routes(router: APIRouter, deps: _GymRouteDeps) -> None:
             for r in deps.gym.get_extraction_hints(issuer=issuer, doctype=doctype)
         ]
 
-    @router.get("/v1/gym/export/docai-dataset")
+    @router.get("/v1/gym/export/docai-dataset", dependencies=[deps.gym_read_auth])
     def export_docai_uptraining_dataset_endpoint(
         doctype: str | None = None,
         verified_only: bool = True,
@@ -241,7 +245,7 @@ def _register_gym_read_routes(router: APIRouter, deps: _GymRouteDeps) -> None:
             verified_only=verified_only,
         )
 
-    @router.get("/v1/gym/trust-policies")
+    @router.get("/v1/gym/trust-policies", dependencies=[deps.gym_read_auth])
     def list_gym_trust_policies_endpoint() -> list[dict[str, Any]]:
         """List all Programmable Trust slice policies with readiness status and A2UI v0.9 controls."""
         return [_serialize_trust_policy(p) for p in deps.gym.list_trust_policies()]
@@ -369,6 +373,12 @@ def register_gym_routes(  # noqa: PLR0913 - public FastAPI route registrar
             require_auth=require_auth,
             allow_external_roles=False,
             external_role_error="External roles cannot mutate Agent Gym rules, skills, or trust policies.",
+        ),
+        gym_read_auth=read_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
         ),
         scenario_engine=scenario_engine,
     )

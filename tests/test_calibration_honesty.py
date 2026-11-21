@@ -128,3 +128,48 @@ def test_refinery_report_defaults_are_not_evaluated() -> None:
     assert report.perturbation_krippendorff_alpha is None
     assert report.workhorse_teacher_ac2 is None
     assert report.passed is False
+
+
+def test_bridge_never_feeds_synthetic_vectors_to_rair_rsr() -> None:
+    """No module under bridge/ calls compute_rair_rsr with repeated constant vectors."""
+    offenders: list[str] = []
+    for py_path in sorted(BRIDGE_ROOT.rglob("*.py")):
+        source = py_path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(py_path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _called_name(node) == "compute_rair_rsr":
+                for arg in [*node.args, *(kw.value for kw in node.keywords)]:
+                    if isinstance(arg, ast.List | ast.Tuple) or (
+                        isinstance(arg, ast.BinOp)
+                        and isinstance(arg.op, ast.Mult)
+                        and isinstance(arg.left, ast.List | ast.Tuple)
+                    ):
+                        offenders.append(
+                            f"{py_path.relative_to(REPO_ROOT)}:{node.lineno}"
+                        )
+    assert offenders == [], (
+        f"compute_rair_rsr called with synthetic/constant vectors: {offenders}"
+    )
+
+
+def test_expert_feedback_signal_defaults_fail_closed() -> None:
+    """ExpertFeedbackSignal defaults never fail open on citation, dwell, or RSR score."""
+    from bridge.agent_gym.models import ExpertFeedbackSignal, SignalSourceZone
+
+    sig = ExpertFeedbackSignal(
+        signal_id="sig-default-check",
+        source_zone=SignalSourceZone.REVIEW_QUARANTINE,
+        entity_id="ENT-1",
+        doc_id="doc-1",
+        doctype="quote",
+        issuer="Acme",
+        field_path="deductible",
+        before_value="100",
+        after_value="200",
+        expert_memo="check defaults",
+        actor_principal="reviewer@example.com",
+        actor_role="broker",
+    )
+    assert sig.citation_verified is False
+    assert sig.review_dwell_ms == 0
+    assert sig.oversight_rsr_score == 0.0

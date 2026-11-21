@@ -23,6 +23,7 @@ from bridge.telemetry.outcome import (
 from bridge.user_interaction.demo_session import (
     issue_viewer_cookie,
     mutating_auth_dependency,
+    read_auth_dependency,
     verified_mutating_identity,
 )
 from bridge.user_interaction.schemas import IngestSubmissionRequest
@@ -258,7 +259,16 @@ def register_intake_and_demo_routes(  # noqa: PLR0913 - public FastAPI route reg
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-    @router.get("/v1/bigquery/sync")
+    sync_read_deps = [
+        read_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
+
+    @router.get("/v1/bigquery/sync", dependencies=sync_read_deps)
     def get_bigquery_iceberg_sync_endpoint(
         entity_id: str | None = None,
         since_recorded_at: datetime | None = None,

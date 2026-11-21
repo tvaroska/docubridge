@@ -16,7 +16,10 @@ from bridge.refinery import (
     onboard_use_case,
     schema_refinery_from_env,
 )
-from bridge.user_interaction.demo_session import mutating_auth_dependency
+from bridge.user_interaction.demo_session import (
+    mutating_auth_dependency,
+    read_auth_dependency,
+)
 from bridge.user_interaction.schemas import (
     OnboardDoctypeRequest,
     PromoteRefineryProposalRequest,
@@ -126,6 +129,14 @@ def register_refinery_routes(  # noqa: PLR0913 - public FastAPI route registrar
         schema_refinery,
         knowledge_catalog=catalog,
     )
+    read_deps = [
+        read_auth_dependency(
+            default_role="broker",
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+            allow_external_roles=False,
+        )
+    ]
     mutating_deps = [
         mutating_auth_dependency(
             default_role="broker",
@@ -135,7 +146,7 @@ def register_refinery_routes(  # noqa: PLR0913 - public FastAPI route registrar
         )
     ]
 
-    @router.get("/v1/refinery/revisions")
+    @router.get("/v1/refinery/revisions", dependencies=read_deps)
     def get_refinery_revisions(
         domain: str | None = Query(default=None),
         relation: str | None = Query(default=None),
