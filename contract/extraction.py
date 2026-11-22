@@ -173,7 +173,7 @@ class ExtractionResult(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     fields: ExtractionFields
-    overall_confidence: float
+    overall_confidence: float = Field(ge=0.0, le=1.0, allow_inf_nan=False)
     field_confidence: dict[str, float] = {}  # Defaults matter: passport omits this
     legible: bool
     flagged_fields: list[str] = Field(

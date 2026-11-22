@@ -132,10 +132,10 @@ def _register_gym_signal_and_skill_routes(
     )
     def evaluate_gym_rule_endpoint(
         rule_id: str,
-        auto_promote: bool = True,
+        auto_promote: bool = False,
         role: CatalogRole | None = None,
     ) -> dict[str, Any]:
-        """Run the 3-tier Agent Gym evaluation gate on a candidate rule and promote on zero regression."""
+        """Run the 3-tier Agent Gym evaluation gate on a candidate rule and optionally promote on zero regression."""
         del role
         try:
             report = deps.gym.evaluate_candidate_rule(
@@ -148,6 +148,8 @@ def _register_gym_signal_and_skill_routes(
             }
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @router.post("/v1/gym/compile-skill", dependencies=[deps.gym_internal_auth])
     def compile_gym_skill_endpoint(
@@ -279,6 +281,8 @@ def _register_gym_trust_write_routes(router: APIRouter, deps: _GymRouteDeps) -> 
             ai_value=body.ai_value,
             human_value=body.human_value,
             risk_level=body.risk_level,
+            citation_verified=body.citation_verified,
+            review_dwell_ms=body.review_dwell_ms,
         )
         return {
             "comparison": record.model_dump(mode="json"),

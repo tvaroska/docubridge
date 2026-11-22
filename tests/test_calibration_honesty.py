@@ -173,3 +173,266 @@ def test_expert_feedback_signal_defaults_fail_closed() -> None:
     assert sig.citation_verified is False
     assert sig.review_dwell_ms == 0
     assert sig.oversight_rsr_score == 0.0
+
+
+def test_distill_without_oversight_evidence_is_rejected() -> None:
+    """Omitting citation/dwell oversight evidence fails closed across engine, schemas, and shadow mode (P13-7)."""
+    from bridge.agent_gym import (
+        InMemoryAgentGymEngine,
+        ProgrammableTrustPolicy,
+        TribalRuleStatus,
+    )
+    from bridge.telemetry import clear_recorded_spans, get_recorded_spans
+    from bridge.user_interaction.schemas import (
+        DistillQuarantineFixRequest,
+        RecordShadowComparisonRequest,
+    )
+    from bridge.vault import GcpAuditVaultStore
+
+    # Request models fail closed by default
+    req = DistillQuarantineFixRequest(
+        entity_id="ENT-OV",
+        doc_id="doc-ov",
+        doctype="quote",
+        issuer="Acme",
+        field_path="deductible",
+        before_value="$500.00",
+        after_value="$1,000.00",
+        expert_memo="No oversight evidence supplied.",
+    )
+    assert req.citation_verified is False
+    assert req.review_dwell_ms == 0
+
+    shadow_req = RecordShadowComparisonRequest(
+        entity_id="ENT-OV",
+        doc_id="doc-ov",
+        issuer="Acme",
+        field_path="deductible",
+        ai_value="$500.00",
+        human_value="$500.00",
+    )
+    assert shadow_req.citation_verified is False
+    assert shadow_req.review_dwell_ms == 0
+
+    # Engine distill defaults reject rule when oversight evidence is omitted
+    clear_recorded_spans()
+    gym = InMemoryAgentGymEngine()
+    sig, rule = gym.distill_from_quarantine_correction(
+        entity_id="ENT-OV",
+        doc_id="doc-ov",
+        doctype="quote",
+        issuer="Acme",
+        field_path="deductible",
+        before_value="$500.00",
+        after_value="$1,000.00",
+        expert_memo="No oversight evidence supplied.",
+        actor_principal="reviewer@docubridge.io",
+    )
+    assert sig.citation_verified is False
+    assert sig.review_dwell_ms == 0
+    assert sig.oversight_rsr_score < 0.80
+    assert rule.status == TribalRuleStatus.REJECTED
+
+    # Offline distillation emits no fabricated token counts
+    distill_spans = [
+        s
+        for s in get_recorded_spans()
+        if s["name"] == "docubridge.agent_gym.distill_signal"
+    ]
+    assert distill_spans
+    assert "gen_ai.usage.input_tokens" not in distill_spans[-1]["attributes"]
+    assert "gen_ai.usage.output_tokens" not in distill_spans[-1]["attributes"]
+
+    # record_shadow_comparison defaults do not advance consecutive_matches without oversight
+    rec, policy = gym.record_shadow_comparison(
+        slice_id="slice:unverified:test",
+        entity_id="ENT-OV",
+        doc_id="doc-ov",
+        issuer="Acme",
+        doctype="quote",
+        field_path="deductible",
+        ai_value="$500.00",
+        human_value="$500.00",
+    )
+    assert rec.citation_verified is False
+    assert rec.oversight_rsr_score < 0.80
+    assert policy.consecutive_matches == 0
+
+    # Zero-evaluation trust policy reports None (not 1.0)
+    fresh_policy = ProgrammableTrustPolicy(
+        slice_id="slice:fresh:none",
+        issuer_pattern="Acme*",
+        doctype="quote",
+    )
+    assert fresh_policy.accuracy_rate is None
+
+    # Offline evaluation reports None for unmeasured judge model & autorater score
+    _, valid_rule = gym.distill_from_quarantine_correction(
+        entity_id="ENT-OV2",
+        doc_id="doc-ov2",
+        doctype="quote",
+        issuer="Acme",
+        field_path="deductible",
+        before_value="$500.00",
+        after_value="$1,000.00",
+        expert_memo="Verified against Schedule B.",
+        actor_principal="reviewer@docubridge.io",
+        citation_verified=True,
+        review_dwell_ms=4200,
+    )
+    report = gym.evaluate_candidate_rule(valid_rule.rule_id)
+    assert report.passed_gate is True
+    assert report.judge_model is None
+    assert report.tier2_autorater_score is None
+
+    # VaultRecord.retention_locked reflects whether locked retention was actually applied
+    from tests.test_single_bucket_gcp import _SharedFakeBucket, _SharedFakeClient
+
+    bucket = _SharedFakeBucket("honesty-vault-bucket")
+    client = _SharedFakeClient(bucket)
+    unretained = GcpAuditVaultStore("honesty-vault-bucket", client=client)
+    rec_no_ret = unretained.lock_document(
+        context_id="ctx-r1",
+        doc_id="doc-r1",
+        version=1,
+        filename="a.pdf",
+        data=b"%PDF-1.7 a",
+    )
+    assert rec_no_ret.retention_locked is False
+
+    unlocked_ret = GcpAuditVaultStore(
+        "honesty-vault-bucket",
+        retention_days=30,
+        retention_mode="Unlocked",
+        client=client,
+    )
+    rec_unlocked = unlocked_ret.lock_document(
+        context_id="ctx-r2",
+        doc_id="doc-r2",
+        version=1,
+        filename="b.pdf",
+        data=b"%PDF-1.7 b",
+    )
+    assert rec_unlocked.retention_locked is False
+
+    locked_ret = GcpAuditVaultStore(
+        "honesty-vault-bucket",
+        retention_days=2555,
+        retention_mode="Locked",
+        client=client,
+    )
+    rec_locked = locked_ret.lock_document(
+        context_id="ctx-r3",
+        doc_id="doc-r3",
+        version=1,
+        filename="c.pdf",
+        data=b"%PDF-1.7 c",
+    )
+    assert rec_locked.retention_locked is True
+
+
+def test_inbox_audit_defaults_fail_closed_and_live_judge_rejection_blocks_gate() -> (
+    None
+):
+    """Inbox resolution without telemetry fails closed; a live judge rejection fails the gate (P13-7)."""
+    from bridge.a2ui_inbox import A2uiClientActionRequest, InMemoryActionInboxStore
+    from bridge.agent_gym import InMemoryAgentGymEngine, TribalRuleStatus
+
+    inbox = InMemoryActionInboxStore()
+    item = inbox.create_action(
+        entity_id="ENT-INBOX-FC",
+        title="Verify fee",
+        hint="Check page 2",
+        pause_for_review=True,
+        data_model={"resolution": {"selectedValue": "$50,000.00"}},
+    )
+    inbox.resolve_action(
+        item.item_id,
+        action_request=A2uiClientActionRequest(
+            action={
+                "name": "edit_and_approve",
+                "context": {
+                    "decision": "edit",
+                    "resolution": {"selectedValue": "$75,000.00"},
+                    "review": {"memo": "Updated fee"},
+                },
+            }
+        ),
+        actor_principal="reviewer@docubridge.io",
+        actor_role="underwriter",
+        channel="gemini_app",
+    )
+    audit = inbox.list_audit_records(item.item_id)[0]
+    assert audit.citation_opened is False
+    assert audit.review_dwell_ms == 0
+
+    gym = InMemoryAgentGymEngine()
+    sig, rule = gym.distill_from_inbox_audit(
+        audit,
+        doc_id="doc-fc",
+        doctype="closing-disclosure",
+        issuer="Acme Bank",
+        field_path="origination_fee",
+    )
+    assert sig.citation_verified is False
+    assert sig.review_dwell_ms == 0
+    assert rule.status == TribalRuleStatus.REJECTED
+
+    # Live judge returning REJECT/FAIL must block the gate instead of being discarded
+    class _Usage:
+        prompt_token_count = 300
+        candidates_token_count = 40
+
+    class _RejectResp:
+        text = "REJECT: unsafe rule override"
+        usage_metadata = _Usage()
+
+    class _RejectModels:
+        def generate_content(self, **_kwargs: object) -> _RejectResp:
+            return _RejectResp()
+
+    class _RejectClient:
+        models = _RejectModels()
+
+    gym_live = InMemoryAgentGymEngine()
+    gym_live._genai_client = _RejectClient()  # type: ignore[attr-defined]
+    _, cand = gym_live.distill_from_quarantine_correction(
+        entity_id="ENT-LJ",
+        doc_id="doc-lj",
+        doctype="quote",
+        issuer="Acme",
+        field_path="deductible",
+        before_value="$500.00",
+        after_value="$1,000.00",
+        expert_memo="Schedule B override",
+        actor_principal="reviewer@docubridge.io",
+        citation_verified=True,
+        review_dwell_ms=4200,
+    )
+    report = gym_live.evaluate_candidate_rule(cand.rule_id, auto_promote=True)
+    assert report.passed_gate is False
+    assert report.tier2_autorater_score == 0.0
+    assert "live_judge_rejected" in report.historical_regressions
+    reloaded = next(
+        (r for r in gym_live.list_rules() if r.rule_id == cand.rule_id), None
+    )
+    assert reloaded is not None and reloaded.status == TribalRuleStatus.REJECTED
+
+    # Negated pass wording ("NOT APPROVED") fails closed, and prose integers do not mask decimal score
+    from bridge.agent_gym.rule_evaluator import _parse_live_judge_verdict
+
+    assert _parse_live_judge_verdict("NOT APPROVED: overbroad target") == (
+        False,
+        0.0,
+        "live_judge_rejected",
+    )
+    assert _parse_live_judge_verdict("DO NOT PASS") == (
+        False,
+        0.0,
+        "live_judge_rejected",
+    )
+    assert _parse_live_judge_verdict("PASS: 1 rule verified, score 0.85") == (
+        True,
+        0.85,
+        None,
+    )

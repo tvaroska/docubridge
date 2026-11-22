@@ -15,7 +15,7 @@ _ACTIVE_FACTS_CTE: str = (
     "WITH active_facts AS ("
     "SELECT *, ROW_NUMBER() OVER ("
     "PARTITION BY entity_id, field_path "
-    "ORDER BY source_priority DESC, effective_from DESC, recorded_at DESC, version DESC"
+    "ORDER BY effective_from DESC, source_priority DESC, recorded_at DESC, version DESC"
     ") AS rn FROM bridge_operational_facts"
     ") "
 )

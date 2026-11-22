@@ -92,8 +92,8 @@ class InboxAuditRecord(BaseModel):
     patches: list[Rfc6902PatchOp] = Field(default_factory=list)
     notes: str = ""
     escalated_to: str | None = None
-    review_dwell_ms: int = Field(default=4200, ge=0)
-    citation_opened: bool = True
+    review_dwell_ms: int = Field(default=0, ge=0)
+    citation_opened: bool = False
     pre_committed: bool = False
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

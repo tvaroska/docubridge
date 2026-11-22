@@ -230,8 +230,9 @@ def test_single_bucket_full_prefix_isolation_and_worm_retention(
         data=b"%PDF-worm-bytes",
         locked_at=locked_at,
     )
-    expected_obj = "audit-vault/vault/ctx-single-1/doc-single-1/v1/closing.pdf"
+    expected_obj = "audit-vault/vault/ctx-single-1/doc-single-1/v1/content"
     assert rec.vault_uri == f"gs://demo-single-bucket/{expected_obj}"
+    assert rec.filename == "closing.pdf"
     assert expected_obj in shared.objects
     assert client.requested_buckets == ["demo-single-bucket"]
 
@@ -442,3 +443,99 @@ def test_skill_get_and_vault_ids_reject_traversal_before_storage_io(
             vault.get_record("ctx-1", bad, version=1)
         with pytest.raises(ValueError, match="doc_id"):
             vault.read_bytes("ctx-1", bad, version=1)
+
+
+def test_second_lock_with_other_filename_is_refused() -> None:
+    """Two writers locking the same (context_id, doc_id, version) under different filenames hit one atomic object key (P13-10(a))."""
+    shared = _SharedFakeBucket("atomic-vault-bucket")
+    writer_a = GcpAuditVaultStore(
+        "atomic-vault-bucket", prefix="audit-vault", client=_SharedFakeClient(shared)
+    )
+    writer_b = GcpAuditVaultStore(
+        "atomic-vault-bucket", prefix="audit-vault", client=_SharedFakeClient(shared)
+    )
+
+    rec_a = writer_a.lock_document(
+        context_id="ctx-race",
+        doc_id="doc-race",
+        version=1,
+        filename="quote-alpha.pdf",
+        data=b"%PDF-1.7 first-writer",
+    )
+    assert rec_a.filename == "quote-alpha.pdf"
+    assert "quote-alpha.pdf" not in rec_a.vault_uri
+
+    # Simulate a concurrent race where writer_b's list_blobs sees nothing before upload
+    writer_b._get_bucket = lambda: type(  # type: ignore[method-assign]
+        "_RacingBucket",
+        (),
+        {
+            "list_blobs": lambda _self, prefix=None: [],
+            "blob": shared.blob,
+        },
+    )()
+    with pytest.raises(VaultImmutabilityError):
+        writer_b.lock_document(
+            context_id="ctx-race",
+            doc_id="doc-race",
+            version=1,
+            filename="quote-beta.pdf",
+            data=b"%PDF-1.7 second-writer",
+        )
+    assert writer_a.read_bytes("ctx-race", "doc-race", version=1) == (
+        b"%PDF-1.7 first-writer"
+    )
+
+
+def test_vault_upload_error_is_not_immutability() -> None:
+    """Transient 503 or 403 upload failures propagate directly instead of masquerading as VaultImmutabilityError (P13-10(b))."""
+    from google.api_core.exceptions import Forbidden, ServiceUnavailable
+
+    for err in (
+        ServiceUnavailable("backend 503 unavailable"),
+        Forbidden("403 missing storage.objects.create"),
+    ):
+
+        class _FailingBlob:
+            def __init__(self, exc: Exception) -> None:
+                self._exc = exc
+                self.metadata: dict[str, str] | None = None
+
+            def upload_from_string(
+                self,
+                data: bytes | str,
+                content_type: str = "application/octet-stream",
+                if_generation_match: int | None = None,
+            ) -> None:
+                del data, content_type, if_generation_match
+                raise self._exc
+
+        class _FailingBucket:
+            def __init__(self, exc: Exception) -> None:
+                self._exc = exc
+
+            def list_blobs(self, prefix: str | None = None) -> list[Any]:
+                del prefix
+                return []
+
+            def blob(self, name: str) -> _FailingBlob:
+                del name
+                return _FailingBlob(self._exc)
+
+        class _FailingClient:
+            def __init__(self, exc: Exception) -> None:
+                self._exc = exc
+
+            def bucket(self, name: str) -> _FailingBucket:
+                del name
+                return _FailingBucket(self._exc)
+
+        vault = GcpAuditVaultStore("err-vault-bucket", client=_FailingClient(err))  # type: ignore[arg-type]
+        with pytest.raises(type(err)):
+            vault.lock_document(
+                context_id="ctx-err",
+                doc_id="doc-err",
+                version=1,
+                filename="err.pdf",
+                data=b"%PDF-1.7 err",
+            )

@@ -494,6 +494,8 @@ def _register_surface_routes(router: APIRouter, deps: _A2uiRouteDeps) -> None:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def register_a2ui_routes(  # noqa: PLR0913 - public FastAPI route registrar

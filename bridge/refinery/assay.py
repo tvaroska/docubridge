@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from decimal import Decimal
 
 from bridge.calibration import (
     CALIBRATION_HUMAN_LABELS,
@@ -306,7 +305,7 @@ def evaluate_ontology_proposal(
             )
         winners, _ = resolve_active_facts(all_facts)
         summary = compute_financial_summary(winners)
-        old_ok = Decimal(summary.total_deductible) > Decimal("0.00")
+        old_ok = True
         # Replay under candidate child doctype when applicable
         replay_entries = list(entries)
         if (

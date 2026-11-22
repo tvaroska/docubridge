@@ -507,7 +507,7 @@ def _redact_and_apply_gym_derivations(
             )
 
     hints = gym.get_extraction_hints(
-        issuer=normalized_entry.issuer or "*",
+        issuer=normalized_entry.issuer or "",
         doctype=normalized_entry.doctype,
     )
     derived_fields, applied_rules = apply_field_derivations(
@@ -553,8 +553,9 @@ def ingest_accepted_submission(  # noqa: PLR0913 - public enterprise submission 
     *,
     entity_id: str,
     context_id: str,
-    raw_document_bytes: bytes = b"%PDF-1.7",
+    raw_document_bytes: bytes,
     filename: str | None = None,
+    mime_type: str | None = None,
     version: int = 1,
     vault_store: AuditVaultStore | None = None,
     operational_store: OperationalStore | None = None,
@@ -568,6 +569,10 @@ def ingest_accepted_submission(  # noqa: PLR0913 - public enterprise submission 
     source_mode: str = "PDF_PATH_B_FLASH",
 ) -> EnterpriseIngestionResult:
     """Promote an accepted entry through Vault (WORM), Operational Store, and Catalog."""
+    if not raw_document_bytes:
+        raise ValueError(
+            "raw_document_bytes must be non-empty bytes for Audit Vault promotion"
+        )
     with trace_step(
         "docubridge.intake.ingest_accepted_submission",
         {
@@ -656,6 +661,11 @@ def ingest_accepted_submission(  # noqa: PLR0913 - public enterprise submission 
             thinking_tokens=thinking_tokens,
         )
 
+        resolved_mime = mime_type or (
+            "application/json"
+            if (filename or "").lower().endswith(".json")
+            else "application/pdf"
+        )
         promoted_entry, vault_record = promote_accepted_to_vault(
             vault,
             context_id=context_id,
@@ -663,6 +673,7 @@ def ingest_accepted_submission(  # noqa: PLR0913 - public enterprise submission 
             entry=normalized_entry,
             data=raw_document_bytes,
             filename=filename,
+            mime_type=resolved_mime,
             version=version,
             recorded_at=recorded_at,
             effective_from=effective_from,

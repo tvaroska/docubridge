@@ -112,7 +112,7 @@ def load_strategy(
     registry = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
     try:
         skill_md_raw = registry.read_asset(process, "SKILL.md")
-    except (KeyError, OSError):
+    except KeyError:
         return None
     rel = _resolve_strategy_rel(skill_md_raw, where=f"{process}/SKILL.md")
     if rel.startswith("/") or ".." in Path(rel).parts:
@@ -121,7 +121,7 @@ def load_strategy(
         )
     try:
         raw_strategy = registry.read_asset(process, rel)
-    except (KeyError, OSError):
+    except KeyError:
         return None
     return load_strategy_from_yaml(
         raw_strategy,

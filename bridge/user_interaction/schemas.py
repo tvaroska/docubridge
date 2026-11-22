@@ -42,6 +42,7 @@ class IngestSubmissionRequest(BaseModel):
     key_fields: dict[str, Any] = Field(default_factory=dict)
     source_anchors: dict[str, SourceAnchor] = Field(default_factory=dict)
     filename: str | None = None
+    content_base64: str | None = None
     version: int = 1
     recorded_at: datetime | None = None
     effective_from: datetime | None = None
@@ -100,8 +101,8 @@ class DistillQuarantineFixRequest(BaseModel):
     bounding_box: tuple[float, float, float, float] | None = None
     category: TribalRuleCategory | None = None
     distinct_entities: list[str] = Field(default_factory=list)
-    citation_verified: bool = True
-    review_dwell_ms: int = 4200
+    citation_verified: bool = False
+    review_dwell_ms: int = 0
 
 
 class DistillInboxAuditRequest(BaseModel):
@@ -115,8 +116,8 @@ class DistillInboxAuditRequest(BaseModel):
     field_path: str | None = None
     category: TribalRuleCategory | None = None
     distinct_entities: list[str] = Field(default_factory=list)
-    citation_verified: bool = True
-    review_dwell_ms: int = 4200
+    citation_verified: bool | None = None
+    review_dwell_ms: int | None = None
 
 
 class CompileSkillRequest(BaseModel):
@@ -195,6 +196,8 @@ class RecordShadowComparisonRequest(BaseModel):
     ai_value: str
     human_value: str
     risk_level: RiskTier = "MEDIUM"
+    citation_verified: bool = False
+    review_dwell_ms: int = 0
 
 
 class DialTrustPolicyRequest(BaseModel):

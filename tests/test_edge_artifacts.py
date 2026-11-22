@@ -402,3 +402,64 @@ def test_build_artifact_store_gcs_when_bucket_set(monkeypatch):
     scoped_store = build_artifact_store()
     assert isinstance(scoped_store, _StubGcs)
     assert built["bucket"] == "shared-project-bucket"
+
+
+async def test_edge_enterprise_stores_wire_and_vault_submitted_bytes() -> None:
+    """Binding enterprise stores on build_a2a_app vaults exact submitted bytes on Collect (P13-5)."""
+    import hashlib
+
+    from bridge.edge.server import _enterprise_stores_from_env
+    from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
+    from bridge.operational_store import InMemoryOperationalStore
+    from bridge.vault import InMemoryAuditVaultStore
+
+    # Default local env resolves all three enterprise stores cleanly via ports.
+    env_vault, env_op, env_cat = _enterprise_stores_from_env()
+    assert env_vault is not None and env_op is not None and env_cat is not None
+
+    vault = InMemoryAuditVaultStore()
+    op_store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
+    executor = CollectExecutor(collector=Collector(FixtureExtractor()))
+    app = build_a2a_app(
+        url=URL,
+        executor=executor,
+        vault_store=vault,
+        operational_store=op_store,
+        knowledge_catalog=catalog,
+    )
+    async with _client(app) as (_, client):
+        turn = await _turn_for_accepted(client)
+        assert turn.status.entries[0].disposition is Disposition.accepted
+
+    records = vault.list_records(context_id=turn.context_id)
+    assert len(records) == 1
+    assert records[0].sha256 == hashlib.sha256(_GOV_ID_BYTES).hexdigest()
+    assert records[0].size_bytes == len(_GOV_ID_BYTES)
+
+
+async def test_edge_freshness_clock_routes_stale_utility_bill_to_resubmit() -> None:
+    """Binding freshness_clock on build_a2a_app evaluates validation.yaml within_days on Collect (P13-15)."""
+    from datetime import date
+
+    from contract.enums import Gate
+
+    executor = CollectExecutor(collector=Collector(FixtureExtractor()))
+    app = build_a2a_app(
+        url=URL,
+        executor=executor,
+        freshness_clock=lambda: date(2026, 11, 22),
+    )
+    async with _client(app) as (_, client):
+        task_id = await _send(
+            client,
+            "address-proof",
+            [("bill-powerco-clean", "images/bill-powerco-clean.svg")],
+        )
+        task = await client.get_task(GetTaskRequest(id=task_id))
+        turn = _exchange_turn_from_artifacts(task)
+
+    entry = turn.status.entries[0]
+    assert entry.disposition is Disposition.rejected
+    assert entry.gate is Gate.resubmit
+    assert entry.reason_code == "stale_document"

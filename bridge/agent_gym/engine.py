@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import abc
 import contextlib
-import fnmatch
 import os
 import uuid
 from typing import Any
@@ -27,6 +26,7 @@ from bridge.agent_gym.models import (
     _gcp_project_id,
     _infer_rule_category,
     _strip_legal_suffix,
+    issuer_matches_pattern,
 )
 from bridge.agent_gym.registry_gateway import RegistryGatewayMixin
 from bridge.agent_gym.rule_evaluator import RuleEvaluatorMixin as RuleEvaluatorMixin
@@ -148,13 +148,11 @@ class AgentGymEngine(
         self,
         *,
         prompt: str,
-        default_in_tokens: int,
-        default_out_tokens: int,
-    ) -> tuple[str | None, int, int]:
+    ) -> tuple[str | None, int | None, int | None]:
         """Invoke live `gemini-4-argon` when `BRIDGE_GYM_LIVE_LLM=true` or `_genai_client` is set.
 
-        Records real `usage_metadata` token counts on the OpenTelemetry span when live,
-        or returns `(None, default_in_tokens, default_out_tokens)` in offline/deterministic mode.
+        Records real `usage_metadata` token counts when live, or returns `(None, None, None)`
+        when offline or when the live call fails (never fabricating token counts).
         """
         client = getattr(self, "_genai_client", None)
         live_enabled = os.environ.get("BRIDGE_GYM_LIVE_LLM", "").strip().lower() in {
@@ -162,7 +160,7 @@ class AgentGymEngine(
             "true",
         }
         if client is None and not live_enabled:
-            return None, default_in_tokens, default_out_tokens
+            return None, None, None
 
         with contextlib.suppress(Exception):
             if client is None:
@@ -185,13 +183,13 @@ class AgentGymEngine(
                 contents=prompt,
             )
             usage = getattr(resp, "usage_metadata", None)
-            in_tok = int(getattr(usage, "prompt_token_count", 0) or default_in_tokens)
-            out_tok = int(
-                getattr(usage, "candidates_token_count", 0) or default_out_tokens
-            )
+            raw_in = getattr(usage, "prompt_token_count", None)
+            raw_out = getattr(usage, "candidates_token_count", None)
+            in_tok = int(raw_in) if raw_in is not None else None
+            out_tok = int(raw_out) if raw_out is not None else None
             text = getattr(resp, "text", None)
             return (str(text).strip() if text else None), in_tok, out_tok
-        return None, default_in_tokens, default_out_tokens
+        return None, None, None
 
     def distill_from_quarantine_correction(  # noqa: PLR0913 - keyword-only feedback signal fields
         self,
@@ -210,8 +208,8 @@ class AgentGymEngine(
         source_anchor: SourceAnchor | None = None,
         category: TribalRuleCategory | None = None,
         distinct_entities: tuple[str, ...] = (),
-        citation_verified: bool = True,
-        review_dwell_ms: int = 4200,
+        citation_verified: bool = False,
+        review_dwell_ms: int = 0,
         pre_committed: bool = False,
     ) -> tuple[ExpertFeedbackSignal, TribalKnowledgeRule]:
         """Capture a Zone 2 Review Quarantine fix and distill a candidate Tribal Rule via gemini-4-argon."""
@@ -220,40 +218,39 @@ class AgentGymEngine(
             review_dwell_ms=review_dwell_ms,
             pre_committed=pre_committed,
         )
-        _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
+        llm_text, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
             prompt=(
                 f"Distill TribalKnowledgeRule from quarantine correction: "
                 f"issuer={issuer} doctype={doctype} field={field_path} "
                 f"before={before_value} after={after_value} memo={expert_memo}"
             ),
-            default_in_tokens=1850,
-            default_out_tokens=420,
         )
-        with trace_step(
-            "docubridge.agent_gym.distill_signal",
-            {
-                "docubridge.zone": "6_knowledge_catalog_agent_gym",
-                "docubridge.source_zone": SignalSourceZone.REVIEW_QUARANTINE.value,
-                "docubridge.entity_id": entity_id,
-                "docubridge.doc_id": doc_id,
-                "docubridge.doctype": doctype,
-                "docubridge.issuer": issuer,
-                "docubridge.field_path": field_path,
-                "docubridge.actor_principal": actor_principal,
-                "docubridge.actor_role": actor_role,
-                "docubridge.citation_verified": citation_verified,
-                "docubridge.review_dwell_ms": review_dwell_ms,
-                "docubridge.oversight_rsr_score": oversight_rsr,
-                "docubridge.oversight.rsr_score": oversight_rsr,
-                "gen_ai.system": "gemini_platform",
-                "gen_ai.operation.name": "invoke_agent",
-                "gen_ai.agent.name": "agent_gym_teacher",
-                "gen_ai.request.model": REASONING_MODEL,
-                "docubridge.finops.traffic_type": "agent_gym_eval",
-                "gen_ai.usage.input_tokens": in_tok,
-                "gen_ai.usage.output_tokens": out_tok,
-            },
-        ) as span:
+        span_attrs: dict[str, Any] = {
+            "docubridge.zone": "6_knowledge_catalog_agent_gym",
+            "docubridge.source_zone": SignalSourceZone.REVIEW_QUARANTINE.value,
+            "docubridge.entity_id": entity_id,
+            "docubridge.doc_id": doc_id,
+            "docubridge.doctype": doctype,
+            "docubridge.issuer": issuer,
+            "docubridge.field_path": field_path,
+            "docubridge.actor_principal": actor_principal,
+            "docubridge.actor_role": actor_role,
+            "docubridge.citation_verified": citation_verified,
+            "docubridge.review_dwell_ms": review_dwell_ms,
+            "docubridge.oversight_rsr_score": oversight_rsr,
+            "docubridge.oversight.rsr_score": oversight_rsr,
+            "gen_ai.system": "gemini_platform",
+            "gen_ai.operation.name": "invoke_agent",
+            "gen_ai.agent.name": "agent_gym_teacher",
+            "docubridge.finops.traffic_type": "agent_gym_eval",
+        }
+        if llm_text is not None:
+            span_attrs["gen_ai.request.model"] = REASONING_MODEL
+        if in_tok is not None:
+            span_attrs["gen_ai.usage.input_tokens"] = in_tok
+        if out_tok is not None:
+            span_attrs["gen_ai.usage.output_tokens"] = out_tok
+        with trace_step("docubridge.agent_gym.distill_signal", span_attrs) as span:
             signal = ExpertFeedbackSignal(
                 signal_id=f"sig-q-{uuid.uuid4().hex[:8]}",
                 source_zone=SignalSourceZone.REVIEW_QUARANTINE,
@@ -324,42 +321,41 @@ class AgentGymEngine(
             review_dwell_ms=resolved_dwell,
             pre_committed=resolved_pre_commit,
         )
-        _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
+        llm_text, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
             prompt=(
                 f"Distill TribalKnowledgeRule from A2UI inbox audit: "
                 f"entity={audit_record.entity_id} issuer={issuer} doctype={doctype} "
                 f"decision={audit_record.decision} notes={audit_record.notes}"
             ),
-            default_in_tokens=1850,
-            default_out_tokens=420,
         )
-        with trace_step(
-            "docubridge.agent_gym.distill_signal",
-            {
-                "docubridge.zone": "6_knowledge_catalog_agent_gym",
-                "docubridge.source_zone": SignalSourceZone.GEMINI_APP_INBOX.value,
-                "docubridge.entity_id": audit_record.entity_id,
-                "docubridge.item_id": audit_record.item_id,
-                "docubridge.audit_id": audit_record.audit_id,
-                "docubridge.doc_id": doc_id,
-                "docubridge.doctype": doctype,
-                "docubridge.issuer": issuer,
-                "docubridge.actor_principal": audit_record.actor_principal,
-                "docubridge.actor_role": audit_record.actor_role,
-                "docubridge.citation_verified": resolved_citation,
-                "docubridge.review_dwell_ms": resolved_dwell,
-                "docubridge.pre_committed": resolved_pre_commit,
-                "docubridge.oversight_rsr_score": oversight_rsr,
-                "docubridge.oversight.rsr_score": oversight_rsr,
-                "gen_ai.system": "gemini_platform",
-                "gen_ai.operation.name": "invoke_agent",
-                "gen_ai.agent.name": "agent_gym_teacher",
-                "gen_ai.request.model": REASONING_MODEL,
-                "docubridge.finops.traffic_type": "agent_gym_eval",
-                "gen_ai.usage.input_tokens": in_tok,
-                "gen_ai.usage.output_tokens": out_tok,
-            },
-        ) as span:
+        span_attrs: dict[str, Any] = {
+            "docubridge.zone": "6_knowledge_catalog_agent_gym",
+            "docubridge.source_zone": SignalSourceZone.GEMINI_APP_INBOX.value,
+            "docubridge.entity_id": audit_record.entity_id,
+            "docubridge.item_id": audit_record.item_id,
+            "docubridge.audit_id": audit_record.audit_id,
+            "docubridge.doc_id": doc_id,
+            "docubridge.doctype": doctype,
+            "docubridge.issuer": issuer,
+            "docubridge.actor_principal": audit_record.actor_principal,
+            "docubridge.actor_role": audit_record.actor_role,
+            "docubridge.citation_verified": resolved_citation,
+            "docubridge.review_dwell_ms": resolved_dwell,
+            "docubridge.pre_committed": resolved_pre_commit,
+            "docubridge.oversight_rsr_score": oversight_rsr,
+            "docubridge.oversight.rsr_score": oversight_rsr,
+            "gen_ai.system": "gemini_platform",
+            "gen_ai.operation.name": "invoke_agent",
+            "gen_ai.agent.name": "agent_gym_teacher",
+            "docubridge.finops.traffic_type": "agent_gym_eval",
+        }
+        if llm_text is not None:
+            span_attrs["gen_ai.request.model"] = REASONING_MODEL
+        if in_tok is not None:
+            span_attrs["gen_ai.usage.input_tokens"] = in_tok
+        if out_tok is not None:
+            span_attrs["gen_ai.usage.output_tokens"] = out_tok
+        with trace_step("docubridge.agent_gym.distill_signal", span_attrs) as span:
             if audit_record.patches:
                 first_patch = audit_record.patches[0]
                 resolved_path = field_path or first_patch.path.lstrip("/")
@@ -487,6 +483,7 @@ class AgentGymEngine(
             field_path=signal.field_path,
             title=title,
             instruction=instruction,
+            before_value=signal.before_value,
             canonical_target=canonical_target,
             alias_variants=alias_variants,
             distinct_entities=distinct_entities,
@@ -520,10 +517,7 @@ class AgentGymEngine(
             results = [r for r in results if r.status == status]
         if issuer is not None:
             results = [
-                r
-                for r in results
-                if fnmatch.fnmatchcase(issuer.lower(), r.issuer_pattern.lower())
-                or r.issuer_pattern == "*"
+                r for r in results if issuer_matches_pattern(issuer, r.issuer_pattern)
             ]
         if doctype is not None:
             results = [r for r in results if r.doctype in ("*", doctype)]
@@ -533,10 +527,11 @@ class AgentGymEngine(
         self, *, issuer: str | None = None, doctype: str | None = None
     ) -> list[TribalKnowledgeRule]:
         """Return promoted Stage 1 extraction hints for `(issuer, doctype)`."""
+        resolved_issuer = "" if issuer == "*" else issuer
         return self.list_rules(
             category=TribalRuleCategory.EXTRACTION_HINT,
             status=TribalRuleStatus.PROMOTED,
-            issuer=None if issuer in (None, "*") else issuer,
+            issuer=resolved_issuer,
             doctype=None if doctype in (None, "*") else doctype,
         )
 

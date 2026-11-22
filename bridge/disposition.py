@@ -323,6 +323,15 @@ def dispose(  # noqa: PLR0913  # public 4-signal disposition gate contract
     Returns:
         DispositionVerdict with disposition, gate, reason_code, and message.
     """
+    if (
+        isinstance(overall_confidence, bool)
+        or not math.isfinite(overall_confidence)
+        or not (0.0 <= overall_confidence <= 1.0)
+    ):
+        raise ValueError(
+            f"overall_confidence must be a finite float in [0.0, 1.0], got {overall_confidence!r}"
+        )
+
     effective_max_age = (
         max_age_days if max_age_days is not None else thresholds.max_age_days
     )

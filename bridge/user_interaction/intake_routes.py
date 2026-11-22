@@ -193,7 +193,6 @@ def register_intake_and_demo_routes(  # noqa: PLR0913 - public FastAPI route reg
                 owner=compound.user.subject
             )
             rec_at = body.recorded_at or datetime.now(UTC)
-            eff_from = body.effective_from or rec_at
             initial_disp = (
                 Disposition.pending
                 if body.status in ("parked", "pending")
@@ -215,21 +214,49 @@ def register_intake_and_demo_routes(  # noqa: PLR0913 - public FastAPI route reg
                 key_fields={k: str(v) for k, v in body.key_fields.items()},
                 source_anchors=body.source_anchors,
                 recorded_at=rec_at,
-                effective_from=eff_from,
+                effective_from=body.effective_from,
             )
+            if body.content_base64 is not None:
+                import base64
+                import binascii
+
+                try:
+                    raw_bytes = base64.b64decode(body.content_base64, validate=True)
+                except (binascii.Error, ValueError) as exc:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Invalid content_base64 payload: {exc}",
+                    ) from exc
+                if not raw_bytes:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="content_base64 decoded to empty bytes",
+                    )
+                resolved_filename = body.filename or f"{body.doc_id}.pdf"
+                resolved_mime = "application/pdf"
+            else:
+                import json
+
+                raw_bytes = json.dumps(
+                    body.model_dump(mode="json", exclude={"content_base64"}),
+                    sort_keys=True,
+                ).encode("utf-8")
+                resolved_filename = body.filename or f"{body.doc_id}.json"
+                resolved_mime = "application/json"
             res = ingest_accepted_submission(
                 entry,
                 entity_id=body.entity_id,
                 context_id=body.context_id,
-                raw_document_bytes=f"%PDF-1.7 {body.doc_id} {body.doctype}".encode(),
-                filename=body.filename or f"{body.doc_id}.pdf",
+                raw_document_bytes=raw_bytes,
+                filename=resolved_filename,
+                mime_type=resolved_mime,
                 version=body.version,
                 source_mode="CUSTOM_WEB_PORTAL",
                 operational_store=store,
                 knowledge_catalog=catalog,
                 agent_gym=gym,
                 recorded_at=rec_at,
-                effective_from=eff_from,
+                effective_from=body.effective_from,
             )
             if res.entry.disposition is Disposition.accepted:
                 close_outcome(

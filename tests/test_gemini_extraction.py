@@ -931,3 +931,23 @@ def test_parse_extraction_rejects_an_unknown_review_reason():
 
     with pytest.raises(Exception):  # noqa: B017 - pydantic ValidationError
         _parse_extraction(json.dumps(payload))
+
+
+async def test_finalize_result_does_not_swallow_hints_type_error():
+    """An internal TypeError inside scoped get_extraction_hints propagates (P13-10)."""
+
+    class _BuggyGym:
+        def get_extraction_hints(
+            self, *, doctype: str | None = None, issuer: str | None = None
+        ):
+            if doctype is not None:
+                raise TypeError("internal gym bug")
+            return []
+
+    extractor = GeminiExtractor(
+        client=_FakeClient(_CANNED_GOV_ID),
+        resolver=lambda name: (b"<svg/>", "image/svg+xml"),
+        agent_gym=_BuggyGym(),
+    )
+    with pytest.raises(TypeError, match="internal gym bug"):
+        await extractor.extract("gov-id-clean")

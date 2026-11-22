@@ -473,17 +473,38 @@ class GeminiExtractor(GeminiWindowMixin):
         revision: object = None,
     ) -> ExtractionResult:
         """Apply Stage-B deterministic derivations and matching Agent Gym hints."""
+        import inspect
+
         active_hints: list[object] = []
         get_hints = getattr(self._agent_gym, "get_extraction_hints", None)
         if callable(get_hints):
+            accepts_scope = False
             try:
+                params: dict[str, inspect.Parameter] = dict(
+                    inspect.signature(get_hints).parameters
+                )
+            except (TypeError, ValueError):
+                params = {}
+            if any(
+                p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+            ) or all(
+                (p := params.get(name)) is not None
+                and p.kind
+                in (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+                for name in ("doctype", "issuer")
+            ):
+                accepts_scope = True
+            if accepts_scope:
                 active_hints = list(
                     get_hints(
                         doctype=result.fields.doctype,
-                        issuer=result.fields.issuer or "*",
+                        issuer=result.fields.issuer or "",
                     )
                 )
-            except TypeError:
+            else:
                 active_hints = list(get_hints())
         rev_id = ontology_revision or (
             self.last_pinned_ontology_revision_id if revision is not None else None

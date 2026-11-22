@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from bridge.classification import canonicalize_issuer
+from bridge.classification import canonicalize_issuer, issuer_comparison_key
 from bridge.strategy.loader import load_strategy
 from bridge.strategy.models import CollectionStrategy, StrategyAlternative, StrategyRule
 from contract.enums import Disposition, RequirementStatus
@@ -59,6 +59,10 @@ def _resolve_as_of(as_of: date | datetime | None) -> date:
 
 def _canonical_issuer(entry: LedgerEntry) -> str:
     return canonicalize_issuer(entry.issuer) or ""
+
+
+def _issuer_key(entry: LedgerEntry) -> str:
+    return issuer_comparison_key(entry.issuer) or ""
 
 
 def _rule_directly_matches_requirement(rule: StrategyRule, req: Requirement) -> bool:
@@ -198,16 +202,25 @@ def _check_recency(
 
 
 def _check_distinct_issuer(
-    rule: StrategyRule, entry: LedgerEntry, forbidden_issuers: set[str]
+    rule: StrategyRule,
+    entry: LedgerEntry,
+    forbidden_issuers: set[str],
+    unverifiable_counterparts: Sequence[str] = (),
 ) -> str | None:
     if not rule.distinct_issuer_from:
         return None
-    issuer = _canonical_issuer(entry)
-    if not issuer:
-        return f"doc {entry.doc_id} missing canonical issuer for cross-document independence check"
-    if issuer in forbidden_issuers:
+    if unverifiable_counterparts:
+        missing = ", ".join(sorted(set(unverifiable_counterparts)))
         return (
-            f"doc {entry.doc_id} issuer '{issuer}' collides with "
+            f"cannot verify cross-document independence for doc {entry.doc_id}: "
+            f"counterpart {missing} missing canonical issuer"
+        )
+    issuer_key = _issuer_key(entry)
+    if not issuer_key:
+        return f"doc {entry.doc_id} missing canonical issuer for cross-document independence check"
+    if issuer_key in forbidden_issuers:
+        return (
+            f"doc {entry.doc_id} issuer '{_canonical_issuer(entry)}' collides with "
             f"{', '.join(rule.distinct_issuer_from)}"
         )
     return None
@@ -219,12 +232,15 @@ def _check_entry_eligibility(
     *,
     ref_date: date,
     forbidden_issuers: set[str],
+    unverifiable_counterparts: Sequence[str] = (),
 ) -> tuple[bool, str]:
     for reason in (
         _check_required_fields(rule, entry),
         _check_not_expired(rule, entry, ref_date),
         _check_recency(rule, entry, ref_date),
-        _check_distinct_issuer(rule, entry, forbidden_issuers),
+        _check_distinct_issuer(
+            rule, entry, forbidden_issuers, unverifiable_counterparts
+        ),
     ):
         if reason is not None:
             return False, reason
@@ -237,10 +253,10 @@ def _dedupe_issuers(rule: StrategyRule, group: list[LedgerEntry]) -> list[Ledger
     seen: set[str] = set()
     picked: list[LedgerEntry] = []
     for entry in group:
-        issuer = _canonical_issuer(entry)
-        if not issuer or issuer in seen:
+        issuer_key = _issuer_key(entry)
+        if not issuer_key or issuer_key in seen:
             continue
-        seen.add(issuer)
+        seen.add(issuer_key)
         picked.append(entry)
     return picked
 
@@ -428,17 +444,28 @@ def _evaluate_single_rule(
     if short_circuit is not None:
         return short_circuit
 
-    forbidden_issuers = {
-        iss
-        for other_dt in rule.distinct_issuer_from
-        for other_entry in ctx.accepted_by_doctype.get(other_dt, ())
-        if (iss := _canonical_issuer(other_entry))
-    }
+    forbidden_issuers: set[str] = set()
+    unverifiable_counterparts: list[str] = []
+    for other_dt in rule.distinct_issuer_from:
+        other_entries = ctx.accepted_by_doctype.get(other_dt, ())
+        if not other_entries:
+            unverifiable_counterparts.append(other_dt)
+            continue
+        for other_entry in other_entries:
+            iss_key = _issuer_key(other_entry)
+            if not iss_key:
+                unverifiable_counterparts.append(other_dt)
+            else:
+                forbidden_issuers.add(iss_key)
     eligible: list[LedgerEntry] = []
     disqualified_notes: list[str] = []
     for entry in ctx.accepted_by_doctype.get(rule.doctype, []):
         ok, why = _check_entry_eligibility(
-            rule, entry, ref_date=ctx.ref_date, forbidden_issuers=forbidden_issuers
+            rule,
+            entry,
+            ref_date=ctx.ref_date,
+            forbidden_issuers=forbidden_issuers,
+            unverifiable_counterparts=unverifiable_counterparts,
         )
         if ok:
             eligible.append(entry)

@@ -214,7 +214,7 @@ def test_validate_metric_query_accepts_certified_formulas_and_sql() -> None:
         "WITH active_facts AS ("
         "SELECT *, ROW_NUMBER() OVER ("
         "PARTITION BY entity_id, field_path "
-        "ORDER BY source_priority DESC, effective_from DESC, recorded_at DESC, version DESC"
+        "ORDER BY effective_from DESC, source_priority DESC, recorded_at DESC, version DESC"
         ") AS rn FROM bq_operational_facts_iceberg "
         "WHERE recorded_at <= TIMESTAMP('2026-11-01T00:00:00Z') "
         "AND effective_from <= TIMESTAMP('2026-11-01T00:00:00Z')"

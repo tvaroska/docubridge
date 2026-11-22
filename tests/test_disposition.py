@@ -338,3 +338,209 @@ def test_empty_label_space_rejects_every_doctype():
         "The document type 'passport' is not supported for this process. "
         "Accepted types: gov-id."
     )
+
+
+def test_gate_refuses_nan_and_out_of_range_confidence():
+    """P13-6: dispose(), Signals, and ExtractionResult refuse NaN, Inf, and out-of-range confidence."""
+    import pytest
+    from pydantic import ValidationError
+
+    from bridge.signals import Signals
+    from contract.extraction import ExtractionFields, ExtractionResult
+
+    for bad in (float("nan"), float("inf"), float("-inf"), -0.01, 1.01, 60.0):
+        with pytest.raises(ValueError, match="overall_confidence"):
+            dispose(
+                doctype="gov-id",
+                candidate_doctypes=["gov-id"],
+                legible=True,
+                overall_confidence=bad,
+                flagged_fields=[],
+            )
+        with pytest.raises(ValidationError):
+            Signals(
+                doctype="gov-id",
+                candidate_doctypes=["gov-id"],
+                legible=True,
+                overall_confidence=bad,
+            )
+        with pytest.raises(ValidationError):
+            ExtractionResult(
+                fields=ExtractionFields(doctype="gov-id"),
+                overall_confidence=bad,
+                legible=True,
+            )
+
+    with pytest.raises(ValidationError):
+        ExtractionResult.model_validate(
+            {
+                "fields": {"doctype": "gov-id"},
+                "overall_confidence": "NaN",
+                "legible": True,
+            }
+        )
+
+
+def test_freshness_is_inclusive_at_max_age():
+    """P13-15: document_age_days == max_age_days is accepted; max_age_days + 1 is stale_document."""
+    from datetime import date
+
+    from bridge.signals import dispose_signals, signals_from_result
+    from contract.extraction import ExtractionFields, ExtractionResult
+
+    at_limit = dispose(
+        doctype="utility-bill",
+        candidate_doctypes=["utility-bill"],
+        legible=True,
+        overall_confidence=0.96,
+        flagged_fields=[],
+        document_age_days=90,
+        max_age_days=90,
+    )
+    assert at_limit.disposition is Disposition.accepted
+    assert at_limit.gate is Gate.auto_approve
+
+    over_limit = dispose(
+        doctype="utility-bill",
+        candidate_doctypes=["utility-bill"],
+        legible=True,
+        overall_confidence=0.96,
+        flagged_fields=[],
+        document_age_days=91,
+        max_age_days=90,
+    )
+    assert over_limit.disposition is Disposition.rejected
+    assert over_limit.gate is Gate.resubmit
+    assert over_limit.reason_code == "stale_document"
+
+    # Producer check: signals_from_result evaluates utility-bill validation.yaml within_days=90
+    as_of = date(2026, 8, 1)
+    boundary_result = ExtractionResult(
+        fields=ExtractionFields(
+            doctype="utility-bill",
+            issuer="PowerCo",
+            key_fields={
+                "name": "Jordan Lee",
+                "service_address": "14 Elm Row, Springfield",
+                "statement_date": "2026-05-03",  # exactly 90 days before 2026-08-01
+            },
+        ),
+        overall_confidence=0.97,
+        legible=True,
+    )
+    sig_ok = signals_from_result(
+        boundary_result, candidate_doctypes=["utility-bill"], as_of=as_of
+    )
+    assert sig_ok.document_age_days == 90
+    assert sig_ok.max_age_days == 90
+    assert sig_ok.freshness_ok is True
+    assert dispose_signals(sig_ok).gate is Gate.auto_approve
+
+    stale_result = ExtractionResult(
+        fields=ExtractionFields(
+            doctype="utility-bill",
+            issuer="PowerCo",
+            key_fields={
+                "name": "Jordan Lee",
+                "service_address": "14 Elm Row, Springfield",
+                "statement_date": "2026-05-02",  # 91 days before 2026-08-01
+            },
+        ),
+        overall_confidence=0.97,
+        legible=True,
+    )
+    sig_stale = signals_from_result(
+        stale_result, candidate_doctypes=["utility-bill"], as_of=as_of
+    )
+    assert sig_stale.document_age_days == 91
+    assert sig_stale.max_age_days == 90
+    assert sig_stale.freshness_ok is False
+    stale_v = dispose_signals(sig_stale)
+    assert stale_v.disposition is Disposition.rejected
+    assert stale_v.gate is Gate.resubmit
+    assert stale_v.reason_code == "stale_document"
+
+
+def test_failed_rules_route_to_hitl():
+    """P13-15: declared validation.yaml failures populate failed_rules and route to hitl_review."""
+    from datetime import date
+
+    from bridge.signals import dispose_signals, signals_from_result
+    from contract.extraction import ExtractionFields, ExtractionResult
+
+    direct = dispose(
+        doctype="gov-id",
+        candidate_doctypes=["gov-id"],
+        legible=True,
+        overall_confidence=0.98,
+        flagged_fields=[],
+        failed_rules=["not_expired"],
+    )
+    assert direct.disposition is Disposition.pending
+    assert direct.gate is Gate.hitl_review
+    assert direct.reason_code == "corroboration_required"
+
+    # Expired unflagged gov-id fails validation.yaml date_in_future -> corroboration_required
+    expired_gov_id = ExtractionResult(
+        fields=ExtractionFields(
+            doctype="gov-id",
+            key_fields={
+                "name": "Jordan Lee",
+                "address": "14 Elm Row, Springfield",
+                "doc_number": "DL-6281035",
+                "issuing_authority": "State DMV",
+                "expiry": "2020-01-01",
+            },
+        ),
+        overall_confidence=0.97,
+        legible=True,
+        flagged_fields=[],
+    )
+    sig_exp = signals_from_result(
+        expired_gov_id,
+        candidate_doctypes=["gov-id"],
+        as_of=date(2026, 8, 1),
+    )
+    assert "not_expired" in sig_exp.failed_rules
+    assert sig_exp.corroboration_ok is False
+    verdict_exp = dispose_signals(sig_exp)
+    assert verdict_exp.disposition is Disposition.pending
+    assert verdict_exp.gate is Gate.hitl_review
+    assert verdict_exp.reason_code == "corroboration_required"
+
+    # Missing required key_field fails all_required_present
+    incomplete_gov_id = ExtractionResult(
+        fields=ExtractionFields(
+            doctype="gov-id",
+            key_fields={
+                "name": "Jordan Lee",
+                "expiry": "2030-01-01",
+            },
+        ),
+        overall_confidence=0.97,
+        legible=True,
+        flagged_fields=[],
+    )
+    sig_inc = signals_from_result(
+        incomplete_gov_id,
+        candidate_doctypes=["gov-id"],
+        as_of=date(2026, 8, 1),
+    )
+    assert "complete_fields" in sig_inc.failed_rules
+    assert dispose_signals(sig_inc).reason_code == "corroboration_required"
+
+    # Empty cell in benefits-quote rates table fails rate_amount_present
+    bad_rates = ExtractionResult(
+        fields=ExtractionFields(
+            doctype="benefits-quote",
+            issuer="carrier-a",
+            key_fields={"effective_date": "2026-01-01", "currency": "USD"},
+            tables={"rates": [{"amount": "", "frequency": "MONTHLY"}]},
+        ),
+        overall_confidence=0.97,
+        legible=True,
+        flagged_fields=[],
+    )
+    sig_rates = signals_from_result(bad_rates, candidate_doctypes=["benefits-quote"])
+    assert "rate_amount_present" in sig_rates.failed_rules
+    assert dispose_signals(sig_rates).reason_code == "corroboration_required"

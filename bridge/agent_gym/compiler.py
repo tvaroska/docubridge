@@ -40,9 +40,7 @@ class SkillCompilerMixin:
         self,
         *,
         prompt: str,
-        default_in_tokens: int,
-        default_out_tokens: int,
-    ) -> tuple[str | None, int, int]:
+    ) -> tuple[str | None, int | None, int | None]:
         """Invoke the teacher/reasoning model when live Gemini calls are enabled (implemented by AgentGymEngine)."""
         raise NotImplementedError
 
@@ -176,29 +174,28 @@ class SkillCompilerMixin:
         `SKILL.md` package via `gemini-4-argon` and register an immutable `SkillRevision`
         in Gemini platform Agent Registry / Skill Registry so `gemini-3.8-flash` executes
         without prompt bloat."""
-        _, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
+        llm_text, in_tok, out_tok = self._invoke_reasoning_model_if_enabled(
             prompt=f"Compile promoted TribalKnowledgeRules for doctype='{doctype}' issuer='{issuer_pattern}' into SKILL.md.",
-            default_in_tokens=2400,
-            default_out_tokens=510,
         )
-        with trace_step(
-            "docubridge.agent_gym.compile_skill",
-            {
-                "docubridge.zone": "6_knowledge_catalog_agent_gym",
-                "docubridge.doctype": doctype,
-                "docubridge.issuer_pattern": issuer_pattern,
-                "skill_id": doctype,
-                "gen_ai.system": "gemini_platform",
-                "gen_ai.operation.name": "compile_skill",
-                "gen_ai.agent.name": "harness_evolve_compiler",
-                "gen_ai.request.model": REASONING_MODEL,
-                "gen_ai.response.model": REASONING_MODEL,
-                "docubridge.finops.traffic_type": "agent_gym_eval",
-                "finops.traffic_type": "agent_gym_eval",
-                "gen_ai.usage.input_tokens": in_tok,
-                "gen_ai.usage.output_tokens": out_tok,
-            },
-        ) as span:
+        compile_attrs: dict[str, Any] = {
+            "docubridge.zone": "6_knowledge_catalog_agent_gym",
+            "docubridge.doctype": doctype,
+            "docubridge.issuer_pattern": issuer_pattern,
+            "skill_id": doctype,
+            "gen_ai.system": "gemini_platform",
+            "gen_ai.operation.name": "compile_skill",
+            "gen_ai.agent.name": "harness_evolve_compiler",
+            "docubridge.finops.traffic_type": "agent_gym_eval",
+            "finops.traffic_type": "agent_gym_eval",
+        }
+        if llm_text is not None:
+            compile_attrs["gen_ai.request.model"] = REASONING_MODEL
+            compile_attrs["gen_ai.response.model"] = REASONING_MODEL
+        if in_tok is not None:
+            compile_attrs["gen_ai.usage.input_tokens"] = in_tok
+        if out_tok is not None:
+            compile_attrs["gen_ai.usage.output_tokens"] = out_tok
+        with trace_step("docubridge.agent_gym.compile_skill", compile_attrs) as span:
             from bridge.agent_gym.skill_promotion import (
                 render_compiled_skill_markdown,
                 resolve_compiled_schema_json,
@@ -641,8 +638,8 @@ class SkillCompilerMixin:
         ai_value: str,
         human_value: str,
         risk_level: RiskTier = "MEDIUM",
-        citation_verified: bool = True,
-        review_dwell_ms: int = 4200,
+        citation_verified: bool = False,
+        review_dwell_ms: int = 0,
     ) -> tuple[ShadowComparisonRecord, ProgrammableTrustPolicy]:
         """Compare AI output vs. human ground truth; track consecutive matches or auto-demote on drift."""
         oversight_rsr = self._compute_oversight_rsr(

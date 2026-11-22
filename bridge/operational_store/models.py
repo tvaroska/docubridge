@@ -40,14 +40,65 @@ _MONEY_KEYS = frozenset(
     }
 )
 
+_CURRENCY_SYMBOL_TO_ISO: dict[str, str] = {
+    "$": "USD",
+    "€": "EUR",
+    "£": "GBP",
+    "¥": "JPY",
+}
+
+_ISO_CURRENCY_CODES: frozenset[str] = frozenset(
+    {
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY",
+        "CHF",
+        "CAD",
+        "AUD",
+        "NZD",
+        "MXN",
+        "SEK",
+        "NOK",
+        "DKK",
+        "SGD",
+        "HKD",
+        "CNY",
+        "INR",
+        "BRL",
+        "ZAR",
+        "PLN",
+        "CZK",
+        "KRW",
+        "TWD",
+        "AED",
+        "SAR",
+        "ILS",
+        "TRY",
+        "CLP",
+        "COP",
+        "PEN",
+    }
+)
+
+_DIGITS_PATTERN = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+
+_PARENS_MONEY_RE = re.compile(
+    r"^(?:(?P<outer_iso>[A-Z]{3})\s*)?"
+    r"(?P<outer_sym>[$€£¥])?\s*"
+    r"\((?P<inner>[^()]+)\)"
+    r"(?:\s+(?P<trail_iso>[A-Z]{3}))?$"
+)
+
 _NUMBER_RE = re.compile(
-    r"(?P<outer_sign>[-+])?"
-    r"(?:(?P<iso>[A-Za-z]{3})\s+)?"
-    r"(?P<sym>[$€£¥])?"
-    r"\s*"
-    r"(?P<inner_sign>[-+])?"
-    r"(?P<digits>\d[\d,]*(?:\.\d+)?)"
-    r"(?P<exp>[eE][-+]?\d+)?"
+    r"^(?P<outer_sign>[-+])?\s*"
+    r"(?:(?P<iso>[A-Z]{3})(?:\s+|(?=[$€£¥])))?"
+    r"(?P<sym>[$€£¥])?\s*"
+    r"(?P<inner_sign>[-+])?\s*"
+    rf"(?P<digits>{_DIGITS_PATTERN})"
+    r"(?:(?P<exp>[eE][-+]?\d+)|(?:\s*(?P<mult>(?:BILLION|MILLION|THOUSAND|BN|MM|B|M|K|billion|million|thousand|bn|mm|b|m|k))))?"
+    r"(?P<trail_sign>-)?"
+    r"(?:\s+(?P<trail_iso>[A-Z]{3}))?$"
 )
 
 

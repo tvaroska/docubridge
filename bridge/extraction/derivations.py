@@ -24,6 +24,15 @@ from contract.extraction import (
 
 _PCT_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*%\s*$")
 
+PAID_IN_FULL_STATUS_VALUES: frozenset[str] = frozenset(
+    {
+        "PAID_IN_FULL",
+        "PAID IN FULL",
+        "WAIVER_RECOMMENDED_PAID_IN_FULL_WIRE",
+        "WAIVED_BY_PAID_IN_FULL_WIRE",
+    }
+)
+
 
 def _receipt_hash(rule_id: str, inputs: dict[str, Any], output: str) -> str:
     payload = json.dumps(
@@ -42,25 +51,33 @@ def _apply_extraction_hints(
     for hint in active_hints:
         field_path = getattr(hint, "field_path", "") or ""
         canonical_target = getattr(hint, "canonical_target", None)
+        before_value = getattr(hint, "before_value", None)
         rule_id = getattr(hint, "rule_id", "") or ""
         if not (field_path and canonical_target):
             continue
-        raw_before = key_fields.get(field_path, "")
-        if raw_before != canonical_target:
-            key_fields[field_path] = canonical_target
-            rcpt = _receipt_hash(
-                rule_id or "extraction-hint",
-                {"field_path": field_path, "raw_value": raw_before},
-                canonical_target,
-            )
-            derivations[field_path] = FieldDerivation(
-                raw_value=raw_before,
-                polarity="EXTRACTION_HINT_CANONICAL",
-                normalized_value=canonical_target,
-                derivation_rule=rule_id or "extraction-hint",
-                derived_from=[field_path],
-                receipt_id=rcpt,
-            )
+        if not isinstance(before_value, str) or not before_value.strip():
+            continue
+        if field_path not in key_fields:
+            continue
+        raw_before = key_fields[field_path]
+        if raw_before.strip() != before_value.strip():
+            continue
+        if raw_before == canonical_target:
+            continue
+        key_fields[field_path] = canonical_target
+        rcpt = _receipt_hash(
+            rule_id or "extraction-hint",
+            {"field_path": field_path, "raw_value": raw_before},
+            canonical_target,
+        )
+        derivations[field_path] = FieldDerivation(
+            raw_value=raw_before,
+            polarity="EXTRACTION_HINT_CANONICAL",
+            normalized_value=canonical_target,
+            derivation_rule=rule_id or "extraction-hint",
+            derived_from=[field_path],
+            receipt_id=rcpt,
+        )
         if rule_id and rule_id not in applied_rule_ids:
             applied_rule_ids.append(rule_id)
     return applied_rule_ids
@@ -104,25 +121,26 @@ def _apply_coinsurance_inversion(
 def _apply_paid_in_full_balance(
     key_fields: dict[str, str], derivations: dict[str, FieldDerivation]
 ) -> None:
-    wire_ref = (
-        key_fields.get("wire_reference", "")
-        or key_fields.get("payoff_waiver_status", "")
-        or ""
-    )
-    if not (
-        ("PAID IN FULL" in wire_ref.upper() or "paid_in_full" in wire_ref.lower())
-        and "remaining_liability_balance" not in key_fields
-        and ("wire_reference" in key_fields or "payoff_waiver_status" in key_fields)
-    ):
+    if "remaining_liability_balance" in key_fields:
         return
-    source_key = (
-        "wire_reference" if "wire_reference" in key_fields else "payoff_waiver_status"
-    )
+    source_key: str | None = None
+    raw_status = ""
+    for candidate_key in ("payoff_waiver_status", "wire_reference"):
+        raw_val = key_fields.get(candidate_key)
+        if not raw_val:
+            continue
+        normalized = " ".join(raw_val.strip().upper().split())
+        if normalized in PAID_IN_FULL_STATUS_VALUES:
+            source_key = candidate_key
+            raw_status = raw_val
+            break
+    if source_key is None:
+        return
     rule_name = "paid-in-full-wire-zero-balance"
-    rcpt = _receipt_hash(rule_name, {source_key: wire_ref}, "$0.00")
+    rcpt = _receipt_hash(rule_name, {source_key: raw_status}, "$0.00")
     key_fields["remaining_liability_balance"] = "$0.00"
     derivations["remaining_liability_balance"] = FieldDerivation(
-        raw_value=wire_ref,
+        raw_value=raw_status,
         polarity="CONTRACTUAL_EXACT",
         normalized_value="$0.00",
         derivation_rule=rule_name,

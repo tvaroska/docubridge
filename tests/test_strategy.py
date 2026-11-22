@@ -817,3 +817,119 @@ def test_waiver_recommendation_does_not_cross_contaminate_sibling_caller_items()
     loc_out = next(r for r in verdict.outstanding if r.item == "Internal LOC #LOC-9012")
     assert loc_ev.waiver_recommended is True
     assert loc_out.reason_code == "waiver_recommended"
+
+
+def test_load_strategy_propagates_os_error(monkeypatch) -> None:
+    """Storage I/O errors in skill_registry propagate instead of looking like missing strategies (P13-10)."""
+    import bridge.ports as ports_mod
+
+    class _BrokenRegistry:
+        def read_asset(self, skill: str, rel: str) -> bytes:
+            raise OSError("storage backend timed out")
+
+    monkeypatch.setattr(ports_mod, "get_adapter", lambda port, mode: _BrokenRegistry())
+    with pytest.raises(OSError, match="storage backend timed out"):
+        load_strategy("address-proof", use_registry=True)
+
+
+def test_independence_fails_when_counterpart_issuer_missing() -> None:
+    """P13-8: distinct_issuer_from fails closed when counterpart issuer is missing and normalizes N.A. vs NA."""
+    strategy = load_strategy("commercial-loan-underwriting")
+    assert strategy is not None
+    as_of = date(2026, 8, 1)
+
+    # Counterpart cre-credit-agreement has no issuer -> independence cannot be verified -> False
+    entries_missing_issuer = _loan_entries()
+    entries_missing_issuer[0] = entries_missing_issuer[0].model_copy(
+        update={"issuer": None}
+    )
+    v_missing = evaluate_strategy(strategy, entries_missing_issuer, as_of=as_of)
+    assert v_missing.satisfied is False
+    app_ev = next(
+        e for e in v_missing.evidence if e.rule_id == "independent-mai-appraisal"
+    )
+    assert app_ev.satisfied is False
+
+    # Punctuation variants ("First National Bank, N.A." vs "First National Bank NA") collide
+    entries_punct = _loan_entries(appraisal_issuer="First National Bank NA")
+    entries_punct[0] = entries_punct[0].model_copy(
+        update={"issuer": "First National Bank, N.A."}
+    )
+    v_punct = evaluate_strategy(strategy, entries_punct, as_of=as_of)
+    assert v_punct.satisfied is False
+    app_ev_punct = next(
+        e for e in v_punct.evidence if e.rule_id == "independent-mai-appraisal"
+    )
+    assert app_ev_punct.satisfied is False
+
+    # Same punctuation collision inside distinct_issuers (utility-bill branch)
+    addr_strategy = load_strategy("address-proof")
+    assert addr_strategy is not None
+    v_bills_punct = evaluate_strategy(
+        addr_strategy,
+        [
+            _bill("b1", "First National Utility, N.A."),
+            _bill("b2", "First National Utility NA"),
+        ],
+        as_of=as_of,
+    )
+    assert v_bills_punct.satisfied is False
+
+
+def test_caller_forced_branch_blocks_any_of() -> None:
+    """P13-14: an any_of strategy stays unsatisfied when a caller forces the unfulfilled branch."""
+    strategy = load_strategy("address-proof")
+    assert strategy is not None
+    as_of = date(2026, 8, 1)
+
+    caller_reqs = RequirementsList(
+        requirements=[
+            Requirement(item="utility-bill", status=RequirementStatus.required)
+        ],
+        done=False,
+    )
+    v_blocked = evaluate_strategy(
+        strategy, [_gov_id()], caller_requirements=caller_reqs, as_of=as_of
+    )
+    assert v_blocked.satisfied is False
+    assert any(r.doctype_hint == "utility-bill" for r in v_blocked.outstanding)
+
+    v_full = evaluate_strategy(
+        strategy,
+        [_gov_id(), _bill("b1", "PowerCo"), _bill("b2", "AquaUtil")],
+        caller_requirements=caller_reqs,
+        as_of=as_of,
+    )
+    assert v_full.satisfied is True
+
+
+def test_recency_window_is_inclusive() -> None:
+    """P13-14: age_days == recency_days passes; age_days == recency_days + 1 fails as stale."""
+    strategy = load_strategy("address-proof")
+    assert strategy is not None
+    as_of = date(2026, 8, 1)
+
+    # 2026-05-03 is exactly 90 days before 2026-08-01 -> inclusive pass
+    v_at_90 = evaluate_strategy(
+        strategy,
+        [
+            _bill("b1", "PowerCo", statement_date="2026-05-03"),
+            _bill("b2", "AquaUtil", statement_date="2026-07-05"),
+        ],
+        as_of=as_of,
+    )
+    assert v_at_90.satisfied is True
+
+    # 2026-05-02 is 91 days before 2026-08-01 -> stale fail
+    v_at_91 = evaluate_strategy(
+        strategy,
+        [
+            _bill("b1", "PowerCo", statement_date="2026-05-02"),
+            _bill("b2", "AquaUtil", statement_date="2026-07-05"),
+        ],
+        as_of=as_of,
+    )
+    assert v_at_91.satisfied is False
+    assert "stale" in next(
+        e.reason for e in v_at_91.evidence if e.rule_id == "utility-bill-corroborated"
+    )

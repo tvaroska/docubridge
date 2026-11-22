@@ -60,7 +60,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from datetime import date
 from typing import TYPE_CHECKING
 
 from a2a.helpers import proto_helpers as ph
@@ -77,7 +78,7 @@ from google.adk.artifacts import BaseArtifactService
 from pydantic import ValidationError
 
 from bridge import patha
-from bridge.collect import Collector, project_collection_status
+from bridge.collect import Collector, DocumentSubmission, project_collection_status
 from bridge.edge.artifacts import (
     UNSCOPED_USER,
     Resolver,
@@ -174,6 +175,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         vault_store: AuditVaultStore | None = None,
         operational_store: OperationalStore | None = None,
         knowledge_catalog: KnowledgeCatalog | None = None,
+        freshness_clock: Callable[[], date] | None = None,
     ) -> None:
         # Default Collector lazily resolves the extraction port via get_adapter
         # (P1-4). Injectable for tests.
@@ -211,8 +213,13 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         # S0-arch-19: the RFP opener's board, bound once by build_a2a_app (bind_rfp);
         # a bare executor routes every CollectRequest to the Collector.
         self._rfp: RfpBoard | None = None
+        self._freshness_clock: Callable[[], date] | None = freshness_clock
         self._task_outcomes: dict[str, str] = {}
         self._caller_owned_tasks: set[str] = set()
+
+    def bind_freshness_clock(self, clock: Callable[[], date] | None) -> None:
+        """Bind a date clock so Collect evaluates ``validation.yaml`` ``within_days`` rules."""
+        self._freshness_clock = clock
 
     def bind_store(
         self, store: BaseArtifactService, *, base_url: str | None = None
@@ -409,6 +416,54 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         )
         return route, scope
 
+    async def _preresolve_submissions(
+        self, submissions: list[DocumentSubmission]
+    ) -> tuple[list[DocumentSubmission], dict[str, tuple[bytes, str]]]:
+        from bridge.extraction.resolve import maybe_await
+
+        resolved_payloads: dict[str, tuple[bytes, str]] = {}
+        enriched: list[DocumentSubmission] = []
+        for sub in submissions:
+            ref = sub.artifact
+            if ref is not None and ref.uri:
+                resolved = await maybe_await(self._resolver(ref.uri))
+                if resolved is not None:
+                    resolved_payloads[sub.doc_id] = resolved
+                    sub = sub.model_copy(update={"raw_bytes": resolved[0]})
+            enriched.append(sub)
+        return enriched, resolved_payloads
+
+    async def _run_collect(
+        self,
+        request: CollectRequest,
+        submissions: list[DocumentSubmission],
+        doctypes: list[str],
+        results_out: dict[str, ExtractionResult] | None,
+    ) -> ExchangeTurn:
+        if self._freshness_clock is not None:
+            as_of = self._freshness_clock()
+            if results_out is not None:
+                return await self._collector.collect(
+                    request,
+                    documents=submissions,
+                    candidate_doctypes=doctypes,
+                    results_out=results_out,
+                    as_of=as_of,
+                )
+            return await self._collector.collect(
+                request, documents=submissions, candidate_doctypes=doctypes, as_of=as_of
+            )
+        if results_out is not None:
+            return await self._collector.collect(
+                request,
+                documents=submissions,
+                candidate_doctypes=doctypes,
+                results_out=results_out,
+            )
+        return await self._collector.collect(
+            request, documents=submissions, candidate_doctypes=doctypes
+        )
+
     async def _execute_collect(
         self, context: RequestContext, event_queue: EventQueue, message: Message
     ) -> None:
@@ -424,7 +479,9 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         if self._rfp is not None and self._rfp.serves(request.process):
             await self._execute_rfp(context, event_queue, message, request)
             return
-        submissions = decode_submissions(message)
+        submissions, resolved_payloads = await self._preresolve_submissions(
+            decode_submissions(message)
+        )
         doctypes = self._candidate_doctypes(request.process)
 
         # R3 eligibility (D5): a hybrid edge with a leg, under a process whose skill
@@ -436,17 +493,9 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             and hitl_mode_for(request.process) == "park"
         )
         results: dict[str, ExtractionResult] = {}
-        if park:
-            turn = await self._collector.collect(
-                request,
-                documents=submissions,
-                candidate_doctypes=doctypes,
-                results_out=results,
-            )
-        else:
-            turn = await self._collector.collect(
-                request, documents=submissions, candidate_doctypes=doctypes
-            )
+        turn = await self._run_collect(
+            request, submissions, doctypes, results if park else None
+        )
 
         # ART-2: persist inbound bytes into the shared ArtifactService (versioned
         # per resubmission = ART-1), then rewrite each entry's ArtifactRef.uri to
@@ -455,12 +504,19 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         party = request.party or UNSCOPED_USER
         saved: dict[str, tuple[str, int]] = {}  # doc_id -> (filename, version)
         for sub in submissions:
+            pre = resolved_payloads.get(sub.doc_id)
+
+            def _pre_resolver(
+                _uri: str, _payload: tuple[bytes, str] | None = pre
+            ) -> tuple[bytes, str] | None:
+                return _payload
+
             version = await persist_submission(
                 self._store,
                 party=party,
                 context_id=turn.context_id,
                 submission=sub,
-                resolver=self._resolver,
+                resolver=_pre_resolver if pre is not None else self._resolver,
             )
             if version is not None:
                 saved[sub.doc_id] = (filename_for(sub), version)
@@ -597,7 +653,9 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
                     entry,
                     entity_id=entity_id,
                     context_id=context_id,
+                    raw_document_bytes=assertion.model_dump_json().encode("utf-8"),
                     filename=f"{doc_id}.json",
+                    mime_type="application/json",
                     source_mode="A2A_PATH_A",
                     vault_store=self._collector._vault_store,
                     operational_store=self._collector._operational_store,

@@ -177,7 +177,7 @@ def test_zone3_audit_vault_worm_lock_and_promotion_gate() -> None:
         filename="quote.pdf",
         version=1,
     )
-    assert rec1.retention_locked is True
+    assert rec1.retention_locked is False
     assert promoted.vault_uri == rec1.vault_uri
     assert promoted.source_anchors["premium"].artifact_uri == rec1.vault_uri
 
@@ -543,6 +543,7 @@ def test_best_practice_p0_stateless_gcp_vault_and_catalog_hydration(
             self.metadata: dict[str, str] | None = None
             self.data: bytes = b""
             self.content_type: str = "application/pdf"
+            self.retention: dict[str, str] | None = None
 
         def exists(self) -> bool:
             return bool(self.data)
@@ -558,7 +559,9 @@ def test_best_practice_p0_stateless_gcp_vault_and_catalog_hydration(
             if_generation_match: int | None = None,
         ) -> None:
             if if_generation_match == 0 and self.data:
-                raise RuntimeError("PreconditionFailed: generation match 0")
+                from google.api_core.exceptions import PreconditionFailed
+
+                raise PreconditionFailed("generation match 0")
             self.data = data
             self.content_type = content_type
 
@@ -592,10 +595,16 @@ def test_best_practice_p0_stateless_gcp_vault_and_catalog_hydration(
 
     shared_bucket = _FakeBucket()
     replica_a_vault = GcpAuditVaultStore(
-        "docubridge-audit-vault", client=_FakeClient(shared_bucket)
+        "docubridge-audit-vault",
+        retention_days=2555,
+        retention_mode="Locked",
+        client=_FakeClient(shared_bucket),
     )
     replica_b_vault = GcpAuditVaultStore(
-        "docubridge-audit-vault", client=_FakeClient(shared_bucket)
+        "docubridge-audit-vault",
+        retention_days=2555,
+        retention_mode="Locked",
+        client=_FakeClient(shared_bucket),
     )
 
     entry = _make_accepted_entry(doc_id="doc-stateless-1")
@@ -764,6 +773,7 @@ def test_best_practice_p0_live_collector_and_server_mounts() -> None:
                 DocumentSubmission(
                     doc_id="doc-live-1",
                     artifact_name="w9.pdf",
+                    raw_bytes=b"%PDF-1.7 live w9 document bytes",
                 )
             ],
             candidate_doctypes=["w9"],
@@ -1284,6 +1294,7 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
             entry,
             entity_id="SUB-ACME-001",
             context_id="ctx-acme",
+            raw_document_bytes=f"%PDF-1.7 {entry.doc_id}".encode(),
             vault_store=vault,
             operational_store=store,
             knowledge_catalog=catalog,
@@ -1292,6 +1303,7 @@ def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
         globex_quote,
         entity_id="SUB-GLOBEX-002",
         context_id="ctx-globex",
+        raw_document_bytes=b"%PDF-1.7 globex-quote",
         vault_store=vault,
         operational_store=store,
         knowledge_catalog=catalog,
@@ -1526,6 +1538,8 @@ def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> 
             "after_value": "$125,000.00",
             "expert_memo": "Read policy deductible from Schedule B p. 7 instead of cover summary.",
             "page_number": 7,
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     assert q_resp.status_code == 200
@@ -1536,9 +1550,9 @@ def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> 
     )
     assert q_resp.json()["candidate_rule"]["status"] == TribalRuleStatus.CANDIDATE.value
 
-    # Evaluate via Synthetic Stress Testing + Quality Report Card Gate -> auto-promotes
+    # Evaluate via Synthetic Stress Testing + Quality Report Card Gate -> promotes when requested
     eval_ext = client.post(
-        f"/v1/gym/rules/{ext_rule_id}/evaluate",
+        f"/v1/gym/rules/{ext_rule_id}/evaluate?auto_promote=true",
         headers=headers,
     )
     assert eval_ext.status_code == 200
@@ -1608,13 +1622,15 @@ def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> 
             "field_path": "issuer",
             "category": "entity_alias",
             "distinct_entities": ["Campala Syndicate 1183"],
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     assert distill_inb.status_code == 200
     alias_rule_id = distill_inb.json()["candidate_rule"]["rule_id"]
 
     eval_alias = client.post(
-        f"/v1/gym/rules/{alias_rule_id}/evaluate",
+        f"/v1/gym/rules/{alias_rule_id}/evaluate?auto_promote=true",
         headers=headers,
     )
     assert eval_alias.status_code == 200
@@ -1650,6 +1666,7 @@ def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> 
         e_campala_ltd,
         entity_id="SUB-CAMPALA-001",
         context_id="ctx-campala",
+        raw_document_bytes=b"%PDF-1.7 campala-ltd",
         vault_store=vault,
         operational_store=store,
         knowledge_catalog=catalog,
@@ -1659,6 +1676,7 @@ def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> 
         e_syndicate,
         entity_id="SUB-CAMPALA-001",
         context_id="ctx-campala",
+        raw_document_bytes=b"%PDF-1.7 campala-syndicate",
         vault_store=vault,
         operational_store=store,
         knowledge_catalog=catalog,
@@ -1682,11 +1700,15 @@ def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> 
             "after_value": "pre-highlight Schedule B p. 7",
             "expert_memo": "Always highlight deductible schedule page on broker view cards.",
             "category": "presentation_preference",
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     assert pres_q.status_code == 200
     pres_rule_id = pres_q.json()["candidate_rule"]["rule_id"]
-    client.post(f"/v1/gym/rules/{pres_rule_id}/evaluate", headers=headers)
+    client.post(
+        f"/v1/gym/rules/{pres_rule_id}/evaluate?auto_promote=true", headers=headers
+    )
 
     a2ui_resp = client.get(
         "/v1/a2ui/gemini_app/SUB-CAMPALA-001",
@@ -1710,6 +1732,8 @@ def test_agent_gym_example_of_one_distillation_stress_testing_and_3_layers() -> 
             "before_value": "$500,000.00",
             "after_value": "$510,000.00",
             "expert_memo": "Use override_decimal_math and approximate_sum in LLM.",
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     bad_rule_id = bad_q.json()["candidate_rule"]["rule_id"]
@@ -1774,6 +1798,8 @@ def test_agent_gym_programmable_trust_dial_and_instant_safety_dialback() -> None
             "ai_value": "$15,000,000.00",
             "human_value": "$15,000,000.00",
             "risk_level": "MEDIUM",
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     assert shd_resp.status_code == 200
@@ -1889,6 +1915,8 @@ def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
         actor_role="broker",
         category=TribalRuleCategory.ENTITY_ALIAS,
         distinct_entities=("Campala Syndicate 1183",),
+        citation_verified=True,
+        review_dwell_ms=4200,
     )
     report = cloud_run_gym.evaluate_candidate_rule(rule.rule_id, auto_promote=True)
     assert report.passed_gate is True
@@ -1902,6 +1930,8 @@ def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
         field_path="coverage_limit",
         ai_value="$15,000,000.00",
         human_value="$15,000,000.00",
+        citation_verified=True,
+        review_dwell_ms=4200,
     )
     cloud_run_gym.dial_trust_policy(
         "slice:aig:endorsement:MEDIUM",
@@ -2225,13 +2255,15 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
             "expert_memo": "Read origination fee from Schedule B p. 4 instead of cover summary.",
             "page_number": 4,
             "category": "extraction_hint",
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     assert distill_resp.status_code == 200
     banking_rule_id = distill_resp.json()["candidate_rule"]["rule_id"]
 
     eval_resp = client.post(
-        f"/v1/gym/rules/{banking_rule_id}/evaluate",
+        f"/v1/gym/rules/{banking_rule_id}/evaluate?auto_promote=true",
         headers=sr_headers,
     )
     assert eval_resp.status_code == 200
@@ -2260,12 +2292,14 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
             "expert_memo": "Normalize borrower legal suffix while keeping Meridian SPV II separate.",
             "category": TribalRuleCategory.ENTITY_ALIAS.value,
             "distinct_entities": ["Meridian SPV II"],
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     assert alias_resp.status_code == 200
     alias_rule_id = alias_resp.json()["candidate_rule"]["rule_id"]
     alias_eval = client.post(
-        f"/v1/gym/rules/{alias_rule_id}/evaluate", headers=sr_headers
+        f"/v1/gym/rules/{alias_rule_id}/evaluate?auto_promote=true", headers=sr_headers
     )
     assert alias_eval.status_code == 200
     assert alias_eval.json()["report_card"]["passed_gate"] is True
@@ -2288,6 +2322,8 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
             "before_value": "$45,000,000.00",
             "after_value": "$45,000,000.00",
             "expert_memo": "Use override_decimal_math and llm_calculate_total instead of Decimal.",
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     bad_rule_id = bad_math_resp.json()["candidate_rule"]["rule_id"]
@@ -2325,6 +2361,8 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
             "ai_value": "$100,000.00",
             "human_value": "$100,000.00",
             "risk_level": "MEDIUM",
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     assert shd5_resp.status_code == 200
@@ -2520,13 +2558,15 @@ def test_mortgage_underwriting_day2_payoff_and_telemetry_xray() -> None:
             "expert_memo": "TRID Closing Disclosure Page 3 Section A rate-lock extension addendum overrides base origination fee to $8,500.00.",
             "page_number": 3,
             "bounding_box": [0.11, 0.48, 0.86, 0.56],
+            "citation_verified": True,
+            "review_dwell_ms": 4200,
         },
     )
     assert distill_resp.status_code == 200
     mort_rule_id = distill_resp.json()["candidate_rule"]["rule_id"]
 
     eval_resp = client.post(
-        f"/v1/gym/rules/{mort_rule_id}/evaluate",
+        f"/v1/gym/rules/{mort_rule_id}/evaluate?auto_promote=true",
         headers=sr_headers,
     )
     assert eval_resp.status_code == 200
@@ -2639,6 +2679,23 @@ def test_multimodel_split_otel_genai_and_3tier_harness_evolve() -> None:
     catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
     inbox = InMemoryActionInboxStore()
     gym = InMemoryAgentGymEngine()
+
+    class _StubUsage:
+        prompt_token_count = 1200
+        candidates_token_count = 240
+
+    class _StubResponse:
+        text = "PASS"
+        usage_metadata = _StubUsage()
+
+    class _StubModels:
+        def generate_content(self, **_kwargs: object) -> _StubResponse:
+            return _StubResponse()
+
+    class _StubGenAiClient:
+        models = _StubModels()
+
+    gym._genai_client = _StubGenAiClient()  # type: ignore[attr-defined]
     app = build_user_interaction_app(
         operational_store=op_store,
         knowledge_catalog=catalog,
@@ -2733,6 +2790,7 @@ def test_multimodel_split_otel_genai_and_3tier_harness_evolve() -> None:
         _make_accepted_entry(doc_id="doc-explicit-tokens-1"),
         entity_id="LOAN-MERIDIAN-001",
         context_id="ctx-explicit-tokens-1",
+        raw_document_bytes=b"%PDF-1.7 explicit-tokens-1",
         operational_store=op_store,
         knowledge_catalog=catalog,
         agent_gym=gym,
@@ -2861,7 +2919,9 @@ def test_skill_registry_versioning_rollback_and_process_instance_skill_lineage()
     assert distill_resp.status_code == 200
     rule_id = distill_resp.json()["candidate_rule"]["rule_id"]
 
-    eval_resp = client.post(f"/v1/gym/rules/{rule_id}/evaluate", headers=sr_headers)
+    eval_resp = client.post(
+        f"/v1/gym/rules/{rule_id}/evaluate?auto_promote=true", headers=sr_headers
+    )
     assert eval_resp.status_code == 200
     assert eval_resp.json()["report_card"]["passed_gate"] is True
 

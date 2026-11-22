@@ -150,3 +150,11 @@ This document captures the foundational architectural decisions and milestone re
      - **Online Hot Path:** `SqlKnowledgeCatalog` (`bridge/knowledge_catalog/sql_store.py`) persists the TBox ontology graph (`catalog_ontology_revisions`, `catalog_ontology_edges`), catalog assets (`catalog_assets`), and PROV-O lineage (`catalog_lineage_traces`) on the shared `DsnSqlRuntime` alongside the ABox bi-temporal facts in `SqlOperationalStore` (`bridge_operational_facts`).
      - **Analytical Lakehouse:** BigQuery mirrors `bq_operational_facts_iceberg` (including `ontology_revision_id` and `consolidation_edge_id`), `bq_ontology_revisions`, and `bq_ontology_edges` in `terraform/modules/telemetry/main.tf`.
 - **Consequence:** Calling agents retain 100% ownership of checklist mutations and waivers, while DocuBridge continuously improves zero-touch fact extraction, deterministic Stage-B field derivations, and multi-replica ontology consistency.
+
+---
+
+## ADR-16: Bi-Temporal Consolidation Precedence (`P13-3`)
+
+- **Context:** Ordering by `(source_priority, effective_from, ...)` let an older endorsement (2024, priority 40) override a newer renewal (2026, priority 30), conflicting with `source.effective_from >= target.effective_from` on ontology `[:SUPERSEDES]` edges.
+- **Decision:** Order winners by **`(effective_from, source_priority, recorded_at, version)`** descending in `_winning_key` and SQL views (`ORDER BY effective_from DESC, source_priority DESC, recorded_at DESC, version DESC`). Higher `source_priority` breaks equal-`effective_from` ties. `resolve_active_facts` replaces multi-row tables (`fields.tables.<name>[...]`) per winning document.
+- **Consequence:** Renewals beat older endorsements, same-date endorsements still beat base policies, and scalar SQL view precedence matches in-memory consolidation.

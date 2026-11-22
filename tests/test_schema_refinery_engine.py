@@ -452,3 +452,72 @@ def test_p8_4_benefits_hdhp_hsa_vs_fsa_4_beat_schema_evolution() -> None:
 
     # Clean up back to baseline
     client.post("/v1/demo/schema-evolution/reset")
+
+
+def test_proposal_with_negative_flip_fails_assay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P13-12: a proposal that causes a financial summary flip on a zero-deductible deal fails assay."""
+    from datetime import UTC, datetime
+
+    import bridge.refinery.assay as assay_mod
+    from bridge.refinery import (
+        build_baseline_ontology_revision,
+        evaluate_ontology_proposal,
+    )
+    from contract.enums import Disposition, Gate
+    from contract.refinery import RefineryProposal, RefineryProposalKind
+    from contract.wire import LedgerEntry
+
+    same_eff = datetime(2026, 3, 1, 0, 0, tzinfo=UTC)
+    zero_deductible_deal = (
+        (
+            "insurance",
+            "DEAL-ZERO-DED",
+            [
+                LedgerEntry(
+                    doc_id="doc-pol-1",
+                    doctype="policy",
+                    issuer="Carrier A",
+                    disposition=Disposition.accepted,
+                    gate=Gate.auto_approve,
+                    key_fields={"premium": "$100,000.00"},
+                    recorded_at=datetime(2026, 3, 1, 9, 0, tzinfo=UTC),
+                    effective_from=same_eff,
+                ),
+                LedgerEntry(
+                    doc_id="doc-end-2",
+                    doctype="endorsement",
+                    issuer="Carrier A",
+                    disposition=Disposition.accepted,
+                    gate=Gate.auto_approve,
+                    key_fields={"premium": "$120,000.00"},
+                    recorded_at=datetime(2026, 3, 2, 9, 0, tzinfo=UTC),
+                    effective_from=same_eff,
+                ),
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        assay_mod,
+        "_counterfactual_replay_deals_with_domain",
+        lambda: zero_deductible_deal,
+    )
+
+    baseline = build_baseline_ontology_revision()
+    regressing_proposal = RefineryProposal(
+        proposal_id="prop-neg-flip-test",
+        kind=RefineryProposalKind.PROPOSE_NEW_ENTITY,
+        domain="insurance",
+        target_entity_id="commercial-property-quote",
+        new_entity_id="unranked-regress-doc",
+        title="Synthetic regressing entity",
+        rationale="Synthetic regressing subtype for negative flip rate check.",
+    )
+    report, _ = evaluate_ontology_proposal(
+        regressing_proposal,
+        baseline_revision=baseline,
+    )
+    assert report.replayed_deal_count == 1
+    assert report.negative_flip_rate > 0.0
+    assert report.passed is False

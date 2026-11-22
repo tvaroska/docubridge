@@ -106,6 +106,13 @@ class SqlOperationalStore(OperationalStore):
                     default="rev-v1-0-baseline",
                 ),
                 Column("compiled_rule_ids_json", Text, nullable=True),
+                Column(
+                    "ontology_revision_id",
+                    String(128),
+                    nullable=False,
+                    default="ont-rev-v1-1-baseline",
+                ),
+                Column("consolidation_edge_id", String(128), nullable=True),
                 Index(
                     "ix_operational_facts_bitemporal",
                     "entity_id",
@@ -146,6 +153,14 @@ class SqlOperationalStore(OperationalStore):
                         (
                             "compiled_rule_ids_json",
                             f"ALTER TABLE {FACTS_TABLE_NAME} ADD COLUMN compiled_rule_ids_json TEXT",
+                        ),
+                        (
+                            "ontology_revision_id",
+                            f"ALTER TABLE {FACTS_TABLE_NAME} ADD COLUMN ontology_revision_id VARCHAR(128) NOT NULL DEFAULT 'ont-rev-v1-1-baseline'",
+                        ),
+                        (
+                            "consolidation_edge_id",
+                            f"ALTER TABLE {FACTS_TABLE_NAME} ADD COLUMN consolidation_edge_id VARCHAR(128)",
                         ),
                     )
                     for col_name, ddl in migrations:
@@ -224,6 +239,8 @@ class SqlOperationalStore(OperationalStore):
                     if f.compiled_rule_ids
                     else None
                 ),
+                "ontology_revision_id": f.ontology_revision_id,
+                "consolidation_edge_id": f.consolidation_edge_id,
             }
             for f in facts
         ]
@@ -305,6 +322,11 @@ class SqlOperationalStore(OperationalStore):
                                 if row.get("compiled_rule_ids_json")
                                 else ()
                             ),
+                            ontology_revision_id=(
+                                row.get("ontology_revision_id")
+                                or "ont-rev-v1-1-baseline"
+                            ),
+                            consolidation_edge_id=row.get("consolidation_edge_id"),
                         )
                     )
                 return out

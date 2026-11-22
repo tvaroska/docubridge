@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
 from bridge.operational_store.models import (
+    _CURRENCY_SYMBOL_TO_ISO,
+    _ISO_CURRENCY_CODES,
     _MONEY_KEYS,
     _NUMBER_RE,
+    _PARENS_MONEY_RE,
     ConsolidatedFact,
     FactConflict,
     FinancialSummary,
@@ -111,14 +115,10 @@ def _resolve_ontology_graph_context(
     doctype: str,
 ) -> tuple[int, str, str | None, OntologyRevision | None]:
     """Query the Zone 6 Ontology Graph for doctype priority, revision ID, and edge ID."""
-    try:
-        from bridge.knowledge_catalog.catalog import _ensure_shared_ontology
+    from bridge.knowledge_catalog.catalog import _ensure_shared_ontology
 
-        _, active_rev = _ensure_shared_ontology()
-        rev_id = active_rev.revision_id
-    except (ImportError, OSError, RuntimeError, ValueError, KeyError):
-        active_rev = None
-        rev_id = "ont-rev-v1-1-baseline"
+    _, active_rev = _ensure_shared_ontology()
+    rev_id = active_rev.revision_id
 
     dt = (doctype or "").strip().lower()
     if active_rev is not None and dt:
@@ -150,55 +150,165 @@ def _resolve_ontology_graph_context(
 
 _MAX_DECIMAL_EXPONENT = 18
 
+_MONEY_MULTIPLIERS: dict[str, Decimal] = {
+    "K": Decimal("1000"),
+    "THOUSAND": Decimal("1000"),
+    "M": Decimal("1000000"),
+    "MM": Decimal("1000000"),
+    "MILLION": Decimal("1000000"),
+    "B": Decimal("1000000000"),
+    "BN": Decimal("1000000000"),
+    "BILLION": Decimal("1000000000"),
+}
 
-def _extract_decimal_token(
-    inner: str, *, accounting_neg: bool
-) -> tuple[str, bool, str] | None:
-    match = _NUMBER_RE.search(inner)
-    if not match:
-        return None
-    outer_sign = match.group("outer_sign") or ""
-    inner_sign = match.group("inner_sign") or ""
-    sign = outer_sign or inner_sign
-    if (outer_sign and inner_sign) or (accounting_neg and sign):
-        return None
+_TABLE_PATH_RE = re.compile(r"^fields\.tables\.([^.\[]+)\[\d+\]\.(.+)$")
+
+
+_DOLLAR_ISO_CODES: frozenset[str] = frozenset(
+    {"USD", "CAD", "AUD", "NZD", "HKD", "SGD"}
+)
+
+
+def _resolve_currency_tokens(
+    *,
+    outer_iso: str | None,
+    outer_sym: str | None,
+    iso: str | None,
+    sym: str | None,
+    trail_iso: str | None,
+) -> tuple[bool, str | None]:
+    iso_codes = [c for c in (outer_iso, iso, trail_iso) if c is not None]
+    symbols = [s for s in (outer_sym, sym) if s is not None]
+    invalid = (
+        len(iso_codes) > 1
+        or len(symbols) > 1
+        or any(c not in _ISO_CURRENCY_CODES for c in iso_codes)
+        or any(s not in _CURRENCY_SYMBOL_TO_ISO for s in symbols)
+    )
+    if invalid:
+        return False, None
+    if iso_codes and symbols:
+        code, symbol = iso_codes[0], symbols[0]
+        compatible = (symbol == "$" and code in _DOLLAR_ISO_CODES) or (
+            _CURRENCY_SYMBOL_TO_ISO[symbol] == code
+        )
+        return (True, code) if compatible else (False, None)
+    if iso_codes:
+        return True, iso_codes[0]
+    return True, (_CURRENCY_SYMBOL_TO_ISO[symbols[0]] if symbols else None)
+
+
+def _unwrap_money_parens(
+    cleaned: str,
+) -> tuple[bool, str | None, str | None, str | None, str]:
+    paren_match = _PARENS_MONEY_RE.fullmatch(cleaned)
+    if paren_match is None:
+        return False, None, None, None, cleaned
+    return (
+        True,
+        paren_match.group("outer_iso"),
+        paren_match.group("outer_sym"),
+        paren_match.group("trail_iso"),
+        paren_match.group("inner").strip(),
+    )
+
+
+def _quantize_money_match(
+    match: re.Match[str], *, accounting_neg: bool, explicit_signs: list[str]
+) -> Decimal | None:
     exp_part = match.group("exp") or ""
     if exp_part and abs(int(exp_part[1:])) > _MAX_DECIMAL_EXPONENT:
         return None
+    sign = "-" if (accounting_neg or explicit_signs == ["-"]) else ""
     digits = match.group("digits").replace(",", "")
-    token = f"{'-' if accounting_neg else sign}{digits}{exp_part}"
-    return token, bool(exp_part), inner[match.end() :].strip().upper()
-
-
-def parse_decimal_money(raw: str | None) -> Decimal | None:
-    """Deterministically parse a monetary string into ``Decimal(0.01)`` (or ``None``).
-
-    Preserves leading negative signs (``-$250,000.00``, ``$-250,000.00``), accounting
-    parentheses (``($250,000.00)``), scientific notation (``1e6``), and ``K``/``M``
-    multipliers while failing closed (``None``) on conflicting signs or overflow.
-    """
-    if not raw or not isinstance(raw, str):
-        return None
-    cleaned = raw.strip()
-    accounting_neg = cleaned.startswith("(") and cleaned.endswith(")")
-    extracted = _extract_decimal_token(
-        cleaned[1:-1].strip() if accounting_neg else cleaned,
-        accounting_neg=accounting_neg,
-    )
-    if extracted is None:
-        return None
-    token, has_exp, rest = extracted
     try:
-        val = Decimal(token)
+        val = Decimal(f"{sign}{digits}{exp_part}")
         if not val.is_finite():
             return None
-        if not has_exp and rest.startswith(("M", "MILLION")):
-            val *= Decimal("1000000")
-        elif not has_exp and rest.startswith(("K", "THOUSAND")):
-            val *= Decimal("1000")
+        mult_tok = match.group("mult")
+        if mult_tok:
+            val *= _MONEY_MULTIPLIERS[mult_tok.upper()]
         return val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except InvalidOperation:
         return None
+
+
+def parse_money_amount(raw: str | None) -> tuple[Decimal, str | None] | None:
+    """Strictly parse a closed-grammar monetary string into ``(Decimal(0.01), iso_currency)``.
+
+    Uses ``fullmatch`` against signs, optional currency symbol/ISO code, properly
+    grouped digits, and exact multiplier tokens (``K``/``M``/``B``) or bounded
+    scientific notation (``|exp| <= 18``). Returns ``None`` on prose, conflicting
+    signs or currencies, European comma decimals, or overflow.
+    """
+    if not raw or not isinstance(raw, str) or not raw.strip():
+        return None
+    accounting_neg, outer_iso, outer_sym, outer_trail_iso, inner = _unwrap_money_parens(
+        raw.strip()
+    )
+    match = _NUMBER_RE.fullmatch(inner)
+    if match is None:
+        return None
+    explicit_signs = [
+        s
+        for s in (
+            match.group("outer_sign") or "",
+            match.group("inner_sign") or "",
+            match.group("trail_sign") or "",
+        )
+        if s
+    ]
+    trail_iso = match.group("trail_iso")
+    if (
+        len(explicit_signs) > 1
+        or (accounting_neg and explicit_signs)
+        or (outer_trail_iso and trail_iso)
+    ):
+        return None
+    ccy_ok, currency = _resolve_currency_tokens(
+        outer_iso=outer_iso,
+        outer_sym=outer_sym,
+        iso=match.group("iso"),
+        sym=match.group("sym"),
+        trail_iso=outer_trail_iso or trail_iso,
+    )
+    if not ccy_ok:
+        return None
+    quantized = _quantize_money_match(
+        match, accounting_neg=accounting_neg, explicit_signs=explicit_signs
+    )
+    return (quantized, currency) if quantized is not None else None
+
+
+def parse_decimal_money(raw: str | None) -> Decimal | None:
+    """Deterministically parse a monetary string into ``Decimal(0.01)`` (or ``None``)."""
+    parsed = parse_money_amount(raw)
+    return parsed[0] if parsed is not None else None
+
+
+def resolve_entry_effective_from(
+    entry: LedgerEntry,
+    *,
+    effective_from: datetime | None = None,
+    fallback_recorded_at: datetime,
+) -> tuple[datetime, bool]:
+    """Resolve effective timestamp from explicit arg, entry field, or ``effective_date``.
+
+    Returns ``(effective_ts, unreadable_date_flagged)`` so an unreadable non-ISO
+    ``effective_date`` is explicitly flagged instead of silently discarded.
+    """
+    if effective_from is not None:
+        return _utc_dt(effective_from), False
+    if entry.effective_from is not None:
+        return _utc_dt(entry.effective_from), False
+    raw_doc_date = entry.key_fields.get("effective_date")
+    if raw_doc_date is not None and raw_doc_date.strip():
+        try:
+            parsed_d = datetime.fromisoformat(raw_doc_date.strip())
+            return _utc_dt(parsed_d), False
+        except ValueError:
+            return _utc_dt(fallback_recorded_at), True
+    return _utc_dt(fallback_recorded_at), False
 
 
 def source_priority_for_doctype(doctype: str) -> int:
@@ -272,17 +382,13 @@ def consolidate_entry(  # noqa: PLR0913 - public keyword-only consolidation API
         else (entry.recorded_at if entry.recorded_at is not None else datetime.now(UTC))
     )
     rec_ts = _utc_dt(raw_rec)
-    raw_eff = effective_from if effective_from is not None else entry.effective_from
-    eff_ts = _utc_dt(raw_eff) if raw_eff is not None else None
-    if eff_ts is None and "effective_date" in entry.key_fields:
-        try:
-            parsed_d = datetime.fromisoformat(entry.key_fields["effective_date"])
-            eff_ts = _utc_dt(parsed_d)
-        except ValueError:
-            eff_ts = rec_ts
-    eff_ts = eff_ts or rec_ts
+    eff_ts, bad_effective_date = resolve_entry_effective_from(
+        entry,
+        effective_from=effective_from,
+        fallback_recorded_at=rec_ts,
+    )
 
-    currency = entry.key_fields.get("currency", "USD").upper()
+    default_currency = entry.key_fields.get("currency", "USD").upper()
     priority, ont_rev_id, dt_edge_id, active_rev = _resolve_ontology_graph_context(
         entry.doctype
     )
@@ -304,7 +410,14 @@ def consolidate_entry(  # noqa: PLR0913 - public keyword-only consolidation API
         path = f"fields.key_fields.{k}"
         anchor = entry.source_anchors.get(path) or entry.source_anchors.get(k)
         is_money = _is_ontology_monetary_field(k, active_rev)
-        dec = parse_decimal_money(v) if is_money else None
+        parsed_money = parse_money_amount(v) if is_money else None
+        dec = parsed_money[0] if parsed_money is not None else None
+        fact_currency = (
+            parsed_money[1]
+            if parsed_money is not None and parsed_money[1] is not None
+            else default_currency
+        )
+        unparseable_money = is_money and bool(v.strip()) and parsed_money is None
         _, metric_edge_id = _resolve_field_metric_bucket(
             k.lower(), entry.doctype, active_rev
         )
@@ -319,14 +432,19 @@ def consolidate_entry(  # noqa: PLR0913 - public keyword-only consolidation API
                 field_path=path,
                 field_value=v,
                 numeric_value=str(dec) if dec is not None else None,
-                currency=currency,
+                currency=fact_currency,
                 source_priority=priority,
                 recorded_at=rec_ts,
                 effective_from=eff_ts,
                 version=version,
                 source_anchor=anchor,
                 vault_uri=vault_uri,
-                flagged_for_review=(path in flagged_paths or k in flagged_paths),
+                flagged_for_review=(
+                    path in flagged_paths
+                    or k in flagged_paths
+                    or unparseable_money
+                    or (bad_effective_date and k == "effective_date")
+                ),
                 skill_version=skill_ver,
                 skill_revision_id=skill_rev,
                 skill_urn=skill_urn,
@@ -347,7 +465,16 @@ def consolidate_entry(  # noqa: PLR0913 - public keyword-only consolidation API
                     or entry.source_anchors.get(table_name)
                 )
                 is_money = _is_ontology_monetary_field(col, active_rev)
-                dec = parse_decimal_money(val) if is_money else None
+                parsed_money = parse_money_amount(val) if is_money else None
+                dec = parsed_money[0] if parsed_money is not None else None
+                fact_currency = (
+                    parsed_money[1]
+                    if parsed_money is not None and parsed_money[1] is not None
+                    else default_currency
+                )
+                unparseable_money = (
+                    is_money and bool(val.strip()) and parsed_money is None
+                )
                 facts.append(
                     ConsolidatedFact(
                         fact_id=uuid.uuid4().hex,
@@ -359,14 +486,14 @@ def consolidate_entry(  # noqa: PLR0913 - public keyword-only consolidation API
                         field_path=path,
                         field_value=val,
                         numeric_value=str(dec) if dec is not None else None,
-                        currency=currency,
+                        currency=fact_currency,
                         source_priority=priority,
                         recorded_at=rec_ts,
                         effective_from=eff_ts,
                         version=version,
                         source_anchor=anchor,
                         vault_uri=vault_uri,
-                        flagged_for_review=(path in flagged_paths),
+                        flagged_for_review=(path in flagged_paths or unparseable_money),
                         skill_version=skill_ver,
                         skill_revision_id=skill_rev,
                         skill_urn=skill_urn,
@@ -379,15 +506,82 @@ def consolidate_entry(  # noqa: PLR0913 - public keyword-only consolidation API
     return facts
 
 
-def _winning_key(fact: ConsolidatedFact) -> tuple[int, datetime, datetime, int]:
-    """Deterministic ordering for active fact resolution:
-    (source_priority, effective_from, recorded_at, version)."""
+def _winning_key(fact: ConsolidatedFact) -> tuple[datetime, int, datetime, int]:
+    """Deterministic ordering for active fact resolution (ADR-16):
+    (effective_from, source_priority, recorded_at, version)."""
     return (
+        _utc_dt(fact.effective_from),
         fact.source_priority,
-        fact.effective_from,
-        fact.recorded_at,
+        _utc_dt(fact.recorded_at),
         fact.version,
     )
+
+
+def _resolve_scalar_winner(
+    field_path: str, group: list[ConsolidatedFact]
+) -> tuple[ConsolidatedFact, FactConflict | None]:
+    candidates = sorted(group, key=_winning_key, reverse=True)
+    winner = candidates[0]
+    for other in candidates[1:]:
+        if other.doc_id != winner.doc_id and other.field_value != winner.field_value:
+            why = (
+                f"{winner.doctype} ({winner.doc_id}) asserts {winner.field_value!r} "
+                f"(effective {winner.effective_from.isoformat()}, priority {winner.source_priority}, "
+                f"learned {winner.recorded_at.isoformat()}), "
+                f"superseding {other.doctype} ({other.doc_id}) value {other.field_value!r}"
+            )
+            return winner, FactConflict(
+                entity_id=winner.entity_id,
+                field_path=field_path,
+                winning_fact_id=winner.fact_id,
+                winning_value=winner.field_value,
+                winning_doc_id=winner.doc_id,
+                conflicting_fact_id=other.fact_id,
+                conflicting_value=other.field_value,
+                conflicting_doc_id=other.doc_id,
+                reason=why,
+                winning_trace=winner.trace(),
+                conflicting_trace=other.trace(),
+            )
+    return winner, None
+
+
+def _resolve_table_winner(
+    tbl_name: str, by_doc: dict[tuple[str, int], list[ConsolidatedFact]]
+) -> tuple[list[ConsolidatedFact], FactConflict | None]:
+    doc_groups = sorted(
+        by_doc.values(),
+        key=lambda rows: max(_winning_key(r) for r in rows),
+        reverse=True,
+    )
+    winning_rows = sorted(doc_groups[0], key=lambda r: r.field_path)
+    win_sig = [(r.field_path, r.field_value) for r in winning_rows]
+    win_rep = winning_rows[0]
+    for other_rows in doc_groups[1:]:
+        other_sorted = sorted(other_rows, key=lambda r: r.field_path)
+        other_rep = other_sorted[0]
+        if (
+            other_rep.doc_id != win_rep.doc_id
+            and [(r.field_path, r.field_value) for r in other_sorted] != win_sig
+        ):
+            why = (
+                f"{win_rep.doctype} ({win_rep.doc_id}) supersedes table "
+                f"'{tbl_name}' from {other_rep.doctype} ({other_rep.doc_id})"
+            )
+            return winning_rows, FactConflict(
+                entity_id=win_rep.entity_id,
+                field_path=f"fields.tables.{tbl_name}",
+                winning_fact_id=win_rep.fact_id,
+                winning_value=f"{len(winning_rows)} cells",
+                winning_doc_id=win_rep.doc_id,
+                conflicting_fact_id=other_rep.fact_id,
+                conflicting_value=f"{len(other_sorted)} cells",
+                conflicting_doc_id=other_rep.doc_id,
+                reason=why,
+                winning_trace=win_rep.trace(),
+                conflicting_trace=other_rep.trace(),
+            )
+    return winning_rows, None
 
 
 def resolve_active_facts(
@@ -396,53 +590,43 @@ def resolve_active_facts(
     learned_as_of: datetime | None = None,
     effective_on: datetime | None = None,
 ) -> tuple[list[ConsolidatedFact], list[FactConflict]]:
-    """Filter facts by bi-temporal window and resolve winners + conflicts per field."""
+    """Filter facts by bi-temporal window and resolve winners + conflicts per field/table."""
     learned_bound = _utc_dt(learned_as_of) if learned_as_of is not None else None
     effective_bound = _utc_dt(effective_on) if effective_on is not None else None
-    eligible: list[ConsolidatedFact] = []
-    for f in facts:
-        if learned_bound is not None and _utc_dt(f.recorded_at) > learned_bound:
-            continue
-        if effective_bound is not None and _utc_dt(f.effective_from) > effective_bound:
-            continue
-        eligible.append(f)
+    eligible = [
+        f
+        for f in facts
+        if (learned_bound is None or _utc_dt(f.recorded_at) <= learned_bound)
+        and (effective_bound is None or _utc_dt(f.effective_from) <= effective_bound)
+    ]
 
-    by_field: dict[str, list[ConsolidatedFact]] = {}
+    by_scalar_field: dict[str, list[ConsolidatedFact]] = {}
+    by_table: dict[str, dict[tuple[str, int], list[ConsolidatedFact]]] = {}
     for f in eligible:
-        by_field.setdefault(f.field_path, []).append(f)
+        tbl_match = _TABLE_PATH_RE.match(f.field_path)
+        if tbl_match is not None:
+            by_table.setdefault(tbl_match.group(1), {}).setdefault(
+                (f.doc_id, f.version), []
+            ).append(f)
+        else:
+            by_scalar_field.setdefault(f.field_path, []).append(f)
 
     winners: list[ConsolidatedFact] = []
     conflicts: list[FactConflict] = []
-    for field_path in sorted(by_field):
-        candidates = sorted(by_field[field_path], key=_winning_key, reverse=True)
-        winner = candidates[0]
+    for field_path in sorted(by_scalar_field):
+        winner, conflict = _resolve_scalar_winner(
+            field_path, by_scalar_field[field_path]
+        )
         winners.append(winner)
-        for other in candidates[1:]:
-            if (
-                other.doc_id != winner.doc_id
-                and other.field_value != winner.field_value
-            ):
-                why = (
-                    f"{winner.doctype} ({winner.doc_id}) asserts {winner.field_value!r} "
-                    f"(priority {winner.source_priority}, learned {winner.recorded_at.isoformat()}), "
-                    f"superseding {other.doctype} ({other.doc_id}) value {other.field_value!r}"
-                )
-                conflicts.append(
-                    FactConflict(
-                        entity_id=winner.entity_id,
-                        field_path=field_path,
-                        winning_fact_id=winner.fact_id,
-                        winning_value=winner.field_value,
-                        winning_doc_id=winner.doc_id,
-                        conflicting_fact_id=other.fact_id,
-                        conflicting_value=other.field_value,
-                        conflicting_doc_id=other.doc_id,
-                        reason=why,
-                        winning_trace=winner.trace(),
-                        conflicting_trace=other.trace(),
-                    )
-                )
-                break
+        if conflict is not None:
+            conflicts.append(conflict)
+
+    for tbl_name in sorted(by_table):
+        winning_rows, conflict = _resolve_table_winner(tbl_name, by_table[tbl_name])
+        winners.extend(winning_rows)
+        if conflict is not None:
+            conflicts.append(conflict)
+
     return winners, conflicts
 
 
@@ -456,28 +640,39 @@ def compute_financial_summary(facts: list[ConsolidatedFact]) -> FinancialSummary
             "docubridge.entity_id": facts[0].entity_id if facts else None,
         },
     ) as span:
-        total_premium = Decimal("0.00")
-        total_deductible = Decimal("0.00")
-        total_limit = Decimal("0.00")
-        total_tiv = Decimal("0.00")
-        currency = "USD"
+        totals: dict[str, Decimal] = {
+            "total_premium": Decimal("0.00"),
+            "total_deductible": Decimal("0.00"),
+            "total_coverage_limit": Decimal("0.00"),
+            "total_insured_value": Decimal("0.00"),
+        }
+        fallback_currency = "USD"
+        bucket_currencies: set[str] = set()
         _, _, _, active_rev = _resolve_ontology_graph_context("")
 
         for f in facts:
-            currency = f.currency or currency
+            if f.currency:
+                fallback_currency = f.currency
             if f.numeric_value is None:
                 continue
-            val = Decimal(f.numeric_value)
             leaf = f.field_path.split(".")[-1].lower()
             bucket, _ = _resolve_field_metric_bucket(leaf, f.doctype, active_rev)
-            if bucket == "total_premium":
-                total_premium += val
-            elif bucket == "total_deductible":
-                total_deductible += val
-            elif bucket == "total_coverage_limit":
-                total_limit += val
-            elif bucket == "total_insured_value":
-                total_tiv += val
+            if bucket in totals:
+                bucket_currencies.add((f.currency or "USD").upper())
+                totals[bucket] += Decimal(f.numeric_value)
+
+        if len(bucket_currencies) > 1:
+            raise ValueError(
+                f"Cannot sum financial summary across mixed currencies: "
+                f"{sorted(bucket_currencies)}"
+            )
+        currency = (
+            next(iter(bucket_currencies)) if bucket_currencies else fallback_currency
+        )
+        total_premium = totals["total_premium"]
+        total_deductible = totals["total_deductible"]
+        total_limit = totals["total_coverage_limit"]
+        total_tiv = totals["total_insured_value"]
 
         ratio_str: str | None = None
         denom = total_limit if total_limit > Decimal("0.00") else total_tiv

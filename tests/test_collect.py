@@ -617,3 +617,79 @@ async def test_collector_populates_sufficiency_verdict_and_respects_caller_overr
     assert [r.item for r in turn_override.sufficiency.outstanding] == [
         "tax-return-2025"
     ]
+
+
+async def test_collect_vault_record_hashes_submitted_bytes():
+    """Collector.collect locks and hashes real submitted bytes in the Audit Vault (never 8-byte b'%PDF-1.7')."""
+    import hashlib
+
+    from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
+    from bridge.operational_store import InMemoryOperationalStore
+    from bridge.vault import InMemoryAuditVaultStore
+
+    vault = InMemoryAuditVaultStore()
+    store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=store)
+    collector = Collector(
+        FixtureExtractor(),
+        vault_store=vault,
+        operational_store=store,
+        knowledge_catalog=catalog,
+    )
+    payload_a = b"%PDF-1.7 authentic-submitted-document-bytes-alpha-001"
+    payload_b = b"%PDF-1.7 authentic-submitted-document-bytes-beta-002-longer"
+    request = CollectRequest(
+        process="address-proof", context_id="ctx-vault-bytes", party="ent-vb"
+    )
+
+    turn = await collector.collect(
+        request,
+        documents=[
+            DocumentSubmission(
+                doc_id="bill-a",
+                artifact_name="images/bill-powerco-clean.svg",
+                raw_bytes=payload_a,
+            ),
+            DocumentSubmission(
+                doc_id="bill-b",
+                artifact_name="images/bill-aquautil-clean.svg",
+                raw_bytes=payload_b,
+            ),
+        ],
+        candidate_doctypes=["gov-id", "utility-bill"],
+    )
+    assert len(turn.status.entries) == 2
+
+    rec_a = vault.get_record("ctx-vault-bytes", "bill-a", version=1)
+    rec_b = vault.get_record("ctx-vault-bytes", "bill-b", version=1)
+    assert rec_a.sha256 == hashlib.sha256(payload_a).hexdigest()
+    assert rec_a.size_bytes == len(payload_a)
+    assert vault.read_bytes("ctx-vault-bytes", "bill-a", version=1) == payload_a
+
+    assert rec_b.sha256 == hashlib.sha256(payload_b).hexdigest()
+    assert rec_b.size_bytes == len(payload_b)
+    assert rec_a.sha256 != rec_b.sha256
+
+
+async def test_collect_does_not_swallow_internal_extractor_type_error():
+    """A TypeError raised inside a candidate-aware extractor propagates rather than retrying without candidate_doctypes (P13-10(c))."""
+    calls: list[object] = []
+
+    class _BuggyCandidateExtractor:
+        async def extract(
+            self,
+            artifact_name: str,
+            *,
+            candidate_doctypes: list[str] | None = None,
+        ) -> ExtractionResult:
+            calls.append((artifact_name, candidate_doctypes))
+            raise TypeError("internal bug inside extractor body")
+
+    collector = Collector(_BuggyCandidateExtractor())  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="internal bug inside extractor body"):
+        await collector.collect(
+            CollectRequest(process="address-proof"),
+            documents=[DocumentSubmission(doc_id="d1", artifact_name="a.pdf")],
+            candidate_doctypes=["gov-id"],
+        )
+    assert len(calls) == 1

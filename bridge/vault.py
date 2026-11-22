@@ -261,7 +261,7 @@ class VaultRecord(BaseModel):
     size_bytes: int
     vault_uri: str
     locked_at: datetime
-    retention_locked: bool = True
+    retention_locked: bool = False
 
 
 def _normalize_vault_prefix(prefix: str | None) -> str:
@@ -317,10 +317,21 @@ def _vault_object_key(
     ctx = _validate_vault_segment(context_id, "context_id")
     doc = _validate_vault_segment(doc_id, "doc_id")
     raw_base = os.path.basename((filename or "").replace("\\", "/")) or doc
-    safe_name = _validate_vault_segment(raw_base, "filename")
-    rel = f"vault/{ctx}/{doc}/v{version}/{safe_name}"
+    _validate_vault_segment(raw_base, "filename")
+    rel = f"vault/{ctx}/{doc}/v{version}/content"
     clean_prefix = _normalize_vault_prefix(prefix)
     return f"{clean_prefix}/{rel}" if clean_prefix else rel
+
+
+def _is_precondition_failed(exc: BaseException) -> bool:
+    try:
+        from google.api_core.exceptions import PreconditionFailed
+
+        if isinstance(exc, PreconditionFailed):
+            return True
+    except ImportError:
+        pass
+    return getattr(exc, "code", None) == 412
 
 
 def _vault_version_prefix(
@@ -454,7 +465,7 @@ class InMemoryAuditVaultStore(AuditVaultStore):
             size_bytes=len(data),
             vault_uri=f"vault://local/{obj_path}",
             locked_at=locked_at or datetime.now(UTC),
-            retention_locked=True,
+            retention_locked=False,
         )
         self._records[key] = rec
         self._blobs[key] = bytes(data)
@@ -557,9 +568,10 @@ class GcpAuditVaultStore(AuditVaultStore):
         digest = hashlib.sha256(data).hexdigest()
         safe_filename = os.path.basename(filename) or doc_id
         retain_until: datetime | None = None
+        retention_applied = False
         if self.retention_days is not None:
             retain_until = locked_ts + timedelta(days=self.retention_days)
-            _apply_blob_retention(
+            retention_applied = _apply_blob_retention(
                 blob, mode=self.retention_mode, retain_until_time=retain_until
             )
         if hasattr(blob, "metadata"):
@@ -573,7 +585,7 @@ class GcpAuditVaultStore(AuditVaultStore):
                 "size_bytes": str(len(data)),
                 "locked_at": locked_ts.isoformat(),
             }
-            if retain_until is not None:
+            if retain_until is not None and retention_applied:
                 metadata["retention_mode"] = self.retention_mode
                 metadata["retain_until_time"] = (
                     retain_until.astimezone(UTC).isoformat().replace("+00:00", "Z")
@@ -582,9 +594,11 @@ class GcpAuditVaultStore(AuditVaultStore):
         try:
             blob.upload_from_string(data, content_type=mime_type, if_generation_match=0)
         except Exception as exc:
-            raise VaultImmutabilityError(
-                f"GCS write-once precondition failed for {obj_path}: {exc}"
-            ) from exc
+            if _is_precondition_failed(exc):
+                raise VaultImmutabilityError(
+                    f"GCS write-once precondition failed for {obj_path}: {exc}"
+                ) from exc
+            raise
         rec = VaultRecord(
             context_id=context_id,
             doc_id=doc_id,
@@ -595,7 +609,9 @@ class GcpAuditVaultStore(AuditVaultStore):
             size_bytes=len(data),
             vault_uri=f"gs://{self.bucket_name}/{obj_path}",
             locked_at=locked_ts,
-            retention_locked=True,
+            retention_locked=bool(
+                retention_applied and self.retention_mode == "Locked"
+            ),
         )
         self._index[key] = rec
         return rec
@@ -608,8 +624,8 @@ class GcpAuditVaultStore(AuditVaultStore):
         context_id = match["context_id"]
         doc_id = match["doc_id"]
         version = int(match["version"])
-        filename = match["filename"]
         meta = getattr(blob, "metadata", None) or {}
+        filename = meta.get("filename") or match["filename"]
         raw_bytes: bytes | None = None
         if "sha256" in meta and "size_bytes" in meta:
             digest = meta["sha256"]
@@ -628,6 +644,21 @@ class GcpAuditVaultStore(AuditVaultStore):
             locked_at = datetime.fromisoformat(locked_at_str)
         else:
             locked_at = getattr(blob, "time_created", None) or datetime.now(UTC)
+        blob_ret = getattr(blob, "retention", None)
+        blob_ret_mode = (
+            blob_ret.get("mode")
+            if isinstance(blob_ret, dict)
+            else getattr(blob_ret, "mode", None)
+        )
+        blob_ret_until = (
+            blob_ret.get("retainUntilTime")
+            if isinstance(blob_ret, dict)
+            else getattr(blob_ret, "retain_until_time", None)
+        )
+        is_locked = (
+            meta.get("retention_mode") == "Locked"
+            and bool(meta.get("retain_until_time"))
+        ) or (blob_ret_mode == "Locked" and blob_ret_until is not None)
         rec = VaultRecord(
             context_id=context_id,
             doc_id=doc_id,
@@ -638,7 +669,7 @@ class GcpAuditVaultStore(AuditVaultStore):
             size_bytes=size_bytes,
             vault_uri=f"gs://{self.bucket_name}/{blob.name}",
             locked_at=locked_at,
-            retention_locked=True,
+            retention_locked=is_locked,
         )
         self._index[(context_id, doc_id, version)] = rec
         return rec
@@ -658,9 +689,13 @@ class GcpAuditVaultStore(AuditVaultStore):
     def read_bytes(self, context_id: str, doc_id: str, version: int = 1) -> bytes:
         """Download the locked raw document bytes for a vault ID from Cloud Storage."""
         rec = self.get_record(context_id, doc_id, version)
-        obj_path = _vault_object_key(
-            context_id, doc_id, version, rec.filename, prefix=self.prefix
-        )
+        uri_prefix = f"gs://{self.bucket_name}/"
+        if rec.vault_uri.startswith(uri_prefix):
+            obj_path = rec.vault_uri[len(uri_prefix) :]
+        else:
+            obj_path = _vault_object_key(
+                context_id, doc_id, version, rec.filename, prefix=self.prefix
+            )
         blob = self._get_bucket().blob(obj_path)
         return blob.download_as_bytes()
 
@@ -741,7 +776,24 @@ def promote_accepted_to_vault(  # noqa: PLR0913 - public vault promotion contrac
         else mime_type
     )
     now = recorded_at or entry.recorded_at or datetime.now(UTC)
-    eff = effective_from or entry.effective_from or now
+    if effective_from is not None:
+        eff: datetime | None = effective_from
+    elif entry.effective_from is not None:
+        eff = entry.effective_from
+    else:
+        raw_doc_date = entry.key_fields.get("effective_date")
+        if raw_doc_date is not None and raw_doc_date.strip():
+            try:
+                parsed_d = datetime.fromisoformat(raw_doc_date.strip())
+                eff = (
+                    parsed_d.replace(tzinfo=UTC)
+                    if parsed_d.tzinfo is None
+                    else parsed_d.astimezone(UTC)
+                )
+            except ValueError:
+                eff = None
+        else:
+            eff = now
     with trace_step(
         "docubridge.intake.redact_pii",
         {

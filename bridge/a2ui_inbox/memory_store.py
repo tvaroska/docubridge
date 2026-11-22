@@ -198,21 +198,21 @@ def _extract_review_telemetry(
         "review_dwell_ms",
         action_ctx.get(
             "reviewDwellMs",
-            review_block.get("review_dwell_ms", review_block.get("dwellMs", 4200)),
+            review_block.get("review_dwell_ms", review_block.get("dwellMs", 0)),
         ),
     )
-    review_dwell_ms = max(0, int(raw_dwell if raw_dwell is not None else 4200))
+    review_dwell_ms = max(0, int(raw_dwell if raw_dwell is not None else 0))
     raw_citation = action_ctx.get(
         "citation_opened",
         action_ctx.get(
             "citationOpened",
             action_ctx.get(
                 "citation_verified",
-                review_block.get("citation_opened", True),
+                review_block.get("citation_opened", False),
             ),
         ),
     )
-    citation_opened = bool(True if raw_citation is None else raw_citation)
+    citation_opened = bool(False if raw_citation is None else raw_citation)
     raw_pre_commit = action_ctx.get(
         "pre_committed",
         action_ctx.get(

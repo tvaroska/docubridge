@@ -17,7 +17,9 @@ from bridge.operational_store.consolidation_rules import (
     compute_financial_summary,
     consolidate_entry,
     parse_decimal_money,
+    parse_money_amount,
     resolve_active_facts,
+    resolve_entry_effective_from,
     source_priority_for_doctype,
 )
 from bridge.operational_store.iceberg_sync import (
@@ -93,7 +95,9 @@ __all__ = [
     "consolidate_entry",
     "operational_store_from_env",
     "parse_decimal_money",
+    "parse_money_amount",
     "resolve_active_facts",
+    "resolve_entry_effective_from",
     "source_priority_for_doctype",
     "validate_consolidation_view",
     "validate_metric_query",

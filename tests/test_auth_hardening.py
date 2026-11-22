@@ -460,6 +460,8 @@ def test_every_mutating_post_route_is_gated_under_k_service(
         expert_memo="Verified against page 2 schedule.",
         actor_principal="demo:underwriter@docubridge.io",
         actor_role="underwriter",
+        citation_verified=True,
+        review_dwell_ms=4200,
     )
 
     mutating_cases: list[tuple[str, dict[str, Any] | None]] = [

@@ -8,6 +8,8 @@ this module only *assembles* verdicts, it never mints one.
 
 from __future__ import annotations
 
+import inspect
+import logging
 import os
 import uuid
 from collections.abc import Sequence
@@ -40,6 +42,28 @@ if TYPE_CHECKING:
     from bridge.operational_store import OperationalStore
     from bridge.vault import AuditVaultStore
 
+_LOG = logging.getLogger(__name__)
+
+
+def _supports_kwarg(fn: object, kwarg: str) -> bool:
+    """Return True if callable ``fn`` accepts keyword argument ``kwarg``."""
+    try:
+        sig = inspect.signature(fn)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return any(
+        p.kind is inspect.Parameter.VAR_KEYWORD
+        or (
+            p.name == kwarg
+            and p.kind
+            in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        )
+        for p in sig.parameters.values()
+    )
+
 
 class DocumentSubmission(BaseModel):
     """One submitted document for a collect turn."""
@@ -48,6 +72,7 @@ class DocumentSubmission(BaseModel):
     doc_id: str
     artifact_name: str  # extraction-port lookup key
     artifact: ArtifactRef | None = None
+    raw_bytes: bytes | None = None
 
 
 def project_ledger_entry(
@@ -150,6 +175,57 @@ class Collector:
         self._operational_store = operational_store
         self._knowledge_catalog = knowledge_catalog
 
+    async def _maybe_promote_entry(
+        self,
+        entry: LedgerEntry,
+        sub: DocumentSubmission,
+        *,
+        entity_id: str,
+        context_id: str,
+    ) -> LedgerEntry:
+        if entry.disposition is not Disposition.accepted or (
+            self._vault_store is None
+            and self._operational_store is None
+            and self._knowledge_catalog is None
+        ):
+            return entry
+        doc_bytes = sub.raw_bytes
+        doc_mime = sub.artifact.mime_type if sub.artifact is not None else None
+        if doc_bytes is None:
+            from bridge.extraction.resolve import resolve_document
+
+            uri = (
+                sub.artifact.uri
+                if sub.artifact is not None and sub.artifact.uri
+                else sub.artifact_name
+            )
+            try:
+                resolved = await resolve_document(uri)
+            except (ValueError, OSError):
+                resolved = None
+            if resolved is not None and resolved.data is not None:
+                doc_bytes = resolved.data
+                doc_mime = doc_mime or resolved.mime_type
+        if not doc_bytes:
+            _LOG.warning(
+                "Skipping Audit Vault promotion for doc_id=%s: no document bytes resolved",
+                sub.doc_id,
+            )
+            return entry
+        from bridge.user_interaction import ingest_accepted_submission
+
+        return ingest_accepted_submission(
+            entry,
+            entity_id=entity_id,
+            context_id=context_id,
+            raw_document_bytes=doc_bytes,
+            filename=sub.artifact_name,
+            mime_type=doc_mime,
+            vault_store=self._vault_store,
+            operational_store=self._operational_store,
+            knowledge_catalog=self._knowledge_catalog,
+        ).entry
+
     async def collect(
         self,
         request: CollectRequest,
@@ -200,21 +276,23 @@ class Collector:
                         "docubridge.artifact_name": sub.artifact_name,
                     },
                 ) as doc_span:
-                    try:
+                    if _supports_kwarg(extractor.extract, "candidate_doctypes"):
                         result = await cast(
                             _CandidateAwareExtractor, extractor
                         ).extract(
                             sub.artifact_name,
                             candidate_doctypes=candidate_doctypes or None,
                         )
-                    except TypeError:
+                    else:
                         result = await extractor.extract(sub.artifact_name)
                     if should_redact:
                         result, _ = redact_personal_data(result)
                     if results_out is not None:
                         results_out[sub.doc_id] = result
                     signals = signals_from_result(
-                        result, candidate_doctypes=candidate_doctypes
+                        result,
+                        candidate_doctypes=candidate_doctypes,
+                        as_of=as_of,
                     )
                     verdict = dispose_signals(signals)
                     entry = project_ledger_entry(
@@ -232,23 +310,12 @@ class Collector:
                         doc_span.set_attribute(
                             "docubridge.confidence", entry.overall_confidence
                         )
-                    if entry.disposition is Disposition.accepted and (
-                        self._vault_store is not None
-                        or self._operational_store is not None
-                        or self._knowledge_catalog is not None
-                    ):
-                        from bridge.user_interaction import ingest_accepted_submission
-
-                        ingested = ingest_accepted_submission(
-                            entry,
-                            entity_id=entity_id,
-                            context_id=context_id,
-                            filename=sub.artifact_name,
-                            vault_store=self._vault_store,
-                            operational_store=self._operational_store,
-                            knowledge_catalog=self._knowledge_catalog,
-                        )
-                        entry = ingested.entry
+                    entry = await self._maybe_promote_entry(
+                        entry,
+                        sub,
+                        entity_id=entity_id,
+                        context_id=context_id,
+                    )
                     entries.append(entry)
             status = project_collection_status(entries)
             sufficiency = evaluate_process_sufficiency(

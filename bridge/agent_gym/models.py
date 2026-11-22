@@ -217,6 +217,7 @@ class TribalKnowledgeRule(BaseModel):
     field_path: str
     title: str
     instruction: str
+    before_value: str | None = None
     canonical_target: str | None = None
     alias_variants: tuple[str, ...] = ()
     distinct_entities: tuple[str, ...] = ()
@@ -270,13 +271,13 @@ class GymReportCard(BaseModel):
     stress_cases: tuple[SyntheticStressCase, ...]
     stress_cases_passed: int
     stress_cases_total: int
-    historical_benchmark_total: int
+    historical_benchmark_total: int | None = None
     historical_regressions: tuple[str, ...] = ()
     math_firewall_intact: bool = True
     workhorse_model: str = WORKHORSE_MODEL
-    judge_model: str = REASONING_MODEL
+    judge_model: str | None = None
     tier1_rule0_passed: bool = True
-    tier2_autorater_score: float = 1.0
+    tier2_autorater_score: float | None = None
     tier3_corridor_fa_zero: bool = True
     passed_gate: bool
     gate_summary: str
@@ -299,8 +300,8 @@ class ShadowComparisonRecord(BaseModel):
     exact_match: bool
     drift_reason: str | None = None
     active_skill_revision_id: str | None = None
-    citation_verified: bool = True
-    oversight_rsr_score: float = 0.98
+    citation_verified: bool = False
+    oversight_rsr_score: float = 0.0
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -380,10 +381,10 @@ class ProgrammableTrustPolicy(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
-    def accuracy_rate(self) -> float:
+    def accuracy_rate(self) -> float | None:
         """Fraction of evaluated shadow/review comparisons that matched ground truth."""
         if self.total_evaluated == 0:
-            return 1.0
+            return None
         return round(self.total_exact_matches / self.total_evaluated, 4)
 
     @property
@@ -502,6 +503,26 @@ def _strip_legal_suffix(name: str) -> str:
     return cleaned or name.strip()
 
 
+def issuer_matches_pattern(issuer: str, pattern: str) -> bool:
+    """Match an issuer against a rule pattern using word-boundary prefix semantics."""
+    pat = (pattern or "").strip()
+    if pat == "*":
+        return True
+    cand = (issuer or "").strip()
+    if not cand or cand == "*":
+        return False
+    if pat.endswith("*") and "*" not in pat[:-1] and "?" not in pat:
+        base = pat[:-1].strip().lower()
+        cand_lower = cand.lower()
+        return (
+            not base
+            or cand_lower == base
+            or (cand_lower.startswith(base) and not cand_lower[len(base)].isalnum())
+            or _strip_legal_suffix(cand).lower() == base
+        )
+    return fnmatch.fnmatchcase(cand.lower(), pat.lower())
+
+
 def _infer_rule_category(
     field_path: str,
     before_value: str,
@@ -537,21 +558,48 @@ def _infer_rule_category(
     return TribalRuleCategory.EXTRACTION_HINT
 
 
-def _eval_distinct_syndicate_guard(
-    rule: TribalKnowledgeRule | None,
+def _apply_entity_alias(rule: TribalKnowledgeRule, raw_observed_value: str) -> str:
+    cand = raw_observed_value.strip().lower()
+    if any(d.lower() == cand for d in rule.distinct_entities):
+        return raw_observed_value
+    if any(v.lower() == cand for v in rule.alias_variants):
+        return rule.canonical_target or raw_observed_value
+    return raw_observed_value
+
+
+def _apply_rule_to_input(
+    rule: TribalKnowledgeRule,
+    *,
+    input_issuer: str,
+    input_doctype: str,
+    input_field_path: str,
     raw_observed_value: str,
-    expected_resolved_value: str,
-) -> bool:
-    if rule is None:
-        return raw_observed_value == expected_resolved_value
-    if any(d.lower() == raw_observed_value.lower() for d in rule.distinct_entities):
-        return True
-    if (
-        "syndicate 1183" in raw_observed_value.lower()
-        and "1183" not in (rule.canonical_target or "").lower()
+) -> str:
+    """Execute ``rule`` on a concrete synthetic document input and return the resulting value."""
+    if rule.doctype not in ("*", input_doctype) or not issuer_matches_pattern(
+        input_issuer, rule.issuer_pattern
     ):
-        return True
-    return raw_observed_value == expected_resolved_value
+        return raw_observed_value
+    if rule.category == TribalRuleCategory.ENTITY_ALIAS:
+        return _apply_entity_alias(rule, raw_observed_value)
+    if rule.category == TribalRuleCategory.EXTRACTION_HINT:
+        from bridge.extraction.derivations import apply_field_derivations
+        from contract.extraction import ExtractionFields
+
+        fields = ExtractionFields(
+            doctype=input_doctype,
+            issuer=input_issuer,
+            key_fields={input_field_path: raw_observed_value},
+        )
+        derived, _ = apply_field_derivations(fields, active_hints=[rule])
+        return derived.key_fields.get(input_field_path, raw_observed_value)
+    if (
+        rule.before_value is not None
+        and raw_observed_value.strip() == rule.before_value.strip()
+        and rule.canonical_target
+    ):
+        return rule.canonical_target
+    return raw_observed_value
 
 
 def _execute_rule_on_case(  # noqa: PLR0913 - keyword-only synthetic stress case evaluator
@@ -559,36 +607,34 @@ def _execute_rule_on_case(  # noqa: PLR0913 - keyword-only synthetic stress case
     *,
     perturbation_type: str,
     input_issuer: str,
+    input_doctype: str,
+    input_field_path: str,
     raw_observed_value: str,
     expected_resolved_value: str,
     math_firewall_intact: bool = True,
 ) -> bool:
     """Deterministically execute baseline (`rule=None`) or candidate `rule` against a stress case."""
+    del perturbation_type
     if not math_firewall_intact and rule is not None:
         return False
-    if perturbation_type == "distinct_syndicate_guard":
-        return _eval_distinct_syndicate_guard(
-            rule, raw_observed_value, expected_resolved_value
-        )
-    if perturbation_type == "model_upgrade_parity":
-        return (
-            True
-            if rule is None
-            else bool(rule.canonical_target or expected_resolved_value)
-        )
     if rule is None:
         return raw_observed_value.strip() == expected_resolved_value.strip()
-    issuer_match = (
-        fnmatch.fnmatchcase(input_issuer.lower(), rule.issuer_pattern.lower())
-        or rule.issuer_pattern == "*"
-        or _strip_legal_suffix(input_issuer)
-        .lower()
-        .startswith(rule.issuer_pattern.rstrip("*").lower())
+    actual = _apply_rule_to_input(
+        rule,
+        input_issuer=input_issuer,
+        input_doctype=input_doctype,
+        input_field_path=input_field_path,
+        raw_observed_value=raw_observed_value,
     )
-    if not issuer_match:
-        return False
-    resolved = rule.canonical_target or expected_resolved_value
-    return resolved.strip() == expected_resolved_value.strip()
+    return actual.strip() == expected_resolved_value.strip()
+
+
+def _held_out_unchanged_value(before_value: str, canonical: str) -> str:
+    """Pick a distinct held-out field value that a scoped rule must leave unchanged."""
+    for candidate in ("$999,999.00", "$777,777.00", "held_out_unchanged_sentinel"):
+        if candidate not in {before_value.strip(), canonical.strip()}:
+            return candidate
+    return f"{before_value.strip()}_unchanged"
 
 
 def generate_synthetic_stress_suite(
@@ -597,10 +643,23 @@ def generate_synthetic_stress_suite(
     *,
     math_firewall_intact: bool = True,
 ) -> tuple[SyntheticStressCase, ...]:
-    """Generate and execute 4 corner-case stress tests from a seed signal and distilled rule."""
+    """Generate and execute 4 stress cases (2 target matches + 2 held-out unchanged controls)."""
     base_issuer = signal.issuer or "Carrier"
     canonical = rule.canonical_target or signal.after_value
     stripped_issuer = _strip_legal_suffix(base_issuer)
+    is_alias = rule.category == TribalRuleCategory.ENTITY_ALIAS
+    suffix_raw = f"{stripped_issuer} Ltd." if is_alias else signal.before_value
+    held_out_issuer = (
+        rule.distinct_entities[0]
+        if rule.distinct_entities
+        else (
+            f"{stripped_issuer} Syndicate 1183"
+            if is_alias
+            else f"{stripped_issuer}Holdings"
+        )
+    )
+    held_out_issuer_val = held_out_issuer if is_alias else signal.before_value
+    held_out_other_val = _held_out_unchanged_value(signal.before_value, canonical)
 
     specs: list[tuple[str, str, str, str, str, str]] = [
         (
@@ -612,40 +671,40 @@ def generate_synthetic_stress_suite(
             ),
             base_issuer,
             signal.before_value,
-            signal.after_value,
+            canonical,
         ),
         (
             "legal_suffix",
             "legal_entity_suffix_variant",
             (
                 f"Tests legal suffix variation ('{stripped_issuer} Ltd.' vs. "
-                f"'{stripped_issuer}') for consistent entity resolution."
+                f"'{stripped_issuer}') for consistent resolution."
             ),
             f"{stripped_issuer} Ltd.",
-            f"{stripped_issuer} Ltd.",
+            suffix_raw,
             canonical,
         ),
         (
             "distinct_syndicate",
             "distinct_syndicate_guard",
             (
-                "Verifies separate syndicates (e.g. Syndicate 2987 vs. Syndicate 1183) "
-                "are never falsely merged by an alias rule."
+                "Held-out control: distinct or prefix-colliding issuer must remain "
+                "unchanged by the candidate rule."
             ),
-            f"{stripped_issuer} Syndicate 1183",
-            f"{stripped_issuer} Syndicate 1183",
-            f"{stripped_issuer} Syndicate 1183",
+            held_out_issuer,
+            held_out_issuer_val,
+            held_out_issuer_val,
         ),
         (
             "model_upgrade_parity",
             "model_upgrade_parity",
             (
-                f"Verifies rule stability across {WORKHORSE_MODEL} workhorse and "
-                f"{REASONING_MODEL} teacher while keeping Decimal math deterministic."
+                "Held-out control: unrelated field value on the same issuer and doctype "
+                "must remain unchanged."
             ),
             base_issuer,
-            signal.before_value,
-            signal.after_value,
+            held_out_other_val,
+            held_out_other_val,
         ),
     ]
 
@@ -655,6 +714,8 @@ def generate_synthetic_stress_suite(
             None,
             perturbation_type=ptype,
             input_issuer=in_issuer,
+            input_doctype=signal.doctype,
+            input_field_path=signal.field_path,
             raw_observed_value=raw_val,
             expected_resolved_value=exp_val,
         )
@@ -662,6 +723,8 @@ def generate_synthetic_stress_suite(
             rule,
             perturbation_type=ptype,
             input_issuer=in_issuer,
+            input_doctype=signal.doctype,
+            input_field_path=signal.field_path,
             raw_observed_value=raw_val,
             expected_resolved_value=exp_val,
             math_firewall_intact=math_firewall_intact,

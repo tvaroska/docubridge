@@ -39,12 +39,14 @@ The gate's order, thresholds and boundary semantics are a published contract: th
 | 1 | doctype not in the process's candidate label space | `rejected` | `unsupported` | `unsupported_doctype` | `COMPLETED` |
 | 2a | not legible | `rejected` | `resubmit` | `illegible` | `COMPLETED` |
 | 2b | `overall_confidence < resubmit_below` | `rejected` | `resubmit` | `low_quality` | `COMPLETED` |
+| 2c | `document_age_days > max_age_days` (when freshness is evaluated via `as_of` or caller signals) | `rejected` | `resubmit` | `stale_document` | `COMPLETED` |
 | 3a | any field requires review (flags ∪ `field_reviews`) | `pending` | `hitl_review` | `flagged_fields` | `COMPLETED` (`report`) · `INPUT_REQUIRED` (`park`, hybrid edge) |
-| 3b | `overall_confidence < auto_approve_at` | `pending` | `hitl_review` | `needs_review` | `COMPLETED` (`report`) · `INPUT_REQUIRED` (`park`, hybrid edge) |
+| 3b | any declared `validation.yaml` or corroboration rule failed (`failed_rules` non-empty) | `pending` | `hitl_review` | `corroboration_required` | `COMPLETED` (`report`) · `INPUT_REQUIRED` (`park`, hybrid edge) |
+| 3c | `overall_confidence < auto_approve_at` | `pending` | `hitl_review` | `needs_review` | `COMPLETED` (`report`) · `INPUT_REQUIRED` (`park`, hybrid edge) |
 | 4 | everything else | `accepted` | `auto_approve` | `auto_approved` | `COMPLETED` |
 
-- **Comparisons are strict `<`.** A confidence of exactly `0.55` is HITL (not resubmit); exactly `0.85` is auto-approve (not HITL).
-- **A flag beats the auto-approve comparison but not the resubmit comparison.** A flagged document at `0.93` is HITL; a flagged document at `0.40` is `low_quality` resubmit.
+- **Comparisons are strict `<` (confidence) and strict `>` (freshness).** A confidence of exactly `0.55` is HITL (not resubmit); exactly `0.85` is auto-approve (not HITL); a document aged exactly `max_age_days` is accepted (inclusive), while `max_age_days + 1` is `stale_document`. `overall_confidence` must be finite and in `[0.0, 1.0]` (`NaN`, `±inf`, or out-of-range values are refused with `ValueError`).
+- **A flag or failed declared rule beats the auto-approve comparison but not the quality/freshness gate.** A flagged document at `0.93` is HITL (`flagged_fields`); an unflagged document failing a `validation.yaml` rule at `0.95` is HITL (`corroboration_required`); a flagged document at `0.40` is `low_quality` resubmit.
 - The task status follows the turn, not the item: the edge maps `ExchangeTurn.terminal` — terminal → `COMPLETED`, non-terminal → `INPUT_REQUIRED` ([A2A consumer](a2a-consumer.md#waiting-is-input-required--and-the-edge-emits-it)). A Collector or Path-A turn is always terminal, so a `pending` item rides a `COMPLETED` task and the consumer owns the review (`bridge-hitl: report`, the default). A `pending` item parks the task as `INPUT_REQUIRED` only when the process declares `bridge-hitl: park` and the edge is hybrid: the LLM leg holds it on `request_human_review` ([A2A edge](a2a-edge.md) R3). The other non-terminal turns are an LLM-leg escalate and an RFP's turn, which waits on its carriers.
 
 **Thresholds.** `auto_approve_at = 0.85`, `resubmit_below = 0.55`.
@@ -54,7 +56,7 @@ The gate's order, thresholds and boundary semantics are a published contract: th
 
 **When a human is invoked.**
 
-- The two `hitl_review` rows (3a, 3b).
+- The three `hitl_review` rows (3a, 3b, 3c).
 - **Escalation**: a document that keeps failing the quality gate is routed to a human after `max_resubmissions` (policy) resubmits — `pending`, `escalated_for_review`, never `rejected` (the Bridge could not read it; it never judged it wrong).
 - The HITL park is the native long-running pause ([long-running](long-running.md), [ADK](adk.md)): nothing polls, and the leg resumes on the reviewer's resolution. That resolution is the only path from `pending` to a final verdict — a model never mints one ([the inversion](adk.md#the-one-inversion-we-keep--and-why-its-still-standard)).
 

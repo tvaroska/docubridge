@@ -162,7 +162,7 @@ def test_audit_vault_port_local_and_gcp_adapters(adapter: PortMode, monkeypatch)
         filename="closing.pdf",
         data=b"%PDF-1.7 port-test",
     )
-    assert rec.retention_locked is True
+    assert rec.retention_locked is False
     assert vault.read_bytes("ctx-port-1", "doc-port-1", 1) == b"%PDF-1.7 port-test"
 
     # GCP mode refuses in-memory fallback when BRIDGE_VAULT_BUCKET is unset
@@ -430,6 +430,7 @@ async def test_collect_executor_and_build_a2a_app_enterprise_store_binding():
                 doc_id="doc-ent-1",
                 artifact_name="bill-powerco-clean.pdf",
                 artifact=ArtifactRef(uri="memory://bill-powerco-clean.pdf"),
+                raw_bytes=b"%PDF-1.7 powerco utility bill bytes",
             )
         ],
         candidate_doctypes=["utility-bill", "bank-statement"],
@@ -550,7 +551,7 @@ async def test_widened_extraction_port_and_stage_b_derivations():
             doctype="consolidation-payoff",
             issuer="EquipLease Financial Corp",
             key_fields={
-                "wire_reference": "FINAL PAYOFF - LOAN #8841 - PAID IN FULL",
+                "payoff_waiver_status": "PAID_IN_FULL",
             },
         ),
         overall_confidence=0.98,

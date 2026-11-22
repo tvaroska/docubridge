@@ -677,3 +677,170 @@ class TestHumanReviewResolution:
             HumanReviewResolution(resolution="accepted", message="m")
         with pytest.raises(ValidationError):
             HumanReviewResolution(call_id="c", resolution="accepted")
+
+
+_WIRE_SCHEMA_SNAPSHOTS: dict[str, dict[str, tuple[str, ...]]] = {
+    "1.5": {
+        "ArtifactRef": ("mime_type", "name", "uri"),
+        "CollectRequest": (
+            "context_id",
+            "contract_version",
+            "due_at",
+            "message",
+            "party",
+            "process",
+            "requirements",
+        ),
+        "CollectionStatus": ("entries", "outstanding"),
+        "ExchangeTurn": (
+            "context_id",
+            "contract_version",
+            "lifecycle",
+            "requirements",
+            "status",
+            "sufficiency",
+            "terminal",
+        ),
+        "ExtractedRecord": (
+            "derivations",
+            "entity_type",
+            "key_fields",
+            "label",
+            "page_range",
+            "record_key",
+            "source_anchors",
+        ),
+        "ExtractionFields": (
+            "derivations",
+            "doctype",
+            "issuer",
+            "key_fields",
+            "records",
+            "source_anchors",
+            "tables",
+        ),
+        "ExtractionResult": (
+            "applied_rule_ids",
+            "field_confidence",
+            "field_reviews",
+            "fields",
+            "flagged_fields",
+            "legible",
+            "ontology_revision_id",
+            "overall_confidence",
+        ),
+        "FieldDerivation": (
+            "derivation_rule",
+            "derived_from",
+            "normalized_value",
+            "parameters",
+            "polarity",
+            "raw_value",
+            "receipt_id",
+        ),
+        "FieldReview": ("confidence", "detail", "path", "reason"),
+        "GovIdKeyFields": (
+            "address",
+            "doc_number",
+            "expiry",
+            "issuing_authority",
+            "name",
+        ),
+        "HumanReviewResolution": (
+            "call_id",
+            "contract_version",
+            "message",
+            "resolution",
+            "reviewer",
+        ),
+        "LedgerEntry": (
+            "artifact",
+            "compiled_rule_ids",
+            "disposition",
+            "doc_id",
+            "doctype",
+            "effective_from",
+            "field_confidence",
+            "field_reviews",
+            "gate",
+            "issuer",
+            "key_fields",
+            "message",
+            "overall_confidence",
+            "process_skill_revision_id",
+            "reason_code",
+            "recorded_at",
+            "skill_revision_id",
+            "skill_urn",
+            "skill_version",
+            "source_anchors",
+            "tables",
+            "vault_uri",
+        ),
+        "Requirement": (
+            "doctype_hint",
+            "item",
+            "message",
+            "party",
+            "reason_code",
+            "status",
+        ),
+        "RequirementsList": ("done", "requirements"),
+        "SourceAnchor": ("artifact_uri", "bounding_box", "page_number", "snippet"),
+        "SufficiencyEvidence": (
+            "doc_ids",
+            "field_refs",
+            "issuers",
+            "reason",
+            "rule_id",
+            "satisfied",
+            "waiver_recommended",
+        ),
+        "SufficiencyVerdict": (
+            "evidence",
+            "outstanding",
+            "satisfied",
+            "strategy_revision",
+            "waiver_recommendations",
+        ),
+        "UtilityBillKeyFields": ("name", "service_address", "statement_date"),
+        "WaiverRecommendation": (
+            "citation",
+            "doctype_hint",
+            "item",
+            "reason",
+            "reason_code",
+            "recommended_by",
+            "source_doc_id",
+        ),
+    }
+}
+
+
+def test_wire_schema_matches_version_snapshot():
+    """P13-11: every public wire/extraction model field set is pinned to CONTRACT_VERSION."""
+    import inspect
+
+    from pydantic import BaseModel
+
+    import contract.extraction as extraction_mod
+    import contract.wire as wire_mod
+
+    assert CONTRACT_VERSION in _WIRE_SCHEMA_SNAPSHOTS, (
+        f"CONTRACT_VERSION={CONTRACT_VERSION!r} has no schema snapshot; add one for this version"
+    )
+
+    observed: dict[str, tuple[str, ...]] = {}
+    for mod in (wire_mod, extraction_mod):
+        for name, obj in inspect.getmembers(mod, inspect.isclass):
+            if (
+                issubclass(obj, BaseModel)
+                and obj is not BaseModel
+                and obj.__module__ == mod.__name__
+            ):
+                observed[name] = tuple(sorted(obj.model_fields))
+
+    assert observed == _WIRE_SCHEMA_SNAPSHOTS[CONTRACT_VERSION], (
+        "Wire contract schema drifted without bumping CONTRACT_VERSION; "
+        "bump CONTRACT_VERSION and add a new snapshot entry."
+    )

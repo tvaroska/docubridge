@@ -250,7 +250,7 @@ def _validate_temporal_and_precedence(  # noqa: PLR0913 - internal validator hel
                         "Analytical SQL query scans raw operational facts without "
                         "[:SUPERSEDES] active-fact precedence resolution "
                         "(ROW_NUMBER() OVER (PARTITION BY entity_id, field_path "
-                        "ORDER BY source_priority DESC ...) WHERE rn = 1)."
+                        "ORDER BY effective_from DESC, source_priority DESC ...) WHERE rn = 1)."
                     ),
                     metric_bucket=metric_bucket,
                 )
@@ -461,7 +461,7 @@ def validate_consolidation_view(  # noqa: PLR0913 - keyword-only public consolid
                     message=(
                         f"Consolidation view '{cleaned_view}' omits [:SUPERSEDES] "
                         f"active-fact precedence windowing (PARTITION BY entity_id, "
-                        f"field_path ORDER BY source_priority DESC ... WHERE rn = 1)."
+                        f"field_path ORDER BY effective_from DESC, source_priority DESC ... WHERE rn = 1)."
                     ),
                     metric_bucket=cleaned_view,
                 )

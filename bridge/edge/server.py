@@ -31,6 +31,7 @@ registry afterwards (S4-usecase-4) — opens its RFP onto the same store the RFP
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from a2a.server.context import ServerCallContext
@@ -236,6 +237,7 @@ def build_a2a_app(  # noqa: PLR0913 - keyword-only ASGI app builder
     vault_store: AuditVaultStore | None = None,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
+    freshness_clock: Callable[[], date] | None = None,
 ) -> Starlette:
     """Build the Bridge A2A Starlette app (with the ART-2 fetch endpoint).
 
@@ -359,6 +361,8 @@ def build_a2a_app(  # noqa: PLR0913 - keyword-only ASGI app builder
             operational_store=operational_store,
             knowledge_catalog=knowledge_catalog,
         )
+    if freshness_clock is not None:
+        active_executor.bind_freshness_clock(freshness_clock)
 
     store_port = get_adapter(Port.task_store, resolve_mode(Port.task_store))
     active_task_store = task_store or store_port.build_task_store()
@@ -424,6 +428,20 @@ def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: no cove
     uvicorn.run(build_a2a_app(url=url), host=host, port=port)
 
 
+def _enterprise_stores_from_env() -> tuple[
+    AuditVaultStore, OperationalStore, KnowledgeCatalog
+]:
+    """Resolve the Zone 3-6 Audit Vault, Operational Store, and Knowledge Catalog via ports."""
+    from bridge.knowledge_catalog import knowledge_catalog_from_env
+    from bridge.operational_store import operational_store_from_env
+    from bridge.vault import vault_from_env
+
+    vault = vault_from_env()
+    op_store = operational_store_from_env()
+    catalog = knowledge_catalog_from_env(operational_store=op_store)
+    return vault, op_store, catalog
+
+
 def serve_container() -> None:  # pragma: no cover
     """Cloud Run container entrypoint — bind ``0.0.0.0:$PORT`` (P7-9).
 
@@ -453,7 +471,14 @@ def serve_container() -> None:  # pragma: no cover
     import uvicorn
 
     port = int(os.environ.get("PORT", "8080"))
-    app = build_a2a_app(url=resolved_card_url(None))
+    vault, op_store, catalog = _enterprise_stores_from_env()
+    app = build_a2a_app(
+        url=resolved_card_url(None),
+        vault_store=vault,
+        operational_store=op_store,
+        knowledge_catalog=catalog,
+        freshness_clock=lambda: datetime.now(UTC).date(),
+    )
     # 0.0.0.0 is required by Cloud Run; ingress is Gateway-locked on the deployed path.
     uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104 - Cloud Run requires 0.0.0.0 bind behind Gateway
 

@@ -23,6 +23,8 @@ _CORPORATE_SUFFIXES: frozenset[str] = frozenset(
 )
 # camelCase/PascalCase boundary: lowercase-or-digit immediately followed by uppercase.
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+# Dotted initialisms such as "N.A.", "U.S.A.", "L.L.C.", "J.P." collapse before splitting.
+_DOTTED_ACRONYM = re.compile(r"\b(?:[A-Za-z]\.){2,}|\b(?:[A-Za-z]\.)+[A-Za-z]\b")
 
 
 def canonicalize_issuer(raw: str | None) -> str | None:
@@ -34,8 +36,9 @@ def canonicalize_issuer(raw: str | None) -> str | None:
     """
     if raw is None:
         return None
+    collapsed = _DOTTED_ACRONYM.sub(lambda m: m.group(0).replace(".", ""), raw)
     spaced = _CAMEL_BOUNDARY.sub(
-        " ", raw
+        " ", collapsed
     )  # 1. split camelCase — MUST precede lowercasing
     spaced = re.sub(
         r"[^a-z0-9]+", " ", spaced.lower()
@@ -44,6 +47,14 @@ def canonicalize_issuer(raw: str | None) -> str | None:
         t for t in spaced.split() if t not in _CORPORATE_SUFFIXES
     ]  # 3. drop corporate suffixes
     return "-".join(tokens) if tokens else None  # 4. join with hyphens
+
+
+def issuer_comparison_key(raw: str | None) -> str | None:
+    """Return a punctuation- and separator-insensitive key for comparing two issuers."""
+    canon = canonicalize_issuer(raw)
+    if canon is None:
+        return None
+    return canon.replace("-", "")
 
 
 def is_in_label_space(doctype: str, candidate_doctypes: list[str]) -> bool:
