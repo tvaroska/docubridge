@@ -35,6 +35,7 @@ from .common import (
 
 if TYPE_CHECKING:
     from bridge.edge.skills import SkillMeta
+    from bridge.extraction.resolve import ResolvedDocument
     from bridge.outbound import (
         A2ASendResult,
         OutboundClient,
@@ -664,6 +665,14 @@ class GcpExtraction(ExtractionPort):
             f"unknown extraction engine {name!r}: expected fixture|gemini|docai"
         )
 
+    @property
+    def accepts_inline_document(self) -> bool:
+        """True when the resolved extraction engine accepts in-memory inline bytes."""
+        name = (
+            self._engine_name or os.environ.get(BRIDGE_EXTRACTION_ENGINE_ENV, "gemini")
+        ).strip() or "gemini"
+        return name != "fixture"
+
     @override
     async def extract(
         self,
@@ -674,9 +683,23 @@ class GcpExtraction(ExtractionPort):
         requested_fields: Sequence[str] | None = None,
         context_set: str | None = None,
         ontology_revision: str | None = None,
+        inline_document: ResolvedDocument | None = None,
     ) -> ExtractionResult:
         """Run structured document extraction via Document AI and Gemini schema mapping."""
-        return await self._resolve_engine().extract(
+        engine = self._resolve_engine()
+        if inline_document is not None and getattr(
+            engine, "accepts_inline_document", False
+        ):
+            return await engine.extract(  # type: ignore[call-arg]
+                artifact_name,
+                target_doctype=target_doctype,
+                candidate_doctypes=candidate_doctypes,
+                requested_fields=requested_fields,
+                context_set=context_set,
+                ontology_revision=ontology_revision,
+                inline_document=inline_document,
+            )
+        return await engine.extract(
             artifact_name,
             target_doctype=target_doctype,
             candidate_doctypes=candidate_doctypes,

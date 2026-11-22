@@ -148,6 +148,7 @@ if TYPE_CHECKING:
     # ``import bridge.edge.email_ingress`` must not hit a partially-initialized cycle.
     from bridge.dashboard.board import RfpBoard
     from bridge.disposition import DispositionVerdict
+    from bridge.knowledge_catalog import CatalogRole
     from contract.extraction import ExtractionResult
 
 _LOG = logging.getLogger("bridge.edge.email_ingress")
@@ -385,7 +386,13 @@ class EmailProcessor:
                 )
                 continue
             try:
-                result = await self.extraction.extract(uri)
+                if getattr(self.extraction, "accepts_inline_document", False):
+                    from bridge.extraction.resolve import ResolvedDocument
+
+                    doc = ResolvedDocument(data=att.data, mime_type=att.mime_type)
+                    result = await self.extraction.extract(uri, inline_document=doc)  # type: ignore[call-arg]
+                else:
+                    result = await self.extraction.extract(uri)
             except (ValueError, KeyError) as exc:
                 unreadable.append(
                     UnreadableAttachment(
@@ -434,6 +441,7 @@ class EmailProcessor:
                 context_id=leg.context_id,
                 submission=submission,
                 resolver=_resolve_att,
+                caller_principal="system:email-ingress",
             )
             refs.append(
                 ArtifactRef(
@@ -615,16 +623,7 @@ def email_processor_from_env(
     artifact_store: BaseArtifactService | None = None,
     base_url: str | None = None,
 ) -> EmailProcessor | None:
-    """The env-wired processor for the host that owns ``board`` — or ``None``.
-
-    ``None`` when email intake is not enabled (``BRIDGE_EMAIL_MAILBOX`` blank) or there
-    is no landing location for the resolved ``email_ingress`` mode (local:
-    ``BRIDGE_EMAIL_DIR``; gcp: ``BRIDGE_EMAIL_BUCKET``) — mailbox + secret alone only
-    shows reply addresses. With both set, a missing ``BRIDGE_EMAIL_TOKEN_SECRET``
-    raises ``RuntimeError`` (fail loud at build, never a default secret). Only call this
-    on the board that is the source of truth (a durable shared exchange store, or a host
-    that opens its RFPs onto this board — see the module docstring).
-    """
+    """Return the env-wired processor for the board-owning host, or ``None``."""
     if not os.environ.get(MAILBOX_ENV, "").strip() or not _landing_configured():
         return None
     return EmailProcessor(
@@ -639,13 +638,7 @@ def email_processor_from_env(
 async def email_drain_loop(
     processor: EmailProcessor, interval: float
 ) -> AsyncIterator[None]:
-    """Drain ``processor`` every ``interval`` seconds while the context is open.
-
-    Meant for a host ``lifespan``. ``interval <= 0`` starts nothing (drain on demand
-    only). A failed drain is logged and retried on the next tick — the key stays
-    pending, never crashes the host; ``drain`` holds its own lock, so this loop and
-    ``POST /email/drain`` serialize. On exit the task is cancelled and awaited.
-    """
+    """Drain ``processor`` periodically while open (``interval <= 0`` disables polling)."""
     if interval <= 0:
         yield
         return
@@ -668,28 +661,36 @@ async def email_drain_loop(
 
 
 def mount_email_drain_routes(
-    app: FastAPI, processor: EmailProcessor, *, port: EmailIngressPort | None = None
+    app: FastAPI,
+    processor: EmailProcessor,
+    *,
+    port: EmailIngressPort | None = None,
+    principal_roles: dict[str, CatalogRole] | None = None,
+    require_auth: bool = False,
 ) -> None:
-    """Bind ``POST /email/drain`` + ``GET /email/outcomes/{key}`` for ``processor``.
+    """Bind gated ``POST /email/drain`` and ``GET /email/outcomes/{key}`` onto ``app``."""
+    from bridge.user_interaction.demo_session import email_drain_auth_dependency
 
-    Only on the board-owning host (the outcome markers carry sender, subject, RFP and
-    carrier). ``port`` (default ``processor.port``) is where the markers are read.
-    """
     marker_port = port if port is not None else processor.port
+    drain_dep = email_drain_auth_dependency(
+        principal_roles=principal_roles, require_auth=require_auth
+    )
+    outcome_dep = email_drain_auth_dependency(
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+        allow_operator_read=True,
+    )
 
-    @app.post("/email/drain")
+    @app.post("/email/drain", dependencies=[drain_dep])
     async def drain() -> list[dict[str, Any]]:
-        outcomes = await processor.drain()
-        return [o.model_dump(mode="json") for o in outcomes]
+        return [o.model_dump(mode="json") for o in await processor.drain()]
 
-    @app.get("/email/outcomes/{key}", response_model=None)
+    @app.get("/email/outcomes/{key}", response_model=None, dependencies=[outcome_dep])
     async def outcome(key: str) -> Response | dict[str, Any]:
         if not _KEY_RE.fullmatch(key):
             return Response(status_code=404)
         marker = await run_in_threadpool(marker_port.processed, key)
-        if marker is None:
-            return Response(status_code=404)
-        return marker
+        return Response(status_code=404) if marker is None else marker
 
 
 def _validate_graph_item(

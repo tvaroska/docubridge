@@ -420,7 +420,7 @@ variable "vertex_location" {
 
 variable "invoker_iam_disabled" {
   type        = bool
-  description = "Disable Cloud Run IAM invoker checks (--no-invoker-iam-check) on runtime and RFP board services for demo/Argolis projects where Domain-Restricted Sharing blocks allUsers."
+  description = "Disable Cloud Run IAM invoker checks (--no-invoker-iam-check) on runtime and RFP board services only for demo projects where Domain-Restricted Sharing blocks allUsers."
   default     = false
 }
 
@@ -440,4 +440,40 @@ variable "labels" {
   type        = map(string)
   description = "Resource labels."
   default     = {}
+}
+
+variable "user_jwt_secret_id" {
+  type        = string
+  description = "Secret Manager secret id injected as BRIDGE_USER_JWT_SECRET (separate from BRIDGE_SPIFFE_SVID_SECRET). Empty = no secret env."
+  default     = ""
+}
+
+variable "demo_passcode_secret_id" {
+  type        = string
+  description = "Secret Manager secret id injected as BRIDGE_DEMO_PASSCODE on board/showcase services via secret_key_ref. Empty = no secret env."
+  default     = ""
+}
+
+variable "iap_audience" {
+  type        = string
+  description = "Expected Cloud IAP JWT audience injected as BRIDGE_IAP_AUDIENCE. Empty = no env."
+  default     = ""
+}
+
+variable "cors_origins" {
+  type        = string
+  description = "Comma-separated allowed browser origins injected as BRIDGE_CORS_ORIGINS on dashboard/showcase services. Empty = no env."
+  default     = ""
+}
+
+variable "principal_roles_json" {
+  type        = string
+  description = "JSON mapping {principal: CatalogRole} injected as BRIDGE_PRINCIPAL_ROLES on dashboard/showcase services. Empty = no env."
+  default     = ""
+}
+
+variable "gs_allowlist" {
+  type        = string
+  description = "Comma-separated GCS bucket/prefix allowlist injected as BRIDGE_GS_ALLOWLIST. Empty = no env (default-deny)."
+  default     = ""
 }

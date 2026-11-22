@@ -230,3 +230,66 @@ run "agent_engine_a2a_envs_when_deployed" {
     error_message = "each per-app Cloud Run service must carry its App Hub application ID and OTel env vars"
   }
 }
+
+run "auth_secrets_and_policy_envs_when_configured" {
+  command = plan
+
+  module {
+    source = "./modules/runtime"
+  }
+
+  variables {
+    project_id              = "test-project"
+    region                  = "us-central1"
+    container_image         = "us-docker.pkg.dev/cloudrun/container/hello"
+    service_account_email   = "bridge-runtime@test-project.iam.gserviceaccount.com"
+    vpc_network             = "projects/test-project/global/networks/bridge-vpc"
+    egress_subnet           = "projects/test-project/regions/us-central1/subnetworks/bridge-vpc-internal"
+    enable_rfp_board        = true
+    rfp_process             = "benefits-rfp"
+    spiffe_svid_secret_id   = "bridge-spiffe-svid-secret"
+    user_jwt_secret_id      = "bridge-user-jwt-secret"
+    demo_passcode_secret_id = "bridge-demo-passcode"
+    iap_audience            = "/projects/100000000000/global/backendServices/1"
+    cors_origins            = "https://portal.example.com"
+    principal_roles_json    = "{\"ops@example.com\":\"broker\"}"
+    gs_allowlist            = "partner-inbound-bucket/quotes"
+  }
+
+  assert {
+    condition = {
+      for e in google_cloud_run_v2_service.rfp_board[0].template[0].containers[0].env :
+      e.name => e.value_source[0].secret_key_ref[0].secret
+      if contains(["BRIDGE_SPIFFE_SVID_SECRET", "BRIDGE_USER_JWT_SECRET", "BRIDGE_DEMO_PASSCODE"], e.name) && (e.value == null || e.value == "")
+      } == {
+      BRIDGE_SPIFFE_SVID_SECRET = "bridge-spiffe-svid-secret"
+      BRIDGE_USER_JWT_SECRET    = "bridge-user-jwt-secret"
+      BRIDGE_DEMO_PASSCODE      = "bridge-demo-passcode"
+    }
+    error_message = "rfp_board must inject SVID, user JWT, and demo passcode via Secret Manager secret_key_ref"
+  }
+
+  assert {
+    condition = {
+      for e in google_cloud_run_v2_service.bridge_meridian.template[0].containers[0].env :
+      e.name => e.value_source[0].secret_key_ref[0].secret
+      if contains(["BRIDGE_USER_JWT_SECRET", "BRIDGE_DEMO_PASSCODE"], e.name) && (e.value == null || e.value == "")
+      } == {
+      BRIDGE_USER_JWT_SECRET = "bridge-user-jwt-secret"
+      BRIDGE_DEMO_PASSCODE   = "bridge-demo-passcode"
+    }
+    error_message = "bridge_meridian must inject BRIDGE_USER_JWT_SECRET and BRIDGE_DEMO_PASSCODE via secret_key_ref"
+  }
+
+  assert {
+    condition = {
+      for e in google_cloud_run_v2_service.bridge.template[0].containers[0].env :
+      e.name => e.value
+      if contains(["BRIDGE_IAP_AUDIENCE", "BRIDGE_GS_ALLOWLIST"], e.name)
+      } == {
+      BRIDGE_IAP_AUDIENCE = "/projects/100000000000/global/backendServices/1"
+      BRIDGE_GS_ALLOWLIST = "partner-inbound-bucket/quotes"
+    }
+    error_message = "bridge runtime must wire BRIDGE_IAP_AUDIENCE and BRIDGE_GS_ALLOWLIST when configured"
+  }
+}

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import math
 import os
+from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -61,7 +62,7 @@ from contract.enums import Disposition
 if TYPE_CHECKING:
     from bridge.dashboard.board import ProgramBoard, RfpBoard
     from bridge.edge.email_ingress import EmailProcessor
-    from bridge.knowledge_catalog import KnowledgeCatalog
+    from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
     from bridge.operational_store import OperationalStore
     from bridge.outbound import A2AClient
 
@@ -144,11 +145,13 @@ def _mount_exchange_routes(
     *,
     active_store: PortalStore,
     rfps: RfpBoard | None,
+    principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
 ) -> None:
     read_deps = [
         read_auth_dependency(
             default_role="broker",
+            principal_roles=principal_roles,
             require_auth=require_auth,
             allow_external_roles=False,
         )
@@ -156,6 +159,7 @@ def _mount_exchange_routes(
     mutating_deps = [
         mutating_auth_dependency(
             default_role="broker",
+            principal_roles=principal_roles,
             require_auth=require_auth,
             allow_external_roles=False,
         )
@@ -205,6 +209,7 @@ class _ProgramSseConfig:
     board: ProgramBoard | None
     rfps: RfpBoard | None
     max_ticks: int
+    principal_roles: dict[str, CatalogRole] | None = None
     require_auth: bool = False
 
 
@@ -212,6 +217,7 @@ def _mount_program_and_sse_routes(app: FastAPI, cfg: _ProgramSseConfig) -> None:
     read_deps = [
         read_auth_dependency(
             default_role="broker",
+            principal_roles=cfg.principal_roles,
             require_auth=cfg.require_auth,
             allow_external_roles=False,
         )
@@ -262,7 +268,10 @@ def build_dashboard_app(  # noqa: PLR0913 - public keyword-only dashboard host b
     max_ticks: int = 2000,
     operational_store: OperationalStore | None = None,
     knowledge_catalog: KnowledgeCatalog | None = None,
+    principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
+    oidc_verifier: Callable[..., dict[str, Any]] | None = None,
+    iap_cert_transport: object = None,
 ) -> FastAPI:
     """Build the Ops Dashboard FastAPI host.
 
@@ -313,6 +322,10 @@ def build_dashboard_app(  # noqa: PLR0913 - public keyword-only dashboard host b
     app = FastAPI(
         title="Ops Dashboard (Bridge-side read-model, SSE)", lifespan=lifespan
     )
+    if oidc_verifier is not None:
+        app.state.oidc_verifier = oidc_verifier
+    if iap_cert_transport is not None:
+        app.state.iap_cert_transport = iap_cert_transport
     app.add_exception_handler(StaleExchangeWrite, _stale_exchange_write_409)
     app.add_middleware(OtelAsgiMiddleware, service_component="dashboard")
     extra_cors = [
@@ -329,7 +342,11 @@ def build_dashboard_app(  # noqa: PLR0913 - public keyword-only dashboard host b
         expose_headers=["x-docubridge-trace-id", "traceparent"],
     )
     _mount_exchange_routes(
-        app, active_store=active_store, rfps=rfps, require_auth=require_auth
+        app,
+        active_store=active_store,
+        rfps=rfps,
+        principal_roles=principal_roles,
+        require_auth=require_auth,
     )
     _mount_program_and_sse_routes(
         app,
@@ -338,6 +355,7 @@ def build_dashboard_app(  # noqa: PLR0913 - public keyword-only dashboard host b
             board=board,
             rfps=rfps,
             max_ticks=max_ticks,
+            principal_roles=principal_roles,
             require_auth=require_auth,
         ),
     )
@@ -346,15 +364,27 @@ def build_dashboard_app(  # noqa: PLR0913 - public keyword-only dashboard host b
         rfps=rfps,
         intake=reply_intake,
         outbound=outbound,
+        principal_roles=principal_roles,
         require_auth=require_auth,
     )
-    mount_rfp_procurement_routes(app, rfps=rfps, require_auth=require_auth)
+    mount_rfp_procurement_routes(
+        app,
+        rfps=rfps,
+        principal_roles=principal_roles,
+        require_auth=require_auth,
+    )
     if processor is not None:
-        mount_email_drain_routes(app, processor)
+        mount_email_drain_routes(
+            app,
+            processor,
+            principal_roles=principal_roles,
+            require_auth=require_auth,
+        )
     app.include_router(
         build_user_interaction_router(
             operational_store=operational_store,
             knowledge_catalog=knowledge_catalog,
+            principal_roles=principal_roles,
             require_auth=require_auth,
         )
     )

@@ -41,6 +41,7 @@ from bridge.user_interaction.auth import (
 )
 from bridge.vault import (
     AuditVaultStore,
+    VaultPromotionRefused,
     VaultRecord,
     promote_accepted_to_vault,
     redact_personal_data,
@@ -597,6 +598,11 @@ def ingest_accepted_submission(  # noqa: PLR0913 - public enterprise submission 
         normalized_entry, applied_hint_ids = _redact_and_apply_gym_derivations(
             entry, gym
         )
+        if normalized_entry.disposition is not Disposition.accepted:
+            raise VaultPromotionRefused(
+                f"Cannot promote entry '{normalized_entry.doc_id}' with disposition "
+                f"'{normalized_entry.disposition.value}' to Audit Vault (accepted required)."
+            )
         span.set_attribute(
             "docubridge.applied_extraction_hints", ",".join(applied_hint_ids)
         )

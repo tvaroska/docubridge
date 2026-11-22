@@ -132,7 +132,7 @@ variable "vertex_location" {
 
 variable "invoker_iam_disabled" {
   type        = bool
-  description = "Disable Cloud Run IAM invoker checks (--no-invoker-iam-check) on runtime and RFP board services for demo/Argolis projects where Domain-Restricted Sharing blocks allUsers."
+  description = "Disable Cloud Run IAM invoker checks (--no-invoker-iam-check) on runtime and RFP board services only for demo projects where Domain-Restricted Sharing blocks allUsers."
   default     = false
 }
 
@@ -484,6 +484,55 @@ variable "payload_retention_days" {
   type        = number
   description = "Lifecycle Delete age (days) for GenAI completion payload JSONL objects in Cloud Storage."
   default     = 90
+}
+
+variable "user_jwt_secret_data" {
+  type        = string
+  description = "Optional signing key material for BRIDGE_USER_JWT_SECRET (distinct from BRIDGE_SPIFFE_SVID_SECRET). When empty and db_password is set, Terraform derives a domain-separated project-scoped HMAC secret."
+  sensitive   = true
+  default     = ""
+}
+
+variable "enable_demo_passcode" {
+  type        = bool
+  description = "Create the Secret Manager container and Cloud Run secret_key_ref wiring for BRIDGE_DEMO_PASSCODE (automatically enabled when demo_passcode is non-empty)."
+  default     = false
+}
+
+variable "demo_passcode" {
+  type        = string
+  description = "Optional >=16-character interactive demo passcode stored in Secret Manager (BRIDGE_DEMO_PASSCODE) via TF_VAR_demo_passcode; never commit to HCL."
+  sensitive   = true
+  default     = ""
+
+  validation {
+    condition     = var.demo_passcode == "" || length(trimspace(var.demo_passcode)) >= 16
+    error_message = "demo_passcode must be empty or at least 16 characters."
+  }
+}
+
+variable "iap_audience" {
+  type        = string
+  description = "Expected Cloud IAP JWT audience injected as BRIDGE_IAP_AUDIENCE on Cloud Run services."
+  default     = ""
+}
+
+variable "cors_origins" {
+  type        = string
+  description = "Comma-separated allowed browser origins injected as BRIDGE_CORS_ORIGINS on dashboard/showcase Cloud Run services."
+  default     = ""
+}
+
+variable "principal_roles_json" {
+  type        = string
+  description = "Optional JSON object mapping authenticated principal emails/subjects to CatalogRole names, injected as BRIDGE_PRINCIPAL_ROLES."
+  default     = ""
+}
+
+variable "gs_allowlist" {
+  type        = string
+  description = "Optional comma-separated GCS bucket or bucket/prefix allowlist for caller-supplied gs:// document references, injected as BRIDGE_GS_ALLOWLIST."
+  default     = ""
 }
 
 

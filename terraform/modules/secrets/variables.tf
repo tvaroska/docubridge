@@ -92,3 +92,47 @@ variable "spiffe_svid_secret_data" {
   sensitive   = true
   default     = ""
 }
+
+variable "user_jwt_secret_id" {
+  type        = string
+  description = "Secret Manager secret id for the human session JWT signing key (injected as BRIDGE_USER_JWT_SECRET)."
+  default     = "bridge-user-jwt-secret"
+}
+
+variable "manage_user_jwt_version" {
+  type        = bool
+  description = "Create the Secret Manager secret version for BRIDGE_USER_JWT_SECRET directly in Terraform when true."
+  default     = false
+}
+
+variable "user_jwt_secret_data" {
+  type        = string
+  description = "Signing key material stored in the BRIDGE_USER_JWT_SECRET secret version when manage_user_jwt_version = true."
+  sensitive   = true
+  default     = ""
+}
+
+variable "enable_demo_passcode" {
+  type        = bool
+  description = "Create the Secret Manager container and runtime accessor for BRIDGE_DEMO_PASSCODE."
+  default     = false
+}
+
+variable "demo_passcode_secret_id" {
+  type        = string
+  description = "Secret Manager secret id for the interactive demo session passcode (injected as BRIDGE_DEMO_PASSCODE)."
+  default     = "bridge-demo-passcode"
+}
+
+variable "manage_demo_passcode_version" {
+  type        = bool
+  description = "Create the Secret Manager secret version for BRIDGE_DEMO_PASSCODE directly in Terraform when true."
+  default     = false
+}
+
+variable "demo_passcode_data" {
+  type        = string
+  description = "Demo session passcode (>=16 chars) stored in BRIDGE_DEMO_PASSCODE when manage_demo_passcode_version = true."
+  sensitive   = true
+  default     = ""
+}

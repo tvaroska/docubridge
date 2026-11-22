@@ -419,13 +419,18 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
     async def _preresolve_submissions(
         self, submissions: list[DocumentSubmission]
     ) -> tuple[list[DocumentSubmission], dict[str, tuple[bytes, str]]]:
-        from bridge.extraction.resolve import maybe_await
+        from bridge.extraction.resolve import maybe_await, validate_gs_uri
 
         resolved_payloads: dict[str, tuple[bytes, str]] = {}
         enriched: list[DocumentSubmission] = []
         for sub in submissions:
             ref = sub.artifact
             if ref is not None and ref.uri:
+                if ref.uri.strip().lower().startswith("gs://"):
+                    try:
+                        validate_gs_uri(ref.uri.strip())
+                    except ValueError as exc:
+                        raise InvalidParamsError(message=str(exc)) from exc
                 resolved = await maybe_await(self._resolver(ref.uri))
                 if resolved is not None:
                     resolved_payloads[sub.doc_id] = resolved
@@ -502,6 +507,12 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         # the scoped fetch endpoint. Read context_id off the RETURNED turn — the
         # Collector mints it when the request omits one (Decision 5 gotcha).
         party = request.party or UNSCOPED_USER
+        ctx_user = context.call_context.user if context.call_context else None
+        caller_principal = (
+            ctx_user.user_name
+            if ctx_user is not None and ctx_user.is_authenticated and ctx_user.user_name
+            else None
+        )
         saved: dict[str, tuple[str, int]] = {}  # doc_id -> (filename, version)
         for sub in submissions:
             pre = resolved_payloads.get(sub.doc_id)
@@ -517,6 +528,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
                 context_id=turn.context_id,
                 submission=sub,
                 resolver=_pre_resolver if pre is not None else self._resolver,
+                caller_principal=caller_principal,
             )
             if version is not None:
                 saved[sub.doc_id] = (filename_for(sub), version)

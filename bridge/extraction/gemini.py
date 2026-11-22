@@ -103,6 +103,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from bridge.doctypes import _OntologyRevisionLike
+    from bridge.extraction.resolve import ResolvedDocument
 
 from pydantic import ValidationError
 
@@ -278,6 +279,8 @@ class GeminiExtractor(GeminiWindowMixin):
     part (bounded at ``MAX_OCR_CHARS``), so a long scan's later pages may have no OCR
     grounding — a known limitation (the document itself is still attached).
     """
+
+    accepts_inline_document: bool = True
 
     def __init__(  # noqa: PLR0913 - keyword-only injectable extractor config
         self,
@@ -527,6 +530,7 @@ class GeminiExtractor(GeminiWindowMixin):
         revision: _OntologyRevisionLike | None = None,
         ontology_revision: str | None = None,
         catalog_order: Sequence[str] | None = None,
+        inline_document: ResolvedDocument | None = None,
     ) -> ExtractionResult:
         """Extract normalized fields + disposition signals via a Gemini call.
 
@@ -548,7 +552,11 @@ class GeminiExtractor(GeminiWindowMixin):
             ontology_revision=ontology_revision,
             catalog_order=catalog_order,
         )
-        resolved = _coerce_resolved(await maybe_await(self._resolver(artifact_name)))
+        resolved = (
+            inline_document
+            if inline_document is not None
+            else _coerce_resolved(await maybe_await(self._resolver(artifact_name)))
+        )
         client = self._get_client()
         document = self._document_part(resolved, client=client)
         config: dict[str, Any] = {"response_mime_type": "application/json"}

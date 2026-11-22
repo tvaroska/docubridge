@@ -176,10 +176,13 @@ def dead_host(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# gs:// — by reference, no download                                            #
+# gs:// — by reference, allow-listed + service-prefix guard (P14-8)            #
 # --------------------------------------------------------------------------- #
-async def test_gs_uri_resolves_by_reference_without_fetching():
-    """``gs://`` never downloads: no bytes, no client — the model reads the object."""
+async def test_gs_uri_resolves_by_reference_without_fetching(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Allowlisted ``gs://`` never downloads: no bytes, no client — the model reads the object."""
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "bucket")
 
     def _boom(url, **kwargs):
         raise AssertionError(f"gs:// must not issue a fetch (got {url})")
@@ -192,10 +195,157 @@ async def test_gs_uri_resolves_by_reference_without_fetching():
     assert resolved.mime_type == "application/pdf"
 
 
-async def test_gs_uri_without_a_known_suffix_refuses_loud():
+async def test_gs_uri_without_a_known_suffix_refuses_loud(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """An unclassifiable object refuses rather than shipping octet-stream garbage."""
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "bucket")
     with pytest.raises(ValueError, match="mime type"):
         await resolve_document("gs://bucket/blob")
+
+
+async def test_gs_reference_outside_allowlist_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """P14-8: ``gs://`` is default-deny, restricted to ``BRIDGE_GS_ALLOWLIST``, and refuses service prefixes."""
+    monkeypatch.delenv("BRIDGE_GS_ALLOWLIST", raising=False)
+    with pytest.raises(ValueError, match="BRIDGE_GS_ALLOWLIST"):
+        await resolve_document("gs://any-bucket/quote.pdf")
+
+    # Bucket outside allowlist is refused
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "partner-inbound/quotes")
+    with pytest.raises(ValueError, match="BRIDGE_GS_ALLOWLIST"):
+        await resolve_document("gs://other-bucket/quotes/doc.pdf")
+    with pytest.raises(ValueError, match="BRIDGE_GS_ALLOWLIST"):
+        await resolve_document("gs://partner-inbound/other-prefix/doc.pdf")
+
+    # Allowlisted prefix succeeds for non-service objects
+    ok = await resolve_document("gs://partner-inbound/quotes/doc.pdf")
+    assert ok.by_reference is True
+    assert ok.uri == "gs://partner-inbound/quotes/doc.pdf"
+
+    # Service-owned prefixes are ALWAYS refused even when the shared bucket is allowlisted
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "shared-project-bucket")
+    for forbidden in (
+        "gs://shared-project-bucket/email/attachments/k1/0/quote.pdf",
+        "gs://shared-project-bucket/attachments/k1/0/quote.pdf",
+        "gs://shared-project-bucket/audit-vault/ctx/doc/v1/doc.pdf",
+        "gs://shared-project-bucket/vault/ctx/doc/v1/doc.pdf",
+        "gs://shared-project-bucket/document_bridge/party/ctx/doc.pdf/0",
+        "gs://shared-project-bucket/skills/carrier-quote/doc.pdf",
+        "gs://shared-project-bucket/genai-payloads/span.pdf",
+        "gs://shared-project-bucket/inbound/../email/secret.pdf",
+        "gs://shared-project-bucket//email/secret.pdf",
+    ):
+        with pytest.raises(ValueError, match="refused"):
+            await resolve_document(forbidden)
+
+    # Configured custom service bucket/prefix is refused even when allowlisted
+    monkeypatch.setenv("BRIDGE_EMAIL_BUCKET", "shared-project-bucket")
+    monkeypatch.setenv("BRIDGE_EMAIL_PREFIX", "custom-mail")
+    with pytest.raises(ValueError, match="service-owned"):
+        await resolve_document("gs://shared-project-bucket/custom-mail/msg.pdf")
+
+    # Collect edge refuses a forbidden gs:// email-prefix object before extraction
+    from a2a.helpers import proto_helpers as ph
+    from a2a.types import Message, Role, SendMessageRequest
+    from a2a.utils.errors import A2AError
+    from google.protobuf import struct_pb2
+    from google.protobuf.json_format import ParseDict
+
+    from bridge.collect import Collector
+    from bridge.edge import CollectExecutor, build_a2a_app, encode_collect_request
+    from bridge.extraction.fixture import FixtureExtractor
+    from contract.wire import CollectRequest
+
+    app = build_a2a_app(
+        url="http://test/",
+        executor=CollectExecutor(collector=Collector(FixtureExtractor())),
+    )
+    parts = encode_collect_request(CollectRequest(process="address-proof"))
+    bad_part = ph.new_url_part(
+        "gs://shared-project-bucket/email/attachments/leak/0/quote.pdf",
+        media_type="application/pdf",
+    )
+    bad_part.metadata.CopyFrom(ParseDict({"doc_id": "leak-1"}, struct_pb2.Struct()))
+    parts.append(bad_part)
+    msg = Message(role=Role.ROLE_USER, message_id="m-leak", parts=parts)
+
+    from a2a.client import ClientConfig, ClientFactory
+    from a2a.utils.constants import TransportProtocol
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as hc:
+        client = await ClientFactory(
+            ClientConfig(
+                httpx_client=hc,
+                streaming=True,
+                supported_protocol_bindings=[TransportProtocol.JSONRPC.value],
+            )
+        ).create_from_url("http://test/")
+        with pytest.raises(A2AError):
+            async for _ in client.send_message(SendMessageRequest(message=msg)):
+                pass
+
+
+@pytest.mark.skipif(
+    __import__("os").environ.get("BRIDGE_TEST_GCP") != "1",
+    reason="Decisive live gs:// email-prefix Collect check requires BRIDGE_TEST_GCP=1",
+)
+async def test_live_collect_refuses_email_prefix_gs_object(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Decisive live P14-8 check: Collect with an email-prefix ``gs://`` URI must be refused."""
+    import os
+
+    from a2a.client import ClientConfig, ClientFactory
+    from a2a.helpers import proto_helpers as ph
+    from a2a.types import Message, Role, SendMessageRequest
+    from a2a.utils.constants import TransportProtocol
+    from a2a.utils.errors import A2AError
+    from google.protobuf import struct_pb2
+    from google.protobuf.json_format import ParseDict
+
+    from bridge.collect import Collector
+    from bridge.edge import CollectExecutor, build_a2a_app, encode_collect_request
+    from bridge.extraction.gemini import GeminiExtractor
+    from contract.wire import CollectRequest
+
+    bucket = (
+        os.environ.get("BRIDGE_EMAIL_BUCKET", "").strip()
+        or os.environ.get("BRIDGE_ARTIFACT_BUCKET", "").strip()
+    )
+    if not bucket:
+        pytest.skip("BRIDGE_EMAIL_BUCKET / BRIDGE_ARTIFACT_BUCKET not configured")
+    clean_bucket = bucket.removeprefix("gs://").split("/", 1)[0]
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", clean_bucket)
+
+    app = build_a2a_app(
+        url="http://test/",
+        executor=CollectExecutor(collector=Collector(GeminiExtractor())),
+    )
+    parts = encode_collect_request(CollectRequest(process="address-proof"))
+    bad = ph.new_url_part(
+        f"gs://{clean_bucket}/email/attachments/live-probe/0/quote.pdf",
+        media_type="application/pdf",
+    )
+    bad.metadata.CopyFrom(ParseDict({"doc_id": "live-probe"}, struct_pb2.Struct()))
+    parts.append(bad)
+    msg = Message(role=Role.ROLE_USER, message_id="m-live-probe", parts=parts)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as hc:
+        client = await ClientFactory(
+            ClientConfig(
+                httpx_client=hc,
+                streaming=True,
+                supported_protocol_bindings=[TransportProtocol.JSONRPC.value],
+            )
+        ).create_from_url("http://test/")
+        with pytest.raises(A2AError):
+            async for _ in client.send_message(SendMessageRequest(message=msg)):
+                pass
 
 
 def test_resolved_document_needs_exactly_one_of_data_or_uri():
@@ -205,8 +355,11 @@ def test_resolved_document_needs_exactly_one_of_data_or_uri():
         ResolvedDocument(mime_type="application/pdf", data=b"x", uri="gs://b/o.pdf")
 
 
-async def test_gs_uri_rides_the_request_as_file_data_not_inline():
+async def test_gs_uri_rides_the_request_as_file_data_not_inline(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """THE by-reference assertion: the request part is ``Part.from_uri``, not bytes."""
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "bucket")
     client = _FakeClient()
     extractor = GeminiExtractor(client=client, schemas={}, resolver=artifact_resolver())
 
@@ -220,8 +373,11 @@ async def test_gs_uri_rides_the_request_as_file_data_not_inline():
     assert part.file_data.mime_type == "application/pdf"
 
 
-async def test_gs_uri_on_the_developer_api_backend_refuses_loud():
+async def test_gs_uri_on_the_developer_api_backend_refuses_loud(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """``gs://`` is Vertex-only: a client that says so gets an actionable error."""
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "bucket")
     extractor = GeminiExtractor(
         client=_DevApiClient(), schemas={}, resolver=artifact_resolver()
     )
@@ -507,6 +663,147 @@ async def test_edge_resolve_bytes_fetches_an_http_reference(allowlisted):
     resolved = await resolve_bytes(f"{allowlisted}/doc.pdf")
 
     assert resolved == (PDF_BYTES, "application/pdf")
+
+
+async def test_gs_uri_rejects_percent_encoding_double_slash_control_and_artifact_bucket(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """P2 #8 regression: percent-encoded, leading //, control-char, and artifact-bucket gs:// URIs fail closed."""
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "partner-bucket,art-bucket")
+    monkeypatch.setenv("BRIDGE_ARTIFACT_BUCKET", "art-bucket")
+
+    for bad in (
+        "gs://partner-bucket/%65mail/attachments/k/0/quote.pdf",
+        "gs://partner-bucket/inbound/%2e%2e/email/quote.pdf",
+        "gs://partner-bucket//inbound/quote.pdf",
+        "gs://partner-bucket/inbound/quote\x00.pdf",
+        "gs://art-bucket/inbound/quote.pdf",
+    ):
+        with pytest.raises(ValueError, match="refused"):
+            await resolve_document(bad)
+
+
+async def test_email_processor_with_gcp_extraction_uses_inline_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """P0 #2 regression: GcpExtraction advertises accepts_inline_document and extracts email attachments without gs:// allowlist."""
+    from bridge.edge.email_ingress import EmailProcessor
+    from bridge.email_ingress.mime import landing_key
+    from bridge.ports.gcp.services import GcpExtraction
+    from bridge.ports.local import LocalEmailIngress
+    from tests.email_fixtures import MAILBOX, RFP_ID, SECRET, compose, make_board
+
+    monkeypatch.delenv("BRIDGE_GS_ALLOWLIST", raising=False)
+    board = make_board()
+    port = LocalEmailIngress(tmp_path / "mail-gcp-inline")
+
+    fake_client = _FakeClient()
+    gcp_ext = GcpExtraction(engine="gemini")
+    assert gcp_ext.accepts_inline_document is True
+    monkeypatch.setattr(
+        gcp_ext,
+        "_resolve_engine",
+        lambda: GeminiExtractor(
+            client=fake_client, schemas={}, resolver=artifact_resolver()
+        ),
+    )
+
+    processor = EmailProcessor(
+        board=board,
+        port=port,
+        mailbox=MAILBOX,
+        secret=SECRET,
+        extraction=gcp_ext,
+    )
+    raw = compose(
+        processor.reply_address(RFP_ID, "carrier-a"),
+        attachments=[("quote.pdf", PDF_BYTES, "application/pdf")],
+    )
+    key = landing_key(raw)
+    port.land(key, raw)
+
+    outcome = await processor.process(key)
+    assert outcome.status == "filed"
+    assert outcome.unreadable == []
+    assert len(outcome.filed) == 1
+    assert fake_client.models.calls
+    part = fake_client.models.calls[0]["contents"][1]
+    assert part.inline_data is not None
+    assert part.inline_data.data == PDF_BYTES
+
+
+def test_rfp_procurement_and_fleet_refuse_unallowlisted_gs_uris(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """P1 #5 regression: live RFP procurement and fleet extraction refuse unallowlisted gs:// URIs before calling Gemini."""
+    from types import SimpleNamespace
+
+    from bridge.a2ui_inbox import InMemoryActionInboxStore
+    from bridge.agent_gym import InMemoryAgentGymEngine
+    from bridge.dashboard.rfp_procurement import (
+        RunRfpProcurementRequest,
+        _extract_carrier_b_quote,
+    )
+    from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
+    from bridge.operational_store import InMemoryOperationalStore
+    from bridge.showcase import ScenarioEngine
+    from bridge.showcase.counterparty_and_fleet import (
+        _FleetDealParams,
+        _run_fleet_flash_extractions,
+    )
+    from contract.scenario import ScenarioStageKind
+
+    monkeypatch.delenv("BRIDGE_GS_ALLOWLIST", raising=False)
+    called = False
+
+    class _NeverCalledModels:
+        def generate_content(self, **_kwargs):
+            nonlocal called
+            called = True
+            return SimpleNamespace(text="{}", usage_metadata=None)
+
+    fake_genai = SimpleNamespace(models=_NeverCalledModels())
+
+    with pytest.raises(ValueError, match="BRIDGE_GS_ALLOWLIST"):
+        _extract_carrier_b_quote(
+            RunRfpProcurementRequest(case_id="rfp-deny-1", mode="live"),
+            pdf_uri="gs://evil-bucket/email/attachments/leak.pdf",
+            carrier_b_meta={},
+            chosen_model="gemini-3.8-flash",
+            uncalibrated_argon=False,
+            use_live=True,
+            genai_client=fake_genai,
+        )
+    assert called is False
+
+    op_store = InMemoryOperationalStore()
+    engine = ScenarioEngine(
+        store=op_store,
+        catalog=InMemoryKnowledgeCatalog(operational_store=op_store),
+        inbox=InMemoryActionInboxStore(),
+        gym=InMemoryAgentGymEngine(),
+    )
+    manifest = engine.find(kind=ScenarioStageKind.consolidation)
+    assert manifest is not None
+    deal = _FleetDealParams(
+        case_id="fleet-deny-1",
+        case_type="day1",
+        deal_entity_id="DEAL-DENY-1",
+        borrower_name="Test LLC",
+        pdf_uris=["gs://evil-bucket/vault/secret.pdf"],
+        wire_amount="$10,000.00",
+        wire_facility_ref="#1",
+        wire_memo="FINAL",
+        policy_ceiling_usd="100000.00",
+        skill_doctype="loan-payoff-statement",
+        effective_version="1.0.0",
+        outcome_id="out_fleet_deny_1",
+        use_live=True,
+        genai_client=fake_genai,
+    )
+    with pytest.raises(ValueError, match="BRIDGE_GS_ALLOWLIST"):
+        _run_fleet_flash_extractions(deal)
+    assert called is False
 
 
 # --------------------------------------------------------------------------- #

@@ -272,6 +272,7 @@ def test_live_a2a_payoff_meridian_fleet_deals_and_rfp_procurement(
     """Verify live HTTP Path-A payoff, Day-1/Day-2/out-of-policy fleet deals, and RFP Flash vs Argon."""
     _isolate_skills_and_telemetry(tmp_path, monkeypatch)
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj")
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "test-bucket")
 
     engine, sid = _consolidation_engine()
     shadow_deny = engine.gym.evaluate_gateway_route(

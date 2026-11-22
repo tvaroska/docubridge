@@ -90,6 +90,11 @@ locals {
     GOOGLE_CLOUD_LOCATION                              = var.port_mode == "gcp" ? var.vertex_location : ""
     BRIDGE_VERTEX_LOCATION                             = var.port_mode == "gcp" ? var.vertex_location : ""
     BRIDGE_PUBLIC_URL                                  = local.effective_public_url
+    BRIDGE_BOARD_PUBLIC_URL                            = local.board_service_url
+    BRIDGE_IAP_AUDIENCE                                = var.iap_audience
+    BRIDGE_CORS_ORIGINS                                = var.cors_origins
+    BRIDGE_PRINCIPAL_ROLES                             = var.principal_roles_json
+    BRIDGE_GS_ALLOWLIST                                = var.gs_allowlist
     BRIDGE_EMAIL_BUCKET                                = var.email_bucket
     BRIDGE_EMAIL_PREFIX                                = var.email_prefix
     BRIDGE_EMAIL_MAILBOX                               = var.email_mailbox
@@ -132,6 +137,11 @@ locals {
     GOOGLE_CLOUD_LOCATION                              = var.port_mode == "gcp" ? var.vertex_location : ""
     BRIDGE_VERTEX_LOCATION                             = var.port_mode == "gcp" ? var.vertex_location : ""
     BRIDGE_PUBLIC_URL                                  = local.meridian_service_url
+    BRIDGE_BOARD_PUBLIC_URL                            = local.meridian_service_url
+    BRIDGE_IAP_AUDIENCE                                = var.iap_audience
+    BRIDGE_CORS_ORIGINS                                = var.cors_origins
+    BRIDGE_PRINCIPAL_ROLES                             = var.principal_roles_json
+    BRIDGE_GS_ALLOWLIST                                = var.gs_allowlist
     OTEL_SERVICE_NAME                                  = local.meridian_service_name
     OTEL_EXPORTER_OTLP_ENDPOINT                        = "https://telemetry.googleapis.com"
     OTEL_RESOURCE_ATTRIBUTES                           = "gcp.project_id=${var.project_id},service.name=${local.meridian_service_name},apphub.application.id=meridian-loan-consolidation"
@@ -196,6 +206,35 @@ resource "google_cloud_run_v2_service" "bridge" {
               version = "latest"
             }
           }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.user_jwt_secret_id != "" ? [1] : []
+        content {
+          name = "BRIDGE_USER_JWT_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = var.user_jwt_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.iap_audience != "" ? [1] : []
+        content {
+          name  = "BRIDGE_IAP_AUDIENCE"
+          value = var.iap_audience
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.gs_allowlist != "" ? [1] : []
+        content {
+          name  = "BRIDGE_GS_ALLOWLIST"
+          value = var.gs_allowlist
         }
       }
 
@@ -692,6 +731,32 @@ resource "google_cloud_run_v2_service" "rfp_board" {
         }
       }
 
+      dynamic "env" {
+        for_each = var.user_jwt_secret_id != "" ? [1] : []
+        content {
+          name = "BRIDGE_USER_JWT_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = var.user_jwt_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.demo_passcode_secret_id != "" ? [1] : []
+        content {
+          name = "BRIDGE_DEMO_PASSCODE"
+          value_source {
+            secret_key_ref {
+              secret  = var.demo_passcode_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
       # The intake-token HMAC key — secret_key_ref, never a plaintext value.
       dynamic "env" {
         for_each = var.email_token_secret_id != "" ? [1] : []
@@ -829,6 +894,32 @@ resource "google_cloud_run_v2_service" "bridge_meridian" {
           value_source {
             secret_key_ref {
               secret  = var.spiffe_svid_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.user_jwt_secret_id != "" ? [1] : []
+        content {
+          name = "BRIDGE_USER_JWT_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = var.user_jwt_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.demo_passcode_secret_id != "" ? [1] : []
+        content {
+          name = "BRIDGE_DEMO_PASSCODE"
+          value_source {
+            secret_key_ref {
+              secret  = var.demo_passcode_secret_id
               version = "latest"
             }
           }

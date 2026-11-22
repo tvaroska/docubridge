@@ -42,7 +42,7 @@ run "dsn_secret_container_and_accessor" {
   }
 
   assert {
-    condition     = length(google_secret_manager_secret_version.db_url) == 0 && length(google_secret_manager_secret_version.spiffe_svid) == 0
+    condition     = length(google_secret_manager_secret_version.db_url) == 0 && length(google_secret_manager_secret_version.spiffe_svid) == 0 && length(google_secret_manager_secret_version.user_jwt) == 0 && length(google_secret_manager_secret_version.demo_passcode) == 0
     error_message = "default credential-free plan must create no secret versions unless manage_*_version = true"
   }
 
@@ -52,8 +52,13 @@ run "dsn_secret_container_and_accessor" {
   }
 
   assert {
-    condition     = google_secret_manager_secret_iam_member.spiffe_svid_accessor.role == "roles/secretmanager.secretAccessor"
-    error_message = "runtime must be granted roles/secretmanager.secretAccessor on the SPIFFE SVID secret"
+    condition     = google_secret_manager_secret.user_jwt.secret_id == var.user_jwt_secret_id
+    error_message = "user JWT secret id must track user_jwt_secret_id (default bridge-user-jwt-secret)"
+  }
+
+  assert {
+    condition     = google_secret_manager_secret_iam_member.spiffe_svid_accessor.role == "roles/secretmanager.secretAccessor" && google_secret_manager_secret_iam_member.user_jwt_accessor.role == "roles/secretmanager.secretAccessor"
+    error_message = "runtime must be granted roles/secretmanager.secretAccessor on both SVID and user JWT secrets"
   }
 }
 
@@ -65,12 +70,17 @@ run "single_apply_secret_versions_when_managed" {
   }
 
   variables {
-    project_id                 = "test-project"
-    service_account_member     = "serviceAccount:bridge-runtime@test-project.iam.gserviceaccount.com"
-    manage_db_url_version      = true
-    db_dsn                     = "postgresql+asyncpg://bridge:secret@10.20.0.5:5432/bridge"
-    manage_spiffe_svid_version = true
-    spiffe_svid_secret_data    = "spiffe-svid-hmac-secret"
+    project_id                   = "test-project"
+    service_account_member       = "serviceAccount:bridge-runtime@test-project.iam.gserviceaccount.com"
+    manage_db_url_version        = true
+    db_dsn                       = "postgresql+asyncpg://bridge:secret@10.20.0.5:5432/bridge"
+    manage_spiffe_svid_version   = true
+    spiffe_svid_secret_data      = "spiffe-svid-hmac-secret"
+    manage_user_jwt_version      = true
+    user_jwt_secret_data         = "user-jwt-hmac-secret"
+    enable_demo_passcode         = true
+    manage_demo_passcode_version = true
+    demo_passcode_data           = "long-demo-passcode-16+"
   }
 
   assert {
@@ -81,5 +91,10 @@ run "single_apply_secret_versions_when_managed" {
   assert {
     condition     = length(google_secret_manager_secret_version.spiffe_svid) == 1
     error_message = "manage_spiffe_svid_version = true must plan the SPIFFE SVID secret version for single-pass apply"
+  }
+
+  assert {
+    condition     = length(google_secret_manager_secret_version.user_jwt) == 1 && length(google_secret_manager_secret_version.demo_passcode) == 1
+    error_message = "managed user_jwt and demo_passcode secrets must plan their versions and accessors"
   }
 }

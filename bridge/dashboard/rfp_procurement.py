@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from bridge import patha
 from bridge.edge.skills import candidate_doctypes_for
 from bridge.extraction.gemini import REASONING_MODEL, WORKHORSE_MODEL
+from bridge.extraction.resolve import validate_gs_uri
 from bridge.identity import SPIFFE_ID_HEADER, SPIFFE_SVID_HEADER, mint_jwt_svid
 from bridge.knowledge_catalog import CatalogRole
 from bridge.outbound import stringify_decimals
@@ -250,8 +251,9 @@ def _extract_carrier_b_quote(  # noqa: PLR0913 - internal PDF extraction helper
         prompt_head = prompt_head + "\n\n" + _build_long_context_appendix(body.case_id)
     contents: list[Any] = [prompt_head]
     if pdf_uri.startswith("gs://"):
+        bucket, obj, mime = validate_gs_uri(pdf_uri)
         contents.append(
-            types.Part.from_uri(file_uri=pdf_uri, mime_type="application/pdf")
+            types.Part.from_uri(file_uri=f"gs://{bucket}/{obj}", mime_type=mime)
         )
     elif carrier_b_meta.get("pdf_base64"):
         import base64
@@ -451,6 +453,9 @@ def mount_rfp_procurement_routes(
         body: RunRfpProcurementRequest,
         response: Response,
     ) -> dict[str, Any]:
-        outcome_id, payload = execute_rfp_procurement_run(body=body, rfps=rfps)
+        try:
+            outcome_id, payload = execute_rfp_procurement_run(body=body, rfps=rfps)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         response.headers["x-outcome-id"] = outcome_id
         return payload

@@ -28,7 +28,9 @@ from bridge.user_interaction.demo_session import (
 )
 from bridge.user_interaction.schemas import IngestSubmissionRequest
 from bridge.user_interaction.surfaces import ingest_accepted_submission
+from bridge.vault import VaultPromotionRefused, redact_personal_data
 from contract.enums import Disposition, Gate
+from contract.extraction import ExtractionFields, ExtractionResult
 from contract.wire import LedgerEntry
 
 
@@ -160,6 +162,60 @@ def _register_demo_console_routes(router: APIRouter) -> None:
     _register_demo_static_routes(router)
 
 
+def _build_parked_intake_response(
+    entry: LedgerEntry, *, outcome_id: str, entity_id: str
+) -> dict[str, Any]:
+    raw_fields = dict(entry.key_fields)
+    msg_sentinel = "__bridge_parked_message__"
+    if entry.message:
+        raw_fields[msg_sentinel] = entry.message
+    sanitized, _ = redact_personal_data(
+        ExtractionResult(
+            fields=ExtractionFields(
+                doctype=entry.doctype,
+                issuer=entry.issuer,
+                key_fields=raw_fields,
+                tables=dict(entry.tables),
+                source_anchors=dict(entry.source_anchors),
+            ),
+            overall_confidence=(
+                entry.overall_confidence
+                if entry.overall_confidence is not None
+                else 1.0
+            ),
+            legible=True,
+        )
+    )
+    sanitized_fields = dict(sanitized.fields.key_fields)
+    scrubbed_message = (
+        sanitized_fields.pop(msg_sentinel, entry.message)
+        if entry.message
+        else entry.message
+    )
+    parked_entry = entry.model_copy(
+        update={
+            "key_fields": sanitized_fields,
+            "tables": dict(sanitized.fields.tables),
+            "source_anchors": dict(sanitized.fields.source_anchors),
+            "message": scrubbed_message,
+        }
+    )
+    if parked_entry.disposition is Disposition.rejected:
+        close_outcome("failed", subject=entity_id, outcome_id=outcome_id)
+    return {
+        "outcome_id": outcome_id,
+        "disposition": parked_entry.disposition.value,
+        "redacted_fields": dict(parked_entry.key_fields),
+        "applied_extraction_hints": [],
+        "entry": parked_entry.model_dump(mode="json"),
+        "vault_record": None,
+        "vault_promoted": False,
+        "facts": [],
+        "conflicts": [],
+        "lineage_traces": [],
+    }
+
+
 def register_intake_and_demo_routes(  # noqa: PLR0913 - public FastAPI route registrar
     router: APIRouter,
     *,
@@ -243,21 +299,26 @@ def register_intake_and_demo_routes(  # noqa: PLR0913 - public FastAPI route reg
                 ).encode("utf-8")
                 resolved_filename = body.filename or f"{body.doc_id}.json"
                 resolved_mime = "application/json"
-            res = ingest_accepted_submission(
-                entry,
-                entity_id=body.entity_id,
-                context_id=body.context_id,
-                raw_document_bytes=raw_bytes,
-                filename=resolved_filename,
-                mime_type=resolved_mime,
-                version=body.version,
-                source_mode="CUSTOM_WEB_PORTAL",
-                operational_store=store,
-                knowledge_catalog=catalog,
-                agent_gym=gym,
-                recorded_at=rec_at,
-                effective_from=body.effective_from,
-            )
+            try:
+                res = ingest_accepted_submission(
+                    entry,
+                    entity_id=body.entity_id,
+                    context_id=body.context_id,
+                    raw_document_bytes=raw_bytes,
+                    filename=resolved_filename,
+                    mime_type=resolved_mime,
+                    version=body.version,
+                    source_mode="CUSTOM_WEB_PORTAL",
+                    operational_store=store,
+                    knowledge_catalog=catalog,
+                    agent_gym=gym,
+                    recorded_at=rec_at,
+                    effective_from=body.effective_from,
+                )
+            except VaultPromotionRefused:
+                return _build_parked_intake_response(
+                    entry, outcome_id=outcome_id, entity_id=body.entity_id
+                )
             if res.entry.disposition is Disposition.accepted:
                 close_outcome(
                     "succeeded",

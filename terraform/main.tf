@@ -115,8 +115,13 @@ module "secrets" {
   labels                     = var.labels
   manage_db_url_version      = nonsensitive(var.db_password != "")
   db_dsn                     = nonsensitive(var.db_password != "") ? "postgresql+asyncpg://${module.database.db_user}:${urlencode(var.db_password)}@${module.database.private_ip_address}:5432/${module.database.database_name}" : ""
-  manage_spiffe_svid_version = nonsensitive(var.db_password != "" || var.spiffe_svid_secret_data != "")
-  spiffe_svid_secret_data    = nonsensitive(var.spiffe_svid_secret_data != "") ? var.spiffe_svid_secret_data : (nonsensitive(var.db_password != "") ? sha256("${var.project_id}:${var.service_name}:${var.db_password}:spiffe-svid") : "")
+  manage_spiffe_svid_version   = nonsensitive(var.db_password != "" || var.spiffe_svid_secret_data != "")
+  spiffe_svid_secret_data      = nonsensitive(var.spiffe_svid_secret_data != "") ? var.spiffe_svid_secret_data : (nonsensitive(var.db_password != "") ? sha256("${var.project_id}:${var.service_name}:${var.db_password}:spiffe-svid") : "")
+  manage_user_jwt_version      = nonsensitive(var.db_password != "" || var.user_jwt_secret_data != "")
+  user_jwt_secret_data         = nonsensitive(var.user_jwt_secret_data != "") ? var.user_jwt_secret_data : (nonsensitive(var.db_password != "") ? sha256("${var.project_id}:${var.service_name}:${var.db_password}:user-jwt") : "")
+  enable_demo_passcode         = var.enable_demo_passcode || nonsensitive(var.demo_passcode != "")
+  manage_demo_passcode_version = nonsensitive(var.demo_passcode != "")
+  demo_passcode_data           = var.demo_passcode
   # Email intake (S0-arch-13): three gated CONTAINERS (no versions) — the Graph client
   # secret + clientState read by the webhook SA only, the token key by the runtime only.
   enable_email_ingress = var.enable_email_ingress
@@ -203,6 +208,12 @@ module "runtime" {
   egress_subnet                = module.network.internal_subnet_id
   db_url_secret_id             = module.secrets.secret_id
   spiffe_svid_secret_id        = module.secrets.spiffe_svid_secret_id
+  user_jwt_secret_id           = module.secrets.user_jwt_secret_id
+  demo_passcode_secret_id      = module.secrets.demo_passcode_secret_id
+  iap_audience                 = var.iap_audience
+  cors_origins                 = var.cors_origins
+  principal_roles_json         = var.principal_roles_json
+  gs_allowlist                 = var.gs_allowlist
   single_bucket_mode           = var.single_bucket_mode
   skills_bucket                = module.gcs.skills_bucket_name
   skills_prefix                = module.gcs.skills_prefix

@@ -122,6 +122,7 @@ def build_user_interaction_app(  # noqa: PLR0913 - public FastAPI app dependency
     principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
     oidc_verifier: Callable[..., dict[str, Any]] | None = None,
+    iap_cert_transport: object = None,
 ) -> FastAPI:
     """Build a standalone FastAPI application for Zone 5 A2UI and Zone 6 Catalog."""
     app = FastAPI(
@@ -130,6 +131,8 @@ def build_user_interaction_app(  # noqa: PLR0913 - public FastAPI app dependency
     )
     if oidc_verifier is not None:
         app.state.oidc_verifier = oidc_verifier
+    if iap_cert_transport is not None:
+        app.state.iap_cert_transport = iap_cert_transport
     app.add_middleware(OtelAsgiMiddleware, service_component="user_interaction")
     app.include_router(
         build_user_interaction_router(

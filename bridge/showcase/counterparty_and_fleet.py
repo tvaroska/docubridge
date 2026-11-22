@@ -467,14 +467,18 @@ def _run_fleet_flash_extractions(deal: _FleetDealParams) -> tuple[int, int, int]
         if deal.use_live:
             from google.genai import types
 
+            from bridge.extraction.resolve import validate_gs_uri
+
             client = _build_genai_client(deal.genai_client)
-            part = (
-                types.Part.from_uri(file_uri=uri, mime_type="application/pdf")
-                if uri.startswith("gs://")
-                else types.Part.from_bytes(
+            if uri.startswith("gs://"):
+                bucket, obj, mime = validate_gs_uri(uri)
+                part = types.Part.from_uri(
+                    file_uri=f"gs://{bucket}/{obj}", mime_type=mime
+                )
+            else:
+                part = types.Part.from_bytes(
                     data=b"%PDF-1.4\n%fleet\n", mime_type="application/pdf"
                 )
-            )
             prompt_txt = (
                 f"Extract payoff facility, wire amount, and PAID IN FULL settlement status for "
                 f"{deal.borrower_name} (skill {deal.skill_doctype}@{deal.effective_version}, case {deal.case_id}). "
@@ -534,8 +538,11 @@ def _run_fleet_day1_stage(
             f"memo '{deal.wire_memo}') and recommend Underwriter Overwatch action."
         ]
         if bank_uri.startswith("gs://"):
+            from bridge.extraction.resolve import validate_gs_uri
+
+            bucket, obj, mime = validate_gs_uri(bank_uri)
             contents.append(
-                types.Part.from_uri(file_uri=bank_uri, mime_type="application/pdf")
+                types.Part.from_uri(file_uri=f"gs://{bucket}/{obj}", mime_type=mime)
             )
         resp = client.models.generate_content(
             model=REASONING_MODEL,

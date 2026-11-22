@@ -107,6 +107,10 @@ FORBIDDEN_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
     ("Cookie-gated GCS URL", re.compile(r"https?://storage\.cloud\.google\.com/")),
     ("Machine kernel string", re.compile(r"\bLinux-\d+\.\d+\.\d+-")),
+    (
+        "Internal sandbox environment codename",
+        re.compile(r"\b" + r"arg" + r"olis\b", re.IGNORECASE),
+    ),
 ]
 
 _UUID_RE = re.compile(
@@ -309,6 +313,11 @@ def test_hygiene_scanners_catch_synthetic_leaks(tmp_path: Path) -> None:
     )
     assert any("12-digit GCP project number" in hit for hit in proj_num_leak), (
         proj_num_leak
+    )
+
+    sandbox_leak = _scan_text_for_leaks("demo/" + "Arg" + "olis org policy")
+    assert any("sandbox environment codename" in hit for hit in sandbox_leak), (
+        sandbox_leak
     )
 
     clean_synthetic = _scan_text_for_leaks(

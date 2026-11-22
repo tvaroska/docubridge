@@ -177,12 +177,13 @@ def _project_rfp_or_404(
     return readmodel.project_rfp_status(view, intake=intake)
 
 
-def mount_rfp_routes(
+def mount_rfp_routes(  # noqa: PLR0913 - public dashboard RFP route mount
     app: FastAPI,
     *,
     rfps: RfpBoard | None,
     intake: IntakeAddressing | None,
     outbound: A2AClient | None = None,
+    principal_roles: dict[str, Any] | None = None,
     require_auth: bool = False,
 ) -> None:
     """Add the consumer RFP read API + the manual chase route to ``app``."""
@@ -190,6 +191,7 @@ def mount_rfp_routes(
     read_deps = [
         read_auth_dependency(
             default_role="broker",
+            principal_roles=principal_roles,
             require_auth=require_auth,
             allow_external_roles=False,
         )
@@ -197,6 +199,7 @@ def mount_rfp_routes(
     mutating_deps = [
         mutating_auth_dependency(
             default_role="broker",
+            principal_roles=principal_roles,
             require_auth=require_auth,
             allow_external_roles=False,
         )

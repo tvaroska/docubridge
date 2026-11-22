@@ -35,3 +35,21 @@ output "spiffe_svid_secret_id" {
     google_secret_manager_secret_version.spiffe_svid,
   ]
 }
+
+output "user_jwt_secret_id" {
+  description = "The human session JWT signing key secret id (injected as BRIDGE_USER_JWT_SECRET)."
+  value       = google_secret_manager_secret.user_jwt.secret_id
+  depends_on = [
+    google_secret_manager_secret_iam_member.user_jwt_accessor,
+    google_secret_manager_secret_version.user_jwt,
+  ]
+}
+
+output "demo_passcode_secret_id" {
+  description = "The interactive demo passcode secret id (injected as BRIDGE_DEMO_PASSCODE; \"\" when disabled)."
+  value       = var.enable_demo_passcode ? google_secret_manager_secret.demo_passcode[0].secret_id : ""
+  depends_on = [
+    google_secret_manager_secret_iam_member.demo_passcode_accessor,
+    google_secret_manager_secret_version.demo_passcode,
+  ]
+}

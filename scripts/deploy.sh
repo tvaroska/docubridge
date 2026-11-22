@@ -53,9 +53,9 @@ export TF_VAR_db_password="${DB_PASSWORD}"
 : "${TASKS_QUEUE_NAME:=bridge-followups}"   # Cloud Tasks queue name (override if tombstoned)
 : "${ENABLE_RFP_BOARD:=true}"               # Deploy Internal RFP Board + 6-Zone Showcase Console
 : "${RFP_PROCESS:=benefits-rfp}"            # Default RFP board process skill
-: "${RFP_BOARD_INGRESS:=INGRESS_TRAFFIC_ALL}"
+: "${RFP_BOARD_INGRESS:=INGRESS_TRAFFIC_INTERNAL_ONLY}"
 : "${MIN_INSTANCES:=0}"                     # Scale-to-zero default for scratch/demo stacks
-: "${INVOKER_IAM_DISABLED:=true}"           # --no-invoker-iam-check for Argolis orgs
+: "${INVOKER_IAM_DISABLED:=false}"          # Keep Cloud Run IAM invoker checks on; set true only where Domain-Restricted Sharing blocks allUsers
 : "${ENABLE_AUDIT_VAULT:=true}"             # Provision 7-year WORM GCS Audit Vault (per-object retention in single-bucket mode)
 : "${ENABLE_TELEMETRY_BQ:=true}"            # Provision BigQuery OTel spans dataset + SQL eval views
 : "${SINGLE_BUCKET_MODE:=true}"             # Consolidate all GCS prefixes into gs://<project_id>
@@ -65,6 +65,14 @@ export TF_VAR_db_password="${DB_PASSWORD}"
 : "${VERTEX_CONNECTION_SA_EMAIL:=}"         # optional existing BigLake SA email when CREATE_VERTEX_CONNECTION=false
 : "${SEED_SKILLS:=true}"                    # Sync repository skills/ into the Skill Registry bucket/prefix via gcloud storage rsync
 : "${SCENARIOS_ARCHIVE_URI:=}"              # Optional long-term gs:// prefix holding scenarios/ & evals/
+: "${DEMO_PASSCODE:=}"                      # Optional >=16-char passcode stored in Secret Manager (BRIDGE_DEMO_PASSCODE)
+: "${IAP_AUDIENCE:=}"                       # Optional Cloud IAP JWT expected audience (BRIDGE_IAP_AUDIENCE)
+: "${CORS_ORIGINS:=}"                       # Optional comma-separated allowed browser origins (BRIDGE_CORS_ORIGINS)
+: "${PRINCIPAL_ROLES_JSON:=}"               # Optional JSON {principal: role} map (BRIDGE_PRINCIPAL_ROLES)
+: "${GS_ALLOWLIST:=}"                       # Optional comma-separated gs:// bucket/prefix allowlist (BRIDGE_GS_ALLOWLIST)
+if [[ -n "${DEMO_PASSCODE}" ]]; then
+  export TF_VAR_demo_passcode="${DEMO_PASSCODE}"
+fi
 
 echo "==> Enabling required APIs"
 gcloud services enable \
@@ -173,6 +181,18 @@ fi
 if [[ -n "${PARTY_INVOKER_MEMBERS}" ]]; then
   members_hcl="[\"${PARTY_INVOKER_MEMBERS//,/\",\"}\"]"
   TF_VARS+=(-var "party_invoker_members=${members_hcl}")
+fi
+if [[ -n "${IAP_AUDIENCE}" ]]; then
+  TF_VARS+=(-var "iap_audience=${IAP_AUDIENCE}")
+fi
+if [[ -n "${CORS_ORIGINS}" ]]; then
+  TF_VARS+=(-var "cors_origins=${CORS_ORIGINS}")
+fi
+if [[ -n "${PRINCIPAL_ROLES_JSON}" ]]; then
+  TF_VARS+=(-var "principal_roles_json=${PRINCIPAL_ROLES_JSON}")
+fi
+if [[ -n "${GS_ALLOWLIST}" ]]; then
+  TF_VARS+=(-var "gs_allowlist=${GS_ALLOWLIST}")
 fi
 
 echo "==> Terraform apply (single pass)"

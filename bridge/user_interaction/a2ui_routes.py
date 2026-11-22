@@ -43,6 +43,7 @@ from bridge.user_interaction.auth import (
 )
 from bridge.user_interaction.demo_session import (
     mutating_auth_dependency,
+    read_auth_dependency,
     verified_mutating_identity,
 )
 from bridge.user_interaction.schemas import (
@@ -205,11 +206,6 @@ def _handle_get_inbox_item(
     channel: DeliveryChannel,
     role: CatalogRole | None,
 ) -> dict[str, Any]:
-    item = deps.inbox.get_item(item_id)
-    if item is None:
-        raise HTTPException(
-            status_code=404, detail=f"Action item '{item_id}' not found."
-        )
     default_role: CatalogRole = "broker" if channel == "gemini_app" else "client"
     compound = resolve_compound_identity(
         request,
@@ -218,6 +214,11 @@ def _handle_get_inbox_item(
         principal_roles=deps.principal_roles,
         require_auth=deps.require_auth,
     )
+    item = deps.inbox.get_item(item_id)
+    if item is None:
+        raise HTTPException(
+            status_code=404, detail=f"Action item '{item_id}' not found."
+        )
     resolved_role = compound.user.role
     authorize_entity_access(compound.user, item.entity_id)
     if compound.agent_spiffe_id is not None:
@@ -253,11 +254,6 @@ def _handle_stream_inbox_events(
     channel: DeliveryChannel,
     role: CatalogRole | None,
 ) -> PlainTextResponse:
-    item = deps.inbox.get_item(item_id)
-    if item is None:
-        raise HTTPException(
-            status_code=404, detail=f"Action item '{item_id}' not found."
-        )
     default_role: CatalogRole = "broker" if channel == "gemini_app" else "client"
     compound = resolve_compound_identity(
         request,
@@ -266,6 +262,11 @@ def _handle_stream_inbox_events(
         principal_roles=deps.principal_roles,
         require_auth=deps.require_auth,
     )
+    item = deps.inbox.get_item(item_id)
+    if item is None:
+        raise HTTPException(
+            status_code=404, detail=f"Action item '{item_id}' not found."
+        )
     resolved_role = compound.user.role
     authorize_entity_access(compound.user, item.entity_id)
     if compound.agent_spiffe_id is not None:
@@ -342,7 +343,7 @@ def _handle_submit_inbox_governance_action(
             actor_role=resolved_role,
             channel=channel,
             agent_spiffe_id=compound.agent_spiffe_id,
-            principal_max_approval_amount=compound.user.max_approval_amount,
+            principal_max_approval_amount=compound.user.effective_approval_limit(),
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -399,7 +400,16 @@ def _register_inbox_write_routes(router: APIRouter, deps: _A2uiRouteDeps) -> Non
 
 
 def _register_inbox_read_routes(router: APIRouter, deps: _A2uiRouteDeps) -> None:
-    @router.get("/v1/a2ui/catalogs/{catalog_name}")
+    catalog_read_deps = [
+        read_auth_dependency(
+            default_role="broker",
+            principal_roles=deps.principal_roles,
+            require_auth=deps.require_auth,
+            allow_external_roles=True,
+        )
+    ]
+
+    @router.get("/v1/a2ui/catalogs/{catalog_name}", dependencies=catalog_read_deps)
     def get_a2ui_catalog_schema(catalog_name: str) -> dict[str, Any]:
         """Return the security-zone-isolated A2UI v0.9 widget catalog schema (enterprise or portal)."""
         if catalog_name in ("enterprise_inbox_catalog.json", "enterprise"):

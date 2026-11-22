@@ -463,3 +463,354 @@ async def test_edge_freshness_clock_routes_stale_utility_bill_to_resubmit() -> N
     assert entry.disposition is Disposition.rejected
     assert entry.gate is Gate.resubmit
     assert entry.reason_code == "stale_document"
+
+
+# --------------------------------------------------------------------------- #
+# P14-1: Edge authentication & cross-caller task/artifact isolation            #
+# --------------------------------------------------------------------------- #
+async def test_second_caller_cannot_list_or_fetch_first_callers_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two callers on the A2A edge cannot list/get each other's tasks or download artifacts (P14-1)."""
+    from a2a.types import ListTasksRequest
+    from a2a.utils.errors import A2AError
+
+    from bridge.edge.auth import EdgeAuthBackend
+    from bridge.identity import (
+        SPIFFE_SVID_HEADER,
+        SPIFFE_SVID_SECRET_ENV,
+        USER_JWT_SECRET_ENV,
+        USER_TOKEN_HEADER,
+        mint_jwt_svid,
+        mint_user_token,
+    )
+
+    monkeypatch.setenv("K_SERVICE", "bridge-kyc")
+    monkeypatch.setenv(SPIFFE_SVID_SECRET_ENV, "p14-1-edge-svid-signing-secret-2026")
+    monkeypatch.setenv(USER_JWT_SECRET_ENV, "p14-1-edge-user-jwt-secret-2026")
+
+    # Under K_SERVICE, build_a2a_app refuses to start without an auth_backend
+    with pytest.raises(RuntimeError, match="auth_backend"):
+        build_a2a_app(
+            url=URL,
+            executor=CollectExecutor(collector=Collector(FixtureExtractor())),
+        )
+
+    store = InMemoryArtifactService()
+    app = build_a2a_app(
+        url=URL,
+        executor=CollectExecutor(collector=Collector(FixtureExtractor())),
+        artifact_store=store,
+        auth_backend=EdgeAuthBackend(),
+    )
+    caller_a_headers = {
+        SPIFFE_SVID_HEADER: mint_jwt_svid(
+            "spiffe://agents.docubridge.io/internal/broker-agent"
+        )
+    }
+    caller_b_headers = {
+        USER_TOKEN_HEADER: mint_user_token("usr:second-caller@other.example", "client")
+    }
+
+    transport = httpx.ASGITransport(app=app)
+
+    # Public agent-card remains readable for discovery/healthcheck; anonymous JSON-RPC is 401
+    async with httpx.AsyncClient(transport=transport, base_url=BASE) as anon_hc:
+        card_resp = await anon_hc.get("/.well-known/agent-card.json")
+        assert card_resp.status_code == 200
+        rpc_anon = await anon_hc.post(
+            "/",
+            json={"jsonrpc": "2.0", "id": "1", "method": "tasks/list", "params": {}},
+        )
+        assert rpc_anon.status_code == 401
+
+    # Caller A submits a document and retrieves both task and artifact
+    async with httpx.AsyncClient(
+        transport=transport, base_url=BASE, headers=caller_a_headers
+    ) as hc_a:
+        cfg_a = ClientConfig(
+            httpx_client=hc_a,
+            streaming=True,
+            supported_protocol_bindings=[TransportProtocol.JSONRPC.value],
+        )
+        client_a = await ClientFactory(cfg_a).create_from_url(URL)
+        task_id = await _send(client_a, "address-proof", [ACCEPTED])
+        task_a = await client_a.get_task(GetTaskRequest(id=task_id))
+        turn_a = _exchange_turn_from_artifacts(task_a)
+        listed_a = await client_a.list_tasks(ListTasksRequest())
+        assert [t.id for t in listed_a.tasks] == [task_id]
+
+        artifact_path = _fetch_path(turn_a.status.entries[0].artifact.uri)
+        own_fetch = await hc_a.get(artifact_path)
+        assert own_fetch.status_code == 200
+        assert own_fetch.content == _GOV_ID_BYTES
+
+    # Anonymous artifact fetch -> 401
+    async with httpx.AsyncClient(transport=transport, base_url=BASE) as anon_hc:
+        assert (await anon_hc.get(artifact_path)).status_code == 401
+
+    # Caller B cannot list Caller A's task, cannot get it by id, and cannot fetch its artifact
+    async with httpx.AsyncClient(
+        transport=transport, base_url=BASE, headers=caller_b_headers
+    ) as hc_b:
+        cfg_b = ClientConfig(
+            httpx_client=hc_b,
+            streaming=True,
+            supported_protocol_bindings=[TransportProtocol.JSONRPC.value],
+        )
+        client_b = await ClientFactory(cfg_b).create_from_url(URL)
+        listed_b = await client_b.list_tasks(ListTasksRequest())
+        assert listed_b.tasks == []
+        with pytest.raises(A2AError):
+            await client_b.get_task(GetTaskRequest(id=task_id))
+        foreign_fetch = await hc_b.get(artifact_path)
+        assert foreign_fetch.status_code == 404
+
+    # P0 regression: showcase viewer cookie minted by GET /demo must be refused (401) on A2A edge
+    viewer_jwt = mint_user_token("viewer:demo", "broker", scope="showcase_read")
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url=BASE,
+        headers={USER_TOKEN_HEADER: viewer_jwt},
+    ) as hc_viewer:
+        rpc_viewer = await hc_viewer.post(
+            "/",
+            json={"jsonrpc": "2.0", "id": "2", "method": "tasks/list", "params": {}},
+        )
+        assert rpc_viewer.status_code == 401
+        assert (await hc_viewer.get(artifact_path)).status_code == 401
+
+    # P1 regression: Bearer OIDC without BRIDGE_PUBLIC_URL audience or unverified email -> 401
+    oidc_app = build_a2a_app(
+        url=URL,
+        executor=CollectExecutor(collector=Collector(FixtureExtractor())),
+        artifact_store=store,
+        auth_backend=EdgeAuthBackend(
+            oidc_verifier=lambda _tok, expected_audience=None: {
+                "email": "sa@test.iam.gserviceaccount.com",
+                "email_verified": False,
+            }
+        ),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=oidc_app),
+        base_url=BASE,
+        headers={"Authorization": "Bearer fake-oidc"},
+    ) as hc_oidc:
+        assert (
+            await hc_oidc.post(
+                "/",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "3",
+                    "method": "tasks/list",
+                    "params": {},
+                },
+            )
+        ).status_code == 401
+        monkeypatch.setenv("BRIDGE_PUBLIC_URL", "https://bridge.example.run.app")
+        assert (
+            await hc_oidc.post(
+                "/",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "4",
+                    "method": "tasks/list",
+                    "params": {},
+                },
+            )
+        ).status_code == 401
+
+
+async def test_artifact_segment_and_email_owner_isolation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reserved party `_bridge_index`, path traversal segments, and email-owned artifacts fail closed."""
+    from bridge.collect import DocumentSubmission
+    from bridge.edge.artifacts import ARTIFACT_INDEX_USER, persist_submission
+    from bridge.edge.auth import EdgeAuthBackend
+    from bridge.identity import USER_TOKEN_HEADER, mint_user_token
+    from contract.wire import ArtifactRef
+
+    monkeypatch.setenv("K_SERVICE", "bridge")
+    monkeypatch.setenv("BRIDGE_SPIFFE_SVID_SECRET", "p14-edge-seg-secret-2026")
+    store = InMemoryArtifactService()
+    ctx = uuid.uuid4().hex
+    sub = DocumentSubmission(
+        doc_id="mail-1",
+        artifact_name="quote.pdf",
+        artifact=ArtifactRef(
+            uri="https://carrier.example/quote.pdf",
+            mime_type="application/pdf",
+            name="quote.pdf",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Reserved"):
+        await persist_submission(
+            store,
+            party=ARTIFACT_INDEX_USER,
+            context_id=ctx,
+            submission=sub,
+            resolver=lambda _u: (b"%PDF", "application/pdf"),
+            caller_principal="usr:attacker@example.com",
+        )
+
+    bad_sub = DocumentSubmission(
+        doc_id="bad-1",
+        artifact_name="../secret.pdf",
+        artifact=ArtifactRef(
+            uri="https://carrier.example/secret.pdf",
+            mime_type="application/pdf",
+            name="../secret.pdf",
+        ),
+    )
+    with pytest.raises(ValueError, match="Unsafe"):
+        await persist_submission(
+            store,
+            party="carrier-a",
+            context_id=ctx,
+            submission=bad_sub,
+            resolver=lambda _u: (b"%PDF", "application/pdf"),
+            caller_principal="usr:attacker@example.com",
+        )
+
+    # Email-persisted artifact owned by system:email-ingress cannot be read or overwritten by foreign user
+    await persist_submission(
+        store,
+        party="carrier-a",
+        context_id=ctx,
+        submission=sub,
+        resolver=lambda _u: (b"%PDF-email-body", "application/pdf"),
+        caller_principal="system:email-ingress",
+    )
+    with pytest.raises(PermissionError, match="owned by another principal"):
+        await persist_submission(
+            store,
+            party="carrier-a",
+            context_id=ctx,
+            submission=sub,
+            resolver=lambda _u: (b"%PDF-hijack", "application/pdf"),
+            caller_principal="usr:attacker@example.com",
+        )
+
+    edge_app = build_a2a_app(
+        url=URL,
+        executor=CollectExecutor(collector=Collector(FixtureExtractor())),
+        artifact_store=store,
+        auth_backend=EdgeAuthBackend(require_auth=True),
+    )
+    foreign_tok = mint_user_token("usr:attacker@example.com", "client")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=edge_app),
+        base_url=BASE,
+        headers={USER_TOKEN_HEADER: foreign_tok},
+    ) as hc:
+        assert (await hc.get(f"/artifacts/{ctx}/quote.pdf")).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# P14-4: Party-scoped artifact fetch via public BaseArtifactService API only   #
+# --------------------------------------------------------------------------- #
+class _OpaqueArtifactStore:
+    """Wrapper exposing ONLY public ``BaseArtifactService`` methods (no ``.artifacts`` dict)."""
+
+    def __init__(self) -> None:
+        self._inner = InMemoryArtifactService()
+
+    async def save_artifact(self, **kwargs):
+        return await self._inner.save_artifact(**kwargs)
+
+    async def load_artifact(self, **kwargs):
+        return await self._inner.load_artifact(**kwargs)
+
+    async def list_versions(self, **kwargs):
+        return await self._inner.list_versions(**kwargs)
+
+
+async def test_fetch_finds_party_scoped_artifact_without_store_internals() -> None:
+    """Party-scoped artifacts resolve on stores without a private ``.artifacts`` dict (P14-4)."""
+    from bridge.collect import DocumentSubmission
+    from bridge.edge.artifacts import persist_submission
+    from contract.wire import ArtifactRef
+
+    store = _OpaqueArtifactStore()
+    assert not hasattr(store, "artifacts")
+    ctx = uuid.uuid4().hex
+    submission = DocumentSubmission(
+        doc_id="quote-1",
+        artifact_name="chubb-quote.pdf",
+        artifact=ArtifactRef(
+            uri="https://carrier.example/chubb-quote.pdf",
+            mime_type="application/pdf",
+            name="chubb-quote.pdf",
+        ),
+    )
+
+    version = await persist_submission(
+        store,  # type: ignore[arg-type]
+        party="chubb-carrier",
+        context_id=ctx,
+        submission=submission,
+        resolver=lambda _uri: (b"%PDF-1.7 chubb-body", "application/pdf"),
+    )
+    assert version == 0
+
+    # Direct-stream fetch works without `.artifacts`
+    direct_app = build_fetch_app(store)  # type: ignore[arg-type]
+    async with _fetch_client(direct_app) as hc:
+        resp = await hc.get(f"/{ctx}/chubb-quote.pdf?v=0")
+        assert resp.status_code == 200
+        assert resp.content == b"%PDF-1.7 chubb-body"
+        assert resp.headers["content-type"] == "application/pdf"
+
+    # Signed-URL redirect mode also resolves the named party without `.artifacts`
+    signed_app = build_fetch_app(store, signer=_fake_signer)  # type: ignore[arg-type]
+    async with _fetch_client(signed_app) as hc:
+        resp_signed = await hc.get(f"/{ctx}/chubb-quote.pdf")
+        assert resp_signed.status_code == 307
+        assert resp_signed.headers["location"] == _fake_signer(
+            ctx, "chubb-quote.pdf", "chubb-carrier", 0
+        )
+
+
+@pytest.mark.skipif(
+    __import__("os").environ.get("BRIDGE_TEST_GCP") != "1",
+    reason="Live GCS bucket check requires BRIDGE_TEST_GCP=1 and BRIDGE_ARTIFACT_BUCKET",
+)
+async def test_fetch_finds_party_scoped_artifact_on_gcs_bucket() -> None:
+    """Live GCS variant of P14-4 verifying GcsArtifactService round-trip under a named party."""
+    import os
+
+    from bridge.collect import DocumentSubmission
+    from bridge.edge.artifacts import persist_submission
+    from contract.wire import ArtifactRef
+
+    if not os.environ.get(ARTIFACT_BUCKET_ENV, "").strip():
+        pytest.skip(f"{ARTIFACT_BUCKET_ENV} is not set")
+    store = build_artifact_store()
+    ctx = f"p14-4-{uuid.uuid4().hex}"
+    sub = DocumentSubmission(
+        doc_id="gcs-doc",
+        artifact_name="party-doc.pdf",
+        artifact=ArtifactRef(
+            uri="https://carrier.example/party-doc.pdf",
+            mime_type="application/pdf",
+            name="party-doc.pdf",
+        ),
+    )
+    ver = await persist_submission(
+        store,
+        party="named-party",
+        context_id=ctx,
+        submission=sub,
+        resolver=lambda _u: (b"%PDF-1.7 live-gcs", "application/pdf"),
+    )
+    assert ver == 0
+    app = build_fetch_app(store, signer=_fake_signer)
+    async with _fetch_client(app) as hc:
+        resp = await hc.get(f"/{ctx}/party-doc.pdf?v=0")
+        assert resp.status_code == 307
+        assert resp.headers["location"] == _fake_signer(
+            ctx, "party-doc.pdf", "named-party", 0
+        )

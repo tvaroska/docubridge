@@ -34,7 +34,9 @@ from bridge.a2ui_inbox.service import (
     build_delete_surface_msg,
     build_update_data_model_delta,
 )
+from bridge.identity_models import DEFAULT_ROLE_APPROVAL_LIMITS
 from bridge.knowledge_catalog import (
+    AccessDecision,
     CatalogRole,
     DeliveryChannel,
     authorize_access,
@@ -147,29 +149,57 @@ def _parse_governance_decision(
     raise ValueError(f"Unsupported governance decision '{raw_decision}'.")
 
 
+def _authorize_inbox_resolution(
+    item: ActionInboxItem,
+    *,
+    actor_role: CatalogRole,
+    channel: DeliveryChannel,
+    agent_spiffe_id: str | None,
+) -> AccessDecision:
+    access = authorize_access(
+        role=actor_role,
+        channel=channel,
+        target_view=item.target_view,
+        agent_spiffe_id=agent_spiffe_id,
+    )
+    if not access.allowed:
+        raise PermissionError(access.reason)
+    if actor_role in ("client", "carrier") and item.assigned_role != actor_role:
+        raise PermissionError(
+            f"External role '{actor_role}' cannot resolve inbox item assigned to "
+            f"'{item.assigned_role}'."
+        )
+    return access
+
+
 def _merge_and_validate_candidate_model(
     item: ActionInboxItem,
     action_ctx: dict[str, Any],
     principal_max_approval_amount: Decimal | str | int | None,
+    *,
+    actor_role: CatalogRole,
 ) -> dict[str, Any]:
     candidate_model = copy.deepcopy(item.current_data_model)
     for section in ("resolution", "transfer", "review"):
         if isinstance(action_ctx.get(section), dict):
             candidate_model.setdefault(section, {}).update(action_ctx[section])
 
-    effective_max_limit = item.max_approval_amount
     coerced_principal_limit = coerce_decimal_amount(
         principal_max_approval_amount,
         field_name="principal_max_approval_amount",
     )
-    if coerced_principal_limit is not None:
-        effective_max_limit = (
-            min(effective_max_limit, coerced_principal_limit)
-            if effective_max_limit is not None
-            else coerced_principal_limit
+    if coerced_principal_limit is None:
+        coerced_principal_limit = DEFAULT_ROLE_APPROVAL_LIMITS.get(
+            actor_role, Decimal("0.00")
         )
-    if "transfer" in candidate_model and effective_max_limit is not None:
-        raw_approved = candidate_model["transfer"].get("approvedAmount", Decimal("0"))
+    effective_max_limit = (
+        min(item.max_approval_amount, coerced_principal_limit)
+        if item.max_approval_amount is not None
+        else coerced_principal_limit
+    )
+    transfer_block = candidate_model.get("transfer")
+    if isinstance(transfer_block, dict):
+        raw_approved = transfer_block.get("approvedAmount", Decimal("0"))
         approved_amt = coerce_decimal_amount(
             raw_approved,
             field_name="approvedAmount",
@@ -177,13 +207,13 @@ def _merge_and_validate_candidate_model(
         )
         if approved_amt is None:
             approved_amt = Decimal("0")
+        if approved_amt < Decimal("0"):
+            raise ValueError("Approved amount cannot be negative.")
         if approved_amt > effective_max_limit:
             raise ValueError(
                 f"Approved amount ({approved_amt}) exceeds maximum authority limit "
                 f"({effective_max_limit})."
             )
-        if approved_amt < Decimal("0"):
-            raise ValueError("Approved amount cannot be negative.")
     return candidate_model
 
 
@@ -590,21 +620,22 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 raise KeyError(f"Unknown action inbox item '{item_id}'.")
             span.set_attribute("docubridge.entity_id", item.entity_id)
 
-            access = authorize_access(
-                role=actor_role,
+            access = _authorize_inbox_resolution(
+                item,
+                actor_role=actor_role,
                 channel=channel,
-                target_view=item.target_view,
                 agent_spiffe_id=agent_spiffe_id,
             )
-            if not access.allowed:
-                raise PermissionError(access.reason)
 
             action_obj = action_request.action
             action_name = str(action_obj.get("name", "accept"))
             action_ctx = action_obj.get("context", {}) or {}
             decision = _parse_governance_decision(action_name, action_ctx)
             candidate_model = _merge_and_validate_candidate_model(
-                item, action_ctx, principal_max_approval_amount
+                item,
+                action_ctx,
+                principal_max_approval_amount,
+                actor_role=actor_role,
             )
 
             patches = compute_rfc6902_patches(item.initial_data_model, candidate_model)

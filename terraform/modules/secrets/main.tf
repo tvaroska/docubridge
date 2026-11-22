@@ -115,3 +115,57 @@ resource "google_secret_manager_secret_iam_member" "spiffe_svid_accessor" {
   role      = "roles/secretmanager.secretAccessor"
   member    = var.service_account_member
 }
+
+# Dedicated user-session JWT signing secret (BRIDGE_USER_JWT_SECRET), separate from SPIFFE workload SVIDs.
+resource "google_secret_manager_secret" "user_jwt" {
+  project   = var.project_id
+  secret_id = var.user_jwt_secret_id
+  labels    = var.labels
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "user_jwt" {
+  count = var.manage_user_jwt_version ? 1 : 0
+
+  secret      = google_secret_manager_secret.user_jwt.id
+  secret_data = var.user_jwt_secret_data
+}
+
+resource "google_secret_manager_secret_iam_member" "user_jwt_accessor" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.user_jwt.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = var.service_account_member
+}
+
+# Interactive demo passcode secret container (BRIDGE_DEMO_PASSCODE), opted in per deployment.
+resource "google_secret_manager_secret" "demo_passcode" {
+  count = var.enable_demo_passcode ? 1 : 0
+
+  project   = var.project_id
+  secret_id = var.demo_passcode_secret_id
+  labels    = var.labels
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "demo_passcode" {
+  count = var.enable_demo_passcode && var.manage_demo_passcode_version ? 1 : 0
+
+  secret      = google_secret_manager_secret.demo_passcode[0].id
+  secret_data = var.demo_passcode_data
+}
+
+resource "google_secret_manager_secret_iam_member" "demo_passcode_accessor" {
+  count = var.enable_demo_passcode ? 1 : 0
+
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.demo_passcode[0].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = var.service_account_member
+}

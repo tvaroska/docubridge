@@ -37,6 +37,30 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
+from bridge.identity_iap import (
+    is_auth_enforced as is_auth_enforced,
+)
+from bridge.identity_iap import (
+    is_dev_secret_refused as is_dev_secret_refused,
+)
+from bridge.identity_iap import (
+    resolve_expected_svid_algorithm as resolve_expected_svid_algorithm,
+)
+from bridge.identity_iap import (
+    resolve_svid_signing_secret as _resolve_svid_signing_secret,
+)
+from bridge.identity_iap import (
+    resolve_user_jwt_signing_secret as _resolve_user_jwt_signing_secret,
+)
+from bridge.identity_iap import (
+    verify_google_oidc_token as verify_google_oidc_token,
+)
+from bridge.identity_iap import (
+    verify_iap_assertion as verify_iap_assertion,
+)
+from bridge.identity_models import (
+    A2UI_REQUIRE_AUTH_ENV as A2UI_REQUIRE_AUTH_ENV,
+)
 from bridge.identity_models import (
     ALLOWED_ENTITIES_HEADER as ALLOWED_ENTITIES_HEADER,
 )
@@ -62,6 +86,15 @@ from bridge.identity_models import (
     EXTERNAL_COUNTERPARTY_TRUST_DOMAINS as EXTERNAL_COUNTERPARTY_TRUST_DOMAINS,
 )
 from bridge.identity_models import (
+    IAP_AUDIENCE_ENV as IAP_AUDIENCE_ENV,
+)
+from bridge.identity_models import (
+    IAP_ISSUER as IAP_ISSUER,
+)
+from bridge.identity_models import (
+    IAP_JWK_CERTS_URL as IAP_JWK_CERTS_URL,
+)
+from bridge.identity_models import (
     MAX_APPROVAL_HEADER as MAX_APPROVAL_HEADER,
 )
 from bridge.identity_models import (
@@ -75,6 +108,9 @@ from bridge.identity_models import (
 )
 from bridge.identity_models import (
     SPIFFE_REQUIRE_SVID_ENV as SPIFFE_REQUIRE_SVID_ENV,
+)
+from bridge.identity_models import (
+    SPIFFE_SVID_ALG_ENV as SPIFFE_SVID_ALG_ENV,
 )
 from bridge.identity_models import (
     SPIFFE_SVID_HEADER as SPIFFE_SVID_HEADER,
@@ -140,21 +176,6 @@ def _b64url_decode(segment: str) -> bytes:
         return base64.urlsafe_b64decode(segment + padding)
     except Exception as exc:
         raise SpiffeAuthenticationError("Malformed JWT base64url segment.") from exc
-
-
-def _resolve_svid_signing_secret(secret: str | None = None) -> str:
-    """Resolve the SPIFFE SVID HMAC signing secret; refuse dev fallback under K_SERVICE or GCP."""
-    if secret and secret.strip():
-        return secret.strip()
-    if env_secret := os.environ.get(SPIFFE_SVID_SECRET_ENV, "").strip():
-        return env_secret
-    port_mode = os.environ.get("BRIDGE_PORT_MODE", "").strip().lower()
-    if os.environ.get("K_SERVICE", "").strip() or port_mode == "gcp":
-        raise SpiffeAuthenticationError(
-            f"{SPIFFE_SVID_SECRET_ENV} must be configured under K_SERVICE or BRIDGE_PORT_MODE=gcp; "
-            "refusing fallback to DEFAULT_DEV_SVID_SECRET."
-        )
-    return DEFAULT_DEV_SVID_SECRET
 
 
 def generate_ephemeral_svid_keypair(
@@ -244,7 +265,9 @@ def _verify_asymmetric_jws(
             pub.verify(signature, signing_input, padding.PKCS1v15(), hashes.SHA256())
             return
         if algorithm == "ES256":
-            if not isinstance(pub, ec.EllipticCurvePublicKey):
+            if not isinstance(pub, ec.EllipticCurvePublicKey) or not isinstance(
+                pub.curve, ec.SECP256R1
+            ):
                 raise SpiffeAuthenticationError(
                     "ES256 requires an ECDSA P-256 public key."
                 )
@@ -270,6 +293,7 @@ class _SvidVerifyConfig:
     public_key_pem: str | None
     expected_alg: SvidAlgorithmLiteral | None
     allowed_algorithms: frozenset[str]
+    refuse_dev_secret: bool = False
 
 
 @dataclass(frozen=True)
@@ -337,7 +361,9 @@ def _verify_svid_algorithm_and_signature(
             public_key_pem=resolved_pub,
         )
     else:
-        signing_secret = _resolve_svid_signing_secret(cfg.secret)
+        signing_secret = _resolve_svid_signing_secret(
+            cfg.secret, refuse_dev_secret=cfg.refuse_dev_secret
+        )
         expected_sig = hmac.new(
             signing_secret.encode("utf-8"), signing_input, hashlib.sha256
         ).digest()
@@ -378,7 +404,7 @@ def _validate_svid_trust_and_claims(
         )
     now = int(policy.now_epoch if policy.now_epoch is not None else time.time())
     exp = claims.get("exp")
-    if not isinstance(exp, int) or now > exp + 30:
+    if not isinstance(exp, int) or isinstance(exp, bool) or now > exp + 30:
         raise SpiffeAuthenticationError("JWT-SVID has expired.")
     if policy.expected_audience is not None:
         aud = claims.get("aud")
@@ -468,6 +494,7 @@ def verify_jwt_svid(  # noqa: PLR0913 - public SPIFFE JWT-SVID verification cont
     allowed_algorithms: frozenset[str] = ALLOWED_SVID_ALGORITHMS,
     allowed_trust_domains: frozenset[str] | None = None,
     now_epoch: int | None = None,
+    refuse_dev_secret: bool = False,
 ) -> dict[str, Any]:
     """Cryptographically verify a SPIFFE JWT-SVID (`HS256`, `RS256`, or `ES256`) and return its claims."""
     with trace_step(
@@ -493,6 +520,7 @@ def verify_jwt_svid(  # noqa: PLR0913 - public SPIFFE JWT-SVID verification cont
                 public_key_pem=public_key_pem,
                 expected_alg=expected_alg,
                 allowed_algorithms=allowed_algorithms,
+                refuse_dev_secret=refuse_dev_secret,
             ),
         )
         claims = _decode_jwt_segment_dict(segments[1], "payload")
@@ -522,35 +550,6 @@ def verify_jwt_svid(  # noqa: PLR0913 - public SPIFFE JWT-SVID verification cont
                 span.set_attribute("docubridge.obo_role", str(obo["role"]))
         span.set_attribute("docubridge.svid_verified", True)
         return dict(claims)
-
-
-def verify_google_oidc_token(
-    token: str,
-    *,
-    expected_audience: str | None = None,
-    request_transport: object = None,
-) -> dict[str, Any]:
-    """Verify a Google Cloud OIDC ID token (Cloud Run / IAP / Workload Identity) via `google.oauth2.id_token`."""
-    raw = token.strip()
-    if raw.lower().startswith("bearer "):
-        raw = raw[7:].strip()
-    if not raw:
-        raise SpiffeAuthenticationError("Empty Google OIDC token.")
-    try:
-        from google.auth.transport import requests as google_requests
-        from google.oauth2 import id_token
-
-        transport = request_transport or google_requests.Request()
-        claims = id_token.verify_oauth2_token(  # type: ignore[no-untyped-call]
-            raw,
-            transport,
-            audience=expected_audience,
-        )
-        return dict(claims)
-    except Exception as exc:
-        raise SpiffeAuthenticationError(
-            f"Google OIDC token verification failed: {exc}"
-        ) from exc
 
 
 def authorize_spiffe_agent(  # noqa: PLR0913 - public SPIFFE authorization contract
@@ -638,24 +637,31 @@ def authorize_entity_access(
             "docubridge.entity_id": entity_id,
         },
     ) as span:
-        if principal.role == "client":
+        if principal.role in ("client", "carrier"):
+            if not principal.allowed_entities and not (
+                principal.tenant_id and principal.tenant_id.strip()
+            ):
+                raise TenantIsolationError(
+                    f"Tenant isolation violation: external {principal.role} principal "
+                    f"'{principal.subject}' has no tenant_id or allowed_entities scope."
+                )
             if (
                 principal.allowed_entities
                 and entity_id not in principal.allowed_entities
             ):
                 raise TenantIsolationError(
-                    f"Tenant isolation violation: client principal '{principal.subject}' "
+                    f"Tenant isolation violation: {principal.role} principal '{principal.subject}' "
                     f"(tenant='{principal.tenant_id or 'restricted'}') is not authorized "
                     f"to access entity '{entity_id}'."
                 )
             if (
                 not principal.allowed_entities
                 and principal.tenant_id
-                and principal.tenant_id.lower() not in entity_id.lower()
+                and entity_id.strip().lower() != principal.tenant_id.strip().lower()
             ):
                 raise TenantIsolationError(
-                    f"Tenant isolation violation: entity '{entity_id}' does not belong to "
-                    f"client tenant '{principal.tenant_id}'."
+                    f"Tenant isolation violation: entity '{entity_id}' does not match "
+                    f"{principal.role} tenant '{principal.tenant_id}'."
                 )
         elif principal.allowed_entities and entity_id not in principal.allowed_entities:
             raise TenantIsolationError(
@@ -734,11 +740,7 @@ def mint_user_token(  # noqa: PLR0913 - public user JWT minting contract
     h_b64 = _b64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     p_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signing_input = f"{h_b64}.{p_b64}".encode("ascii")
-    signing_secret = (
-        (secret and secret.strip())
-        or os.environ.get(USER_JWT_SECRET_ENV, "").strip()
-        or _resolve_svid_signing_secret()
-    )
+    signing_secret = _resolve_user_jwt_signing_secret(secret)
     sig = hmac.new(
         signing_secret.encode("utf-8"), signing_input, hashlib.sha256
     ).digest()
@@ -750,6 +752,7 @@ def verify_user_token(
     *,
     secret: str | None = None,
     now_epoch: int | None = None,
+    refuse_dev_secret: bool = False,
 ) -> dict[str, Any]:
     """Verify a signed HS256 user JWT token from `X-Bridge-User-Token`."""
     raw = token.strip()
@@ -763,6 +766,12 @@ def verify_user_token(
         header = json.loads(_b64url_decode(h_b64).decode("utf-8"))
     except Exception as exc:
         raise SpiffeAuthenticationError("Invalid user JWT header.") from exc
+    if not isinstance(header, dict):
+        raise SpiffeAuthenticationError("Invalid user JWT header.")
+    if header.get("typ") == "JWT+SVID":
+        raise SpiffeAuthenticationError(
+            "SPIFFE JWT-SVID tokens cannot be presented as human user tokens."
+        )
     alg = header.get("alg")
     if alg != "HS256":
         raise SpiffeAuthenticationError(
@@ -770,10 +779,8 @@ def verify_user_token(
         )
     signing_input = f"{h_b64}.{p_b64}".encode("ascii")
     actual_sig = _b64url_decode(s_b64)
-    signing_secret = (
-        (secret and secret.strip())
-        or os.environ.get(USER_JWT_SECRET_ENV, "").strip()
-        or _resolve_svid_signing_secret()
+    signing_secret = _resolve_user_jwt_signing_secret(
+        secret, refuse_dev_secret=refuse_dev_secret
     )
     expected_sig = hmac.new(
         signing_secret.encode("utf-8"), signing_input, hashlib.sha256
@@ -786,12 +793,13 @@ def verify_user_token(
         raise SpiffeAuthenticationError("Invalid user JWT payload.") from exc
     now = int(now_epoch if now_epoch is not None else time.time())
     exp = claims.get("exp")
-    if not isinstance(exp, int) or now > exp + 30:
+    if not isinstance(exp, int) or isinstance(exp, bool) or now > exp + 30:
         raise SpiffeAuthenticationError("User JWT has expired.")
     return dict(claims)
 
 
 __all__ = [
+    "A2UI_REQUIRE_AUTH_ENV",
     "ALLOWED_ENTITIES_HEADER",
     "ALLOWED_SVID_ALGORITHMS",
     "CARRIER_SLUG_HEADER",
@@ -800,11 +808,15 @@ __all__ = [
     "DEFAULT_SPIFFE_AGENT_POLICIES",
     "DEFAULT_SPIFFE_TRUST_DOMAIN",
     "EXTERNAL_COUNTERPARTY_TRUST_DOMAINS",
+    "IAP_AUDIENCE_ENV",
+    "IAP_ISSUER",
+    "IAP_JWK_CERTS_URL",
     "MAX_APPROVAL_HEADER",
     "SPIFFE_ID_HEADER",
     "SPIFFE_PRIVATE_KEY_PEM_ENV",
     "SPIFFE_PUBLIC_KEY_PEM_ENV",
     "SPIFFE_REQUIRE_SVID_ENV",
+    "SPIFFE_SVID_ALG_ENV",
     "SPIFFE_SVID_HEADER",
     "SPIFFE_SVID_SECRET_ENV",
     "SPIFFE_TRUST_DOMAIN_ENV",
@@ -823,10 +835,14 @@ __all__ = [
     "authorize_spiffe_agent",
     "filter_quotes_for_principal",
     "generate_ephemeral_svid_keypair",
+    "is_auth_enforced",
+    "is_dev_secret_refused",
     "mint_jwt_svid",
     "mint_user_token",
     "parse_decimal_header",
+    "resolve_expected_svid_algorithm",
     "verify_google_oidc_token",
+    "verify_iap_assertion",
     "verify_jwt_svid",
     "verify_user_token",
 ]

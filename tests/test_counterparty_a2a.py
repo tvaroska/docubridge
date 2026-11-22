@@ -375,6 +375,7 @@ def test_scenario_a_fnb_payoff_over_canonical_a2a_send_message(
     """Scenario A (`request_a2a_payoff` & fleet deal) uses canonical A2A v1.0 `SendMessage` with 0 legacy REST calls."""
     _isolate_skills(tmp_path, monkeypatch)
     monkeypatch.setenv("BRIDGE_FNB_AGENT_URL", "https://fnb.test")
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "test-bucket")
     monkeypatch.delenv("BRIDGE_PORT_A2A_CLIENT", raising=False)
     monkeypatch.delenv("BRIDGE_PORT_MODE", raising=False)
 
@@ -450,6 +451,7 @@ def test_scenario_b_rfp_procurement_over_canonical_a2a_send_message(
 ) -> None:
     """Scenario B (`execute_rfp_procurement_run`) calls Carrier A & B via canonical A2A `SendMessage` with 0 legacy REST calls."""
     _isolate_skills(tmp_path, monkeypatch)
+    monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", "test-bucket")
     monkeypatch.delenv("BRIDGE_PORT_A2A_CLIENT", raising=False)
     monkeypatch.delenv("BRIDGE_PORT_MODE", raising=False)
 

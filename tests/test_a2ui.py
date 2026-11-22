@@ -173,3 +173,152 @@ def test_a2ui_view_roundtrips():
     view = render_party_status(_turn())
     restored = A2uiView.model_validate(encode_a2ui_view(view))
     assert restored == view
+
+
+def _seed_broker_transfer_item(*, max_approval_amount: object = None):
+    from decimal import Decimal
+
+    from bridge.a2ui_inbox import InMemoryActionInboxStore
+
+    inbox = InMemoryActionInboxStore()
+    item = inbox.create_action(
+        entity_id="LOAN-MERIDIAN-001",
+        context_id="ctx-p14-3",
+        session_id="sess-p14-3",
+        title="Approve broker disbursement",
+        external_title="Pending review",
+        hint="Verify transfer amount",
+        external_hint="Under review",
+        assigned_role="broker",
+        target_view="v_broker_placement",
+        max_approval_amount=(
+            Decimal(str(max_approval_amount))
+            if max_approval_amount is not None
+            else None
+        ),
+        data_model={"transfer": {"approvedAmount": "1000.00"}},
+        pause_for_review=True,
+    )
+    return inbox, item
+
+
+def test_client_cannot_resolve_broker_assigned_item(monkeypatch):
+    """P14-3(a): an external `client` cannot resolve a broker-assigned inbox item (store + HTTP)."""
+    import pytest
+    from fastapi.testclient import TestClient
+
+    from bridge.a2ui_inbox import A2uiClientActionRequest
+    from bridge.identity import (
+        SPIFFE_SVID_SECRET_ENV,
+        USER_TOKEN_HEADER,
+        mint_user_token,
+    )
+    from bridge.user_interaction import build_user_interaction_app
+
+    inbox, item = _seed_broker_transfer_item(max_approval_amount="50000.00")
+    action = A2uiClientActionRequest(
+        version="v0.9",
+        action={"name": "accept", "context": {"decision": "accept"}},
+    )
+    with pytest.raises(PermissionError, match="cannot resolve inbox item"):
+        inbox.resolve_action(
+            item.item_id,
+            action_request=action,
+            actor_principal="client@borrower.example",
+            actor_role="client",
+            channel="custom_web",
+        )
+
+    # Same refusal over HTTP POST /v1/a2ui/inbox/items/{id}/action
+    monkeypatch.setenv("K_SERVICE", "bridge-meridian")
+    monkeypatch.setenv(SPIFFE_SVID_SECRET_ENV, "p14-3-inbox-signing-secret-2026")
+    app = build_user_interaction_app(inbox_store=inbox, require_auth=True)
+    client = TestClient(app)
+    client_jwt = mint_user_token(
+        "usr:client@borrower.example",
+        "client",
+        allowed_entities=["LOAN-MERIDIAN-001"],
+    )
+    resp = client.post(
+        f"/v1/a2ui/inbox/items/{item.item_id}/action?channel=custom_web",
+        headers={USER_TOKEN_HEADER: client_jwt},
+        json=action.model_dump(mode="json"),
+    )
+    assert resp.status_code == 403
+
+
+def test_missing_limit_claim_falls_back_to_role_limit(monkeypatch):
+    """P14-3(b): token without `max_approval_amount` falls back to `DEFAULT_ROLE_APPROVAL_LIMITS`."""
+    import pytest
+    from fastapi.testclient import TestClient
+
+    from bridge.a2ui_inbox import A2uiClientActionRequest
+    from bridge.identity import (
+        SPIFFE_SVID_SECRET_ENV,
+        USER_TOKEN_HEADER,
+        mint_user_token,
+    )
+    from bridge.user_interaction import build_user_interaction_app
+
+    # Store-level check: item has no max_approval_amount AND caller passes None
+    inbox, item = _seed_broker_transfer_item(max_approval_amount=None)
+    huge_action = A2uiClientActionRequest(
+        version="v0.9",
+        action={
+            "name": "edit_and_approve",
+            "context": {
+                "decision": "edit",
+                "transfer": {"approvedAmount": str(10**12)},
+            },
+        },
+    )
+    with pytest.raises(ValueError, match="exceeds maximum authority limit"):
+        inbox.resolve_action(
+            item.item_id,
+            action_request=huge_action,
+            actor_principal="broker@docubridge.io",
+            actor_role="broker",
+            channel="gemini_app",
+            principal_max_approval_amount=None,
+        )
+
+    # HTTP-level check: signed token minted without max_approval_amount claim
+    monkeypatch.setenv("K_SERVICE", "bridge-meridian")
+    monkeypatch.setenv(SPIFFE_SVID_SECRET_ENV, "p14-3-limit-signing-secret-2026")
+    app = build_user_interaction_app(inbox_store=inbox, require_auth=True)
+    client = TestClient(app)
+    broker_jwt = mint_user_token("usr:broker@docubridge.io", "broker")
+    resp = client.post(
+        f"/v1/a2ui/inbox/items/{item.item_id}/action?channel=gemini_app",
+        headers={USER_TOKEN_HEADER: broker_jwt},
+        json=huge_action.model_dump(mode="json"),
+    )
+    assert resp.status_code == 422
+
+
+def test_negative_approved_amount_rejected_without_limit():
+    """P14-3(b): negative `approvedAmount` is rejected even when no explicit limit is configured."""
+    import pytest
+
+    from bridge.a2ui_inbox import A2uiClientActionRequest
+
+    inbox, item = _seed_broker_transfer_item(max_approval_amount=None)
+    neg_action = A2uiClientActionRequest(
+        version="v0.9",
+        action={
+            "name": "edit_and_approve",
+            "context": {
+                "decision": "edit",
+                "transfer": {"approvedAmount": "-5"},
+            },
+        },
+    )
+    with pytest.raises(ValueError, match="cannot be negative"):
+        inbox.resolve_action(
+            item.item_id,
+            action_request=neg_action,
+            actor_principal="broker@docubridge.io",
+            actor_role="broker",
+            channel="gemini_app",
+            principal_max_approval_amount=None,
+        )

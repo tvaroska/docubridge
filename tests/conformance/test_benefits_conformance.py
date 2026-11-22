@@ -38,6 +38,7 @@ from tests.conformance.consumer import ConformanceGap, map_entry_to_quote
 from tests.conformance.journey import (
     BASE,
     BENEFITS_ROOT,
+    GS_BUCKET,
     LEGS,
     RECORDS,
     REFS,
@@ -74,6 +75,7 @@ def corpus_server(monkeypatch, edge_mode):
     """
     with serve_corpus() as server:
         monkeypatch.setenv("BRIDGE_FETCH_ALLOWLIST", server.host_port)
+        monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", GS_BUCKET)
         yield server
 
 
@@ -177,6 +179,7 @@ async def test_hybrid_exchange_turn_byte_identical_to_deterministic(
     """
     with serve_corpus() as server:
         monkeypatch.setenv("BRIDGE_FETCH_ALLOWLIST", server.host_port)
+        monkeypatch.setenv("BRIDGE_GS_ALLOWLIST", GS_BUCKET)
         uri = reference_for(record_id, ref, server)
         det_app = build_app(leg, record_id=record_id, edge_mode="deterministic")
         det = await send_by_reference(

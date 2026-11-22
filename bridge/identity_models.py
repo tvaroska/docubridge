@@ -20,13 +20,21 @@ DeliveryChannelLiteral = Literal["gemini_app", "custom_web"]
 AuthViaLiteral = Literal["jwt", "cookie", "iap", "header", "query_dev"]
 
 DEFAULT_SPIFFE_TRUST_DOMAIN = "agents.docubridge.io"
+A2UI_REQUIRE_AUTH_ENV = "BRIDGE_A2UI_REQUIRE_AUTH"
+IAP_AUDIENCE_ENV = "BRIDGE_IAP_AUDIENCE"
+IAP_JWK_CERTS_URL = "https://www.gstatic.com/iap/verify/public_key-jwk"
+IAP_ISSUER = "https://cloud.google.com/iap"
 SPIFFE_TRUST_DOMAIN_ENV = "BRIDGE_SPIFFE_TRUST_DOMAIN"
 SPIFFE_REQUIRE_SVID_ENV = "BRIDGE_SPIFFE_REQUIRE_SVID"
 SPIFFE_SVID_SECRET_ENV = "BRIDGE_SPIFFE_SVID_SECRET"  # noqa: S105 - env var name
+SPIFFE_SVID_ALG_ENV = "BRIDGE_SPIFFE_SVID_ALG"
 SPIFFE_PRIVATE_KEY_PEM_ENV = "BRIDGE_SPIFFE_PRIVATE_KEY_PEM"
 SPIFFE_PUBLIC_KEY_PEM_ENV = "BRIDGE_SPIFFE_PUBLIC_KEY_PEM"
 USER_JWT_SECRET_ENV = "BRIDGE_USER_JWT_SECRET"  # noqa: S105 - env var name
-DEFAULT_DEV_SVID_SECRET = "docubridge-spiffe-svid-signing-key-v1"  # noqa: S105 - dev-only fallback refused under K_SERVICE
+DEFAULT_DEV_SVID_SECRET = "docubridge-spiffe-svid-signing-key-v1"  # noqa: S105 - dev-only fallback refused when auth enforced
+READ_ONLY_SCOPE = "read_only"
+SHOWCASE_VIEWER_SCOPE = "showcase_read"
+VIEWER_SCOPES: frozenset[str] = frozenset({READ_ONLY_SCOPE, SHOWCASE_VIEWER_SCOPE})
 SvidAlgorithmLiteral = Literal["HS256", "RS256", "ES256"]
 ALLOWED_SVID_ALGORITHMS: frozenset[str] = frozenset({"HS256", "RS256", "ES256"})
 EXTERNAL_COUNTERPARTY_TRUST_DOMAINS: frozenset[str] = frozenset(
@@ -225,6 +233,7 @@ class CompoundIdentity(BaseModel):
 
 
 __all__ = [
+    "A2UI_REQUIRE_AUTH_ENV",
     "ALLOWED_ENTITIES_HEADER",
     "ALLOWED_SVID_ALGORITHMS",
     "CARRIER_SLUG_HEADER",
@@ -233,17 +242,24 @@ __all__ = [
     "DEFAULT_SPIFFE_AGENT_POLICIES",
     "DEFAULT_SPIFFE_TRUST_DOMAIN",
     "EXTERNAL_COUNTERPARTY_TRUST_DOMAINS",
+    "IAP_AUDIENCE_ENV",
+    "IAP_ISSUER",
+    "IAP_JWK_CERTS_URL",
     "MAX_APPROVAL_HEADER",
+    "READ_ONLY_SCOPE",
+    "SHOWCASE_VIEWER_SCOPE",
     "SPIFFE_ID_HEADER",
     "SPIFFE_PRIVATE_KEY_PEM_ENV",
     "SPIFFE_PUBLIC_KEY_PEM_ENV",
     "SPIFFE_REQUIRE_SVID_ENV",
+    "SPIFFE_SVID_ALG_ENV",
     "SPIFFE_SVID_HEADER",
     "SPIFFE_SVID_SECRET_ENV",
     "SPIFFE_TRUST_DOMAIN_ENV",
     "TENANT_ID_HEADER",
     "USER_JWT_SECRET_ENV",
     "USER_TOKEN_HEADER",
+    "VIEWER_SCOPES",
     "AuthViaLiteral",
     "CatalogRoleLiteral",
     "CompoundIdentity",

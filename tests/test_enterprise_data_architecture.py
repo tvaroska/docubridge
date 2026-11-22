@@ -809,7 +809,10 @@ def test_best_practice_p0_live_collector_and_server_mounts() -> None:
     )
     portal_client = TestClient(portal_app)
     assert (
-        portal_client.get("/v1/a2ui/custom_web/ctx-live-1?role=client").status_code
+        portal_client.get(
+            "/v1/a2ui/custom_web/ctx-live-1?role=client",
+            headers={"X-Bridge-Allowed-Entities": "ctx-live-1"},
+        ).status_code
         == 200
     )
 
@@ -1113,7 +1116,8 @@ def test_a2ui_v09_action_progress_monitoring_and_adk_agent_inbox() -> None:
     # 3. External end-user (`custom_web` + `client`) monitors the SAME action:
     #    receives `portal_customer_catalog.json`, external-safe step labels, and NO conflict table!
     ext_get = client.get(
-        f"/v1/a2ui/inbox/items/{item_id}?channel=custom_web&role=client"
+        f"/v1/a2ui/inbox/items/{item_id}?channel=custom_web&role=client",
+        headers={"X-Bridge-Allowed-Entities": "ent-prog-1"},
     )
     assert ext_get.status_code == 200
     ext_body = ext_get.json()
@@ -1241,9 +1245,12 @@ def test_a2ui_v09_action_progress_monitoring_and_adk_agent_inbox() -> None:
     assert [a.decision for a in audits] == ["escalate", "edit"]
 
 
-def test_spiffe_svid_obo_and_multi_tenant_isolation() -> None:
+def test_spiffe_svid_obo_and_multi_tenant_isolation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify SPIFFE JWT-SVID workload identity, Shadow AI blocking, OBO compound
     identity, and row-level client/carrier tenant isolation across Zone 5 & Zone 6."""
+    monkeypatch.setenv("BRIDGE_SPIFFE_SVID_SECRET", "test-spiffe-obo-svid-secret-2026")
     from bridge.a2ui_inbox import InMemoryActionInboxStore
     from bridge.identity import mint_jwt_svid
 
@@ -1959,11 +1966,16 @@ def test_sql_agent_gym_cross_replica_and_agent_engine_durability(
         agent_engine_gym.close()
 
 
-def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> None:
+def test_banking_loan_underwriting_observability_lineage_and_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify all 4 pillars (Tracing/Lineage/Bi-Temporal, SPIFFE OBO + A2UI v0.9 SSE,
     Agent Gym Stress Suite + Decimal Firewall, and Programmable Trust + Safety Dial-Back)
     on the Banking Commercial Real Estate Loan Underwriting scenario (LOAN-MERIDIAN-001),
     plus the live interactive console routes (/demo and /console)."""
+    monkeypatch.setenv(
+        "BRIDGE_SPIFFE_SVID_SECRET", "test-banking-underwriting-svid-secret-2026"
+    )
     from bridge.a2ui_inbox import InMemoryActionInboxStore
     from bridge.agent_gym import (
         InMemoryAgentGymEngine,
@@ -1971,7 +1983,7 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
         TribalRuleStatus,
         TrustAutonomyLevel,
     )
-    from bridge.identity import mint_jwt_svid
+    from bridge.identity import mint_jwt_svid, mint_user_token
 
     vault = InMemoryAuditVaultStore()
     store = InMemoryOperationalStore()
@@ -2005,7 +2017,13 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
         "Terrepower Coastal LLC",
     } <= scenario_clients
 
-    assets_resp = client.get("/v1/catalog/assets")
+    # Showcase viewer cookie from /demo is refused (403) on operator read routes (P14-2)
+    assert client.get("/v1/catalog/assets").status_code == 403
+    operator_token = mint_user_token("usr:broker@docubridge.io", "broker")
+    assets_resp = client.get(
+        "/v1/catalog/assets",
+        headers={"X-Bridge-User-Token": operator_token},
+    )
     assert assets_resp.status_code == 200
     raw_assets_text = assets_resp.text
     assert "docubridge-audit-vault" in raw_assets_text
@@ -2418,7 +2436,7 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
     # ------------------------------------------------------------------ #
     # End-to-End OpenTelemetry Spans Verification across all steps       #
     # ------------------------------------------------------------------ #
-    otel_resp = client.get("/v1/telemetry/spans?limit=500")
+    otel_resp = client.get("/v1/telemetry/spans?limit=500", headers=sr_headers)
     assert otel_resp.status_code == 200
     otel_payload = otel_resp.json()
     assert otel_payload["count"] > 10
@@ -2453,12 +2471,17 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
     custom_parent_span = "00f067aa0ba902b7"
     traced_lineage = client.get(
         "/v1/catalog/lineage/LOAN-MERIDIAN-001/origination_fee",
-        headers={"traceparent": f"00-{custom_trace_id}-{custom_parent_span}-01"},
+        headers={
+            **sr_headers,
+            "traceparent": f"00-{custom_trace_id}-{custom_parent_span}-01",
+        },
     )
     assert traced_lineage.status_code == 200
     assert traced_lineage.headers.get("x-docubridge-trace-id") == custom_trace_id
 
-    trace_spans_resp = client.get(f"/v1/telemetry/spans?trace_id={custom_trace_id}")
+    trace_spans_resp = client.get(
+        f"/v1/telemetry/spans?trace_id={custom_trace_id}", headers=sr_headers
+    )
     assert trace_spans_resp.status_code == 200
     trace_spans = trace_spans_resp.json()["spans"]
     traced_names = {s["name"] for s in trace_spans}
@@ -2472,7 +2495,7 @@ def test_banking_loan_underwriting_observability_lineage_and_evaluation() -> Non
     # Verify BigQuery Trace Analytics endpoint (/v1/telemetry/analytics) & row formatting
     from bridge.telemetry import CloudTraceV2SpanExporter
 
-    analytics_resp = client.get("/v1/telemetry/analytics?limit=500")
+    analytics_resp = client.get("/v1/telemetry/analytics?limit=500", headers=sr_headers)
     assert analytics_resp.status_code == 200
     analytics_data = analytics_resp.json()
     assert analytics_data["total_spans_analyzed"] > 10
@@ -3747,9 +3770,14 @@ def test_collaborative_commercial_consolidation_loan_4beat_and_day2_waiver(
         assert f'id="{expected_id}"' in demo_html
 
 
-def test_m1_native_otlp_outcome_attribution_and_step7_security_hardening() -> None:
+def test_m1_native_otlp_outcome_attribution_and_step7_security_hardening(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify M1 native OTLP telemetry, EVAL-P11 outcome attribution, vault entity_id,
     and Step 7 JWT alg pinning + auth hardening."""
+    monkeypatch.setenv(
+        "BRIDGE_SPIFFE_SVID_SECRET", "test-m1-otlp-step7-svid-secret-2026"
+    )
     from bridge.a2ui_inbox import InMemoryActionInboxStore
     from bridge.agent_gym import InMemoryAgentGymEngine
     from bridge.identity import (

@@ -30,6 +30,7 @@ registry afterwards (S4-usecase-4) — opens its RFP onto the same store the RFP
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -55,6 +56,11 @@ from bridge.edge.artifacts import (
     build_artifact_store,
     build_fetch_app,
     build_fetch_signer,
+)
+from bridge.edge.auth import (
+    EdgeAuthBackend,
+    EdgeAuthEnforcementMiddleware,
+    edge_auth_error,
 )
 from bridge.edge.card import DEFAULT_URL, build_agent_card, resolved_card_url
 from bridge.edge.executor import CollectExecutor
@@ -156,13 +162,14 @@ class EdgeRequestHandler(DefaultRequestHandler):
             yield event
 
 
-def _build_proxy_a2a_app(
+def _build_proxy_a2a_app(  # noqa: PLR0913 - internal proxy ASGI builder
     active_a2a_engine: object,
     *,
     url: str,
     artifact_store: BaseArtifactService | None,
     rfp_board: RfpBoard | None,
     auth_backend: AuthenticationBackend | None,
+    require_auth: bool = False,
 ) -> Starlette:
     if (
         isinstance(active_a2a_engine, BridgeA2aAgentEngine)
@@ -188,12 +195,21 @@ def _build_proxy_a2a_app(
         *build_remote_a2a_routes(active_a2a_engine, url=url, rpc_path=RPC_PATH),
         Mount(
             ARTIFACTS_PREFIX,
-            app=build_fetch_app(store, signer=build_fetch_signer()),
+            app=build_fetch_app(
+                store, signer=build_fetch_signer(), require_auth=require_auth
+            ),
         ),
     ]
     edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge_proxy")]
     if auth_backend is not None:
-        edge_mw.append(Middleware(AuthenticationMiddleware, backend=auth_backend))
+        edge_mw.append(
+            Middleware(
+                AuthenticationMiddleware,
+                backend=auth_backend,
+                on_error=edge_auth_error,
+            )
+        )
+    edge_mw.append(Middleware(EdgeAuthEnforcementMiddleware, require_auth=require_auth))
     app = Starlette(routes=routes, middleware=edge_mw)
     app.state.rfp_board = board
     app.state.a2a_engine = active_a2a_engine
@@ -231,6 +247,7 @@ def build_a2a_app(  # noqa: PLR0913 - keyword-only ASGI app builder
     llm_leg: LlmLeg | None = None,
     reviewers: Iterable[str] | str | None = None,
     auth_backend: AuthenticationBackend | None = None,
+    require_auth: bool = False,
     satisfaction: SatisfactionAssessor | str | None = None,
     rfp_board: RfpBoard | None = None,
     a2a_engine: object = None,
@@ -309,6 +326,10 @@ def build_a2a_app(  # noqa: PLR0913 - keyword-only ASGI app builder
     # AgentCardResolutionError at resolve time under adk >=2.7 (same-origin check).
     # An explicit url still wins, and env-unset falls back to DEFAULT_URL (local/test
     # behavior unchanged).
+    if os.environ.get("K_SERVICE", "").strip() and auth_backend is None:
+        raise RuntimeError(
+            "A2A edge refuses to start under K_SERVICE without an auth_backend."
+        )
     if url == DEFAULT_URL:
         url = resolved_card_url()
 
@@ -324,6 +345,7 @@ def build_a2a_app(  # noqa: PLR0913 - keyword-only ASGI app builder
             artifact_store=artifact_store,
             rfp_board=rfp_board,
             auth_backend=auth_backend,
+            require_auth=require_auth,
         )
 
     card = agent_card or build_agent_card(url)
@@ -402,13 +424,22 @@ def build_a2a_app(  # noqa: PLR0913 - keyword-only ASGI app builder
             # (bytes never on the wire, P7-3).
             Mount(
                 ARTIFACTS_PREFIX,
-                app=build_fetch_app(store, signer=build_fetch_signer()),
+                app=build_fetch_app(
+                    store, signer=build_fetch_signer(), require_auth=require_auth
+                ),
             ),
         ]
     )
     edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge")]
     if auth_backend is not None:
-        edge_mw.append(Middleware(AuthenticationMiddleware, backend=auth_backend))
+        edge_mw.append(
+            Middleware(
+                AuthenticationMiddleware,
+                backend=auth_backend,
+                on_error=edge_auth_error,
+            )
+        )
+    edge_mw.append(Middleware(EdgeAuthEnforcementMiddleware, require_auth=require_auth))
     app = Starlette(routes=routes, middleware=edge_mw)
     app.state.rfp_board = board
     app.state.a2a_engine = None
@@ -474,6 +505,7 @@ def serve_container() -> None:  # pragma: no cover
     vault, op_store, catalog = _enterprise_stores_from_env()
     app = build_a2a_app(
         url=resolved_card_url(None),
+        auth_backend=EdgeAuthBackend(require_auth=True),
         vault_store=vault,
         operational_store=op_store,
         knowledge_catalog=catalog,

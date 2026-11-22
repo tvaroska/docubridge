@@ -35,6 +35,7 @@ from bridge.user_interaction import (
     DEMO_PASSCODE_ENV,
     READ_ONLY_SCOPE,
     SESSION_COOKIE_NAME,
+    SHOWCASE_VIEWER_SCOPE,
     CreateActionProgressRequest,
     build_user_interaction_app,
     is_auth_enforced,
@@ -275,12 +276,14 @@ def test_viewer_cookie_auto_issued_on_get_and_head_demo_console_ebc_and_blocks_m
             token = resp.cookies.get(SESSION_COOKIE_NAME)
             assert token
             claims = verify_user_token(token)
-            assert claims["scope"] == READ_ONLY_SCOPE
+            assert claims["scope"] == SHOWCASE_VIEWER_SCOPE
             assert claims["max_approval_amount"] == "0"
 
-            # Read-only viewer cookie works for GET A2UI but is blocked (403) on mutating POSTs
-            get_surface = client.get("/v1/a2ui/gemini_app/LOAN-MERIDIAN-001")
-            assert get_surface.status_code == 200
+            # Showcase viewer cookie works on showcase read routes, but is refused (403) on operator reads and all mutations
+            assert client.get("/v1/demo/scenarios").status_code == 200
+            assert (
+                client.get("/v1/a2ui/gemini_app/LOAN-MERIDIAN-001").status_code == 403
+            )
             assert client.post("/v1/demo/seed").status_code == 403
 
     # Local HTTP (no K_SERVICE) omits Secure flag so local browser dev still stores the cookie
@@ -1143,18 +1146,19 @@ def test_sensitive_get_routes_and_dashboard_routes_enforce_auth_and_404_unknown_
         assert anon.get(path).status_code == 401, f"anonymous GET {path}"
         assert anon.get(path, headers=forged).status_code == 401, f"forged GET {path}"
 
-    # Signed viewer cookie from GET /demo unlocks read routes and returns 404 (not 500) on unknown scenarios
+    # Signed viewer cookie from GET /demo unlocks showcase read routes only and is refused (403) on operator reads
     viewer = _https_client(app)
     assert viewer.get("/demo").status_code == 200
-    for path in (
+    assert viewer.get("/v1/demo/scenarios").status_code == 200
+    assert viewer.get("/v1/demo/schema-evolution/state").status_code == 200
+    for op_path in (
         "/v1/telemetry/spans",
         "/v1/bigquery/sync",
         "/v1/gym/rules",
         "/v1/registry/catalog",
         "/v1/refinery/revisions",
-        "/v1/demo/scenarios",
     ):
-        assert viewer.get(path).status_code == 200, f"viewer cookie GET {path}"
+        assert viewer.get(op_path).status_code == 403, f"viewer cookie GET {op_path}"
     for missing_path in (
         "/v1/demo/scenarios/does-not-exist/pdfs",
         "/v1/demo/scenarios/does-not-exist/pdfs.zip",
@@ -1177,3 +1181,778 @@ def test_sensitive_get_routes_and_dashboard_routes_enforce_auth_and_404_unknown_
         == 401
     )
     assert dash_anon.post("/rfps/r1/chase", json={}, headers=forged).status_code == 401
+
+
+def _make_email_board_app(
+    tmp_path: Path,
+    *,
+    oidc_verifier: Any = None,
+) -> FastAPI:
+    from bridge.dashboard.board import ProgramBoard, RfpBoard
+    from bridge.dashboard.server import build_dashboard_app
+    from bridge.edge.email_ingress import EmailProcessor
+    from bridge.edge.skills import rfp_policy_for
+    from bridge.extraction.fixture import FixtureExtractor
+    from bridge.ports.local import LocalEmailIngress
+    from bridge.standard import ProgramStandard
+
+    policy = rfp_policy_for("benefits-rfp")
+    assert policy is not None
+    rfp_board = RfpBoard(policy=policy)
+    program_board = ProgramBoard(standard=ProgramStandard(rules=(), overridable=True))
+    email_port = LocalEmailIngress(tmp_path / "mail")
+    processor = EmailProcessor(
+        port=email_port,
+        board=rfp_board,
+        mailbox="rfp-quotes@example.com",
+        secret="p14-2-email-correlation-secret",
+        extraction=FixtureExtractor(),
+    )
+    op_store = InMemoryOperationalStore()
+    op_store.ingest_entry(
+        _sample_entry(),
+        entity_id="LOAN-MERIDIAN-001",
+        context_id="ctx-board-auth",
+    )
+    return build_dashboard_app(
+        board=program_board,
+        rfps=rfp_board,
+        email=processor,
+        email_drain_interval=0.0,
+        max_ticks=1,
+        operational_store=op_store,
+        knowledge_catalog=InMemoryKnowledgeCatalog(operational_store=op_store),
+        oidc_verifier=oidc_verifier,
+    )
+
+
+def test_viewer_cookie_is_refused_on_operator_read_routes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P14-2: auto-issued viewer cookie passes showcase reads only and gets 403 on operator reads."""
+    _enable_cloud_run_env(monkeypatch)
+    dash_app = _make_email_board_app(tmp_path)
+    viewer = _https_client(dash_app)
+
+    # Visitor gets showcase viewer cookie from GET /demo
+    r_demo = viewer.get("/demo")
+    assert r_demo.status_code == 200
+    claims = verify_user_token(r_demo.cookies[SESSION_COOKIE_NAME])
+    assert claims["scope"] == SHOWCASE_VIEWER_SCOPE
+
+    # Showcase read routes remain accessible to the viewer cookie
+    for showcase_read in (
+        "/v1/demo/scenarios",
+        "/v1/demo/consolidation-collab/state",
+        "/v1/demo/schema-evolution/state",
+    ):
+        assert viewer.get(showcase_read).status_code == 200, showcase_read
+
+    # Operator read routes MUST refuse the viewer cookie with 403
+    operator_reads = (
+        "/rfps",
+        "/exchanges",
+        "/queues/hitl",
+        "/queues/escalation",
+        "/programs",
+        "/events",
+        "/v1/bigquery/sync",
+        "/v1/telemetry/spans",
+        "/v1/gym/rules",
+        "/v1/registry/catalog",
+        "/v1/refinery/revisions",
+        "/v1/a2ui/gemini_app/LOAN-MERIDIAN-001",
+        "/email/outcomes/" + ("a" * 32),
+    )
+    for op_read in operator_reads:
+        assert viewer.get(op_read).status_code == 403, f"expected 403 on {op_read}"
+
+
+def test_email_drain_requires_identity_under_k_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P14-2: `/email/drain` and `/email/outcomes/{key}` verify scheduler OIDC or internal operator."""
+    _enable_cloud_run_env(monkeypatch)
+    scheduler_sa = "bridge-runtime@test-project.iam.gserviceaccount.com"
+    monkeypatch.setenv("BRIDGE_RUNTIME_SA_EMAIL", scheduler_sa)
+    monkeypatch.delenv("BRIDGE_BOARD_PUBLIC_URL", raising=False)
+    monkeypatch.delenv("BRIDGE_PUBLIC_URL", raising=False)
+
+    def _fake_oidc(
+        token: str, *, expected_audience: str | None = None
+    ) -> dict[str, Any]:
+        if expected_audience != "https://bridge-rfp.example.run.app":
+            raise ValueError("audience mismatch")
+        if token == "valid-scheduler-oidc":
+            return {"email": scheduler_sa, "email_verified": True}
+        if token == "unverified-sa-oidc":
+            return {"email": scheduler_sa, "email_verified": False}
+        if token == "wrong-sa-oidc":
+            return {"email": "attacker@other.example", "email_verified": True}
+        raise ValueError("invalid OIDC token")
+
+    dash_app = _make_email_board_app(tmp_path, oidc_verifier=_fake_oidc)
+    anon = _https_client(dash_app)
+    valid_key = "a" * 32
+
+    # Missing BRIDGE_BOARD_PUBLIC_URL / BRIDGE_PUBLIC_URL fails closed with 401
+    assert (
+        anon.post(
+            "/email/drain", headers={"Authorization": "Bearer valid-scheduler-oidc"}
+        ).status_code
+        == 401
+    )
+
+    monkeypatch.setenv("BRIDGE_BOARD_PUBLIC_URL", "https://bridge-rfp.example.run.app")
+
+    # Anonymous rejected with 401
+    assert anon.post("/email/drain").status_code == 401
+    assert anon.get(f"/email/outcomes/{valid_key}").status_code == 401
+
+    # Invalid bearer token rejected with 401
+    assert (
+        anon.post("/email/drain", headers={"Authorization": "Bearer bogus"}).status_code
+        == 401
+    )
+
+    # Unverified email in OIDC token rejected with 403
+    assert (
+        anon.post(
+            "/email/drain", headers={"Authorization": "Bearer unverified-sa-oidc"}
+        ).status_code
+        == 403
+    )
+
+    # Wrong service account OIDC rejected with 403
+    assert (
+        anon.post(
+            "/email/drain", headers={"Authorization": "Bearer wrong-sa-oidc"}
+        ).status_code
+        == 403
+    )
+    assert (
+        anon.get(
+            f"/email/outcomes/{valid_key}",
+            headers={"Authorization": "Bearer wrong-sa-oidc"},
+        ).status_code
+        == 403
+    )
+
+    # Showcase viewer cookie rejected with 403
+    viewer = _https_client(dash_app)
+    assert viewer.get("/demo").status_code == 200
+    assert viewer.post("/email/drain").status_code == 403
+    assert viewer.get(f"/email/outcomes/{valid_key}").status_code == 403
+
+    # Valid scheduler OIDC token matching BRIDGE_RUNTIME_SA_EMAIL passes both routes
+    r_drain = anon.post(
+        "/email/drain", headers={"Authorization": "Bearer valid-scheduler-oidc"}
+    )
+    assert r_drain.status_code == 200
+    assert r_drain.json() == []
+
+    r_outcome = anon.get(
+        f"/email/outcomes/{valid_key}",
+        headers={"Authorization": "Bearer valid-scheduler-oidc"},
+    )
+    assert r_outcome.status_code == 404
+
+
+def test_unscoped_client_denied_entity_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P14-3(c): unscoped client/carrier principals fail closed and tenant_id uses exact match."""
+    from bridge.identity import (
+        TenantIsolationError,
+        UserPrincipal,
+        authorize_entity_access,
+    )
+
+    unscoped_client = UserPrincipal(subject="usr:c1", role="client")
+    with pytest.raises(TenantIsolationError, match="no tenant_id or allowed_entities"):
+        authorize_entity_access(unscoped_client, "LOAN-MERIDIAN-001")
+
+    unscoped_carrier = UserPrincipal(subject="usr:car1", role="carrier")
+    with pytest.raises(TenantIsolationError, match="no tenant_id or allowed_entities"):
+        authorize_entity_access(unscoped_carrier, "LOAN-MERIDIAN-001")
+
+    # Substring tenant_id must NOT authorize a superstring entity_id
+    substring_client = UserPrincipal(subject="usr:c2", role="client", tenant_id="LOAN")
+    with pytest.raises(TenantIsolationError):
+        authorize_entity_access(substring_client, "LOAN-MERIDIAN-001")
+
+    # Exact case-insensitive tenant_id equality is allowed
+    exact_client = UserPrincipal(
+        subject="usr:c3", role="client", tenant_id="loan-meridian-001"
+    )
+    authorize_entity_access(exact_client, "LOAN-MERIDIAN-001")
+
+    # End-to-end HTTP check: unscoped signed client JWT gets 403 on A2UI surface read
+    _enable_cloud_run_env(monkeypatch)
+    app, *_ = _build_full_test_app()
+    client = _https_client(app)
+    unscoped_jwt = mint_user_token("usr:unscoped@borrower.example", "client")
+    resp = client.get(
+        "/v1/a2ui/custom_web/LOAN-MERIDIAN-001",
+        headers={"X-Bridge-User-Token": unscoped_jwt},
+    )
+    assert resp.status_code == 403
+
+
+def test_dev_secret_refused_when_require_auth_env_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P14-5: DEFAULT_DEV_SVID_SECRET is refused under BRIDGE_A2UI_REQUIRE_AUTH=1 or per-port gcp."""
+    from bridge.identity import DEFAULT_DEV_SVID_SECRET
+
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.setenv("BRIDGE_PORT_MODE", "local")
+    monkeypatch.delenv(SPIFFE_SVID_SECRET_ENV, raising=False)
+    monkeypatch.delenv(USER_JWT_SECRET_ENV, raising=False)
+
+    # Mint a forged token using the public source-code constant
+    forged_jwt = mint_user_token(
+        "usr:forger@evil.example",
+        "underwriter",
+        secret=DEFAULT_DEV_SVID_SECRET,
+    )
+
+    # Under BRIDGE_A2UI_REQUIRE_AUTH=1 (outside Cloud Run), default dev secret MUST be refused
+    monkeypatch.setenv(A2UI_REQUIRE_AUTH_ENV, "1")
+    with pytest.raises(SpiffeAuthenticationError, match=SPIFFE_SVID_SECRET_ENV):
+        verify_user_token(forged_jwt)
+    with pytest.raises(SpiffeAuthenticationError, match=SPIFFE_SVID_SECRET_ENV):
+        mint_jwt_svid("spiffe://agents.docubridge.io/internal/broker-agent")
+
+    app, *_ = _build_full_test_app()
+    client = TestClient(app)
+    assert (
+        client.get(
+            "/v1/telemetry/spans",
+            headers={"X-Bridge-User-Token": forged_jwt},
+        ).status_code
+        == 401
+    )
+
+    # Even if explicitly exported as the env value, DEFAULT_DEV_SVID_SECRET is refused
+    monkeypatch.setenv(SPIFFE_SVID_SECRET_ENV, DEFAULT_DEV_SVID_SECRET)
+    with pytest.raises(SpiffeAuthenticationError, match="DEFAULT_DEV_SVID_SECRET"):
+        verify_user_token(forged_jwt)
+
+    # Per-port GCP override (without BRIDGE_PORT_MODE=gcp or K_SERVICE) also refuses dev secret
+    monkeypatch.delenv(A2UI_REQUIRE_AUTH_ENV, raising=False)
+    monkeypatch.delenv(SPIFFE_SVID_SECRET_ENV, raising=False)
+    monkeypatch.setenv("BRIDGE_PORT_AUDIT_VAULT", "gcp")
+    with pytest.raises(SpiffeAuthenticationError, match=SPIFFE_SVID_SECRET_ENV):
+        verify_user_token(forged_jwt)
+
+    # BRIDGE_SPIFFE_REQUIRE_SVID=1 alone also refuses dev secret
+    monkeypatch.delenv("BRIDGE_PORT_AUDIT_VAULT", raising=False)
+    monkeypatch.setenv("BRIDGE_SPIFFE_REQUIRE_SVID", "1")
+    with pytest.raises(SpiffeAuthenticationError, match=SPIFFE_SVID_SECRET_ENV):
+        verify_user_token(forged_jwt)
+
+
+def test_passcode_exchange_backs_off_after_repeated_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P14-6: short passcode is refused (503), repeated failures return 429 + Retry-After, keys stay separated."""
+    _enable_cloud_run_env(monkeypatch, passcode="short-123")
+    app, *_ = _build_full_test_app()
+    client = _https_client(app)
+
+    # Passcode shorter than 16 chars is refused with 503
+    r_short = client.post(
+        "/v1/auth/demo-session",
+        json={"passcode": "short-123", "persona": "broker"},
+    )
+    assert r_short.status_code == 503
+    assert client.get("/v1/auth/demo-session").json()["passcode_configured"] is False
+
+    # Valid >=16-char passcode enables exchange; 3 consecutive wrong guesses trigger 429 back-off
+    monkeypatch.setenv(DEMO_PASSCODE_ENV, TEST_PASSCODE)
+    assert client.get("/v1/auth/demo-session").json()["passcode_configured"] is True
+
+    for attempt in range(3):
+        resp = client.post(
+            "/v1/auth/demo-session",
+            json={"passcode": f"wrong-guess-{attempt}", "persona": "underwriter"},
+        )
+        assert resp.status_code == 401, attempt
+
+    r_locked = client.post(
+        "/v1/auth/demo-session",
+        json={"passcode": TEST_PASSCODE, "persona": "underwriter"},
+    )
+    assert r_locked.status_code == 429
+    assert int(r_locked.headers["retry-after"]) >= 1
+
+    # SVID key and user-JWT key separation: a workload SVID cannot verify as a human user token
+    svid = mint_jwt_svid("spiffe://agents.docubridge.io/internal/broker-agent")
+    with pytest.raises(SpiffeAuthenticationError):
+        verify_user_token(svid)
+
+    # Distinct BRIDGE_USER_JWT_SECRET isolates user tokens from SPIFFE_SVID_SECRET
+    monkeypatch.setenv(USER_JWT_SECRET_ENV, "distinct-user-jwt-signing-secret-2026")
+    user_tok = mint_user_token("usr:alice@docubridge.io", "broker")
+    assert verify_user_token(user_tok)["sub"] == "usr:alice@docubridge.io"
+    with pytest.raises(SpiffeAuthenticationError):
+        verify_jwt_svid(user_tok)
+
+    # P2 regression: repeated failures never overflow float and client tracking stays bounded
+    from starlette.requests import Request as StarletteRequest
+
+    from bridge.user_interaction.demo_session import _PasscodeBackoffTracker
+
+    tracker = _PasscodeBackoffTracker()
+    for i in range(1150):
+        req = StarletteRequest(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/v1/auth/demo-session",
+                "headers": [
+                    (b"x-forwarded-for", f"10.0.{i // 256}.{i % 256}".encode())
+                ],
+            }
+        )
+        tracker.record_failure(req)
+    assert len(tracker._state) <= _PasscodeBackoffTracker._MAX_TRACKED_CLIENTS + 1
+
+
+def test_proxy_signed_assertion_is_accepted_and_foreign_audience_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P14-7: Cloud IAP ES256 JWK verification accepts matching audience and rejects foreign/missing aud and RS256."""
+    import base64
+    import json
+    import time
+    from types import SimpleNamespace
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec, rsa, utils
+
+    def _b64u(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    priv = ec.generate_private_key(ec.SECP256R1())
+    pub_nums = priv.public_key().public_numbers()
+    jwk = {
+        "kty": "EC",
+        "crv": "P-256",
+        "alg": "ES256",
+        "use": "sig",
+        "kid": "iap-key-2026",
+        "x": _b64u(pub_nums.x.to_bytes(32, "big")),
+        "y": _b64u(pub_nums.y.to_bytes(32, "big")),
+    }
+    jwk_payload = json.dumps({"keys": [jwk]}).encode("utf-8")
+    fetched_urls: list[str] = []
+
+    def _stub_transport(url: str, method: str = "GET") -> SimpleNamespace:
+        assert method == "GET"
+        fetched_urls.append(url)
+        return SimpleNamespace(status=200, data=jwk_payload)
+
+    def _sign_es256(claims: dict[str, Any], *, kid: str = "iap-key-2026") -> str:
+        h = _b64u(
+            json.dumps({"alg": "ES256", "kid": kid, "typ": "JWT"}).encode("utf-8")
+        )
+        p = _b64u(json.dumps(claims).encode("utf-8"))
+        der = priv.sign(f"{h}.{p}".encode("ascii"), ec.ECDSA(hashes.SHA256()))
+        r_val, s_val = utils.decode_dss_signature(der)
+        sig = _b64u(r_val.to_bytes(32, "big") + s_val.to_bytes(32, "big"))
+        return f"{h}.{p}.{sig}"
+
+    now = int(time.time())
+    expected_aud = "/projects/100000000000/global/backendServices/999"
+
+    _enable_cloud_run_env(monkeypatch)
+    monkeypatch.setenv("BRIDGE_IAP_AUDIENCE", expected_aud)
+    monkeypatch.setenv(
+        "BRIDGE_PRINCIPAL_ROLES", json.dumps({"ops@partner.example": "broker"})
+    )
+
+    store = InMemoryOperationalStore()
+    store.ingest_entry(
+        _sample_entry(),
+        entity_id="LOAN-MERIDIAN-001",
+        context_id="ctx-iap-test",
+    )
+    app = build_user_interaction_app(
+        operational_store=store,
+        knowledge_catalog=InMemoryKnowledgeCatalog(operational_store=store),
+        require_auth=True,
+        iap_cert_transport=_stub_transport,
+    )
+    client = _https_client(app)
+
+    # Valid ES256 IAP proxy assertion with matching audience and env principal role -> 200
+    valid_iap = _sign_es256(
+        {
+            "iss": "https://cloud.google.com/iap",
+            "aud": expected_aud,
+            "email": "ops@partner.example",
+            "sub": "accounts.google.com:12345",
+            "iat": now - 10,
+            "exp": now + 300,
+        }
+    )
+    r_ok = client.get(
+        "/v1/a2ui/gemini_app/LOAN-MERIDIAN-001",
+        headers={"X-Goog-IAP-JWT-Assertion": valid_iap},
+    )
+    assert r_ok.status_code == 200
+    assert r_ok.json()["role"] == "broker"
+    assert (
+        fetched_urls
+        and fetched_urls[0] == "https://www.gstatic.com/iap/verify/public_key-jwk"
+    )
+
+    # Foreign audience -> 401
+    foreign_aud_iap = _sign_es256(
+        {
+            "iss": "https://cloud.google.com/iap",
+            "aud": "/projects/111111111111/global/backendServices/1",
+            "email": "ops@partner.example",
+            "iat": now - 10,
+            "exp": now + 300,
+        }
+    )
+    assert (
+        client.get(
+            "/v1/a2ui/gemini_app/LOAN-MERIDIAN-001",
+            headers={"X-Goog-IAP-JWT-Assertion": foreign_aud_iap},
+        ).status_code
+        == 401
+    )
+
+    # Account OIDC issuer (not Cloud IAP issuer) -> 401
+    wrong_iss_iap = _sign_es256(
+        {
+            "iss": "https://accounts.google.com",
+            "aud": expected_aud,
+            "email": "ops@partner.example",
+            "iat": now - 10,
+            "exp": now + 300,
+        }
+    )
+    assert (
+        client.get(
+            "/v1/a2ui/gemini_app/LOAN-MERIDIAN-001",
+            headers={"X-Goog-IAP-JWT-Assertion": wrong_iss_iap},
+        ).status_code
+        == 401
+    )
+
+    # RS256 account token placed in X-Goog-IAP-JWT-Assertion -> 401
+    rsa_priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
+
+    rs_h = _b64u(json.dumps({"alg": "RS256", "kid": "iap-key-2026"}).encode("utf-8"))
+    rs_p = _b64u(
+        json.dumps(
+            {
+                "iss": "https://cloud.google.com/iap",
+                "aud": expected_aud,
+                "email": "ops@partner.example",
+                "iat": now - 10,
+                "exp": now + 300,
+            }
+        ).encode("utf-8")
+    )
+    rs_sig = _b64u(
+        rsa_priv.sign(
+            f"{rs_h}.{rs_p}".encode("ascii"), rsa_padding.PKCS1v15(), hashes.SHA256()
+        )
+    )
+    assert (
+        client.get(
+            "/v1/a2ui/gemini_app/LOAN-MERIDIAN-001",
+            headers={"X-Goog-IAP-JWT-Assertion": f"{rs_h}.{rs_p}.{rs_sig}"},
+        ).status_code
+        == 401
+    )
+
+    # Missing BRIDGE_IAP_AUDIENCE fails closed -> 401
+    monkeypatch.delenv("BRIDGE_IAP_AUDIENCE", raising=False)
+    assert (
+        client.get(
+            "/v1/a2ui/gemini_app/LOAN-MERIDIAN-001",
+            headers={"X-Goog-IAP-JWT-Assertion": valid_iap},
+        ).status_code
+        == 401
+    )
+
+    # P2 regression: NaN exp and corrupt JWK payload raise SpiffeAuthenticationError cleanly
+    from bridge.identity import verify_iap_assertion
+
+    nan_claims_tok = _sign_es256(
+        {
+            "iss": "https://cloud.google.com/iap",
+            "aud": expected_aud,
+            "email": "ops@partner.example",
+            "iat": now - 10,
+            "exp": float("nan"),
+        }
+    )
+    with pytest.raises(SpiffeAuthenticationError, match="expired"):
+        verify_iap_assertion(
+            nan_claims_tok,
+            expected_audience=expected_aud,
+            request_transport=_stub_transport,
+        )
+    with pytest.raises(SpiffeAuthenticationError, match="Invalid IAP JWK"):
+        verify_iap_assertion(
+            valid_iap,
+            expected_audience=expected_aud,
+            request_transport=lambda _u, method="GET": SimpleNamespace(
+                status=200, data=b"not-json"
+            ),
+        )
+
+
+def _materialize_openapi_path(template: str) -> str:
+    import re
+
+    out = template.replace("{channel}", "gemini_app")
+    return re.sub(r"\{[^}]+\}", "00000000000000000000000000000000", out)
+
+
+def test_all_routes_gated_or_allowlisted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P14-9: walk `app.openapi()['paths']` of both apps against explicit public allowlist."""
+    _enable_cloud_run_env(monkeypatch)
+    ui_app, *_ = _build_full_test_app()
+    dash_app = _make_email_board_app(tmp_path)
+
+    # Every intentionally public endpoint must appear here explicitly; anything else MUST return 401
+    public_allowlist: set[tuple[str, str]] = {
+        ("GET", "/demo"),
+        ("HEAD", "/demo"),
+        ("GET", "/console"),
+        ("HEAD", "/console"),
+        ("GET", "/ebc"),
+        ("HEAD", "/ebc"),
+        ("GET", "/demo/enterprise-demo.css"),
+        ("GET", "/demo/enterprise-demo.js"),
+        ("GET", "/demo/fonts/{filename}"),
+        ("GET", "/demo/modules/{filename}"),
+        ("GET", "/ebc/ebc-live.css"),
+        ("GET", "/ebc/ebc-live.js"),
+        ("GET", "/ebc/favicon.svg"),
+        ("GET", "/v1/auth/demo-session"),
+        ("POST", "/v1/auth/demo-session"),
+        ("DELETE", "/v1/auth/demo-session"),
+    }
+    forged = {
+        "X-Bridge-Role": "underwriter",
+        "X-Bridge-Principal": "spoof@docubridge.io",
+        "X-Goog-Authenticated-User-Email": "accounts.google.com:spoof@docubridge.io",
+    }
+
+    checked_gated = 0
+    for app_name, app in (("user_interaction", ui_app), ("dashboard", dash_app)):
+        anon = _https_client(app)
+        viewer = _https_client(app)
+        assert viewer.get("/demo").status_code == 200
+        paths = app.openapi()["paths"]
+        for path_tmpl, methods in paths.items():
+            for method_raw in methods:
+                method = method_raw.upper()
+                if method not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}:
+                    continue
+                if (method, path_tmpl) in public_allowlist:
+                    continue
+                url = _materialize_openapi_path(path_tmpl)
+                kwargs: dict[str, Any] = (
+                    {"json": {}} if method in {"POST", "PUT", "PATCH"} else {}
+                )
+                r_anon = anon.request(method, url, **kwargs)
+                assert r_anon.status_code == 401, (
+                    f"{app_name} anonymous {method} {path_tmpl} returned {r_anon.status_code}"
+                )
+                r_forged = anon.request(method, url, headers=forged, **kwargs)
+                assert r_forged.status_code == 401, (
+                    f"{app_name} forged {method} {path_tmpl} returned {r_forged.status_code}"
+                )
+                is_showcase_read = method == "GET" and path_tmpl.startswith("/v1/demo/")
+                if not is_showcase_read:
+                    r_viewer = viewer.request(method, url, **kwargs)
+                    assert r_viewer.status_code == 403, (
+                        f"{app_name} viewer {method} {path_tmpl} returned {r_viewer.status_code}"
+                    )
+                checked_gated += 1
+
+    # Ensure we actually swept the full surface (both apps combined)
+    assert checked_gated >= 150, (
+        f"expected >=150 gated route-method pairs, got {checked_gated}"
+    )
+
+
+def test_external_role_403_on_internal_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P14-9: valid scoped external roles get 403 on internal reads; operator gets exact 200/404."""
+    _enable_cloud_run_env(monkeypatch)
+    dash_app = _make_email_board_app(tmp_path)
+    client = _https_client(dash_app)
+
+    ext_client_jwt = mint_user_token(
+        "usr:borrower@client.example",
+        "client",
+        allowed_entities=["LOAN-MERIDIAN-001"],
+    )
+    ext_carrier_jwt = mint_user_token(
+        "usr:uw@carrier.example",
+        "carrier",
+        allowed_entities=["LOAN-MERIDIAN-001"],
+    )
+    operator_jwt = mint_user_token("usr:ops@docubridge.io", "broker")
+
+    internal_reads: list[tuple[str, int]] = [
+        ("/events", 200),
+        ("/exchanges", 200),
+        ("/exchanges/nonexistent-sid", 404),
+        ("/queues/hitl", 200),
+        ("/queues/escalation", 200),
+        ("/programs", 200),
+        ("/programs/nonexistent-prog", 404),
+        ("/rfps", 200),
+        ("/rfps/nonexistent-rfp", 404),
+        ("/email/outcomes/" + ("b" * 32), 404),
+        ("/v1/bigquery/sync", 200),
+        ("/v1/telemetry/spans", 200),
+        ("/v1/telemetry/analytics", 200),
+        ("/v1/telemetry/sql-eval", 200),
+        ("/v1/gym/rules", 200),
+        ("/v1/gym/extraction-hints?issuer=Chubb", 200),
+        ("/v1/gym/export/docai-dataset", 200),
+        ("/v1/gym/trust-policies", 200),
+        ("/v1/gym/skills/closing-disclosure/revisions", 200),
+        ("/v1/registry/catalog", 200),
+        ("/v1/registry/agents", 200),
+        ("/v1/registry/mcp-servers", 200),
+        ("/v1/registry/endpoints", 200),
+        ("/v1/registry/skills", 200),
+        ("/v1/registry/bindings", 200),
+        ("/v1/gateway/status", 200),
+        ("/v1/registry/lineage/LOAN-MERIDIAN-001", 200),
+        ("/v1/catalog/spiffe-agents", 200),
+        ("/v1/catalog/assets", 200),
+        ("/v1/catalog/glossary", 200),
+        ("/v1/catalog/lineage/LOAN-MERIDIAN-001/premium", 200),
+        ("/v1/refinery/revisions", 200),
+    ]
+    for path, expected_op_status in internal_reads:
+        for role_name, token in (
+            ("client", ext_client_jwt),
+            ("carrier", ext_carrier_jwt),
+        ):
+            r_ext = client.get(path, headers={"X-Bridge-User-Token": token})
+            assert r_ext.status_code == 403, (
+                f"{role_name} GET {path} returned {r_ext.status_code}, expected 403"
+            )
+        r_op = client.get(path, headers={"X-Bridge-User-Token": operator_jwt})
+        assert r_op.status_code == expected_op_status, (
+            f"operator GET {path} returned {r_op.status_code}, expected {expected_op_status}"
+        )
+
+
+def test_ingest_pending_without_hint_is_not_a_500(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P14-11: POST /v1/intake/ingest with status='pending' or 'parked' returns 200 parked entry, not 500."""
+    _enable_cloud_run_env(monkeypatch)
+    app, _store, _inbox, gym = _build_full_test_app()
+    client = _https_client(app)
+    broker_jwt = mint_user_token("usr:broker@docubridge.io", "broker")
+
+    for status_val in ("pending", "parked"):
+        resp = client.post(
+            "/v1/intake/ingest",
+            headers={"X-Bridge-User-Token": broker_jwt},
+            json={
+                "entity_id": "LOAN-MERIDIAN-001",
+                "doc_id": f"doc-{status_val}-no-hint",
+                "doctype": "carrier-quote",
+                "issuer": "Chubb",
+                "status": status_val,
+                "key_fields": {
+                    "premium": "$95,000.00",
+                    "notes": "Hold for SSN 123-45-6789 review",
+                },
+            },
+        )
+        assert resp.status_code == 200, (status_val, resp.text)
+        body = resp.json()
+        assert body["disposition"] == "pending"
+        assert body["vault_record"] is None
+        assert body["vault_promoted"] is False
+        assert body["facts"] == []
+        assert body["entry"]["doc_id"] == f"doc-{status_val}-no-hint"
+        assert "123-45-6789" not in str(body["entry"]["key_fields"])
+        assert "[REDACTED-SSN]" in str(body["entry"]["key_fields"]["notes"])
+
+    # P2 regression: parked/pending ingest must not leave orphaned process-skill lineage records
+    assert gym.list_process_skill_lineage(entity_id="LOAN-MERIDIAN-001") == []
+
+    # Direct check: _build_parked_intake_response also redacts PII in entry.message
+    from bridge.user_interaction.intake_routes import _build_parked_intake_response
+
+    parked_resp = _build_parked_intake_response(
+        LedgerEntry(
+            doc_id="doc-msg-pii",
+            doctype="carrier-quote",
+            issuer="Chubb",
+            disposition=Disposition.pending,
+            gate=Gate.hitl_review,
+            message="Contact borrower@example.com or 123-45-6789",
+            key_fields={"premium": "$95,000.00"},
+        ),
+        outcome_id="out_msg_test",
+        entity_id="LOAN-MERIDIAN-001",
+    )
+    assert "123-45-6789" not in str(parked_resp["entry"]["message"])
+    assert "borrower@example.com" not in str(parked_resp["entry"]["message"])
+
+
+def test_dashboard_forwards_principal_roles_to_all_mounted_routers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P2 regression: build_dashboard_app(principal_roles=...) applies to exchanges, rfps, programs, and email routes."""
+    from bridge.dashboard.board import RfpBoard
+    from bridge.dashboard.server import build_dashboard_app
+    from bridge.edge.email_ingress import EmailProcessor
+    from bridge.edge.skills import rfp_policy_for
+    from bridge.extraction.fixture import FixtureExtractor
+    from bridge.ports.local import LocalEmailIngress
+
+    _enable_cloud_run_env(monkeypatch)
+    monkeypatch.setenv("BRIDGE_EMAIL_MAILBOX", "intake@example.test")
+    monkeypatch.setenv("BRIDGE_EMAIL_TOKEN_SECRET", "test-email-token-secret-2026")
+    policy = rfp_policy_for("benefits-rfp")
+    assert policy is not None
+    board = RfpBoard(policy=policy)
+    processor = EmailProcessor(
+        board=board,
+        port=LocalEmailIngress(tmp_path / "mail-roles"),
+        extraction=FixtureExtractor(),
+    )
+    app = build_dashboard_app(
+        rfps=board,
+        email=processor,
+        email_drain_interval=0,
+        principal_roles={"ops@partner.example": "broker"},
+        require_auth=True,
+        oidc_verifier=lambda _tok, expected_audience=None: {
+            "email": "ops@partner.example"
+        },
+    )
+    client = _https_client(app)
+    hdrs = {"X-Goog-IAP-JWT-Assertion": "valid-iap"}
+    assert client.get("/exchanges", headers=hdrs).status_code == 200
+    assert client.get("/rfps", headers=hdrs).status_code == 200
+    assert client.get("/programs", headers=hdrs).status_code == 200
+    assert client.get("/email/outcomes/" + ("c" * 32), headers=hdrs).status_code == 404

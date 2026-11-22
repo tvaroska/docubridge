@@ -57,18 +57,22 @@ imports only ``contract/``, ``bridge.*``, ``google.adk.artifacts``,
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import Awaitable, Callable
 from urllib.parse import quote
+from weakref import WeakKeyDictionary
 
 import google.genai.types as genai_types
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import RedirectResponse
 from google.adk.artifacts import BaseArtifactService
 
 from bridge.collect import DocumentSubmission
+from bridge.edge.auth import authenticated_principal
 from bridge.extraction.resolve import maybe_await, mime_for, resolve_document
+from bridge.identity import is_auth_enforced
 
 _LOG = logging.getLogger("bridge.edge.artifacts")
 
@@ -77,7 +81,12 @@ _LOG = logging.getLogger("bridge.edge.artifacts")
 # request carries no party (the one-turn path).
 APP_NAME = "document_bridge"
 UNSCOPED_USER = "_unscoped"
+ARTIFACT_INDEX_USER = "_bridge_index"
 ARTIFACTS_PREFIX = "/artifacts"
+
+_RECORDED_PARTIES: WeakKeyDictionary[BaseArtifactService, dict[str, set[str]]] = (
+    WeakKeyDictionary()
+)
 
 # P7-3 deploy swap. When set (by the runtime module's plain env, from the gcs
 # Terraform module) the artifact store is ``GcsArtifactService`` and the fetch
@@ -146,6 +155,26 @@ async def resolve_bytes(uri: str) -> tuple[bytes, str] | None:
     return resolved.data, resolved.mime_type
 
 
+def _validate_artifact_segment(
+    value: str, label: str, *, forbid_index_user: bool = False
+) -> None:
+    cleaned = value.strip()
+    if (
+        not cleaned
+        or cleaned != value
+        or "/" in value
+        or "\\" in value
+        or value in {".", ".."}
+        or ".." in value
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in value)
+    ):
+        raise ValueError(f"Unsafe artifact {label}: {value!r}")
+    if forbid_index_user and value == ARTIFACT_INDEX_USER:
+        raise ValueError(
+            f"Reserved artifact {label} {ARTIFACT_INDEX_USER!r} is forbidden."
+        )
+
+
 def filename_for(submission: DocumentSubmission) -> str:
     """Derive the ADK artifact ``filename`` for a submission (Decision 5).
 
@@ -160,13 +189,81 @@ def filename_for(submission: DocumentSubmission) -> str:
     return submission.doc_id
 
 
-async def persist_submission(
+async def _lookup_artifact_owner(
+    store: BaseArtifactService,
+    *,
+    context_id: str,
+    filename: str,
+) -> tuple[str, str | None] | None:
+    """Resolve ``(party, caller_principal)`` via the store's public ``load_artifact`` API."""
+    part = await store.load_artifact(
+        app_name=APP_NAME,
+        user_id=ARTIFACT_INDEX_USER,
+        session_id=context_id,
+        filename=filename,
+    )
+    if part is None or part.inline_data is None or not part.inline_data.data:
+        return None
+    try:
+        payload = json.loads(part.inline_data.data.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    party = str(payload.get("party") or "").strip()
+    if not party:
+        return None
+    caller_raw = payload.get("caller_principal")
+    caller = (
+        str(caller_raw).strip()
+        if isinstance(caller_raw, str) and caller_raw.strip()
+        else None
+    )
+    return party, caller
+
+
+async def _record_artifact_owner(
+    store: BaseArtifactService,
+    *,
+    context_id: str,
+    filename: str,
+    party: str,
+    caller_principal: str | None,
+) -> None:
+    """Persist ``(context_id, filename) -> (party, caller_principal)`` through public store APIs."""
+    try:
+        by_ctx = _RECORDED_PARTIES.setdefault(store, {})
+        by_ctx.setdefault(context_id, set()).add(party)
+    except TypeError:
+        pass
+    existing = await _lookup_artifact_owner(
+        store, context_id=context_id, filename=filename
+    )
+    if existing == (party, caller_principal):
+        return
+    manifest = json.dumps(
+        {"party": party, "caller_principal": caller_principal},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    await store.save_artifact(
+        app_name=APP_NAME,
+        user_id=ARTIFACT_INDEX_USER,
+        session_id=context_id,
+        filename=filename,
+        artifact=genai_types.Part.from_bytes(
+            data=manifest, mime_type="application/json"
+        ),
+    )
+
+
+async def persist_submission(  # noqa: PLR0913 - public artifact submission persistence contract
     store: BaseArtifactService,
     *,
     party: str,
     context_id: str,
     submission: DocumentSubmission,
     resolver: Resolver = resolve_bytes,
+    caller_principal: str | None = None,
 ) -> int | None:
     """Persist one submission's bytes into the artifact store; return the version.
 
@@ -180,18 +277,37 @@ async def persist_submission(
     ref = submission.artifact
     if ref is None or not ref.uri:
         return None
+    filename = filename_for(submission)
+    _validate_artifact_segment(party, "party", forbid_index_user=True)
+    _validate_artifact_segment(context_id, "context_id")
+    _validate_artifact_segment(filename, "filename")
+    existing = await _lookup_artifact_owner(
+        store, context_id=context_id, filename=filename
+    )
+    if existing is not None and caller_principal != existing[1]:
+        raise PermissionError(
+            f"Artifact '{context_id}/{filename}' is owned by another principal."
+        )
     resolved = await maybe_await(resolver(ref.uri))
     if resolved is None:
         return None
     data, mime_type = resolved
     part = genai_types.Part.from_bytes(data=data, mime_type=mime_type)
-    return await store.save_artifact(
+    version = await store.save_artifact(
         app_name=APP_NAME,
         user_id=party,
         session_id=context_id,
-        filename=filename_for(submission),
+        filename=filename,
         artifact=part,
     )
+    await _record_artifact_owner(
+        store,
+        context_id=context_id,
+        filename=filename,
+        party=party,
+        caller_principal=caller_principal,
+    )
+    return version
 
 
 def scoped_uri(base_url: str, *, context_id: str, filename: str, version: int) -> str:
@@ -308,49 +424,89 @@ def build_fetch_signer() -> Signer | None:
     return gcs_signer(bucket) if bucket else None
 
 
+async def _authorize_fetch_candidates(
+    store: BaseArtifactService,
+    request: Request,
+    *,
+    context_id: str,
+    filename: str,
+    require_auth: bool,
+) -> list[str] | Response:
+    caller = authenticated_principal(request)
+    enforced = is_auth_enforced(require_auth)
+    if enforced and caller is None:
+        return Response(status_code=401)
+    try:
+        _validate_artifact_segment(context_id, "context_id")
+        _validate_artifact_segment(filename, "filename")
+    except ValueError:
+        return Response(status_code=404)
+    indexed = await _lookup_artifact_owner(
+        store, context_id=context_id, filename=filename
+    )
+    if indexed is None:
+        return (
+            Response(status_code=404)
+            if enforced
+            else list(_candidate_users(store, context_id))
+        )
+    indexed_party, recorded_principal = indexed
+    if recorded_principal is None:
+        return Response(status_code=404) if enforced else [indexed_party]
+    if caller is None:
+        return Response(status_code=401)
+    return (
+        [indexed_party] if caller == recorded_principal else Response(status_code=404)
+    )
+
+
 def build_fetch_app(
     store: BaseArtifactService,
     *,
     resolver: Resolver | None = None,
     signer: Signer | None = None,
+    require_auth: bool = False,
 ) -> FastAPI:
     """Build the scoped artifact-fetch FastAPI sub-app (Decision 2, 9).
 
     One GET route ``/{context_id}/{filename}`` (mounted at ``/artifacts``) with an
-    optional ``?v={version}`` (default = latest). The leg boundary is
-    ``(context_id, filename)``: a foreign ``context_id`` / unknown filename owns
-    nothing → ``404``. That 404 IS the leg-scoping enforcement on BOTH paths (a
-    reference is not a capability, design/artifacts.md).
+    optional ``?v={version}`` (default = latest). Enforces both leg scoping
+    (``(context_id, filename)`` → 404) and caller-principal ownership when recorded
+    or when authentication is enforced (401 unauthenticated / 404 foreign caller).
 
-    - ``signer is None`` (local): streams the stored bytes with the stored content
-      type — unchanged from P2-4.
-    - ``signer`` provided (deploy, P7-3): **authorizes first** — resolves the
-      owning ``user_id`` + concrete version and 404s if the blob is absent —
-      **before** minting anything, then returns a 307 redirect to a time-limited
-      signed URL. Bytes never ride the response; the client fetches GCS directly.
-      A signed URL for a guessed path is never mintable (the 404 gates it).
-
-    ``resolver`` is accepted for symmetry with the executor wiring but is unused on
-    the read path (bytes already live in the store).
+    Owner resolution uses the public ``BaseArtifactService`` API
+    (``_bridge_index`` metadata record written by :func:`persist_submission`) so
+    party-scoped artifacts resolve identically on ``GcsArtifactService`` and
+    ``InMemoryArtifactService`` without touching store internals.
     """
     app = FastAPI()
 
     @app.get("/{context_id}/{filename}")
     async def fetch_artifact(
-        context_id: str, filename: str, v: int | None = None
+        request: Request, context_id: str, filename: str, v: int | None = None
     ) -> Response:
-        # Real per-turn Gateway re-auth / bearer scoping is DUR-7 / P7-5; the leg
-        # boundary here is structural (the store key = context_id + filename),
-        # not authenticated. The URI carries no party, so probe known parties.
+        authorized = await _authorize_fetch_candidates(
+            store,
+            request,
+            context_id=context_id,
+            filename=filename,
+            require_auth=require_auth,
+        )
+        if isinstance(authorized, Response):
+            return authorized
         if signer is not None:
-            owner = await _resolve_owner(store, context_id, filename, v)
+            owner = await _resolve_owner(
+                store, context_id, filename, v, candidates=authorized
+            )
             if owner is None:
                 return Response(status_code=404)  # authorize before you sign
             user_id, version = owner
             return RedirectResponse(
                 signer(context_id, filename, user_id, version), status_code=307
             )
-        part = await _load_any_party(store, context_id, filename, v)
+        part = await _load_any_party(
+            store, context_id, filename, v, candidates=authorized
+        )
         if part is None or part.inline_data is None:
             return Response(status_code=404)
         blob = part.inline_data
@@ -363,36 +519,32 @@ def build_fetch_app(
 
 
 def _candidate_users(store: BaseArtifactService, context_id: str) -> set[str]:
-    """Candidate ``user_id`` owners of a ``context_id`` (the fetch URI omits party).
-
-    Always includes the unscoped fallback; for ``InMemoryArtifactService`` (which
-    keeps a composite-key ``artifacts`` dict) also enumerates the tracked users so
-    a party-scoped artifact is found. A store without that dict (the deployed
-    ``GcsArtifactService``) probes the unscoped user; per-party discovery on the
-    deployed path is a P7-9 concern.
-    """
+    """Candidate ``user_id`` owners of a ``context_id`` when no index record exists."""
     users: set[str] = {UNSCOPED_USER}
+    try:
+        recorded = _RECORDED_PARTIES.get(store, {}).get(context_id)
+        if recorded:
+            users.update(recorded)
+    except TypeError:
+        pass
     artifacts = getattr(store, "artifacts", None)
     if isinstance(artifacts, dict):
         for key in artifacts:
             # Key format: "app_name/user_id/session_id/filename" for session-scoped.
             parts = key.split("/")
-            if len(parts) >= 3 and parts[0] == APP_NAME and parts[2] == context_id:
+            if (
+                len(parts) >= 3
+                and parts[0] == APP_NAME
+                and parts[2] == context_id
+                and parts[1] != ARTIFACT_INDEX_USER
+            ):
                 users.add(parts[1])
     return users
 
 
 def owning_parties(store: BaseArtifactService, context_id: str) -> set[str]:
-    """Parties (``user_id``s) other than the unscoped fallback owning ``context_id``.
-
-    The S3-edge-1 D9 party resolution for the LLM-leg session key (session key ==
-    artifact key): the same enumeration the fetch endpoint uses
-    (:func:`_candidate_users`), minus :data:`UNSCOPED_USER`. Same limits — an
-    ``InMemoryArtifactService`` is enumerated; a store without that dict (the
-    deployed ``GcsArtifactService``) yields an empty set (per-party discovery on
-    the deployed path is a P7-9 concern).
-    """
-    return _candidate_users(store, context_id) - {UNSCOPED_USER}
+    """Parties (``user_id``s) other than the unscoped fallback owning ``context_id``."""
+    return _candidate_users(store, context_id) - {UNSCOPED_USER, ARTIFACT_INDEX_USER}
 
 
 async def _load_any_party(
@@ -400,13 +552,13 @@ async def _load_any_party(
     context_id: str,
     filename: str,
     version: int | None,
+    *,
+    candidates: list[str] | None = None,
 ) -> genai_types.Part | None:
-    """Load the artifact regardless of which ``user_id`` (party) owns it.
-
-    The leg boundary is ``(context_id, filename)``; the fetch URI does not carry
-    the party, so probe the unscoped fallback and the store's tracked users.
-    """
-    for user_id in _candidate_users(store, context_id):
+    """Load the artifact across the resolved owner or fallback candidate parties."""
+    for user_id in (
+        candidates if candidates is not None else _candidate_users(store, context_id)
+    ):
         part = await store.load_artifact(
             app_name=APP_NAME,
             user_id=user_id,
@@ -424,16 +576,13 @@ async def _resolve_owner(
     context_id: str,
     filename: str,
     version: int | None,
+    *,
+    candidates: list[str] | None = None,
 ) -> tuple[str, int] | None:
-    """Resolve ``(user_id, concrete_version)`` for an artifact, or ``None`` if absent.
-
-    The signer needs both the owning party and a concrete version to build the exact
-    blob path. Probes each candidate user; on a hit, resolves ``version=None``
-    (latest) to the highest stored version via ``list_versions``. Returns ``None``
-    when no candidate owns ``(context_id, filename)`` — the fetch route's 404 (the
-    leg-scoping gate that must fire before any URL is minted).
-    """
-    for user_id in _candidate_users(store, context_id):
+    """Resolve ``(user_id, concrete_version)`` for an artifact, or ``None`` if absent."""
+    for user_id in (
+        candidates if candidates is not None else _candidate_users(store, context_id)
+    ):
         part = await store.load_artifact(
             app_name=APP_NAME,
             user_id=user_id,

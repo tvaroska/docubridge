@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -13,6 +14,9 @@ from typing import Any, Literal, cast
 from fastapi import Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from bridge.identity import (
+    A2UI_REQUIRE_AUTH_ENV as A2UI_REQUIRE_AUTH_ENV,
+)
 from bridge.identity import (
     ALLOWED_ENTITIES_HEADER,
     CARRIER_SLUG_HEADER,
@@ -30,9 +34,25 @@ from bridge.identity import (
     SpiffeId,
     UserPrincipal,
     parse_decimal_header,
-    verify_google_oidc_token,
+    resolve_expected_svid_algorithm,
+    verify_iap_assertion,
     verify_jwt_svid,
     verify_user_token,
+)
+from bridge.identity import (
+    IAP_AUDIENCE_ENV as IAP_AUDIENCE_ENV,
+)
+from bridge.identity import (
+    is_auth_enforced as is_auth_enforced,
+)
+from bridge.identity_models import (
+    READ_ONLY_SCOPE as READ_ONLY_SCOPE,
+)
+from bridge.identity_models import (
+    SHOWCASE_VIEWER_SCOPE as SHOWCASE_VIEWER_SCOPE,
+)
+from bridge.identity_models import (
+    VIEWER_SCOPES as _VIEWER_SCOPES,
 )
 from bridge.knowledge_catalog import AccessDecision, CatalogRole, DeliveryChannel
 
@@ -100,12 +120,10 @@ _DEFAULT_VIEW_BY_ROLE: dict[CatalogRole, str] = {
 }
 
 A2UI_CONTENT_TYPE = "application/vnd.a2ui+json"
-A2UI_REQUIRE_AUTH_ENV = "BRIDGE_A2UI_REQUIRE_AUTH"
 IAP_JWT_ASSERTION_HEADER = "x-goog-iap-jwt-assertion"
 IAP_EMAIL_HEADER = "x-goog-authenticated-user-email"
-IAP_AUDIENCE_ENV = "BRIDGE_IAP_AUDIENCE"
+PRINCIPAL_ROLES_ENV = "BRIDGE_PRINCIPAL_ROLES"
 SESSION_COOKIE_NAME = "bridge_session"
-READ_ONLY_SCOPE = "read_only"
 INTERACTIVE_SCOPE = "interactive"
 _VALID_ROLES: frozenset[str] = frozenset(_DEFAULT_VIEW_BY_ROLE.keys())
 
@@ -119,20 +137,33 @@ def encode_a2ui_envelope(envelope: A2uiDeliveryEnvelope) -> dict[str, Any]:
     return envelope.model_dump(mode="json")
 
 
-def is_auth_enforced(require_auth: bool = False) -> bool:
-    """Return True when cryptographically verified authentication is required.
-
-    Enforced unconditionally whenever ``K_SERVICE`` is set (Cloud Run), regardless
-    of ``BRIDGE_PORT_MODE``, or when ``require_auth=True`` / ``BRIDGE_A2UI_REQUIRE_AUTH=1``.
-    """
-    if require_auth:
-        return True
-    if os.environ.get(A2UI_REQUIRE_AUTH_ENV, "").strip() == "1":
-        return True
-    return bool(os.environ.get("K_SERVICE", "").strip())
-
-
 _is_auth_enforced = is_auth_enforced
+
+
+def resolve_principal_roles_from_env() -> dict[str, CatalogRole] | None:
+    """Parse ``BRIDGE_PRINCIPAL_ROLES`` JSON mapping ``{principal: CatalogRole}`` when set."""
+    raw = os.environ.get(PRINCIPAL_ROLES_ENV, "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{PRINCIPAL_ROLES_ENV} must be a valid JSON object.") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{PRINCIPAL_ROLES_ENV} must decode to a JSON object.")
+    resolved: dict[str, CatalogRole] = {}
+    for principal, role_raw in parsed.items():
+        if not isinstance(principal, str) or not principal.strip():
+            raise ValueError(
+                f"{PRINCIPAL_ROLES_ENV} keys must be non-empty principal strings."
+            )
+        role = str(role_raw).strip().lower()
+        if role not in _VALID_ROLES:
+            raise ValueError(
+                f"{PRINCIPAL_ROLES_ENV} maps '{principal}' to unknown role '{role_raw}'."
+            )
+        resolved[principal.strip()] = cast(CatalogRole, role)
+    return resolved
 
 
 def _resolve_app_oidc_verifier(
@@ -145,10 +176,18 @@ def _resolve_app_oidc_verifier(
     return verifier if callable(verifier) else None
 
 
+def _resolve_app_iap_cert_transport(request: Request) -> object:
+    scope = getattr(request, "scope", None)
+    app = scope.get("app") if isinstance(scope, dict) else None
+    state = getattr(app, "state", None)
+    return getattr(state, "iap_cert_transport", None)
+
+
 def _verify_iap_request(
     request: Request,
     *,
     oidc_verifier: Callable[..., dict[str, Any]] | None = None,
+    iap_cert_transport: object = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Verify ``X-Goog-IAP-JWT-Assertion`` cryptographically before trusting IAP email headers."""
     iap_assertion = request.headers.get(IAP_JWT_ASSERTION_HEADER, "").strip()
@@ -162,7 +201,7 @@ def _verify_iap_request(
         return "", "", {}
 
     verifier = oidc_verifier or _resolve_app_oidc_verifier(request)
-    expected_audience = os.environ.get(IAP_AUDIENCE_ENV, "").strip() or None
+    expected_audience = os.environ.get(IAP_AUDIENCE_ENV, "").strip()
     try:
         if verifier is not None:
             sig = inspect.signature(verifier)
@@ -170,16 +209,29 @@ def _verify_iap_request(
                 p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
             )
             iap_claims = (
-                dict(verifier(iap_assertion, expected_audience=expected_audience))
+                dict(
+                    verifier(iap_assertion, expected_audience=expected_audience or None)
+                )
                 if accepts_aud
                 else dict(verifier(iap_assertion))
             )
         else:
+            if not expected_audience:
+                raise AuthenticationRequiredError(
+                    f"{IAP_AUDIENCE_ENV} must be configured to verify {IAP_JWT_ASSERTION_HEADER}."
+                )
+            cert_transport = iap_cert_transport or _resolve_app_iap_cert_transport(
+                request
+            )
             iap_claims = dict(
-                verify_google_oidc_token(
-                    iap_assertion, expected_audience=expected_audience
+                verify_iap_assertion(
+                    iap_assertion,
+                    expected_audience=expected_audience,
+                    request_transport=cert_transport,
                 )
             )
+    except AuthenticationRequiredError:
+        raise
     except Exception as exc:
         raise AuthenticationRequiredError(
             f"Invalid X-Goog-IAP-JWT-Assertion: {exc}"
@@ -206,19 +258,22 @@ def _extract_user_token_claims(
     user_token_header = request.headers.get(USER_TOKEN_HEADER, "").strip()
     if user_token_header:
         try:
-            return verify_user_token(user_token_header), "jwt"
+            return (
+                verify_user_token(user_token_header, refuse_dev_secret=enforce_auth),
+                "jwt",
+            )
         except SpiffeAuthenticationError as exc:
             raise AuthenticationRequiredError(str(exc)) from exc
 
     session_cookie = request.cookies.get(SESSION_COOKIE_NAME, "").strip()
     if session_cookie:
         try:
-            claims = verify_user_token(session_cookie)
+            claims = verify_user_token(session_cookie, refuse_dev_secret=enforce_auth)
         except SpiffeAuthenticationError as exc:
             raise AuthenticationRequiredError(str(exc)) from exc
         if (
             not enforce_auth
-            and str(claims.get("scope") or "").strip() == READ_ONLY_SCOPE
+            and str(claims.get("scope") or "").strip() in _VIEWER_SCOPES
         ):
             return {}, None
         return claims, "cookie"
@@ -277,6 +332,7 @@ def resolve_caller_role(  # noqa: PLR0913 - public caller role resolution contra
     default_role: CatalogRole | None = None,
     principal_roles: dict[str, CatalogRole] | None = None,
     require_auth: bool = False,
+    allow_showcase_viewer: bool = False,
     oidc_verifier: Callable[..., dict[str, Any]] | None = None,
 ) -> CatalogRole:
     """Resolve and verify the caller's ``CatalogRole`` from authenticated identity.
@@ -290,6 +346,11 @@ def resolve_caller_role(  # noqa: PLR0913 - public caller role resolution contra
     is rejected with ``PermissionError`` (HTTP 403).
     """
     enforce_auth = is_auth_enforced(require_auth)
+    effective_principal_roles = (
+        principal_roles
+        if principal_roles is not None
+        else resolve_principal_roles_from_env()
+    )
     user = request.scope.get("user")
     is_scope_authed = bool(
         user is not None and getattr(user, "is_authenticated", False)
@@ -300,6 +361,16 @@ def resolve_caller_role(  # noqa: PLR0913 - public caller role resolution contra
     user_token_claims, _token_source = _extract_user_token_claims(
         request, enforce_auth=enforce_auth
     )
+    token_scope = str(user_token_claims.get("scope") or "").strip() or None
+    if (
+        enforce_auth
+        and not allow_showcase_viewer
+        and token_scope == SHOWCASE_VIEWER_SCOPE
+    ):
+        raise PermissionError(
+            "Showcase viewer session is restricted to public showcase read routes; "
+            "operator authentication is required."
+        )
 
     header_principal = (
         "" if enforce_auth else request.headers.get("x-bridge-principal", "").strip()
@@ -341,7 +412,7 @@ def resolve_caller_role(  # noqa: PLR0913 - public caller role resolution contra
                 principal_name=principal_name,
                 iap_email=iap_email,
                 iap_email_raw=iap_email_raw,
-                principal_roles=principal_roles,
+                principal_roles=effective_principal_roles,
                 user=user,
                 is_scope_authed=is_scope_authed,
                 header_role=header_role,
@@ -405,7 +476,13 @@ def _resolve_spiffe_svid_context(
     spiffe_id_header = request.headers.get(SPIFFE_ID_HEADER, "").strip()
     if svid_header:
         try:
-            claims = verify_jwt_svid(svid_header)
+            expected_alg, allowed_algs = resolve_expected_svid_algorithm()
+            claims = verify_jwt_svid(
+                svid_header,
+                expected_alg=expected_alg,
+                allowed_algorithms=allowed_algs,
+                refuse_dev_secret=enforce_auth or enforce_svid,
+            )
         except SpiffeAuthenticationError as exc:
             raise AuthenticationRequiredError(str(exc)) from exc
         aud_claim = claims.get("aud")
@@ -508,6 +585,27 @@ def _extract_principal_attributes(
     )
 
 
+def _enforce_compound_scope(
+    *,
+    enforce_auth: bool,
+    require_mutating: bool,
+    allow_showcase_viewer: bool,
+    token_scope: str | None,
+) -> None:
+    if not enforce_auth:
+        return
+    if require_mutating and token_scope in _VIEWER_SCOPES:
+        raise PermissionError(
+            "Read-only viewer session cannot invoke mutating endpoints. "
+            "Authenticate via POST /v1/auth/demo-session or a signed token header."
+        )
+    if not allow_showcase_viewer and token_scope == SHOWCASE_VIEWER_SCOPE:
+        raise PermissionError(
+            "Showcase viewer session is restricted to public showcase read routes; "
+            "operator authentication is required."
+        )
+
+
 def resolve_compound_identity(  # noqa: PLR0913 - public compound identity resolution contract
     request: Request,
     *,
@@ -517,6 +615,7 @@ def resolve_compound_identity(  # noqa: PLR0913 - public compound identity resol
     require_auth: bool = False,
     require_svid: bool = False,
     require_mutating: bool = False,
+    allow_showcase_viewer: bool = False,
     oidc_verifier: Callable[..., dict[str, Any]] | None = None,
 ) -> CompoundIdentity:
     """Resolve and verify both the Human Principal (`sub`) and SPIFFE Agent (`act`)."""
@@ -537,7 +636,7 @@ def resolve_compound_identity(  # noqa: PLR0913 - public compound identity resol
         and auth_source == "cookie"
         and (
             svid.obo_claims
-            or str(user_token_claims.get("scope") or "").strip() == READ_ONLY_SCOPE
+            or str(user_token_claims.get("scope") or "").strip() in _VIEWER_SCOPES
         )
     ):
         user_token_claims = {}
@@ -579,6 +678,7 @@ def resolve_compound_identity(  # noqa: PLR0913 - public compound identity resol
             default_role=default_role,
             principal_roles=principal_roles,
             require_auth=require_auth,
+            allow_showcase_viewer=allow_showcase_viewer,
             oidc_verifier=oidc_verifier,
         )
 
@@ -588,11 +688,12 @@ def resolve_compound_identity(  # noqa: PLR0913 - public compound identity resol
         ).strip()
         or None
     )
-    if enforce_auth and require_mutating and token_scope == READ_ONLY_SCOPE:
-        raise PermissionError(
-            "Read-only viewer session cannot invoke mutating endpoints. "
-            "Authenticate via POST /v1/auth/demo-session or a signed token header."
-        )
+    _enforce_compound_scope(
+        enforce_auth=enforce_auth,
+        require_mutating=require_mutating,
+        allow_showcase_viewer=allow_showcase_viewer,
+        token_scope=token_scope,
+    )
 
     header_principal = (
         "" if enforce_auth else request.headers.get("x-bridge-principal", "").strip()

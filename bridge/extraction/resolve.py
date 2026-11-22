@@ -80,6 +80,22 @@ DEFAULT_CORPUS_ROOT = Path(__file__).resolve().parents[2] / "wiki/evals/address"
 # time, never at import time.
 FETCH_ALLOWLIST_ENV = "BRIDGE_FETCH_ALLOWLIST"
 
+# Comma-separated GCS bucket names or ``bucket/prefix`` entries accepted for
+# by-reference ``gs://`` documents. Empty by default (default-deny).
+GS_ALLOWLIST_ENV = "BRIDGE_GS_ALLOWLIST"
+
+# Service-owned prefixes always refused for caller-supplied ``gs://`` URIs even
+# when their hosting bucket appears in ``BRIDGE_GS_ALLOWLIST``.
+RESERVED_SERVICE_GS_PREFIXES: tuple[str, ...] = (
+    "email/",
+    "attachments/",
+    "audit-vault/",
+    "vault/",
+    "document_bridge/",
+    "skills/",
+    "genai-payloads/",
+)
+
 # ``file://`` is off unless this is exactly "1". An external consumer submitting
 # ``file:///etc/passwd`` would otherwise get host file contents read by the model and
 # laundered back through the extracted ``key_fields`` onto the ledger.
@@ -154,11 +170,135 @@ def _resolve_corpus_path(name: str, corpus_root: Path | str) -> ResolvedDocument
     return ResolvedDocument(data=path.read_bytes(), mime_type=mime_for(name))
 
 
+def gs_allowlist_from_env() -> frozenset[str]:
+    """Parse ``BRIDGE_GS_ALLOWLIST`` into normalized ``bucket`` or ``bucket/prefix`` entries."""
+    raw = os.environ.get(GS_ALLOWLIST_ENV, "")
+    entries: set[str] = set()
+    for part in raw.split(","):
+        cleaned = part.strip()
+        if cleaned.lower().startswith("gs://"):
+            cleaned = cleaned[len("gs://") :]
+        cleaned = cleaned.strip("/")
+        if cleaned:
+            entries.add(cleaned)
+    return frozenset(entries)
+
+
+def _split_env_bucket_prefix(
+    bucket_env: str, prefix_env: str | None = None
+) -> tuple[str, str] | None:
+    raw = os.environ.get(bucket_env, "").strip()
+    if not raw:
+        return None
+    if raw.lower().startswith("gs://"):
+        raw = raw[len("gs://") :]
+    raw = raw.strip("/")
+    bucket, _, embedded = raw.partition("/")
+    if not bucket:
+        return None
+    extra = os.environ.get(prefix_env, "").strip().strip("/") if prefix_env else ""
+    parts = [p for p in (embedded.strip("/"), extra) if p]
+    prefix = "/".join(parts)
+    return bucket, (f"{prefix}/" if prefix else "")
+
+
+def _service_owned_gs_targets() -> list[tuple[str, str]]:
+    targets: list[tuple[str, str]] = []
+    for bucket_env, prefix_env in (
+        ("BRIDGE_ARTIFACT_BUCKET", None),
+        ("BRIDGE_EMAIL_BUCKET", "BRIDGE_EMAIL_PREFIX"),
+        ("BRIDGE_VAULT_BUCKET", "BRIDGE_VAULT_PREFIX"),
+        ("BRIDGE_SKILLS_BUCKET", "BRIDGE_SKILLS_PREFIX"),
+        ("OTEL_INSTRUMENTATION_GENAI_UPLOAD_BASE_PATH", None),
+    ):
+        parsed = _split_env_bucket_prefix(bucket_env, prefix_env)
+        if parsed is not None:
+            targets.append(parsed)
+    return targets
+
+
+def _gs_entry_matches(entry: str, bucket: str, obj_path: str) -> bool:
+    entry_bucket, _, entry_prefix = entry.partition("/")
+    if entry_bucket != bucket:
+        return False
+    if not entry_prefix:
+        return True
+    normalized = entry_prefix.strip("/")
+    return obj_path == normalized or obj_path.startswith(f"{normalized}/")
+
+
+def _check_gs_service_prefixes(bucket: str, obj_path: str, uri: str) -> None:
+    lowered = obj_path.lower()
+    for reserved in RESERVED_SERVICE_GS_PREFIXES:
+        if lowered.startswith(reserved):
+            raise ValueError(
+                f"artifact fetch refused: gs:// target {uri!r} hits reserved service prefix '{reserved}'"
+            )
+    for svc_bucket, svc_prefix in _service_owned_gs_targets():
+        if bucket == svc_bucket and (
+            not svc_prefix or lowered.startswith(svc_prefix.lower())
+        ):
+            raise ValueError(
+                f"artifact fetch refused: gs:// target {uri!r} targets a service-owned bucket/prefix"
+            )
+
+
+def validate_gs_uri(
+    uri: str, *, gs_allowlist: frozenset[str] | None = None
+) -> tuple[str, str, str]:
+    """Validate a caller-supplied ``gs://`` URI against allowlist and service-prefix rules.
+
+    Returns ``(bucket, object_path, mime_type)`` or raises ``ValueError``.
+    """
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in uri):
+        raise ValueError(f"artifact fetch refused: control characters in {uri!r}")
+    parsed = urlsplit(uri)
+    if parsed.scheme.lower() != "gs":
+        raise ValueError(f"expected gs:// URI, got {uri!r}")
+    if parsed.query or parsed.fragment:
+        raise ValueError(
+            f"artifact fetch refused: gs:// URI cannot carry query/fragment ({uri!r})"
+        )
+    if parsed.path.startswith("//"):
+        raise ValueError(f"artifact fetch refused: unsafe gs:// URI {uri!r}")
+    bucket = parsed.netloc.strip()
+    obj_path = parsed.path.lstrip("/")
+    if (
+        not bucket
+        or not obj_path
+        or "//" in obj_path
+        or "\\" in obj_path
+        or "%" in obj_path
+    ):
+        raise ValueError(f"artifact fetch refused: unsafe gs:// URI {uri!r}")
+    if any(seg in {"", ".", ".."} for seg in obj_path.split("/")):
+        raise ValueError(f"artifact fetch refused: path traversal forbidden in {uri!r}")
+
+    effective = gs_allowlist_from_env() if gs_allowlist is None else gs_allowlist
+    if not effective or not any(
+        _gs_entry_matches(entry, bucket, obj_path) for entry in effective
+    ):
+        raise ValueError(
+            f"artifact fetch refused: gs:// target {uri!r} is not permitted by {GS_ALLOWLIST_ENV}"
+        )
+
+    _check_gs_service_prefixes(bucket, obj_path, uri)
+
+    mime = mime_for(obj_path)
+    if mime == "application/octet-stream":
+        raise ValueError(
+            f"cannot infer a mime type for by-reference artifact {uri!r} "
+            f"(known suffixes: {', '.join(sorted(SUFFIX_MIME))})"
+        )
+    return bucket, obj_path, mime
+
+
 async def resolve_document(
     uri: str,
     *,
     corpus_root: Path | str = DEFAULT_CORPUS_ROOT,
     allowlist: frozenset[str] | None = None,
+    gs_allowlist: frozenset[str] | None = None,
     fetch: Fetcher | None = None,
 ) -> ResolvedDocument:
     """Resolve an inbound artifact reference to bytes, or to a by-reference pointer.
@@ -174,6 +314,8 @@ async def resolve_document(
     — see ``bridge/edge/artifacts.py::resolve_bytes``.
 
     ``allowlist`` defaults to ``BRIDGE_FETCH_ALLOWLIST`` read **now**, not at import.
+    ``gs_allowlist`` defaults to ``BRIDGE_GS_ALLOWLIST`` read **now** (default empty =
+    all ``gs://`` URIs refused).
     """
     name = (uri or "").strip()
     if not name:
@@ -181,13 +323,8 @@ async def resolve_document(
 
     scheme = urlsplit(name).scheme.lower()
     if scheme == "gs":
-        mime = mime_for(urlsplit(name).path)
-        if mime == "application/octet-stream":
-            raise ValueError(
-                f"cannot infer a mime type for by-reference artifact {name!r} "
-                f"(known suffixes: {', '.join(sorted(SUFFIX_MIME))})"
-            )
-        return ResolvedDocument(mime_type=mime, uri=name)
+        bucket, obj, mime = validate_gs_uri(name, gs_allowlist=gs_allowlist)
+        return ResolvedDocument(mime_type=mime, uri=f"gs://{bucket}/{obj}")
     if scheme in ("http", "https"):
         effective_allowlist = (
             netguard.allowlist_from_env(FETCH_ALLOWLIST_ENV)
@@ -332,11 +469,15 @@ __all__ = [
     "DEFAULT_CORPUS_ROOT",
     "FETCH_ALLOWLIST_ENV",
     "FETCH_TIMEOUT_S",
+    "GS_ALLOWLIST_ENV",
     "MAX_FETCH_BYTES",
     "MAX_REDIRECTS",
+    "RESERVED_SERVICE_GS_PREFIXES",
     "SUFFIX_MIME",
     "ResolvedDocument",
+    "gs_allowlist_from_env",
     "maybe_await",
     "mime_for",
     "resolve_document",
+    "validate_gs_uri",
 ]

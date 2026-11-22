@@ -44,6 +44,12 @@ from bridge.edge.artifacts import (
     resolve_bytes,
     scoped_uri,
 )
+from bridge.edge.auth import (
+    EdgeAuthBackend,
+    EdgeAuthEnforcementMiddleware,
+    authenticated_principal,
+    edge_auth_error,
+)
 from bridge.edge.card import agent_card_from_skills, build_agent_card
 from bridge.edge.executor import CollectExecutor
 from bridge.edge.intake import decode_intake, parse_text_request
@@ -87,6 +93,8 @@ __all__ = [
     "A2uiView",
     "BridgeA2aAgentEngine",
     "CollectExecutor",
+    "EdgeAuthBackend",
+    "EdgeAuthEnforcementMiddleware",
     "EdgeMode",
     "Path",
     "Route",
@@ -95,6 +103,7 @@ __all__ = [
     "SkillMeta",
     "agent_card_from_skills",
     "agent_engine_app",
+    "authenticated_principal",
     "build_a2a_app",
     "build_agent_card",
     "build_fetch_app",
@@ -107,6 +116,7 @@ __all__ = [
     "decode_exchange_turn",
     "decode_intake",
     "decode_submissions",
+    "edge_auth_error",
     "encode_a2ui_view",
     "encode_collect_request",
     "encode_exchange_turn",

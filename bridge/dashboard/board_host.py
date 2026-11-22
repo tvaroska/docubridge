@@ -99,6 +99,7 @@ def build_rfp_board_app(  # noqa: PLR0913 - public keyword-only RFP board host b
     """
     from bridge.edge.email_ingress import email_drain_loop, email_processor_from_env
     from bridge.edge.skills import rfp_policy_for
+    from bridge.user_interaction.auth import resolve_principal_roles_from_env
 
     process = (process or os.environ.get(RFP_PROCESS_ENV, "")).strip()
     if not process:
@@ -127,6 +128,7 @@ def build_rfp_board_app(  # noqa: PLR0913 - public keyword-only RFP board host b
         email_drain_interval=email_drain_interval,
         outbound=outbound,
         max_ticks=max_ticks,
+        principal_roles=resolve_principal_roles_from_env(),
     )
     # The dashboard resolved + validated the interval once; the loop runs HERE because
     # Starlette never runs a mounted sub-app's lifespan (exactly one loop per process).

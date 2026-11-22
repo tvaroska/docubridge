@@ -430,6 +430,8 @@ def _register_generic_action_routes(
             )
         except UnknownScenarioError as exc:
             raise _not_found(scenario_id) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         response.headers["x-outcome-id"] = outcome_id
         return payload
 
@@ -464,6 +466,7 @@ def register_scenario_routes(
             principal_roles=principal_roles,
             require_auth=require_auth,
             allow_external_roles=True,
+            allow_showcase_viewer=True,
         )
     ]
     _register_generic_read_routes(router, engine, read_deps=read_deps)
@@ -486,6 +489,7 @@ def register_scenario_routes(
     _register_legacy_evolution_and_ebc_routes(
         router,
         engine,
+        read_deps=read_deps,
         internal_mutating_deps=internal_mutating_deps,
         borrower_mutating_deps=borrower_mutating_deps,
     )
@@ -614,12 +618,13 @@ def _register_legacy_evolution_and_ebc_routes(
     router: APIRouter,
     engine: ScenarioEngine,
     *,
+    read_deps: Sequence[Depends],
     internal_mutating_deps: Sequence[Depends],
     borrower_mutating_deps: Sequence[Depends],
 ) -> None:
     evolution = ScenarioStageKind.schema_evolution
 
-    @router.get("/v1/demo/schema-evolution/state")
+    @router.get("/v1/demo/schema-evolution/state", dependencies=read_deps)
     def get_schema_evolution_state(
         domain: str | None = Query(default=None),
     ) -> dict[str, Any]:
