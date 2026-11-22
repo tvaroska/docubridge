@@ -28,7 +28,7 @@ spec/       THE WHAT — requirements (cujs, standards, demos/, open-questions);
 design/     THE HOW — bridge.md → five areas: model, edges, knowledge-model, runtime, architecture (source of truth)
 contract/   shared Pydantic wire types — the ONLY package consumers import from this repo
 bridge/     the reusable Bridge CORE — NEVER imports examples/ or external consumer agents
-examples/   minimal wire-only A2A consumer (consume_bridge.py); full ADK/LangGraph consumers live in companion docubridge-examples
+examples/   minimal wire-only A2A consumer (a2a_consumer/consume_bridge.py); full ADK/LangGraph consumers live in companion docubridge-examples
 catalog/    OKF doctype bundles (catalog/doctypes/*.okf.md) — canonical field schemas; skills/<doctype>/assets/schema.json is generated from them
 skills/     Agent Skills the Bridge loads at runtime (process = how to collect; doctype = the installable unit pointing at its bundle)
 demo/       5-scene Enterprise Showcase Console (enterprise-demo.html) + GCP video recorder
