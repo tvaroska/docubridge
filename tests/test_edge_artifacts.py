@@ -814,3 +814,155 @@ async def test_fetch_finds_party_scoped_artifact_on_gcs_bucket() -> None:
         assert resp.headers["location"] == _fake_signer(
             ctx, "party-doc.pdf", "named-party", 0
         )
+
+
+async def test_edge_oidc_allowlist_spiffe_policy_and_serve_container_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R1: OIDC Bearer enforces email allowlist, SPIFFE enforces agent policy, serve_container enforces auth without K_SERVICE."""
+    from bridge.edge import server as edge_server
+    from bridge.edge.auth import EdgeAuthBackend
+    from bridge.identity import SPIFFE_SVID_HEADER, mint_jwt_svid
+
+    monkeypatch.delenv("K_SERVICE", raising=False)
+    monkeypatch.delenv("BRIDGE_A2UI_REQUIRE_AUTH", raising=False)
+    monkeypatch.delenv("BRIDGE_OIDC_ALLOWED_EMAILS", raising=False)
+    monkeypatch.delenv("BRIDGE_RUNTIME_SA_EMAIL", raising=False)
+    monkeypatch.setenv("BRIDGE_PUBLIC_URL", "https://bridge.example.run.app")
+    monkeypatch.setenv("BRIDGE_SPIFFE_SVID_SECRET", "r1-edge-auth-test-secret-2026")
+
+    def _verifier(tok: str, expected_audience: str | None = None) -> dict[str, object]:
+        assert expected_audience == "https://bridge.example.run.app"
+        if tok == "tok-attacker":
+            return {
+                "email": "attacker@evil-proj.iam.gserviceaccount.com",
+                "email_verified": True,
+                "sub": "999",
+            }
+        if tok == "tok-runtime-sa":
+            return {
+                "email": "Bridge-Runtime@proj.iam.gserviceaccount.com",
+                "email_verified": True,
+                "sub": "101",
+            }
+        if tok == "tok-peer-sa":
+            return {
+                "email": "peer-caller@partner.iam.gserviceaccount.com",
+                "email_verified": True,
+                "sub": "202",
+            }
+        if tok == "tok-no-email":
+            return {"email_verified": True, "sub": "only-sub"}
+        raise ValueError("unknown token")
+
+    store = InMemoryArtifactService()
+    app = build_a2a_app(
+        url=URL,
+        executor=CollectExecutor(collector=Collector(FixtureExtractor())),
+        artifact_store=store,
+        auth_backend=EdgeAuthBackend(oidc_verifier=_verifier, require_auth=True),
+        require_auth=True,
+    )
+    transport = httpx.ASGITransport(app=app)
+    rpc_body = {"jsonrpc": "2.0", "id": "r1-1", "method": "ListTasks", "params": {}}
+    v1_hdr = {"a2a-version": "1.0"}
+
+    # Empty allowlist fails closed even for verified OIDC emails; anonymous fails closed without K_SERVICE
+    async with httpx.AsyncClient(transport=transport, base_url=BASE) as hc:
+        assert (await hc.post("/", json=rpc_body, headers=v1_hdr)).status_code == 401
+        assert (
+            await hc.post(
+                "/",
+                json=rpc_body,
+                headers={**v1_hdr, "Authorization": "Bearer tok-runtime-sa"},
+            )
+        ).status_code == 401
+
+    # Configure BRIDGE_RUNTIME_SA_EMAIL + BRIDGE_OIDC_ALLOWED_EMAILS -> allowlisted pass, attacker/no-email 401
+    monkeypatch.setenv(
+        "BRIDGE_RUNTIME_SA_EMAIL", "bridge-runtime@proj.iam.gserviceaccount.com"
+    )
+    monkeypatch.setenv(
+        "BRIDGE_OIDC_ALLOWED_EMAILS", "peer-caller@partner.iam.gserviceaccount.com"
+    )
+    async with httpx.AsyncClient(transport=transport, base_url=BASE) as hc:
+        ok_runtime = await hc.post(
+            "/",
+            json=rpc_body,
+            headers={**v1_hdr, "Authorization": "Bearer tok-runtime-sa"},
+        )
+        assert ok_runtime.status_code == 200
+        assert "result" in ok_runtime.json()
+
+        ok_peer = await hc.post(
+            "/",
+            json=rpc_body,
+            headers={**v1_hdr, "Authorization": "Bearer tok-peer-sa"},
+        )
+        assert ok_peer.status_code == 200
+        assert "result" in ok_peer.json()
+
+        assert (
+            await hc.post(
+                "/",
+                json=rpc_body,
+                headers={**v1_hdr, "Authorization": "Bearer tok-attacker"},
+            )
+        ).status_code == 401
+        assert (
+            await hc.post(
+                "/",
+                json=rpc_body,
+                headers={**v1_hdr, "Authorization": "Bearer tok-no-email"},
+            )
+        ).status_code == 401
+
+        # Registered SPIFFE SVID passes (header and Bearer); Shadow AI SVID -> 401
+        valid_svid = mint_jwt_svid(
+            "spiffe://agents.docubridge.io/internal/broker-agent"
+        )
+        shadow_svid = mint_jwt_svid(
+            "spiffe://agents.docubridge.io/shadow/unregistered-probe"
+        )
+        ok_svid_hdr = await hc.post(
+            "/",
+            json=rpc_body,
+            headers={**v1_hdr, SPIFFE_SVID_HEADER: valid_svid},
+        )
+        assert ok_svid_hdr.status_code == 200
+        assert "result" in ok_svid_hdr.json()
+        ok_svid_bearer = await hc.post(
+            "/",
+            json=rpc_body,
+            headers={**v1_hdr, "Authorization": f"Bearer {valid_svid}"},
+        )
+        assert ok_svid_bearer.status_code == 200
+        assert "result" in ok_svid_bearer.json()
+        assert (
+            await hc.post(
+                "/",
+                json=rpc_body,
+                headers={**v1_hdr, SPIFFE_SVID_HEADER: shadow_svid},
+            )
+        ).status_code == 401
+        assert (
+            await hc.post(
+                "/",
+                json=rpc_body,
+                headers={**v1_hdr, "Authorization": f"Bearer {shadow_svid}"},
+            )
+        ).status_code == 401
+
+    # serve_container() explicitly passes require_auth=True even when K_SERVICE is unset
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "uvicorn.run", lambda built_app, **kw: captured.update(app=built_app, kw=kw)
+    )
+    edge_server.serve_container()
+    built_app = captured["app"]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=built_app), base_url=BASE
+    ) as hc_srv:
+        assert (await hc_srv.get("/.well-known/agent-card.json")).status_code == 200
+        assert (await hc_srv.post("/", json=rpc_body)).status_code == 401
+        assert (await hc_srv.get("/artifacts/ctx-1/file.pdf")).status_code == 401

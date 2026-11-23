@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from starlette.authentication import (
@@ -31,7 +31,14 @@ from bridge.identity import (
     verify_jwt_svid,
     verify_user_token,
 )
-from bridge.identity_models import VIEWER_SCOPES
+from bridge.identity_models import (
+    DEFAULT_SPIFFE_AGENT_POLICIES,
+    OIDC_ALLOWED_EMAILS_ENV,
+    RUNTIME_SA_EMAIL_ENV,
+    VIEWER_SCOPES,
+    SpiffeAgentPolicy,
+    resolve_allowed_oidc_emails,
+)
 
 IAP_JWT_ASSERTION_HEADER = "x-goog-iap-jwt-assertion"
 IAP_EMAIL_HEADER = "x-goog-authenticated-user-email"
@@ -88,18 +95,22 @@ class EdgeAuthBackend(AuthenticationBackend):
     any invalid presented credential fails immediately with HTTP 401.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only auth configuration hooks
         self,
         *,
         oidc_verifier: Callable[..., dict[str, Any]] | None = None,
         iap_cert_transport: object = None,
         expected_oidc_audience: str | None = None,
         require_auth: bool = False,
+        allowed_oidc_emails: Iterable[str] | str | None = None,
+        spiffe_policies: Mapping[str, SpiffeAgentPolicy] | None = None,
     ) -> None:
         self._oidc_verifier = oidc_verifier
         self._iap_cert_transport = iap_cert_transport
         self._expected_oidc_audience = expected_oidc_audience
         self._require_auth = require_auth
+        self._allowed_oidc_emails = allowed_oidc_emails
+        self._spiffe_policies = spiffe_policies
 
     def _verify_svid(self, token: str) -> tuple[AuthCredentials, BaseUser]:
         expected_alg, allowed_algs = resolve_expected_svid_algorithm()
@@ -112,6 +123,15 @@ class EdgeAuthBackend(AuthenticationBackend):
         subject = str(claims.get("sub") or "").strip()
         if not subject:
             raise AuthenticationError("Verified SPIFFE SVID is missing 'sub'.")
+        policies = (
+            self._spiffe_policies
+            if self._spiffe_policies is not None
+            else DEFAULT_SPIFFE_AGENT_POLICIES
+        )
+        if subject not in policies:
+            raise AuthenticationError(
+                f"Unregistered SPIFFE agent '{subject}' is not permitted on the A2A edge."
+            )
         return AuthCredentials(["authenticated", "svid"]), SimpleUser(subject)
 
     def _verify_iap(
@@ -138,6 +158,24 @@ class EdgeAuthBackend(AuthenticationBackend):
             )
         return AuthCredentials(["authenticated", "iap"]), SimpleUser(email)
 
+    def _authorize_oidc_email(self, claims: dict[str, Any]) -> str:
+        if claims.get("email_verified") is not True:
+            raise AuthenticationError("OIDC token email is not verified.")
+        email = str(claims.get("email") or "").strip()
+        if not email:
+            raise AuthenticationError("Verified OIDC token is missing 'email'.")
+        allowed = resolve_allowed_oidc_emails(self._allowed_oidc_emails)
+        if not allowed:
+            raise AuthenticationError(
+                f"OIDC caller allowlist is empty; configure {OIDC_ALLOWED_EMAILS_ENV} "
+                f"or {RUNTIME_SA_EMAIL_ENV}."
+            )
+        if email.lower() not in allowed:
+            raise AuthenticationError(
+                f"OIDC caller '{email}' is not authorized for the A2A edge."
+            )
+        return email
+
     def _verify_bearer(self, bearer_token: str) -> tuple[AuthCredentials, BaseUser]:
         if _jwt_header_typ(bearer_token) == "JWT+SVID":
             return self._verify_svid(bearer_token)
@@ -153,12 +191,8 @@ class EdgeAuthBackend(AuthenticationBackend):
             claims = dict(self._oidc_verifier(bearer_token, expected_audience=audience))
         else:
             claims = verify_google_oidc_token(bearer_token, expected_audience=audience)
-        if claims.get("email_verified") is not True:
-            raise AuthenticationError("OIDC token email is not verified.")
-        principal = str(claims.get("email") or claims.get("sub") or "").strip()
-        if not principal:
-            raise AuthenticationError("Verified OIDC token is missing 'email'/'sub'.")
-        return AuthCredentials(["authenticated", "oidc"]), SimpleUser(principal)
+        email = self._authorize_oidc_email(claims)
+        return AuthCredentials(["authenticated", "oidc"]), SimpleUser(email)
 
     def _verify_user_jwt(self, token: str) -> tuple[AuthCredentials, BaseUser]:
         claims = verify_user_token(token, refuse_dev_secret=self._require_auth)

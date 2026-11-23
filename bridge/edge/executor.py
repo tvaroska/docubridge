@@ -88,7 +88,7 @@ from bridge.edge.artifacts import (
     resolve_bytes,
     scoped_uri,
 )
-from bridge.edge.card import DEFAULT_URL
+from bridge.edge.card import DEFAULT_URL, REQUEST_BASE_URL
 from bridge.edge.executor_hitl import (
     GUARD_REFUSE_TEXT,
     HITL_HANDOFF_TEXT,
@@ -541,7 +541,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
                 continue  # unresolvable byte source: leave the ref unchanged
             filename, version = mapped
             entry.artifact.uri = scoped_uri(
-                self._base_url,
+                REQUEST_BASE_URL.get() or self._base_url,
                 context_id=turn.context_id,
                 filename=filename,
                 version=version,

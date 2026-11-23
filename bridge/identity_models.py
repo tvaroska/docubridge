@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+from collections.abc import Iterable
 from decimal import Decimal
 from typing import Literal
 
@@ -22,6 +24,8 @@ AuthViaLiteral = Literal["jwt", "cookie", "iap", "header", "query_dev"]
 DEFAULT_SPIFFE_TRUST_DOMAIN = "agents.docubridge.io"
 A2UI_REQUIRE_AUTH_ENV = "BRIDGE_A2UI_REQUIRE_AUTH"
 IAP_AUDIENCE_ENV = "BRIDGE_IAP_AUDIENCE"
+OIDC_ALLOWED_EMAILS_ENV = "BRIDGE_OIDC_ALLOWED_EMAILS"
+RUNTIME_SA_EMAIL_ENV = "BRIDGE_RUNTIME_SA_EMAIL"
 IAP_JWK_CERTS_URL = "https://www.gstatic.com/iap/verify/public_key-jwk"
 IAP_ISSUER = "https://cloud.google.com/iap"
 SPIFFE_TRUST_DOMAIN_ENV = "BRIDGE_SPIFFE_TRUST_DOMAIN"
@@ -232,6 +236,26 @@ class CompoundIdentity(BaseModel):
     audience: str | None = None
 
 
+def resolve_allowed_oidc_emails(
+    explicit: Iterable[str] | str | None = None,
+) -> frozenset[str]:
+    """Resolve the lowercase email allowlist for Google OIDC callers on the A2A edge.
+
+    Explicit entries win when supplied; otherwise reads ``BRIDGE_OIDC_ALLOWED_EMAILS``
+    unioned with ``BRIDGE_RUNTIME_SA_EMAIL``. An empty set fails closed at verification.
+    """
+    entries: list[str] = []
+    if explicit is not None:
+        raw_items = explicit.split(",") if isinstance(explicit, str) else explicit
+        entries.extend(raw_items)
+    else:
+        entries.extend(os.environ.get(OIDC_ALLOWED_EMAILS_ENV, "").split(","))
+        runtime_sa = os.environ.get(RUNTIME_SA_EMAIL_ENV, "").strip()
+        if runtime_sa:
+            entries.append(runtime_sa)
+    return frozenset(item.strip().lower() for item in entries if item and item.strip())
+
+
 __all__ = [
     "A2UI_REQUIRE_AUTH_ENV",
     "ALLOWED_ENTITIES_HEADER",
@@ -246,7 +270,9 @@ __all__ = [
     "IAP_ISSUER",
     "IAP_JWK_CERTS_URL",
     "MAX_APPROVAL_HEADER",
+    "OIDC_ALLOWED_EMAILS_ENV",
     "READ_ONLY_SCOPE",
+    "RUNTIME_SA_EMAIL_ENV",
     "SHOWCASE_VIEWER_SCOPE",
     "SPIFFE_ID_HEADER",
     "SPIFFE_PRIVATE_KEY_PEM_ENV",
@@ -271,4 +297,5 @@ __all__ = [
     "SvidAlgorithmLiteral",
     "TenantIsolationError",
     "UserPrincipal",
+    "resolve_allowed_oidc_emails",
 ]

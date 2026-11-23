@@ -21,6 +21,9 @@ field). The card is served at ``/.well-known/agent-card.json`` by the server.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from a2a.types import (
     AgentCapabilities,
@@ -43,6 +46,25 @@ DEFAULT_URL = "http://localhost:8000/"
 # the origin it was fetched from). This is the served-card half of the P7-5
 # same-origin fix (the outbound half is ``bridge.ports.gcp.reconcile_card_host``).
 PUBLIC_URL_ENV = "BRIDGE_PUBLIC_URL"
+
+# Per-request base URL override so concurrent Agent Engine RPCs never mutate
+# shared CollectExecutor._base_url state across asyncio tasks.
+REQUEST_BASE_URL: ContextVar[str | None] = ContextVar(
+    "bridge_request_base_url", default=None
+)
+
+
+@contextmanager
+def scoped_base_url(url: str | None) -> Iterator[None]:
+    """Bind a task-local base URL override for artifact URI rewriting."""
+    if not url:
+        yield
+        return
+    token = REQUEST_BASE_URL.set(url)
+    try:
+        yield
+    finally:
+        REQUEST_BASE_URL.reset(token)
 
 
 def resolved_card_url(explicit: str | None = None) -> str:

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -44,7 +45,7 @@ from google.adk.artifacts import BaseArtifactService
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
-from starlette.routing import Mount
+from starlette.routing import BaseRoute, Mount
 
 from bridge.edge.agent_engine_a2a import (
     BridgeA2aAgentEngine,
@@ -162,6 +163,78 @@ class EdgeRequestHandler(DefaultRequestHandler):
             yield event
 
 
+@dataclass(frozen=True)
+class _AssembledEdge:
+    """Shared A2A ASGI runtime assembled for both Cloud Run and Agent Engine hosts."""
+
+    app: Starlette
+    artifact_store: BaseArtifactService
+    task_store: TaskStore
+    executor: CollectExecutor
+    rfp_board: RfpBoard | None
+    llm_leg: LlmLeg | None
+
+
+def _build_edge_middleware(
+    *,
+    auth_backend: AuthenticationBackend | None,
+    require_auth: bool,
+    service_component: str | None,
+) -> list[Middleware]:
+    edge_mw: list[Middleware] = []
+    if service_component is not None:
+        edge_mw.append(
+            Middleware(OtelAsgiMiddleware, service_component=service_component)
+        )
+    if auth_backend is not None:
+        edge_mw.append(
+            Middleware(
+                AuthenticationMiddleware,
+                backend=auth_backend,
+                on_error=edge_auth_error,
+            )
+        )
+    edge_mw.append(Middleware(EdgeAuthEnforcementMiddleware, require_auth=require_auth))
+    return edge_mw
+
+
+def _forward_engine_collaborators(  # noqa: PLR0913 - keyword-only engine collaborator forwarding
+    active_a2a_engine: BridgeA2aAgentEngine,
+    *,
+    require_auth: bool,
+    vault_store: AuditVaultStore | None,
+    operational_store: OperationalStore | None,
+    knowledge_catalog: KnowledgeCatalog | None,
+    freshness_clock: Callable[[], date] | None,
+) -> None:
+    if require_auth:
+        active_a2a_engine._config["require_auth"] = True
+    if active_a2a_engine._app is None:
+        for key, value in (
+            ("vault_store", vault_store),
+            ("operational_store", operational_store),
+            ("knowledge_catalog", knowledge_catalog),
+            ("freshness_clock", freshness_clock),
+        ):
+            if value is not None and active_a2a_engine._injected.get(key) is None:
+                active_a2a_engine._injected[key] = value
+        return
+    if active_a2a_engine._executor is None:
+        return
+    if (
+        vault_store is not None
+        or operational_store is not None
+        or knowledge_catalog is not None
+    ):
+        active_a2a_engine._executor.bind_enterprise_stores(
+            vault_store=vault_store,
+            operational_store=operational_store,
+            knowledge_catalog=knowledge_catalog,
+        )
+    if freshness_clock is not None:
+        active_a2a_engine._executor.bind_freshness_clock(freshness_clock)
+
+
 def _build_proxy_a2a_app(  # noqa: PLR0913 - internal proxy ASGI builder
     active_a2a_engine: object,
     *,
@@ -170,7 +243,20 @@ def _build_proxy_a2a_app(  # noqa: PLR0913 - internal proxy ASGI builder
     rfp_board: RfpBoard | None,
     auth_backend: AuthenticationBackend | None,
     require_auth: bool = False,
+    vault_store: AuditVaultStore | None = None,
+    operational_store: OperationalStore | None = None,
+    knowledge_catalog: KnowledgeCatalog | None = None,
+    freshness_clock: Callable[[], date] | None = None,
 ) -> Starlette:
+    if isinstance(active_a2a_engine, BridgeA2aAgentEngine):
+        _forward_engine_collaborators(
+            active_a2a_engine,
+            require_auth=require_auth,
+            vault_store=vault_store,
+            operational_store=operational_store,
+            knowledge_catalog=knowledge_catalog,
+            freshness_clock=freshness_clock,
+        )
     if (
         isinstance(active_a2a_engine, BridgeA2aAgentEngine)
         and artifact_store is None
@@ -200,20 +286,153 @@ def _build_proxy_a2a_app(  # noqa: PLR0913 - internal proxy ASGI builder
             ),
         ),
     ]
-    edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge_proxy")]
-    if auth_backend is not None:
-        edge_mw.append(
-            Middleware(
-                AuthenticationMiddleware,
-                backend=auth_backend,
-                on_error=edge_auth_error,
-            )
-        )
-    edge_mw.append(Middleware(EdgeAuthEnforcementMiddleware, require_auth=require_auth))
+    edge_mw = _build_edge_middleware(
+        auth_backend=auth_backend,
+        require_auth=require_auth,
+        service_component="edge_proxy",
+    )
     app = Starlette(routes=routes, middleware=edge_mw)
     app.state.rfp_board = board
     app.state.a2a_engine = active_a2a_engine
     return app
+
+
+def _bind_executor_collaborators(  # noqa: PLR0913 - shared executor binder for Cloud Run and Agent Engine
+    *,
+    url: str,
+    store: BaseArtifactService,
+    executor: CollectExecutor | None,
+    edge_mode: EdgeMode | str | None,
+    llm_leg: LlmLeg | None,
+    reviewers: Iterable[str] | str | None,
+    satisfaction: SatisfactionAssessor | str | None,
+    rfp_board: RfpBoard | None,
+    vault_store: AuditVaultStore | None,
+    operational_store: OperationalStore | None,
+    knowledge_catalog: KnowledgeCatalog | None,
+    freshness_clock: Callable[[], date] | None,
+) -> tuple[CollectExecutor, LlmLeg | None, RfpBoard | None]:
+    active_executor = executor or CollectExecutor(base_url=url)
+    active_executor.bind_store(store, base_url=url)
+
+    mode = resolve_edge_mode(edge_mode)
+    leg: LlmLeg | None = None
+    if mode is EdgeMode.hybrid:
+        if llm_leg is None:
+            from bridge.edge.llm_leg import LlmLeg
+
+            llm_leg = LlmLeg(artifact_store=store)
+        llm_leg.bind_store(store)
+        leg = llm_leg
+    active_executor.bind_edge(mode, llm_leg=leg, reviewers=reviewers)
+    active_executor.bind_assessor(resolve_assessor(satisfaction))
+    board = rfp_board or rfp_board_from_env()
+    active_executor.bind_rfp(board)
+    if (
+        vault_store is not None
+        or operational_store is not None
+        or knowledge_catalog is not None
+    ):
+        active_executor.bind_enterprise_stores(
+            vault_store=vault_store,
+            operational_store=operational_store,
+            knowledge_catalog=knowledge_catalog,
+        )
+    if freshness_clock is not None:
+        active_executor.bind_freshness_clock(freshness_clock)
+    return active_executor, leg, board
+
+
+def _assemble_a2a_core(  # noqa: PLR0913 - shared A2A ASGI core assembler
+    *,
+    url: str,
+    executor: CollectExecutor | None = None,
+    task_store: TaskStore | None = None,
+    agent_card: AgentCard | None = None,
+    artifact_store: BaseArtifactService | None = None,
+    push_config_store: PushNotificationConfigStore | None = None,
+    push_sender: PushNotificationSender | None = None,
+    push_httpx_client: httpx.AsyncClient | None = None,
+    edge_mode: EdgeMode | str | None = None,
+    llm_leg: LlmLeg | None = None,
+    reviewers: Iterable[str] | str | None = None,
+    auth_backend: AuthenticationBackend | None = None,
+    require_auth: bool = False,
+    satisfaction: SatisfactionAssessor | str | None = None,
+    rfp_board: RfpBoard | None = None,
+    vault_store: AuditVaultStore | None = None,
+    operational_store: OperationalStore | None = None,
+    knowledge_catalog: KnowledgeCatalog | None = None,
+    freshness_clock: Callable[[], date] | None = None,
+    mount_artifacts: bool = True,
+    service_component: str | None = "edge",
+    card_url_resolver: Callable[[], str] | None = None,
+) -> _AssembledEdge:
+    card = agent_card or build_agent_card(url)
+    store = artifact_store or build_artifact_store()
+    active_executor, leg, board = _bind_executor_collaborators(
+        url=url,
+        store=store,
+        executor=executor,
+        edge_mode=edge_mode,
+        llm_leg=llm_leg,
+        reviewers=reviewers,
+        satisfaction=satisfaction,
+        rfp_board=rfp_board,
+        vault_store=vault_store,
+        operational_store=operational_store,
+        knowledge_catalog=knowledge_catalog,
+        freshness_clock=freshness_clock,
+    )
+    store_port = get_adapter(Port.task_store, resolve_mode(Port.task_store))
+    active_task_store = task_store or store_port.build_task_store()
+    active_push_config_store = guarded_push_config_store(
+        push_config_store or store_port.build_push_config_store()
+    )
+    active_push_sender = _resolve_push_sender(
+        push_sender, push_httpx_client, active_push_config_store
+    )
+    handler = EdgeRequestHandler(
+        agent_executor=active_executor,
+        task_store=active_task_store,
+        agent_card=card,
+        push_config_store=active_push_config_store,
+        push_sender=active_push_sender,
+    )
+
+    async def _live_card(_snapshot: AgentCard) -> AgentCard:
+        target = card_url_resolver() if card_url_resolver is not None else url
+        return build_agent_card(target)
+
+    routes: list[BaseRoute] = [
+        *create_agent_card_routes(card, card_modifier=_live_card),
+        *create_jsonrpc_routes(handler, RPC_PATH, enable_v0_3_compat=True),
+    ]
+    if mount_artifacts:
+        routes.append(
+            Mount(
+                ARTIFACTS_PREFIX,
+                app=build_fetch_app(
+                    store, signer=build_fetch_signer(), require_auth=require_auth
+                ),
+            )
+        )
+    edge_mw = _build_edge_middleware(
+        auth_backend=auth_backend,
+        require_auth=require_auth,
+        service_component=service_component,
+    )
+    app = Starlette(routes=routes, middleware=edge_mw)
+    app.state.rfp_board = board
+    app.state.a2a_engine = None
+    return _AssembledEdge(
+        app=app,
+        artifact_store=store,
+        task_store=active_task_store,
+        executor=active_executor,
+        rfp_board=board,
+        llm_leg=leg,
+    )
 
 
 def _resolve_push_sender(
@@ -346,104 +565,36 @@ def build_a2a_app(  # noqa: PLR0913 - keyword-only ASGI app builder
             rfp_board=rfp_board,
             auth_backend=auth_backend,
             require_auth=require_auth,
-        )
-
-    card = agent_card or build_agent_card(url)
-    # ART-2 store: GCS on deploy (BRIDGE_ARTIFACT_BUCKET) else in-memory (P7-3);
-    # an injected store still wins (existing tests unaffected).
-    store = artifact_store or build_artifact_store()
-
-    active_executor = executor or CollectExecutor(base_url=url)
-    active_executor.bind_store(store, base_url=url)
-
-    # D2: resolve the routing mode once, at build (invalid → ValueError here).
-    mode = resolve_edge_mode(edge_mode)
-    leg = None
-    if mode is EdgeMode.hybrid:
-        if llm_leg is None:
-            # Lazy: the deterministic edge never imports or constructs the LLM leg.
-            from bridge.edge.llm_leg import LlmLeg
-
-            llm_leg = LlmLeg(artifact_store=store)
-        llm_leg.bind_store(store)  # writer == reader == eraser (ART-2 Decision 4)
-        leg = llm_leg
-    active_executor.bind_edge(mode, llm_leg=leg, reviewers=reviewers)
-    # COLL-2: resolve the satisfaction assessor once, at build (invalid → ValueError).
-    active_executor.bind_assessor(resolve_assessor(satisfaction))
-    # S0-arch-19: the RFP opener — injected wins; env-gated; None = no opener.
-    board = rfp_board or rfp_board_from_env()
-    active_executor.bind_rfp(board)
-    if (
-        vault_store is not None
-        or operational_store is not None
-        or knowledge_catalog is not None
-    ):
-        active_executor.bind_enterprise_stores(
             vault_store=vault_store,
             operational_store=operational_store,
             knowledge_catalog=knowledge_catalog,
+            freshness_clock=freshness_clock,
         )
-    if freshness_clock is not None:
-        active_executor.bind_freshness_clock(freshness_clock)
 
-    store_port = get_adapter(Port.task_store, resolve_mode(Port.task_store))
-    active_task_store = task_store or store_port.build_task_store()
-
-    # P4-4: Build push_config_store via the task_store port (Decision 1) and
-    # default sender (Decision 2).
-    # S0-sec-2: wrap the config store so client-supplied webhook URLs that
-    # resolve to non-global IPs (metadata / internal hosts) are rejected at
-    # registration. Applies whether the store is injected or port-built.
-    active_push_config_store = guarded_push_config_store(
-        push_config_store or store_port.build_push_config_store()
+    assembled = _assemble_a2a_core(
+        url=url,
+        executor=executor,
+        task_store=task_store,
+        agent_card=agent_card,
+        artifact_store=artifact_store,
+        push_config_store=push_config_store,
+        push_sender=push_sender,
+        push_httpx_client=push_httpx_client,
+        edge_mode=edge_mode,
+        llm_leg=llm_leg,
+        reviewers=reviewers,
+        auth_backend=auth_backend,
+        require_auth=require_auth,
+        satisfaction=satisfaction,
+        rfp_board=rfp_board,
+        vault_store=vault_store,
+        operational_store=operational_store,
+        knowledge_catalog=knowledge_catalog,
+        freshness_clock=freshness_clock,
+        mount_artifacts=True,
+        service_component="edge",
     )
-    active_push_sender = _resolve_push_sender(
-        push_sender, push_httpx_client, active_push_config_store
-    )
-
-    handler = EdgeRequestHandler(
-        agent_executor=active_executor,
-        task_store=active_task_store,
-        agent_card=card,
-        push_config_store=active_push_config_store,
-        push_sender=active_push_sender,
-    )
-
-    async def _live_card(_snapshot: AgentCard) -> AgentCard:
-        # SKILL-4 no-redeploy mechanism: ignore the build-time snapshot and rebuild
-        # the discovery card from the live skill registry on every GET, so a skill
-        # dropped into BRIDGE_SKILLS_DIR at runtime appears immediately.
-        return build_agent_card(url)
-
-    routes = (
-        create_agent_card_routes(card, card_modifier=_live_card)
-        + create_jsonrpc_routes(handler, RPC_PATH, enable_v0_3_compat=True)
-        + [
-            # signer=None locally (stream bytes); on deploy build_fetch_signer()
-            # returns a GCS signer so the fetch route redirects to a signed URL
-            # (bytes never on the wire, P7-3).
-            Mount(
-                ARTIFACTS_PREFIX,
-                app=build_fetch_app(
-                    store, signer=build_fetch_signer(), require_auth=require_auth
-                ),
-            ),
-        ]
-    )
-    edge_mw = [Middleware(OtelAsgiMiddleware, service_component="edge")]
-    if auth_backend is not None:
-        edge_mw.append(
-            Middleware(
-                AuthenticationMiddleware,
-                backend=auth_backend,
-                on_error=edge_auth_error,
-            )
-        )
-    edge_mw.append(Middleware(EdgeAuthEnforcementMiddleware, require_auth=require_auth))
-    app = Starlette(routes=routes, middleware=edge_mw)
-    app.state.rfp_board = board
-    app.state.a2a_engine = None
-    return app
+    return assembled.app
 
 
 def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: no cover
@@ -506,6 +657,7 @@ def serve_container() -> None:  # pragma: no cover
     app = build_a2a_app(
         url=resolved_card_url(None),
         auth_backend=EdgeAuthBackend(require_auth=True),
+        require_auth=True,
         vault_store=vault,
         operational_store=op_store,
         knowledge_catalog=catalog,

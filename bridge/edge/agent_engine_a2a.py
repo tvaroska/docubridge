@@ -37,16 +37,21 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import AsyncIterator, Coroutine, Iterable, Iterator, MutableMapping
+from collections.abc import (
+    AsyncIterator,
+    Callable,
+    Coroutine,
+    Iterable,
+    Iterator,
+    MutableMapping,
+)
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from a2a.server.request_handlers.response_helpers import agent_card_to_dict
-from a2a.types import AgentCard
 from google.adk.artifacts import BaseArtifactService
 from starlette.applications import Starlette
 from starlette.authentication import AuthCredentials, SimpleUser
-from starlette.middleware import Middleware
-from starlette.middleware.authentication import AuthenticationMiddleware
 
 from bridge.edge.agent_engine_proxy import (
     STREAMING_A2A_METHODS,
@@ -57,14 +62,15 @@ from bridge.edge.agent_engine_proxy import (
     _invoke_engine_jsonrpc_stream,
     build_remote_a2a_routes,
 )
-from bridge.edge.artifacts import build_artifact_store
-from bridge.edge.card import DEFAULT_URL, build_agent_card, resolved_card_url
-from bridge.edge.executor import CollectExecutor
-from bridge.edge.pathroute import EdgeMode, resolve_edge_mode
-from bridge.edge.pushguard import guarded_push_config_store
-from bridge.edge.rfp_open import rfp_board_from_env
-from bridge.ports import Port, get_adapter, resolve_mode
-from bridge.satisfaction import SatisfactionAssessor, resolve_assessor
+from bridge.edge.card import (
+    DEFAULT_URL,
+    build_agent_card,
+    resolved_card_url,
+    scoped_base_url,
+)
+from bridge.edge.pathroute import EdgeMode
+from bridge.ports import Port, resolve_mode
+from bridge.satisfaction import SatisfactionAssessor
 from bridge.telemetry import (
     parent_trace_context_from_headers,
     trace_step,
@@ -81,7 +87,11 @@ if TYPE_CHECKING:
     from starlette.authentication import AuthenticationBackend
 
     from bridge.dashboard.board import RfpBoard
+    from bridge.edge.executor import CollectExecutor
     from bridge.edge.llm_leg import LlmLeg
+    from bridge.knowledge_catalog import KnowledgeCatalog
+    from bridge.operational_store import OperationalStore
+    from bridge.vault import AuditVaultStore
 
 # Opt-in environment variable that switches ``build_a2a_app`` into a thin proxy
 # forwarding ``/.well-known/agent-card.json`` and JSON-RPC ``POST /`` to a
@@ -163,6 +173,10 @@ def _parse_sse_events(raw_body: str) -> list[dict[str, Any]]:
     return frames
 
 
+def _utc_today() -> date:
+    return datetime.now(UTC).date()
+
+
 class BridgeA2aAgentEngine:
     """Gemini platform Agent Engine runtime hosting the Bridge A2A server (Option B) and
     ADK ``document_bridge`` App (Option A).
@@ -182,6 +196,7 @@ class BridgeA2aAgentEngine:
         edge_mode: EdgeMode | str | None = None,
         reviewers: Iterable[str] | str | None = None,
         satisfaction: SatisfactionAssessor | str | None = None,
+        require_auth: bool = False,
         executor: CollectExecutor | None = None,
         task_store: TaskStore | None = None,
         artifact_store: BaseArtifactService | None = None,
@@ -191,6 +206,10 @@ class BridgeA2aAgentEngine:
         llm_leg: LlmLeg | None = None,
         auth_backend: AuthenticationBackend | None = None,
         rfp_board: RfpBoard | None = None,
+        vault_store: AuditVaultStore | None = None,
+        operational_store: OperationalStore | None = None,
+        knowledge_catalog: KnowledgeCatalog | None = None,
+        freshness_clock: Callable[[], date] | None = None,
     ) -> None:
         reviewers_cfg: tuple[str, ...] | str | None
         if reviewers is None or isinstance(reviewers, str):
@@ -208,6 +227,7 @@ class BridgeA2aAgentEngine:
             "edge_mode": edge_mode_cfg,
             "reviewers": reviewers_cfg,
             "satisfaction": satisfaction if isinstance(satisfaction, str) else None,
+            "require_auth": require_auth,
         }
         # Optional test-injected collaborators (cleared on clone() for cloudpickle).
         self._injected: dict[str, Any] = {
@@ -223,6 +243,10 @@ class BridgeA2aAgentEngine:
                 None if isinstance(satisfaction, str) else satisfaction
             ),
             "rfp_board": rfp_board,
+            "vault_store": vault_store,
+            "operational_store": operational_store,
+            "knowledge_catalog": knowledge_catalog,
+            "freshness_clock": freshness_clock,
         }
         self._app: Starlette | None = None
         self._artifact_store: BaseArtifactService | None = None
@@ -240,6 +264,7 @@ class BridgeA2aAgentEngine:
             edge_mode=self._config["edge_mode"],
             reviewers=self._config["reviewers"],
             satisfaction=self._config["satisfaction"],
+            require_auth=bool(self._config.get("require_auth", False)),
         )
 
     def __getstate__(self) -> dict[str, Any]:
@@ -259,6 +284,10 @@ class BridgeA2aAgentEngine:
                     "auth_backend",
                     "satisfaction_obj",
                     "rfp_board",
+                    "vault_store",
+                    "operational_store",
+                    "knowledge_catalog",
+                    "freshness_clock",
                 )
             ),
             "_app": None,
@@ -298,36 +327,14 @@ class BridgeA2aAgentEngine:
         if ae_id and not os.environ.get("BRIDGE_AGENT_ENGINE_ID"):
             os.environ["BRIDGE_AGENT_ENGINE_ID"] = ae_id
         if (
-            os.environ.get("BRIDGE_PORT_MODE", "").strip() == "gcp"
+            resolve_mode(Port.task_store) == "gcp"
             and not os.environ.get("DATABASE_URL", "").strip()
+            and self._injected.get("task_store") is None
         ):
-            os.environ.setdefault("BRIDGE_PORT_TASK_STORE", "local")
-            os.environ.setdefault(
-                "BRIDGE_TASK_DB_URL",
-                "sqlite+aiosqlite:////tmp/bridge_tasks.sqlite",
+            raise RuntimeError(
+                "BridgeA2aAgentEngine refuses to start with gcp task_store without "
+                "DATABASE_URL (ephemeral /tmp SQLite fallback is disabled)."
             )
-            os.environ.setdefault("BRIDGE_PORT_EXCHANGE_STORE", "local")
-            os.environ.setdefault(
-                "BRIDGE_EXCHANGE_DB_URL",
-                "sqlite+aiosqlite:////tmp/bridge_exchange.sqlite",
-            )
-
-    def _build_push_sender(
-        self, config_store: PushNotificationConfigStore
-    ) -> PushNotificationSender:
-        push_sender = self._injected.get("push_sender")
-        if push_sender is not None:
-            return cast("PushNotificationSender", push_sender)
-        from a2a.server.tasks import BasePushNotificationSender
-
-        client = self._injected.get("push_httpx_client")
-        if client is None:
-            import httpx
-
-            client = httpx.AsyncClient()
-        return BasePushNotificationSender(
-            httpx_client=client, config_store=config_store
-        )
 
     def set_up(self) -> None:
         """Construct the A2A Starlette dispatcher, ``CollectExecutor``, ``EdgeRequestHandler``,
@@ -336,81 +343,60 @@ class BridgeA2aAgentEngine:
             return
         self._configure_runtime_env()
 
-        from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
+        from bridge.edge.server import _assemble_a2a_core, _enterprise_stores_from_env
 
-        from bridge.edge.server import RPC_PATH, EdgeRequestHandler
+        vault_store = self._injected.get("vault_store")
+        operational_store = self._injected.get("operational_store")
+        knowledge_catalog = self._injected.get("knowledge_catalog")
+        freshness_clock = self._injected.get("freshness_clock")
+        if (
+            vault_store is None
+            and operational_store is None
+            and knowledge_catalog is None
+            and os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID", "").strip()
+        ):
+            vault_store, operational_store, knowledge_catalog = (
+                _enterprise_stores_from_env()
+            )
+        if freshness_clock is None and (
+            vault_store is not None
+            or operational_store is not None
+            or knowledge_catalog is not None
+        ):
+            freshness_clock = _utc_today
 
-        url = self._resolved_url()
-        card = build_agent_card(url)
-        store = self._injected.get("artifact_store") or build_artifact_store()
-
-        active_executor = self._injected.get("executor") or CollectExecutor(
-            base_url=url
+        assembled = _assemble_a2a_core(
+            url=self._resolved_url(),
+            executor=self._injected.get("executor"),
+            task_store=self._injected.get("task_store"),
+            artifact_store=self._injected.get("artifact_store"),
+            push_config_store=self._injected.get("push_config_store"),
+            push_sender=self._injected.get("push_sender"),
+            push_httpx_client=self._injected.get("push_httpx_client"),
+            edge_mode=self._config.get("edge_mode"),
+            llm_leg=self._injected.get("llm_leg"),
+            reviewers=self._config.get("reviewers"),
+            auth_backend=self._injected.get("auth_backend"),
+            require_auth=bool(self._config.get("require_auth", False)),
+            satisfaction=(
+                self._injected.get("satisfaction_obj")
+                or self._config.get("satisfaction")
+            ),
+            rfp_board=self._injected.get("rfp_board"),
+            vault_store=vault_store,
+            operational_store=operational_store,
+            knowledge_catalog=knowledge_catalog,
+            freshness_clock=freshness_clock,
+            mount_artifacts=False,
+            service_component=None,
+            card_url_resolver=self._resolved_url,
         )
-        active_executor.bind_store(store, base_url=url)
-
-        mode = resolve_edge_mode(self._config.get("edge_mode"))
-        leg = self._injected.get("llm_leg")
-        if mode is EdgeMode.hybrid:
-            if leg is None:
-                from bridge.edge.llm_leg import LlmLeg
-
-                leg = LlmLeg(artifact_store=store)
-            leg.bind_store(store)
-        else:
-            leg = None
-
-        active_executor.bind_edge(
-            mode, llm_leg=leg, reviewers=self._config.get("reviewers")
-        )
-        satisfaction_arg = self._injected.get("satisfaction_obj") or self._config.get(
-            "satisfaction"
-        )
-        active_executor.bind_assessor(resolve_assessor(satisfaction_arg))
-
-        board = self._injected.get("rfp_board") or rfp_board_from_env()
-        active_executor.bind_rfp(board)
-
-        store_port = get_adapter(Port.task_store, resolve_mode(Port.task_store))
-        active_task_store = (
-            self._injected.get("task_store") or store_port.build_task_store()
-        )
-        active_push_config_store = guarded_push_config_store(
-            self._injected.get("push_config_store")
-            or store_port.build_push_config_store()
-        )
-        active_push_sender = self._build_push_sender(active_push_config_store)
-
-        handler = EdgeRequestHandler(
-            agent_executor=active_executor,
-            task_store=active_task_store,
-            agent_card=card,
-            push_config_store=active_push_config_store,
-            push_sender=active_push_sender,
-        )
-
-        async def _live_card(_snapshot: AgentCard) -> AgentCard:
-            return build_agent_card(self._resolved_url())
-
-        routes = create_agent_card_routes(
-            card, card_modifier=_live_card
-        ) + create_jsonrpc_routes(handler, RPC_PATH)
-
-        auth_backend = self._injected.get("auth_backend")
-        middleware = (
-            [Middleware(AuthenticationMiddleware, backend=auth_backend)]
-            if auth_backend is not None
-            else None
-        )
-        app = Starlette(routes=routes, middleware=middleware)
-        app.state.rfp_board = board
-
-        self._app = app
-        self._artifact_store = store
-        self._task_store = active_task_store
-        self._executor = active_executor
-        self._rfp_board = board
-        self._adk_leg = leg
+        self._app = assembled.app
+        self._artifact_store = assembled.artifact_store
+        self._task_store = assembled.task_store
+        self._executor = assembled.executor
+        self._rfp_board = assembled.rfp_board
+        self._adk_leg = assembled.llm_leg
 
     @property
     def artifact_store(self) -> BaseArtifactService:
@@ -519,7 +505,7 @@ class BridgeA2aAgentEngine:
                 disconnect_event.set()
         return None
 
-    async def _dispatch_asgi(
+    async def _dispatch_asgi(  # noqa: PLR0913 - internal in-memory ASGI bridge
         self,
         *,
         method: str,
@@ -527,19 +513,12 @@ class BridgeA2aAgentEngine:
         body: bytes = b"",
         user: str | None = None,
         headers: dict[str, str] | None = None,
+        url: str | None = None,
     ) -> tuple[int, dict[str, str], bytes]:
         """Drive the internal Starlette A2A app in-memory for a request."""
         self.set_up()
         if self._app is None:
             raise RuntimeError("A2A ASGI app is not initialized")
-        if (
-            user is not None
-            and self._executor is not None
-            and self._artifact_store is not None
-        ):
-            self._executor.bind_store(
-                self._artifact_store, base_url=self._resolved_url()
-            )
 
         raw_headers, parsed_rpc_method = self._build_asgi_headers(headers, body)
         scope = self._build_asgi_scope(method, path, raw_headers, user)
@@ -568,6 +547,7 @@ class BridgeA2aAgentEngine:
                 status_code = updated
 
         with (
+            scoped_base_url(url),
             parent_trace_context_from_headers(headers),
             trace_step(
                 "docubridge.agent_engine.a2a_dispatch",
@@ -611,8 +591,6 @@ class BridgeA2aAgentEngine:
     ) -> dict[str, Any]:
         """Execute a unary A2A JSON-RPC 2.0 request inside Agent Engine."""
         self.set_up()
-        if url and self._executor is not None and self._artifact_store is not None:
-            self._executor.bind_store(self._artifact_store, base_url=url)
         effective_payload = payload if payload is not None else kwargs
         if isinstance(effective_payload, str):
             raw_body = effective_payload.encode("utf-8")
@@ -625,6 +603,7 @@ class BridgeA2aAgentEngine:
             body=raw_body,
             user=user,
             headers=headers,
+            url=url,
         )
         return cast(dict[str, Any], json.loads(body_bytes.decode("utf-8")))
 
@@ -663,8 +642,6 @@ class BridgeA2aAgentEngine:
         - Otherwise yields ``{"sse_data": <dict>}`` for each SSE ``data:`` frame emitted.
         """
         self.set_up()
-        if url and self._executor is not None and self._artifact_store is not None:
-            self._executor.bind_store(self._artifact_store, base_url=url)
         effective_payload = payload if payload is not None else kwargs
         if isinstance(effective_payload, str):
             raw_body = effective_payload.encode("utf-8")
@@ -677,6 +654,7 @@ class BridgeA2aAgentEngine:
             body=raw_body,
             user=user,
             headers=headers,
+            url=url,
         )
         content_type = resp_headers.get("content-type", "")
         text = body_bytes.decode("utf-8")

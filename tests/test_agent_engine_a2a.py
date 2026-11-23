@@ -674,3 +674,167 @@ async def test_dual_option_a_and_option_b_on_single_engine_and_fallback_stub(
         c_resp = await client.get(AGENT_CARD_WELL_KNOWN_PATH)
         assert c_resp.status_code == 200
         assert c_resp.json()["name"] == "Document Bridge"
+
+
+async def test_agent_engine_enterprise_stores_v03_compat_auth_and_base_url_isolation(
+    monkeypatch,
+):
+    """R1: Agent Engine forwards enterprise stores/clock, enables v0.3 compat, fails closed in gcp without DB, enforces auth, and isolates per-request base_url."""
+    import asyncio
+    from datetime import date
+
+    import pytest
+
+    from bridge.edge.auth import EdgeAuthBackend
+    from bridge.knowledge_catalog import InMemoryKnowledgeCatalog
+    from bridge.operational_store import InMemoryOperationalStore
+    from bridge.vault import InMemoryAuditVaultStore
+
+    vault = InMemoryAuditVaultStore()
+    op_store = InMemoryOperationalStore()
+    catalog = InMemoryKnowledgeCatalog(operational_store=op_store)
+    fixed_day = date(2026, 6, 1)
+
+    executor = CollectExecutor(collector=Collector(FixtureExtractor()))
+    engine = BridgeA2aAgentEngine(url=BASE + "/", executor=executor)
+    proxy_app = build_a2a_app(
+        url=BASE + "/",
+        a2a_engine=engine,
+        vault_store=vault,
+        operational_store=op_store,
+        knowledge_catalog=catalog,
+        freshness_clock=lambda: fixed_day,
+    )
+
+    # Enterprise stores + freshness_clock forwarded into Agent Engine executor
+    doc = _doc("gov-id-clean")
+    send_payload = {
+        "jsonrpc": "2.0",
+        "id": "ae-store-1",
+        "method": "SendMessage",
+        "params": {
+            "message": {
+                "messageId": str(uuid.uuid4()),
+                "role": "ROLE_USER",
+                "parts": [
+                    {"text": "Collect address proof"},
+                    {
+                        "url": doc.uri,
+                        "mediaType": "image/svg+xml",
+                        "filename": "gov-id-clean.svg",
+                        "metadata": {"doc_id": doc.doc_id},
+                    },
+                ],
+            }
+        },
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=proxy_app), base_url=BASE
+    ) as client:
+        resp = await client.post("/", json=send_payload)
+        assert resp.status_code == 200
+        created_task = resp.json()["result"]["task"]
+        assert created_task["status"]["state"] == "TASK_STATE_COMPLETED"
+        created_task_id = created_task["id"]
+
+    assert engine.executor._freshness_clock is not None
+    assert engine.executor._freshness_clock() == fixed_day
+    assert len(vault.list_records()) >= 1
+    assert len(op_store.list_facts()) >= 1
+
+    # v0.3 slash-delimited JSON-RPC method works directly inside Agent Engine
+    v03_resp = await engine.async_handle_a2a_jsonrpc(
+        payload={
+            "jsonrpc": "2.0",
+            "id": "v03-get",
+            "method": "tasks/get",
+            "params": {"id": created_task_id},
+        },
+        url="https://gw-v03.example/",
+    )
+    assert v03_resp.get("result", {}).get("id") == created_task_id
+    assert "error" not in v03_resp
+
+    # Per-request base_url is isolated via ContextVar (no sequential or concurrent clobber)
+    def _make_send(req_id: str) -> dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "method": "SendMessage",
+            "params": {
+                "message": {
+                    "messageId": str(uuid.uuid4()),
+                    "role": "ROLE_USER",
+                    "parts": [
+                        {"text": "Collect address proof"},
+                        {
+                            "url": doc.uri,
+                            "mediaType": "image/svg+xml",
+                            "filename": "gov-id-clean.svg",
+                            "metadata": {"doc_id": doc.doc_id},
+                        },
+                    ],
+                }
+            },
+        }
+
+    res_a, res_b = await asyncio.gather(
+        engine.async_handle_a2a_jsonrpc(
+            payload=_make_send("conc-a"),
+            user="alice@example.com",
+            url="https://gw-a.example/",
+        ),
+        engine.async_handle_a2a_jsonrpc(
+            payload=_make_send("conc-b"),
+            user="bob@example.com",
+            url="https://gw-b.example/",
+        ),
+    )
+    uri_a = res_a["result"]["task"]["artifacts"][0]["parts"][0]["data"]["status"][
+        "entries"
+    ][0]["artifact"]["uri"]
+    uri_b = res_b["result"]["task"]["artifacts"][0]["parts"][0]["data"]["status"][
+        "entries"
+    ][0]["artifact"]["uri"]
+    assert uri_a.startswith("https://gw-a.example/artifacts/")
+    assert uri_b.startswith("https://gw-b.example/artifacts/")
+    assert engine.executor._base_url == BASE + "/"
+
+    # require_auth=True + on_error=edge_auth_error enforced inside BridgeA2aAgentEngine
+    gated_engine = BridgeA2aAgentEngine(
+        url=BASE + "/",
+        auth_backend=EdgeAuthBackend(require_auth=True),
+        require_auth=True,
+    )
+    assert gated_engine.clone()._config["require_auth"] is True
+    assert (
+        cloudpickle.loads(cloudpickle.dumps(gated_engine))._config["require_auth"]
+        is True
+    )
+
+    anon_direct = await gated_engine.async_handle_a2a_jsonrpc(
+        payload={
+            "jsonrpc": "2.0",
+            "id": "anon-1",
+            "method": "tasks/list",
+            "params": {},
+        },
+    )
+    assert "Authentication required" in anon_direct.get("detail", "")
+
+    bad_bearer = await gated_engine.async_handle_a2a_jsonrpc(
+        payload={"jsonrpc": "2.0", "id": "bad-1", "method": "tasks/list", "params": {}},
+        headers={"Authorization": "Basic not-bearer"},
+    )
+    assert "Bearer" in bad_bearer.get("detail", "")
+
+    # Fail closed in gcp mode without DATABASE_URL (no silent /tmp SQLite fallback)
+    monkeypatch.setenv("BRIDGE_PORT_MODE", "gcp")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("BRIDGE_PORT_TASK_STORE", raising=False)
+    monkeypatch.delenv("BRIDGE_TASK_DB_URL", raising=False)
+    gcp_engine = BridgeA2aAgentEngine(url="https://bridge.example.run.app/")
+    with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        gcp_engine.set_up()
+    assert "BRIDGE_PORT_TASK_STORE" not in __import__("os").environ
+    assert "BRIDGE_TASK_DB_URL" not in __import__("os").environ
