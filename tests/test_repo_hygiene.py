@@ -218,23 +218,31 @@ def _validate_eval_yaml_doc(doc: Any, label: str) -> list[str]:
     errors: list[str] = []
     if not isinstance(doc, dict) or not doc:
         return [f"{label}: EVAL.yaml must be a non-empty YAML mapping"]
-    items = doc.get("cases") or doc.get("rubric") or doc.get("checks")
+    items = (
+        doc.get("rubrics") or doc.get("cases") or doc.get("rubric") or doc.get("checks")
+    )
     if not isinstance(items, list) or len(items) == 0:
         errors.append(
-            f"{label}: EVAL.yaml must declare at least one non-empty cases/rubric/checks entry"
+            f"{label}: EVAL.yaml must declare at least one non-empty rubrics/cases/rubric/checks entry"
         )
     else:
         for idx, item in enumerate(items):
-            if not isinstance(item, dict) or not item.get("id"):
-                errors.append(f"{label}: entry[{idx}] missing required 'id'")
+            if not isinstance(item, dict) or not (
+                item.get("criterion_id") or item.get("id")
+            ):
+                errors.append(
+                    f"{label}: entry[{idx}] missing required 'criterion_id' or 'id'"
+                )
             severity = item.get("severity") if isinstance(item, dict) else None
             if severity is not None and severity not in {"MUST", "SHOULD"}:
                 errors.append(
                     f"{label}: entry[{idx}] severity must be MUST or SHOULD, got {severity!r}"
                 )
-    if doc.get("execution") is not None and doc["execution"] not in {"local", "remote"}:
+    ev = doc.get("evaluator")
+    exec_mode = ev.get("execution") if isinstance(ev, dict) else doc.get("execution")
+    if exec_mode is not None and exec_mode not in {"local", "remote"}:
         errors.append(
-            f"{label}: execution must be 'local' or 'remote', got {doc['execution']!r}"
+            f"{label}: execution must be 'local' or 'remote', got {exec_mode!r}"
         )
     return errors
 

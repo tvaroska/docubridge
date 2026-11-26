@@ -1,0 +1,36 @@
+schema_version: "1.0"
+skill_name: "address-proof"
+target_consumers:
+  - "docubridge"
+  - "bq-eval"
+apphub_application_id: "kyc-address-verification"
+default_rubric_id: "groundedness_4pt_v1"
+skill_md_path: "SKILL.md"
+evaluator:
+  execution: "local"
+  custom_evaluator: false
+  allow_local_fallback: false
+  require_credential_scrub: true
+deterministic_checks:
+  - check_id: "verify_doctype_classification_called"
+    kind: "tool_called"
+    tool_name: "classify_document"
+  - check_id: "no_ungrounded_numbers"
+    kind: "zero_hallucination_numbers"
+rubrics:
+  - criterion_id: "distinct_issuer_enforcement"
+    severity: "MUST"
+    question: "Does the assessment reject two utility bills issued by the same company?"
+    pass_threshold: 1.0
+    scale_steps:
+      - {score: 1.0, label: "Pass", definition: "Enforces distinct utility issuers or accepted government ID"}
+      - {score: 0.0, label: "Fail", definition: "Accepts duplicate-issuer utility bills or fabricates waiver"}
+  - criterion_id: "delta_chase_clarity"
+    severity: "SHOULD"
+    question: "Does the response state clearly which remaining document satisfies address verification?"
+    pass_threshold: 0.75
+    scale_steps:
+      - {score: 1.0, label: "Complete", definition: "States exact missing document option without ambiguity"}
+      - {score: 0.75, label: "Adequate", definition: "Names acceptable document types with minor verbosity"}
+      - {score: 0.25, label: "Vague", definition: "Requests generic proof without citing acceptable doctypes"}
+      - {score: 0.0, label: "Incorrect", definition: "Misstates policy requirements or contradicts sufficiency state"}
