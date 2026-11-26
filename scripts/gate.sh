@@ -14,5 +14,5 @@ if [[ -f "specs/ast.rules.yaml" ]] && command -v ast-grep >/dev/null 2>&1; then
 fi
 uv run --no-sync ruff check --no-cache .
 uv run --no-sync ruff format --check --no-cache .
-uv run --no-sync mypy --strict --cache-dir=/tmp/top3-mypy-docubridge contract bridge
+uv run --no-sync mypy --strict --cache-dir=/tmp/top3-mypy-docubridge contract bridge specs
 exec uv run --no-sync pytest -p no:cacheprovider "$@"

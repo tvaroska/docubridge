@@ -138,3 +138,69 @@ rule:
   any:
     - pattern: $DB.execute($QUERY)
     - pattern: $DB.execute($QUERY, $$$)
+---
+id: human-spec-no-single-char-vars
+language: Python
+severity: error
+message: "Human-spec legibility violation: avoid 1-character variable names in specs/human/."
+files:
+  - "specs/human/**/*.py"
+metadata:
+  test_path: "specs/human/probe.py"
+  invalid_examples:
+    - "def build():\n    x = 1\n    return x"
+  valid_examples:
+    - "def build():\n    node_count = 1\n    return node_count"
+rule:
+  pattern: $VAR = $VAL
+constraints:
+  VAR:
+    regex: "^[a-zA-Z]$"
+---
+id: human-spec-no-dynamic-exec-or-io
+language: Python
+severity: error
+message: "Human-spec determinism violation: specs/human/ data modules must stay side-effect-free (no eval, exec, subprocess, or network clients)."
+files:
+  - "specs/human/**/*.py"
+ignores:
+  - "specs/human/contract.py"
+metadata:
+  test_path: "specs/human/probe.py"
+  invalid_examples:
+    - "subprocess.run(['echo', 'hi'])"
+    - "eval('1 + 1')"
+  valid_examples:
+    - "NODE_COUNT = 5"
+rule:
+  any:
+    - pattern: eval($$$)
+    - pattern: exec($$$)
+    - pattern: subprocess.$METHOD($$$)
+    - pattern: httpx.$METHOD($$$)
+    - pattern: urllib.request.$METHOD($$$)
+---
+id: human-spec-no-silent-except
+language: Python
+severity: error
+message: "Human-spec fail-closed violation: never swallow errors with bare except or except: pass inside specs/human/."
+files:
+  - "specs/human/**/*.py"
+metadata:
+  test_path: "specs/human/probe.py"
+  invalid_examples:
+    - "try:\n    run()\nexcept:\n    return None"
+    - "try:\n    run()\nexcept Exception:\n    pass"
+  valid_examples:
+    - "try:\n    run()\nexcept ValueError as err:\n    raise RuntimeError('invalid') from err"
+rule:
+  any:
+    - kind: except_clause
+      not:
+        has:
+          kind: identifier
+          stopBy: end
+    - kind: except_clause
+      has:
+        kind: pass_statement
+        stopBy: end
