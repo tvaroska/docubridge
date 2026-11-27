@@ -263,6 +263,26 @@ def _infer_metric_bucket(
     return False, None
 
 
+_ARGON_ONBOARDING_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "OBJECT",
+    "properties": {
+        "entity_description": {
+            "type": "OBJECT",
+            "properties": {
+                "what_it_is": {"type": "STRING"},
+                "where_to_read": {"type": "STRING"},
+                "distinguish_from": {"type": "STRING"},
+            },
+            "required": ["what_it_is"],
+        },
+        "aliases": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "fields": {"type": "OBJECT"},
+        "target_projection_hints": {"type": "OBJECT"},
+    },
+    "required": ["entity_description", "fields"],
+}
+
+
 def _call_live_argon_inducer(  # noqa: PLR0913 - keyword-only Argon induction inputs
     *,
     client: object,
@@ -296,7 +316,10 @@ def _call_live_argon_inducer(  # noqa: PLR0913 - keyword-only Argon induction in
     response = active_client.models.generate_content(
         model=ONBOARDING_REASONING_MODEL,
         contents=[json.dumps(prompt_payload)],
-        config={"response_mime_type": "application/json"},
+        config={
+            "response_mime_type": "application/json",
+            "response_schema": _ARGON_ONBOARDING_RESPONSE_SCHEMA,
+        },
     )
     raw = (getattr(response, "text", None) or "").strip()
     parsed = json.loads(raw)

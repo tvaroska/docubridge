@@ -51,6 +51,7 @@ from bridge.agent_gym.sql_store import (
     SqlAgentGymEngine,
     agent_gym_from_env,
 )
+from bridge.agent_gym.trust import TrustPolicyMixin
 
 __all__ = [
     "DATABASE_URL_ENV",
@@ -79,6 +80,7 @@ __all__ = [
     "TribalRuleCategory",
     "TribalRuleStatus",
     "TrustAutonomyLevel",
+    "TrustPolicyMixin",
     "agent_gym_from_env",
     "build_a2ui_trust_readiness_surface",
     "generate_synthetic_stress_suite",

@@ -645,3 +645,235 @@ def test_onboard_use_case_manifest_and_http_endpoint(
         monkeypatch.delenv(EMPTY_CATALOG_ENV, raising=False)
         monkeypatch.delenv("BRIDGE_SKILLS_DIR", raising=False)
         schema_refinery_from_env().reset()
+
+
+def test_onboard_use_case_http_rejects_sample_files() -> None:
+    """P16-1(a): HTTP onboard-use-case rejects sample_files with 422 and leaks no existence oracle."""
+    app = build_dashboard_app()
+    client = TestClient(app)
+    for probe_path in ("/etc/passwd", "/nonexistent/probe-does-not-exist.txt"):
+        resp = client.post(
+            "/v1/refinery/onboard-use-case",
+            json={
+                "process_name": "lfi-probe",
+                "process_description": "Probe sample_files rejection.",
+                "doctypes": [
+                    {
+                        "entity_id": "gov-id",
+                        "sample_files": [probe_path],
+                    }
+                ],
+            },
+        )
+        assert resp.status_code == 422
+        detail_str = json.dumps(resp.json())
+        assert "extra_forbidden" in detail_str
+        assert "sample_files" in detail_str
+
+
+def test_onboard_refuses_install_on_failed_assay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P16-1(b): failed 3-Tier Assay prevents doctype and process skill installation."""
+    from bridge.ports import Port, get_adapter, resolve_mode
+
+    empty_skills = tmp_path / "skills"
+    empty_skills.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(empty_skills))
+    refinery = InMemorySchemaRefineryEngine(
+        knowledge_catalog=InMemoryKnowledgeCatalog()
+    )
+
+    invalid_okf = (
+        "---\n"
+        "okf_version: '0.2'\n"
+        "entry_type: semantic-entity\n"
+        "entity_id: broken-quote\n"
+        "source_priority: 20\n"
+        "fields:\n"
+        "  bad_premium:\n"
+        "    type: string\n"
+        "    required: true\n"
+        "    monetary: true\n"
+        "    feeds_metric: INVALID_METRIC_TARGET\n"
+        "edges:\n"
+        "  - edge_id: edge-broken-quote-metric\n"
+        "    relation: FEEDS_METRIC\n"
+        "    target_id: INVALID_METRIC_TARGET\n"
+        "    on_fields:\n"
+        "      - bad_premium\n"
+        "---\n\n"
+        "# Broken Quote\n"
+    )
+    res = onboard_use_case(
+        {
+            "process_name": "broken-procurement",
+            "process_description": "Should refuse install when assay fails.",
+            "doctypes": [
+                {
+                    "entity_id": "clean-quote",
+                    "domain": "benefits",
+                    "samples": [
+                        {
+                            "sample_id": "cq-1",
+                            "extracted_fields": {"carrier_name": "SunLife"},
+                        }
+                    ],
+                },
+                {
+                    "entity_id": "broken-quote",
+                    "domain": "benefits",
+                    "okf_markdown": invalid_okf,
+                    "samples": [
+                        {
+                            "sample_id": "bq-1",
+                            "extracted_fields": {"bad_premium": "$1,200.00"},
+                        }
+                    ],
+                },
+            ],
+            "auto_promote": True,
+            "install_skills": True,
+        },
+        refinery=refinery,
+        write_dir=tmp_path / "out_bundle",
+    )
+    pkg = res.doctype_packages[1]
+    assert res.doctype_packages[0].promoted_revision_id is None
+    assert not (tmp_path / "out_bundle").exists()
+    assert pkg.onboarding_result.assay_report.passed is False
+    assert pkg.onboarding_result.assay_report.decimal_formulas_valid is False
+    assert pkg.promoted_revision_id is None
+    assert pkg.installed_in_registry is False
+    assert res.installed_doctypes == ()
+    assert res.installed_skills == ()
+    reg = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
+    assert reg.list_skills() == []
+
+
+def test_onboard_assays_okf_markdown_before_promotion() -> None:
+    """P16-1(c): okf_markdown overrides are assayed before promotion rather than post-promotion."""
+    refinery = InMemorySchemaRefineryEngine(
+        knowledge_catalog=InMemoryKnowledgeCatalog()
+    )
+    bad_override_okf = (
+        "---\n"
+        "okf_version: '0.2'\n"
+        "entry_type: semantic-entity\n"
+        "entity_id: override-binder\n"
+        "source_priority: 25\n"
+        "fields:\n"
+        "  binder_premium:\n"
+        "    type: string\n"
+        "    required: true\n"
+        "    monetary: true\n"
+        "    feeds_metric: INVALID_METRIC_TARGET\n"
+        "---\n\n"
+        "# Override Binder\n"
+    )
+    failed_pkg = create_schema_from_documents(
+        entity_id="override-binder",
+        samples=[
+            {
+                "sample_id": "clean-sample-1",
+                "extracted_fields": {"binder_premium": "$25,000.00"},
+            }
+        ],
+        okf_markdown=bad_override_okf,
+        domain="insurance",
+        refinery=refinery,
+        auto_promote=True,
+    )
+    assert failed_pkg.onboarding_result.assay_report.decimal_formulas_valid is False
+    assert failed_pkg.onboarding_result.assay_report.passed is False
+    assert failed_pkg.promoted_revision_id is None
+    assert "override-binder" not in refinery.get_active_revision().entities
+
+    valid_override_okf = bad_override_okf.replace(
+        "INVALID_METRIC_TARGET", "total_premium"
+    )
+    fake_argon = _FakeArgonClient()
+    passed_pkg = create_schema_from_documents(
+        entity_id="override-binder",
+        samples=[
+            {
+                "sample_id": "clean-sample-1",
+                "extracted_fields": {"binder_premium": "$25,000.00"},
+            }
+        ],
+        okf_markdown=valid_override_okf,
+        domain="insurance",
+        refinery=refinery,
+        auto_promote=True,
+        client=fake_argon,
+        use_live_llm=True,
+    )
+    assert "response_schema" in fake_argon.models.calls[0]["config"]
+    assert passed_pkg.onboarding_result.assay_report.passed is True
+    assert passed_pkg.promoted_revision_id is not None
+    promoted_entity = refinery.get_active_revision().entities["override-binder"]
+    assert promoted_entity.fields["binder_premium"].feeds_metric == "total_premium"
+
+
+def test_default_doctype_validation_loads_in_signals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P16-1(d): DEFAULT_DOCTYPE_VALIDATION emits dict rules evaluated by signals_from_result."""
+    from bridge.ports import Port, get_adapter, resolve_mode
+    from bridge.refinery import DEFAULT_DOCTYPE_VALIDATION
+    from bridge.signals import signals_from_result
+    from contract.extraction import ExtractionFields, ExtractionResult, SourceAnchor
+
+    assert DEFAULT_DOCTYPE_VALIDATION["signals"]["completeness"] == "agent"
+    assert isinstance(DEFAULT_DOCTYPE_VALIDATION["rules"][0], dict)
+
+    empty_skills = tmp_path / "skills"
+    empty_skills.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("BRIDGE_SKILLS_DIR", str(empty_skills))
+    refinery = InMemorySchemaRefineryEngine(
+        knowledge_catalog=InMemoryKnowledgeCatalog()
+    )
+
+    pkg = create_schema_from_documents(
+        entity_id="custom-invoice",
+        samples=[
+            {
+                "sample_id": "inv-1",
+                "extracted_fields": {"invoice_total": "$450.00"},
+            }
+        ],
+        refinery=refinery,
+        install_skill=True,
+    )
+    assert pkg.installed_in_registry is True
+    reg = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
+    assert "custom-invoice" in {s.name for s in reg.list_skills()}
+
+    missing_res = ExtractionResult(
+        fields=ExtractionFields(doctype="custom-invoice", key_fields={}),
+        overall_confidence=0.96,
+        legible=True,
+    )
+    sig_missing = signals_from_result(
+        missing_res, candidate_doctypes=["custom-invoice"]
+    )
+    assert sig_missing.failed_rules == ["required_fields_present"]
+    assert sig_missing.corroboration_ok is False
+
+    present_res = ExtractionResult(
+        fields=ExtractionFields(
+            doctype="custom-invoice",
+            issuer="Acme Corp",
+            key_fields={"invoice_total": "$450.00"},
+            source_anchors={
+                "invoice_total": SourceAnchor(page_number=1, snippet="$450.00")
+            },
+        ),
+        overall_confidence=0.96,
+        legible=True,
+    )
+    sig_present = signals_from_result(
+        present_res, candidate_doctypes=["custom-invoice"]
+    )
+    assert sig_present.failed_rules == []
+    assert sig_present.corroboration_ok is True

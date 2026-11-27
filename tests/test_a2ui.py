@@ -322,3 +322,138 @@ def test_negative_approved_amount_rejected_without_limit():
             channel="gemini_app",
             principal_max_approval_amount=None,
         )
+
+
+def test_resolved_inbox_item_cannot_be_resolved_twice_memory_and_sql(
+    tmp_path, monkeypatch
+) -> None:
+    """P16-4: terminal inbox items refuse re-resolution in memory, SQL (CAS + 0 RAM leak), and HTTP 409."""
+    import pytest
+    from fastapi.testclient import TestClient
+
+    from bridge.a2ui_inbox import (
+        A2uiClientActionRequest,
+        InboxItemAlreadyResolvedError,
+        SqlActionInboxStore,
+    )
+    from bridge.identity import (
+        SPIFFE_SVID_SECRET_ENV,
+        USER_TOKEN_HEADER,
+        mint_user_token,
+    )
+    from bridge.user_interaction import build_user_interaction_app
+
+    accept_action = A2uiClientActionRequest(
+        version="v0.9",
+        action={"name": "accept", "context": {"decision": "accept"}},
+    )
+    reject_action = A2uiClientActionRequest(
+        version="v0.9",
+        action={"name": "reject", "context": {"decision": "reject"}},
+    )
+
+    mem_inbox, mem_item = _seed_broker_transfer_item(max_approval_amount="50000.00")
+    first_mem = mem_inbox.resolve_action(
+        mem_item.item_id,
+        action_request=accept_action,
+        actor_principal="broker@docubridge.io",
+        actor_role="broker",
+        channel="gemini_app",
+    )
+    assert first_mem["task_state"] == "completed"
+    with pytest.raises(InboxItemAlreadyResolvedError, match="already resolved"):
+        mem_inbox.resolve_action(
+            mem_item.item_id,
+            action_request=reject_action,
+            actor_principal="broker@docubridge.io",
+            actor_role="broker",
+            channel="gemini_app",
+        )
+    assert mem_inbox.get_item(mem_item.item_id).task_state == "completed"
+    assert len(mem_inbox.list_audit_records(mem_item.item_id)) == 1
+
+    mem_inbox_fail, mem_fail_item = _seed_broker_transfer_item(
+        max_approval_amount="50000.00"
+    )
+    mem_inbox_fail.resolve_action(
+        mem_fail_item.item_id,
+        action_request=reject_action,
+        actor_principal="broker@docubridge.io",
+        actor_role="broker",
+        channel="gemini_app",
+    )
+    with pytest.raises(InboxItemAlreadyResolvedError, match="already resolved"):
+        mem_inbox_fail.resolve_action(
+            mem_fail_item.item_id,
+            action_request=accept_action,
+            actor_principal="broker@docubridge.io",
+            actor_role="broker",
+            channel="gemini_app",
+        )
+
+    dsn = f"sqlite+aiosqlite:///{tmp_path / 'inbox_p16_4.db'}"
+    sql_inbox = SqlActionInboxStore(dsn)
+    try:
+        sql_item = sql_inbox.create_action(
+            entity_id="LOAN-MERIDIAN-001",
+            title="Review wire transfer limit",
+            hint="Verify wire authorization.",
+            assigned_role="broker",
+            data_model={"transfer": {"approvedAmount": "10000.00"}},
+            pause_for_review=True,
+            max_approval_amount="50000.00",
+        )
+        first_sql = sql_inbox.resolve_action(
+            sql_item.item_id,
+            action_request=accept_action,
+            actor_principal="broker@docubridge.io",
+            actor_role="broker",
+            channel="gemini_app",
+        )
+        assert first_sql["task_state"] == "completed"
+        assert sql_inbox._audits == []
+        assert len(sql_inbox.list_audit_records(sql_item.item_id)) == 1
+
+        with pytest.raises(InboxItemAlreadyResolvedError, match="already resolved"):
+            sql_inbox.resolve_action(
+                sql_item.item_id,
+                action_request=reject_action,
+                actor_principal="broker@docubridge.io",
+                actor_role="broker",
+                channel="gemini_app",
+            )
+        reloaded = sql_inbox.get_item(sql_item.item_id)
+        assert reloaded is not None and reloaded.task_state == "completed"
+        assert len(sql_inbox.list_audit_records(sql_item.item_id)) == 1
+        assert sql_inbox._audits == []
+
+        with pytest.raises(InboxItemAlreadyResolvedError, match="already resolved"):
+            sql_inbox.advance_step(
+                sql_item.item_id,
+                step_id=reloaded.steps[0].step_id,
+                status="working",
+            )
+
+        monkeypatch.setenv("K_SERVICE", "bridge-meridian")
+        monkeypatch.setenv(SPIFFE_SVID_SECRET_ENV, "p16-4-inbox-signing-secret-2026")
+        app = build_user_interaction_app(inbox_store=sql_inbox, require_auth=True)
+        client = TestClient(app)
+        broker_jwt = mint_user_token(
+            "usr:broker@docubridge.io",
+            "broker",
+            allowed_entities=["LOAN-MERIDIAN-001"],
+        )
+        resp = client.post(
+            f"/v1/a2ui/inbox/items/{sql_item.item_id}/action?channel=gemini_app",
+            headers={USER_TOKEN_HEADER: broker_jwt},
+            json=reject_action.model_dump(mode="json"),
+        )
+        assert resp.status_code == 409
+        prog_resp = client.post(
+            f"/v1/a2ui/inbox/items/{sql_item.item_id}/progress",
+            headers={USER_TOKEN_HEADER: broker_jwt},
+            json={"step_id": reloaded.steps[0].step_id, "status": "working"},
+        )
+        assert prog_resp.status_code == 409
+    finally:
+        sql_inbox.close()

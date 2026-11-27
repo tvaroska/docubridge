@@ -244,8 +244,8 @@ ENTERPRISE_JOURNEYS: tuple[JourneySpec, ...] = (
         ),
         external_build="gemini-4-argon judge endpoint + optional Cloud Run nightly job.",
         blocking_gap=(
-            "compile_rules_to_skill pulls CANDIDATE/REJECTED rules on fallback (P16-2); "
-            "HTTP onboard-use-case LFI (P16-1); SqlKnowledgeCatalog wipe (P16-3)."
+            "GcpExtraction instantiates GeminiExtractor with _agent_gym=None (R5); "
+            "no live noisy-PDF perturbation run yet (P16-1..4 closed on main)."
         ),
         matrix={
             "core": "SKILL-4, ENT-6 · RSR>=0.80",
@@ -263,11 +263,10 @@ ENTERPRISE_JOURNEYS: tuple[JourneySpec, ...] = (
                 ),
                 spec_action=(
                     "ActionInbox records RFC 6902 patch + citation_opened + "
-                    "review_dwell_ms."
+                    "review_dwell_ms under single-tx CAS (P16-4)."
                 ),
                 delta_note="Captures structured training signal from normal operations.",
                 adrs=("ADR-09", "ADR-14"),
-                gap="P16-4 double-resolve guard needed.",
             ),
             JourneyStepSpec(
                 node_id="hr_rsr_guard",
@@ -291,12 +290,11 @@ ENTERPRISE_JOURNEYS: tuple[JourneySpec, ...] = (
                     "against held-out cases before compiling a SkillRevision."
                 ),
                 spec_action=(
-                    "P13-1 runs real held-out checks with auto_promote=False; ADR-15 "
-                    "forbids checklist/waiver edits."
+                    "P13-1 & P16-2 compile strictly PROMOTED/VERIFIED doctype rules "
+                    "into DRAFT by default; ADR-15 forbids checklist/waiver edits."
                 ),
                 delta_note="Use-Case Agents on the right stay completely untouched.",
                 adrs=("ADR-04", "ADR-10", "ADR-15"),
-                gap="P16-2 fallback rule promotion & P16-1 onboard-use-case LFI open.",
             ),
             JourneyStepSpec(
                 node_id="dl_schema_refinery",
@@ -307,11 +305,10 @@ ENTERPRISE_JOURNEYS: tuple[JourneySpec, ...] = (
                 ),
                 spec_action=(
                     "Assay defaults passed=False offline (1412b76) and writes "
-                    "immutable lineage to Port #14."
+                    "single-tx CAS lineage to Port #14 (P16-1, P16-3)."
                 ),
                 delta_note="Eliminated fabricated 38/40 alpha/AC2 constants.",
                 adrs=("ADR-07", "ADR-13", "ADR-15"),
-                gap="P16-3 SqlKnowledgeCatalog concurrent wipe open.",
             ),
             JourneyStepSpec(
                 node_id="db_intake_gate",

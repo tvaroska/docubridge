@@ -285,78 +285,128 @@ class SqlKnowledgeCatalog(InMemoryKnowledgeCatalog):
         revision: OntologyRevision,
         *,
         activate: bool = True,
+        expected_active_revision_id: str | None = None,
     ) -> OntologyRevision:
-        """Register a new OntologyRevision snapshot + its graph edges in SQL."""
-        current = self._sync_revisions_from_sql()
-        updated: list[OntologyRevision] = []
-        replaced = False
-        for existing in current:
-            if existing.revision_id == revision.revision_id:
-                target_rev = (
-                    revision.model_copy(update={"state": OntologyRevisionState.ACTIVE})
-                    if activate
-                    else revision
-                )
-                updated.append(target_rev)
-                revision = target_rev
-                replaced = True
-            elif activate and existing.state == OntologyRevisionState.ACTIVE:
-                updated.append(
-                    existing.model_copy(
-                        update={
-                            "state": OntologyRevisionState.DEPRECATED,
-                            "effective_to": revision.effective_from,
-                        }
-                    )
-                )
-            else:
-                updated.append(existing)
-        if not replaced:
-            target_rev = (
-                revision.model_copy(update={"state": OntologyRevisionState.ACTIVE})
-                if activate
-                else revision
-            )
-            updated.append(target_rev)
-            revision = target_rev
-
+        """Register or upsert a single OntologyRevision + its edges in one atomic SQL transaction."""
+        self._ensure_ready()
+        target_rev = (
+            revision.model_copy(update={"state": OntologyRevisionState.ACTIVE})
+            if activate
+            else revision
+        )
         revisions_table = self._revisions_table
         edges_table = self._edges_table
         engine = self._engine
 
-        async def _op() -> None:
-            from sqlalchemy import delete
+        async def _op() -> list[OntologyRevision]:
+            from sqlalchemy import delete, select
 
             async with engine.begin() as conn:
-                await conn.execute(delete(edges_table))
-                await conn.execute(delete(revisions_table))
-                for rev in updated:
-                    await conn.execute(
-                        revisions_table.insert().values(
-                            revision_id=rev.revision_id,
-                            state=rev.state.value,
-                            version=rev.version,
-                            content_sha256=rev.content_sha256,
-                            payload_json=rev.model_dump_json(),
+                if activate:
+                    active_res = await conn.execute(
+                        select(
+                            revisions_table.c.revision_id,
+                            revisions_table.c.payload_json,
+                        ).where(
+                            revisions_table.c.state
+                            == OntologyRevisionState.ACTIVE.value
                         )
                     )
-                    for edge in rev.edges:
-                        await conn.execute(
-                            edges_table.insert().values(
-                                edge_pk=f"{rev.revision_id}:{edge.edge_id}",
-                                revision_id=rev.revision_id,
-                                edge_id=edge.edge_id,
-                                source_id=edge.source_id,
-                                relation=str(edge.relation),
-                                target_id=edge.target_id,
-                                priority_rank=edge.priority_rank,
-                                payload_json=edge.model_dump_json(),
+                    active_rows = list(active_res)
+                    if expected_active_revision_id is not None:
+                        active_ids = {str(r[0]) for r in active_rows}
+                        if (
+                            expected_active_revision_id not in active_ids
+                            and expected_active_revision_id != target_rev.revision_id
+                        ):
+                            raise ValueError(
+                                f"Active ontology revision changed concurrently (expected '{expected_active_revision_id}', found {sorted(active_ids)})."
+                            )
+                    for active_id, active_json in active_rows:
+                        if str(active_id) == target_rev.revision_id:
+                            continue
+                        old_rev = OntologyRevision.model_validate_json(active_json)
+                        deprecated = old_rev.model_copy(
+                            update={
+                                "state": OntologyRevisionState.DEPRECATED,
+                                "effective_to": target_rev.effective_from,
+                            }
+                        )
+                        dep_upd = await conn.execute(
+                            revisions_table.update()
+                            .where(
+                                (revisions_table.c.revision_id == str(active_id))
+                                & (
+                                    revisions_table.c.state
+                                    == OntologyRevisionState.ACTIVE.value
+                                )
+                            )
+                            .values(
+                                state=OntologyRevisionState.DEPRECATED.value,
+                                payload_json=deprecated.model_dump_json(),
                             )
                         )
+                        if dep_upd.rowcount != 1:
+                            raise ValueError(
+                                f"Concurrent ontology revision promotion detected while deprecating '{active_id}'."
+                            )
 
-        self._run(_op())
-        self._apply_loaded_revisions(updated)
-        return revision
+                existing_res = await conn.execute(
+                    select(revisions_table.c.seq).where(
+                        revisions_table.c.revision_id == target_rev.revision_id
+                    )
+                )
+                if existing_res.first() is not None:
+                    await conn.execute(
+                        revisions_table.update()
+                        .where(revisions_table.c.revision_id == target_rev.revision_id)
+                        .values(
+                            state=target_rev.state.value,
+                            version=target_rev.version,
+                            content_sha256=target_rev.content_sha256,
+                            payload_json=target_rev.model_dump_json(),
+                        )
+                    )
+                else:
+                    await conn.execute(
+                        revisions_table.insert().values(
+                            revision_id=target_rev.revision_id,
+                            state=target_rev.state.value,
+                            version=target_rev.version,
+                            content_sha256=target_rev.content_sha256,
+                            payload_json=target_rev.model_dump_json(),
+                        )
+                    )
+
+                await conn.execute(
+                    delete(edges_table).where(
+                        edges_table.c.revision_id == target_rev.revision_id
+                    )
+                )
+                for edge in target_rev.edges:
+                    await conn.execute(
+                        edges_table.insert().values(
+                            edge_pk=f"{target_rev.revision_id}:{edge.edge_id}",
+                            revision_id=target_rev.revision_id,
+                            edge_id=edge.edge_id,
+                            source_id=edge.source_id,
+                            relation=str(edge.relation),
+                            target_id=edge.target_id,
+                            priority_rank=edge.priority_rank,
+                            payload_json=edge.model_dump_json(),
+                        )
+                    )
+
+                all_res = await conn.execute(
+                    select(revisions_table.c.payload_json).order_by(
+                        revisions_table.c.seq.asc()
+                    )
+                )
+                return [OntologyRevision.model_validate_json(r[0]) for r in all_res]
+
+        loaded = self._run(_op())
+        self._apply_loaded_revisions(loaded)
+        return target_rev
 
     def reset_ontology_revisions(self) -> OntologyRevision:
         """Reset the Zone 6 Ontology Graph back to the baseline revision in SQL."""

@@ -2798,7 +2798,11 @@ def test_multimodel_split_otel_genai_and_3tier_harness_evolve() -> None:
     compile_resp = client.post(
         "/v1/gym/compile-skill",
         headers=sr_headers,
-        json={"doctype": "addendum", "issuer_pattern": "Syndicated*"},
+        json={
+            "doctype": "addendum",
+            "issuer_pattern": "Syndicated*",
+            "auto_promote": True,
+        },
     )
     assert compile_resp.status_code == 200
     compiled = compile_resp.json()
@@ -2951,7 +2955,11 @@ def test_skill_registry_versioning_rollback_and_process_instance_skill_lineage()
     compile_resp = client.post(
         "/v1/gym/compile-skill",
         headers=sr_headers,
-        json={"doctype": "addendum", "issuer_pattern": "Syndicated*"},
+        json={
+            "doctype": "addendum",
+            "issuer_pattern": "Syndicated*",
+            "auto_promote": True,
+        },
     )
     assert compile_resp.status_code == 200
     compiled = compile_resp.json()

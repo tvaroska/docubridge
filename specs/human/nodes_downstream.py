@@ -131,9 +131,9 @@ DOWNSTREAM_NODES: tuple[SubsystemSpec, ...] = (
         node_id="hr_inbox",
         height=100,
         span=1,
-        status="partial",
+        status="built",
         recent=True,
-        has_gap=True,
+        has_gap=False,
         plain_title="Page-Pinned Action Inbox",
         plain_sub="Side-by-side PDF boxes, resume & waiver rec",
         spec_title="Port #12 A2UI Action Inbox",
@@ -145,16 +145,13 @@ DOWNSTREAM_NODES: tuple[SubsystemSpec, ...] = (
         ),
         desc_spec=(
             "Internal zone-isolated A2UI catalog enforcing external-role 403 & Decimal "
-            "role approval ceilings (P14-3), RFC 6902 diffs, and R6 task resume."
+            "role approval ceilings (P14-3), single-tx SQL CAS (P16-4), and R6 resume."
         ),
         ports_contract=(
             "Port #12 action_inbox (local SQLite <-> Cloud SQL PG16) + ADK "
             "request_confirmation FunctionResponse resume."
         ),
-        gap_note=(
-            "ActionInboxStore.resolve_action lacks a terminal-state CAS guard & "
-            "single atomic audit transaction (P16-4)."
-        ),
+        gap_note=None,
         code_files=(
             "bridge/a2ui_inbox/models.py",
             "bridge/a2ui_inbox/memory_store.py",
@@ -228,8 +225,8 @@ DOWNSTREAM_NODES: tuple[SubsystemSpec, ...] = (
             "gemini-4-argon judge) -> Port #4 skill_registry."
         ),
         gap_note=(
-            "compile_rules_to_skill fallback pulls CANDIDATE/REJECTED rules & defaults "
-            "auto_promote=True (P16-2); HTTP onboard-use-case LFI open (P16-1)."
+            "gateway_policy.py empty mcp_tool_name & fail-open live Model Armor "
+            "(P16-8); compiler & onboard-use-case P0s closed in P16-1/2."
         ),
         code_files=(
             "bridge/agent_gym/engine.py",

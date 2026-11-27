@@ -156,8 +156,13 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
         revision: OntologyRevision,
         *,
         activate: bool = True,
+        expected_active_revision_id: str | None = None,
     ) -> OntologyRevision:
-        return self._catalog.register_ontology_revision(revision, activate=activate)
+        return self._catalog.register_ontology_revision(
+            revision,
+            activate=activate,
+            expected_active_revision_id=expected_active_revision_id,
+        )
 
     def _save_proposal(self, proposal: RefineryProposal) -> None:
         self._proposals[proposal.proposal_id] = proposal
@@ -334,7 +339,11 @@ class InMemorySchemaRefineryEngine(SchemaRefineryEngine):
                 "recorded_at": now,
             }
         )
-        self._save_revision(promoted_rev, activate=True)
+        self._save_revision(
+            promoted_rev,
+            activate=True,
+            expected_active_revision_id=baseline.revision_id,
+        )
         promoted_proposal = proposal.model_copy(
             update={
                 "status": RefineryProposalStatus.PROMOTED,

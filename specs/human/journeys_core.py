@@ -64,7 +64,6 @@ CORE_JOURNEYS: tuple[JourneySpec, ...] = (
                 ),
                 delta_note="Hybrid mode proves structured collection burns zero LLM calls.",
                 adrs=("ADR-02", "ADR-03", "ADR-14"),
-                gap="executor.py at 800-LOC cap (P16-10).",
             ),
             JourneyStepSpec(
                 node_id="ext_portal",
@@ -145,8 +144,8 @@ CORE_JOURNEYS: tuple[JourneySpec, ...] = (
             "secret configuration."
         ),
         blocking_gap=(
-            "ActionInboxStore.resolve_action lacks terminal-state guard (P16-4); "
-            "frontend/deploy.sh routing gap (S-12)."
+            "Frontend/deploy.sh Vite service URL alignment gap remains open (S-12; "
+            "ActionInbox terminal-state SQL CAS closed in P16-4)."
         ),
         matrix={
             "core": "WIRE-3,8 · DUR-1..4",
@@ -216,7 +215,6 @@ CORE_JOURNEYS: tuple[JourneySpec, ...] = (
                 ),
                 delta_note="R6 pre-dispatch guard refuses wrong caller or bad call_id.",
                 adrs=("ADR-08", "ADR-09", "ADR-14"),
-                gap="P16-4: sequential resolve_action lacks terminal-state CAS.",
             ),
             JourneyStepSpec(
                 node_id="db_vault_ledger",
@@ -448,8 +446,8 @@ CORE_JOURNEYS: tuple[JourneySpec, ...] = (
             "Skill Registry GCS bucket."
         ),
         blocking_gap=(
-            "email_ingress.py at 792 LOC (P16-10); email intake omits as_of freshness "
-            "check (P16-5); board_host S-14 docs/redoc unauthenticated."
+            "Email intake omits as_of freshness check (P16-5); board_host S-14 "
+            "docs/redoc unauthenticated."
         ),
         matrix={
             "core": "COLL-5..7, SKILL-4..5, RFP-1..2",

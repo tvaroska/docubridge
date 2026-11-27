@@ -198,3 +198,148 @@ def test_evaluate_refuses_missing_source_signal() -> None:
     gym._save_rule(orphan)
     with pytest.raises(KeyError, match="sig-does-not-exist"):
         gym.evaluate_candidate_rule(orphan.rule_id)
+
+
+def test_compile_excludes_rejected_and_candidate_rules() -> None:
+    """P16-2: compile_rules_to_skill excludes CANDIDATE and REJECTED rules even with auto_promote=True."""
+    gym = InMemoryAgentGymEngine()
+    _, candidate_rule = gym.distill_from_quarantine_correction(
+        entity_id="ENT-P16-CAND",
+        doc_id="doc-p16-cand",
+        doctype="quote",
+        issuer="Acme",
+        field_path="deductible",
+        before_value="$500.00",
+        after_value="$1,000.00",
+        expert_memo="Unevaluated candidate rule must not compile.",
+        actor_principal="reviewer@docubridge.io",
+        actor_role="broker",
+        citation_verified=True,
+        review_dwell_ms=4200,
+    )
+    _, rejected_rule = gym.distill_from_quarantine_correction(
+        entity_id="ENT-P16-REJ",
+        doc_id="doc-p16-rej",
+        doctype="quote",
+        issuer="Acme",
+        field_path="deductible",
+        before_value="$500.00",
+        after_value="$2,000.00",
+        expert_memo="Rubber-stamped rejected rule must not compile.",
+        actor_principal="reviewer@docubridge.io",
+        actor_role="broker",
+        citation_verified=False,
+        review_dwell_ms=0,
+    )
+    assert candidate_rule.status == TribalRuleStatus.CANDIDATE
+    assert rejected_rule.status == TribalRuleStatus.REJECTED
+
+    compiled = gym.compile_rules_to_skill(
+        doctype="quote",
+        issuer_pattern="Acme*",
+        auto_promote=True,
+    )
+    assert compiled["compiled_rule_ids"] == []
+    assert compiled["compiled_rules_count"] == 0
+    assert compiled["target_state"] == "DRAFT"
+    assert compiled["is_default_revision"] is False
+    assert candidate_rule.rule_id not in compiled["skill_markdown"]
+    assert rejected_rule.rule_id not in compiled["skill_markdown"]
+
+
+def test_compile_excludes_other_doctypes_on_empty_match() -> None:
+    """P16-2: empty match on target doctype does not fall back to rules from other doctypes."""
+    gym = InMemoryAgentGymEngine()
+    _, addendum_rule = gym.distill_from_quarantine_correction(
+        entity_id="ENT-P16-ADD",
+        doc_id="doc-p16-add",
+        doctype="addendum",
+        issuer="Syndicated",
+        field_path="origination_fee",
+        before_value="$50,000.00",
+        after_value="$100,000.00",
+        expert_memo="Schedule B addendum origination fee.",
+        actor_principal="reviewer@docubridge.io",
+        actor_role="underwriter",
+        citation_verified=True,
+        review_dwell_ms=4500,
+    )
+    report = gym.evaluate_candidate_rule(addendum_rule.rule_id, auto_promote=True)
+    assert report.passed_gate is True
+
+    compiled = gym.compile_rules_to_skill(
+        doctype="utility-bill",
+        issuer_pattern="*",
+        auto_promote=True,
+    )
+    assert compiled["compiled_rule_ids"] == []
+    assert compiled["compiled_rules_count"] == 0
+    assert compiled["target_state"] == "DRAFT"
+    assert compiled["is_default_revision"] is False
+    assert addendum_rule.rule_id not in compiled["skill_markdown"]
+
+    other_issuer = gym.compile_rules_to_skill(
+        doctype="addendum",
+        issuer_pattern="OtherCarrier*",
+        auto_promote=True,
+    )
+    assert other_issuer["compiled_rule_ids"] == []
+    assert other_issuer["target_state"] == "DRAFT"
+
+    with pytest.raises(ValueError, match="specific doctype slug"):
+        gym.compile_rules_to_skill(doctype="*", auto_promote=True)
+
+
+def test_compile_defaults_to_draft_not_active() -> None:
+    """P16-2: compile_rules_to_skill and POST /v1/gym/compile-skill default auto_promote=False (DRAFT)."""
+    gym = InMemoryAgentGymEngine()
+    _, promoted_rule = gym.distill_from_quarantine_correction(
+        entity_id="ENT-P16-DRAFT",
+        doc_id="doc-p16-draft",
+        doctype="quote",
+        issuer="Acme",
+        field_path="deductible",
+        before_value="$500.00",
+        after_value="$1,000.00",
+        expert_memo="Verified deductible rule defaults to DRAFT skill revision.",
+        actor_principal="reviewer@docubridge.io",
+        actor_role="broker",
+        citation_verified=True,
+        review_dwell_ms=4200,
+    )
+    gym.evaluate_candidate_rule(promoted_rule.rule_id, auto_promote=True)
+
+    direct = gym.compile_rules_to_skill(doctype="quote", issuer_pattern="Acme*")
+    assert direct["compiled_rule_ids"] == [promoted_rule.rule_id]
+    assert direct["compiled_rules_count"] == 1
+    assert direct["target_state"] == "DRAFT"
+    assert direct["is_default_revision"] is False
+
+    app = build_user_interaction_app(agent_gym=gym)
+    client = TestClient(app)
+    svid = mint_jwt_svid("spiffe://agents.docubridge.io/internal/broker-agent")
+    resp = client.post(
+        "/v1/gym/compile-skill",
+        headers={
+            "X-Bridge-Spiffe-Svid": svid,
+            "X-Bridge-Role": "broker",
+            "X-Bridge-Principal": "reviewer@docubridge.io",
+        },
+        json={"doctype": "quote", "issuer_pattern": "Acme*"},
+    )
+    assert resp.status_code == 200
+    http_compiled = resp.json()
+    assert http_compiled["compiled_rule_ids"] == [promoted_rule.rule_id]
+    assert http_compiled["target_state"] == "DRAFT"
+    assert http_compiled["is_default_revision"] is False
+
+    bad_resp = client.post(
+        "/v1/gym/compile-skill",
+        headers={
+            "X-Bridge-Spiffe-Svid": svid,
+            "X-Bridge-Role": "broker",
+            "X-Bridge-Principal": "reviewer@docubridge.io",
+        },
+        json={"doctype": "*"},
+    )
+    assert bad_resp.status_code == 422

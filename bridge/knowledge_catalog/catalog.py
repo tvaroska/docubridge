@@ -244,6 +244,7 @@ class KnowledgeCatalog(Protocol):
         revision: OntologyRevision,
         *,
         activate: bool = True,
+        expected_active_revision_id: str | None = None,
     ) -> OntologyRevision:
         """Register a new OntologyRevision snapshot and optionally promote it to ACTIVE."""
         ...

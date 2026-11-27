@@ -521,3 +521,110 @@ def test_proposal_with_negative_flip_fails_assay(
     assert report.replayed_deal_count == 1
     assert report.negative_flip_rate > 0.0
     assert report.passed is False
+
+
+def test_sql_catalog_concurrent_revision_registration_does_not_wipe(
+    tmp_path,
+) -> None:
+    """P16-3: multi-replica SqlKnowledgeCatalog preserves concurrent revisions, edges, and seq PKs."""
+    import sqlite3
+
+    from bridge.knowledge_catalog.sql_store import SqlKnowledgeCatalog
+    from bridge.refinery import BASELINE_REVISION_ID, compute_ontology_hash
+    from contract.refinery import OntologyEdge, OntologyRevisionState
+
+    db_file = tmp_path / "catalog_concurrent_p16_3.db"
+    dsn = f"sqlite+aiosqlite:///{db_file}"
+    replica_a = SqlKnowledgeCatalog(dsn)
+    replica_b = SqlKnowledgeCatalog(dsn)
+    try:
+        base_a = replica_a.get_active_ontology_revision()
+        base_b = replica_b.get_active_ontology_revision()
+        assert base_a.revision_id == BASELINE_REVISION_ID
+        assert base_b.revision_id == BASELINE_REVISION_ID
+
+        edge_a = OntologyEdge(
+            edge_id="edge-p16-rev-a",
+            source_id="endorsement",
+            relation="SUPERSEDES",
+            target_id="policy",
+            priority_rank=35,
+        )
+        rev_a_draft = base_a.model_copy(
+            update={
+                "revision_id": "ont-rev-p16-a",
+                "version": "1.2.0-a",
+                "parent_revision_id": BASELINE_REVISION_ID,
+                "edges": (*base_a.edges, edge_a),
+            }
+        )
+        rev_a = rev_a_draft.model_copy(
+            update={
+                "content_sha256": compute_ontology_hash(
+                    rev_a_draft.entities, rev_a_draft.edges
+                )
+            }
+        )
+        replica_a.register_ontology_revision(
+            rev_a,
+            activate=True,
+            expected_active_revision_id=BASELINE_REVISION_ID,
+        )
+
+        edge_b = OntologyEdge(
+            edge_id="edge-p16-rev-b",
+            source_id="addendum",
+            relation="SUPERSEDES",
+            target_id="cre-credit-agreement",
+            priority_rank=45,
+        )
+        rev_b_draft = base_b.model_copy(
+            update={
+                "revision_id": "ont-rev-p16-b",
+                "version": "1.2.0-b",
+                "parent_revision_id": BASELINE_REVISION_ID,
+                "edges": (*base_b.edges, edge_b),
+            }
+        )
+        rev_b = rev_b_draft.model_copy(
+            update={
+                "content_sha256": compute_ontology_hash(
+                    rev_b_draft.entities, rev_b_draft.edges
+                )
+            }
+        )
+
+        with pytest.raises(ValueError, match="Active ontology revision changed"):
+            replica_b.register_ontology_revision(
+                rev_b,
+                activate=True,
+                expected_active_revision_id=BASELINE_REVISION_ID,
+            )
+
+        replica_b.register_ontology_revision(rev_b, activate=True)
+
+        revs = replica_a.list_ontology_revisions()
+        by_id = {r.revision_id: r for r in revs}
+        assert {BASELINE_REVISION_ID, "ont-rev-p16-a", "ont-rev-p16-b"} <= set(by_id)
+        assert by_id[BASELINE_REVISION_ID].state == OntologyRevisionState.DEPRECATED
+        assert by_id["ont-rev-p16-a"].state == OntologyRevisionState.DEPRECATED
+        assert by_id["ont-rev-p16-b"].state == OntologyRevisionState.ACTIVE
+
+        with sqlite3.connect(db_file) as conn:
+            seq_rows = dict(
+                conn.execute(
+                    "SELECT revision_id, seq FROM catalog_ontology_revisions"
+                ).fetchall()
+            )
+            edge_ids = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT edge_pk FROM catalog_ontology_edges"
+                ).fetchall()
+            }
+        assert seq_rows[BASELINE_REVISION_ID] == 1
+        assert "ont-rev-p16-a:edge-p16-rev-a" in edge_ids
+        assert "ont-rev-p16-b:edge-p16-rev-b" in edge_ids
+    finally:
+        replica_a.close()
+        replica_b.close()

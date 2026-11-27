@@ -323,6 +323,7 @@ def gym_distill_and_compile(
     )
     report = ctx.gym.evaluate_candidate_rule(rule.rule_id, auto_promote=True)
     compile_args = dict(ctx.render(params["compile"]))
+    compile_args.setdefault("auto_promote", bool(report.passed_gate))
     if "_gym_auto_promote" in ctx.state:
         compile_args["auto_promote"] = bool(ctx.state.pop("_gym_auto_promote"))
     compiled = ctx.gym.compile_rules_to_skill(**compile_args)

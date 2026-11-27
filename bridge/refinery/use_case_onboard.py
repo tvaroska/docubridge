@@ -7,13 +7,9 @@ documents (`create_schema_from_documents` and `onboard_use_case`).
 
 from __future__ import annotations
 
-import argparse
-import html
 import json
-import re
 import sys
 import warnings
-import zlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -33,14 +29,19 @@ from bridge.refinery.onboarding import (
     PairedTargetExample,
     SampleDocumentExample,
     _slugify_entity_id,
+    build_onboarding_proposal,
+)
+from bridge.refinery.sample_loader import (
+    build_onboarding_cli_parser,
+)
+from bridge.refinery.sample_loader import (
+    load_sample_from_file as load_sample_from_file,
 )
 from bridge.refinery.sql_store import schema_refinery_from_env
-from contract.refinery import OntologyEntitySpec
-
-_XML_TAG_RE = re.compile(r"<[^>]+>")
-_PDF_STREAM_RE = re.compile(rb"stream[\r\n]+(.*?)[\r\n]+endstream", re.S)
-_PDF_TEXT_TOKEN_RE = re.compile(
-    r"\(((?:\\.|[^\\()])+)\)\s*Tj|\[((?:\\.|[^\[\]])+)\]\s*TJ"
+from contract.refinery import (
+    OntologyEdge,
+    OntologyEntitySpec,
+    OntologyRevisionState,
 )
 
 DEFAULT_PROCESS_POLICY: dict[str, Any] = {
@@ -57,11 +58,18 @@ DEFAULT_PROCESS_POLICY: dict[str, Any] = {
 }
 
 DEFAULT_DOCTYPE_VALIDATION: dict[str, Any] = {
+    "rules": [
+        {
+            "id": "required_fields_present",
+            "check": "all_required_present",
+        }
+    ],
     "signals": {
-        "bridge_owned": ["legibility", "type_match", "confidence"],
-        "agent_owned": ["completeness"],
+        "legibility": "bridge",
+        "type_match": "bridge",
+        "confidence": "bridge",
+        "completeness": "agent",
     },
-    "rules": ["complete_fields"],
 }
 
 
@@ -84,15 +92,14 @@ with warnings.catch_warnings():
         written_files: tuple[str, ...] = ()
 
 
-class DoctypeOnboardingItem(BaseModel):
-    """One doctype specification inside a use-case onboarding manifest."""
+class UseCaseDoctypeRequest(BaseModel):
+    """HTTP-safe doctype onboarding item (inline samples only; no server file paths)."""
 
     model_config = ConfigDict(extra="forbid")
 
     entity_id: str
     description: str = ""
     samples: list[dict[str, Any]] = Field(default_factory=list)
-    sample_files: list[str] = Field(default_factory=list)
     paired_target_examples: list[dict[str, Any]] = Field(default_factory=list)
     okf_markdown: str | None = None
     spine_entity_id: str | None = None
@@ -108,8 +115,33 @@ class DoctypeOnboardingItem(BaseModel):
     notes: str = ""
 
 
+class UseCaseOnboardingRequest(BaseModel):
+    """HTTP-safe request body for ``POST /v1/refinery/onboard-use-case`` (no ``sample_files``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    process_name: str
+    process_description: str
+    pattern: Literal["collect", "request", "negotiate", "deliver"] = "collect"
+    hitl: Literal["park", "report"] = "report"
+    satisfaction: str = ""
+    tags: list[str] = Field(default_factory=list)
+    policy: dict[str, Any] = Field(default_factory=dict)
+    context_set: str = "enterprise-document-intake"
+    domain: str = "general"
+    doctypes: list[UseCaseDoctypeRequest] = Field(default_factory=list)
+    auto_promote: bool = True
+    install_skills: bool = True
+
+
+class DoctypeOnboardingItem(UseCaseDoctypeRequest):
+    """CLI/manifest doctype onboarding specification supporting local ``sample_files``."""
+
+    sample_files: list[str] = Field(default_factory=list)
+
+
 class UseCaseOnboardingManifest(BaseModel):
-    """Declarative manifest for onboarding a use-case agent onto DocuBridge."""
+    """Declarative CLI manifest for onboarding a use-case agent onto DocuBridge."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -138,133 +170,6 @@ class UseCaseOnboardingResult(BaseModel):
     active_revision_id: str
     agent_card_skill_ids: tuple[str, ...]
     doctype_packages: tuple[DoctypeSchemaPackage, ...]
-
-
-def _extract_pdf_text_bytes(raw_bytes: bytes) -> str:
-    """Extract readable ASCII/UTF-8 text strings from uncompressed or Flate PDF streams."""
-    lines: list[str] = []
-    for match in _PDF_STREAM_RE.finditer(raw_bytes):
-        chunk = match.group(1)
-        decompressed = chunk
-        for wbits in (zlib.MAX_WBITS, -zlib.MAX_WBITS):
-            try:
-                decompressed = zlib.decompress(chunk, wbits)
-                break
-            except zlib.error:
-                continue
-        text = decompressed.decode("latin-1", errors="ignore")
-        for tok_match in _PDF_TEXT_TOKEN_RE.finditer(text):
-            single, array = tok_match.group(1), tok_match.group(2)
-            if single:
-                cleaned = (
-                    single.replace(r"\(", "(")
-                    .replace(r"\)", ")")
-                    .replace(r"\\", "\\")
-                    .strip()
-                )
-                if cleaned:
-                    lines.append(cleaned)
-            elif array:
-                parts = re.findall(r"\(((?:\\.|[^\\()])+)\)", array)
-                joined = "".join(
-                    p.replace(r"\(", "(").replace(r"\)", ")").replace(r"\\", "\\")
-                    for p in parts
-                ).strip()
-                if joined:
-                    lines.append(joined)
-    if lines:
-        return "\n".join(lines)
-    fallback = raw_bytes.decode("utf-8", errors="ignore")
-    return fallback
-
-
-def _extract_svg_or_xml_text(raw_text: str) -> str:
-    """Extract readable lines from SVG `<text>` or HTML/XML elements."""
-    replaced = re.sub(
-        r"</(?:text|tspan|p|div|tr|li|h[1-6])>", "\n", raw_text, flags=re.I
-    )
-    stripped = _XML_TAG_RE.sub(" ", replaced)
-    unescaped = html.unescape(stripped)
-    out_lines: list[str] = []
-    for line in unescaped.splitlines():
-        norm = re.sub(r"\s+", " ", line).strip()
-        if norm:
-            out_lines.append(norm)
-    return "\n".join(out_lines)
-
-
-def load_sample_from_file(
-    path: Path,
-    *,
-    sample_id: str | None = None,
-) -> SampleDocumentExample:
-    """Load a `SampleDocumentExample` from a `.pdf`, `.svg`, `.json`, `.yaml`, `.docx`, `.xlsx`, or `.txt` file."""
-    resolved = path.resolve()
-    if not resolved.is_file():
-        raise FileNotFoundError(f"Sample document file not found: {path}")
-    sid = sample_id or resolved.stem
-    suffix = resolved.suffix.lower()
-
-    if suffix in (".json", ".yaml", ".yml"):
-        raw = resolved.read_text(encoding="utf-8")
-        data = json.loads(raw) if suffix == ".json" else yaml.safe_load(raw)
-        if isinstance(data, Mapping):
-            if "extracted_fields" in data or "raw_text" in data:
-                payload = dict(data)
-                payload.setdefault("sample_id", sid)
-                payload.setdefault("filename", resolved.name)
-                return SampleDocumentExample.model_validate(payload)
-            return SampleDocumentExample(
-                sample_id=sid,
-                filename=resolved.name,
-                extracted_fields={
-                    str(k): str(v) for k, v in data.items() if v is not None
-                },
-            )
-        raise ValueError(f"Expected a JSON/YAML mapping in {path}")
-
-    if suffix in (".svg", ".xml", ".html", ".htm"):
-        text = _extract_svg_or_xml_text(resolved.read_text(encoding="utf-8"))
-        return SampleDocumentExample(
-            sample_id=sid,
-            filename=resolved.name,
-            raw_text=text,
-        )
-
-    if suffix == ".pdf":
-        text = _extract_pdf_text_bytes(resolved.read_bytes())
-        return SampleDocumentExample(
-            sample_id=sid,
-            filename=resolved.name,
-            raw_text=text,
-        )
-
-    if suffix in (".docx", ".rtf", ".xlsx"):
-        from bridge.extraction.office_prepass import (
-            extract_docx_with_redlines,
-            extract_rtf_text,
-            extract_xlsx_resilient,
-        )
-
-        raw_bytes = resolved.read_bytes()
-        if suffix == ".docx":
-            office_text = extract_docx_with_redlines(raw_bytes).accepted_text
-        elif suffix == ".rtf":
-            office_text = extract_rtf_text(raw_bytes)
-        else:
-            office_text = extract_xlsx_resilient(raw_bytes).rendered_text
-        return SampleDocumentExample(
-            sample_id=sid,
-            filename=resolved.name,
-            raw_text=office_text,
-        )
-
-    raw_text = resolved.read_text(encoding="utf-8", errors="replace")
-    return SampleDocumentExample(
-        sample_id=sid,
-        filename=resolved.name,
-        raw_text=raw_text,
-    )
 
 
 def render_doctype_skill_package(  # noqa: PLR0913 - keyword-only doctype skill package renderer
@@ -399,15 +304,21 @@ def _merge_okf_bundle_override(
             render_okf_markdown(spec, field_enums=enums_tuple, tables=tables_dict),
         )
     bundle = parse_okf_doctype_bundle(okf_markdown, default_entity_id=entity_id)
+    safe_id = _slugify_entity_id(bundle.spec.entity_id or entity_id)
+    normalized_spec = (
+        bundle.spec
+        if bundle.spec.entity_id == safe_id
+        else bundle.spec.model_copy(update={"entity_id": safe_id})
+    )
     merged_enums = enums_tuple or dict(bundle.field_enums)
     merged_tables = tables_dict or dict(bundle.tables)
     rendered = render_okf_markdown(
-        bundle.spec,
+        normalized_spec,
         field_enums=merged_enums,
         tables=merged_tables,
         schema_version=bundle.schema_version,
     )
-    return bundle.spec, merged_enums, merged_tables, rendered
+    return normalized_spec, merged_enums, merged_tables, rendered
 
 
 def _write_doctype_package_files(
@@ -435,6 +346,84 @@ def _write_doctype_package_files(
         target.write_text(content, encoding="utf-8")
         written.append(str(target))
     return written
+
+
+def _assay_okf_override_proposal(  # noqa: PLR0913 - keyword-only OKF override assay inputs
+    *,
+    active_refinery: SchemaRefineryEngine,
+    entity_id: str,
+    okf_markdown: str,
+    combined_samples: Sequence[SampleDocumentExample | Mapping[str, Any]],
+    paired_target_examples: Sequence[PairedTargetExample | Mapping[str, Any]],
+    spine_entity_id: str | None,
+    context_set: str,
+    domain: str,
+    source_priority: int,
+    supersedes_spine: bool,
+    aliases: Sequence[str],
+    enums_tuple: dict[str, tuple[str, ...]],
+    tables_dict: dict[str, dict[str, Any]],
+    client: object,
+    use_live_llm: bool | None,
+) -> tuple[
+    DoctypeOnboardingResult,
+    OntologyEntitySpec,
+    dict[str, tuple[str, ...]],
+    dict[str, dict[str, Any]],
+    str,
+]:
+    baseline = active_refinery.get_active_revision()
+    raw_proposal, induced_spec, _induced_md, proj_hints, induced_by = (
+        build_onboarding_proposal(
+            entity_id=entity_id,
+            samples=combined_samples,
+            baseline_revision=baseline,
+            paired_target_examples=paired_target_examples,
+            spine_entity_id=spine_entity_id,
+            context_set=context_set,
+            domain=domain,
+            source_priority=source_priority,
+            supersedes_spine=supersedes_spine,
+            aliases=aliases,
+            client=client,
+            use_live_llm=use_live_llm,
+        )
+    )
+    spec, merged_enums, merged_tables, final_okf_md = _merge_okf_bundle_override(
+        okf_markdown, entity_id, induced_spec, enums_tuple, tables_dict
+    )
+    merged_edges: list[OntologyEdge] = list(spec.edges)
+    seen_keys = {(e.source_id, e.relation, e.target_id) for e in merged_edges}
+    for extra_edge in raw_proposal.added_edges:
+        key = (extra_edge.source_id, extra_edge.relation, extra_edge.target_id)
+        if extra_edge.relation == "SUPERSEDES" and key not in seen_keys:
+            rebound = extra_edge.model_copy(update={"source_id": spec.entity_id})
+            merged_edges.append(rebound)
+            seen_keys.add((rebound.source_id, rebound.relation, rebound.target_id))
+    spec_with_edges = spec.model_copy(update={"edges": tuple(merged_edges)})
+    override_proposal = raw_proposal.model_copy(
+        update={
+            "target_entity_id": spine_entity_id or spec.entity_id,
+            "new_entity_id": None,
+            "proposed_entity": spec_with_edges,
+            "added_edges": tuple(merged_edges),
+        }
+    )
+    updated_prop, report, cand_rev = active_refinery.register_proposal(
+        override_proposal
+    )
+    onboard_res = DoctypeOnboardingResult(
+        proposal=updated_prop,
+        assay_report=report,
+        draft_revision=cand_rev.model_copy(
+            update={"state": OntologyRevisionState.DRAFT}
+        ),
+        entity_spec=spec_with_edges,
+        okf_markdown=final_okf_md,
+        target_projection_hints=proj_hints,
+        induced_by_model=induced_by,
+    )
+    return onboard_res, spec_with_edges, merged_enums, merged_tables, final_okf_md
 
 
 def create_schema_from_documents(  # noqa: PLR0913 - keyword-only public schema induction API
@@ -481,32 +470,53 @@ def create_schema_from_documents(  # noqa: PLR0913 - keyword-only public schema 
         bundle = parse_okf_doctype_bundle(okf_markdown, default_entity_id=entity_id)
         enums_tuple = enums_tuple or dict(bundle.field_enums)
         tables_dict = tables_dict or dict(bundle.tables)
+        seed_fields = {fname: f"sample_{fname}" for fname in bundle.spec.fields} or {
+            "document_id": "sample_id"
+        }
         combined_samples.append(
             SampleDocumentExample(
                 sample_id="sample-from-okf",
-                extracted_fields={
-                    fname: f"sample_{fname}" for fname in bundle.spec.fields
-                },
+                extracted_fields=seed_fields,
             )
         )
 
-    onboard_res = active_refinery.onboard_doctype_from_examples(
-        entity_id=entity_id,
-        samples=combined_samples,
-        paired_target_examples=paired_target_examples,
-        spine_entity_id=spine_entity_id,
-        context_set=context_set,
-        domain=domain,
-        source_priority=source_priority,
-        supersedes_spine=supersedes_spine,
-        aliases=aliases,
-        client=client,
-        use_live_llm=use_live_llm,
-    )
-
-    spec, enums_tuple, tables_dict, final_okf_md = _merge_okf_bundle_override(
-        okf_markdown, entity_id, onboard_res.entity_spec, enums_tuple, tables_dict
-    )
+    if okf_markdown:
+        onboard_res, spec, enums_tuple, tables_dict, final_okf_md = (
+            _assay_okf_override_proposal(
+                active_refinery=active_refinery,
+                entity_id=entity_id,
+                okf_markdown=okf_markdown,
+                combined_samples=combined_samples,
+                paired_target_examples=paired_target_examples,
+                spine_entity_id=spine_entity_id,
+                context_set=context_set,
+                domain=domain,
+                source_priority=source_priority,
+                supersedes_spine=supersedes_spine,
+                aliases=aliases,
+                enums_tuple=enums_tuple,
+                tables_dict=tables_dict,
+                client=client,
+                use_live_llm=use_live_llm,
+            )
+        )
+    else:
+        onboard_res = active_refinery.onboard_doctype_from_examples(
+            entity_id=entity_id,
+            samples=combined_samples,
+            paired_target_examples=paired_target_examples,
+            spine_entity_id=spine_entity_id,
+            context_set=context_set,
+            domain=domain,
+            source_priority=source_priority,
+            supersedes_spine=supersedes_spine,
+            aliases=aliases,
+            client=client,
+            use_live_llm=use_live_llm,
+        )
+        spec, enums_tuple, tables_dict, final_okf_md = _merge_okf_bundle_override(
+            None, entity_id, onboard_res.entity_spec, enums_tuple, tables_dict
+        )
 
     promoted_rev_id: str | None = None
     if auto_promote and onboard_res.assay_report.passed:
@@ -514,15 +524,6 @@ def create_schema_from_documents(  # noqa: PLR0913 - keyword-only public schema 
             onboard_res.proposal.proposal_id,
             revision_id=f"ont-rev-onboard-{spec.entity_id[:24]}",
         )
-        if okf_markdown:
-            updated_entities = dict(promoted.entities)
-            updated_entities[spec.entity_id] = spec.model_copy(
-                update={"revision_id": promoted.revision_id}
-            )
-            promoted = active_refinery._save_revision(  # type: ignore[attr-defined]
-                promoted.model_copy(update={"entities": updated_entities}),
-                activate=True,
-            )
         promoted_rev_id = promoted.revision_id
 
     skill_md, assets = render_doctype_skill_package(
@@ -535,7 +536,7 @@ def create_schema_from_documents(  # noqa: PLR0913 - keyword-only public schema 
     )
 
     installed = False
-    if install_skill:
+    if install_skill and onboard_res.assay_report.passed:
         from bridge.ports import Port, get_adapter, resolve_mode
 
         reg = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
@@ -546,7 +547,7 @@ def create_schema_from_documents(  # noqa: PLR0913 - keyword-only public schema 
         _write_doctype_package_files(
             write_dir, spec.entity_id, final_okf_md, skill_md, assets
         )
-        if write_dir is not None
+        if write_dir is not None and onboard_res.assay_report.passed
         else []
     )
 
@@ -564,7 +565,7 @@ def create_schema_from_documents(  # noqa: PLR0913 - keyword-only public schema 
 
 
 def onboard_use_case(  # noqa: PLR0913 - keyword-only public use-case onboarding API
-    manifest: UseCaseOnboardingManifest | Mapping[str, Any],
+    manifest: UseCaseOnboardingRequest | UseCaseOnboardingManifest | Mapping[str, Any],
     *,
     base_dir: Path | None = None,
     refinery: SchemaRefineryEngine | None = None,
@@ -573,22 +574,20 @@ def onboard_use_case(  # noqa: PLR0913 - keyword-only public use-case onboarding
     use_live_llm: bool | None = None,
 ) -> UseCaseOnboardingResult:
     """Onboard a complete use-case agent (all its doctypes + its process skill) onto DocuBridge."""
-    parsed = (
+    parsed: UseCaseOnboardingRequest | UseCaseOnboardingManifest = (
         manifest
-        if isinstance(manifest, UseCaseOnboardingManifest)
+        if isinstance(manifest, (UseCaseOnboardingRequest, UseCaseOnboardingManifest))
         else UseCaseOnboardingManifest.model_validate(manifest)
     )
     active_refinery = refinery or schema_refinery_from_env()
     root_dir = Path(base_dir).resolve() if base_dir is not None else Path.cwd()
 
-    doctype_packages: list[DoctypeSchemaPackage] = []
-    installed_doctypes: list[str] = []
-    installed_skills: list[str] = []
-
+    staged_packages: list[DoctypeSchemaPackage] = []
     for item in parsed.doctypes:
+        raw_sample_files: Sequence[str] = getattr(item, "sample_files", ())
         resolved_files = [
             str((root_dir / rel).resolve()) if not Path(rel).is_absolute() else rel
-            for rel in item.sample_files
+            for rel in raw_sample_files
         ]
         pkg = create_schema_from_documents(
             entity_id=item.entity_id,
@@ -608,44 +607,92 @@ def onboard_use_case(  # noqa: PLR0913 - keyword-only public use-case onboarding
             tables=item.tables or None,
             notes=item.notes or item.description,
             refinery=active_refinery,
-            auto_promote=parsed.auto_promote,
-            install_skill=parsed.install_skills,
-            write_dir=write_dir,
+            auto_promote=False,
+            install_skill=False,
+            write_dir=None,
             client=client,
             use_live_llm=use_live_llm,
         )
-        doctype_packages.append(pkg)
-        installed_doctypes.append(pkg.entity_id)
-        if pkg.installed_in_registry:
-            installed_skills.append(pkg.entity_id)
+        staged_packages.append(pkg)
 
-    proc_slug = _slugify_entity_id(parsed.process_name)
-    proc_skill_md, proc_assets = render_process_skill_package(
-        proc_slug,
-        description=parsed.process_description,
-        candidate_doctypes=installed_doctypes,
-        pattern=parsed.pattern,
-        hitl=parsed.hitl,
-        satisfaction=parsed.satisfaction,
-        tags=parsed.tags,
-        policy=parsed.policy or None,
+    all_assays_passed = bool(staged_packages) and all(
+        pkg.onboarding_result.assay_report.passed for pkg in staged_packages
     )
+    proc_slug = _slugify_entity_id(parsed.process_name)
+    doctype_packages: list[DoctypeSchemaPackage] = []
+    installed_doctypes: list[str] = []
+    installed_skills: list[str] = []
 
-    if parsed.install_skills:
-        from bridge.ports import Port, get_adapter, resolve_mode
+    if all_assays_passed:
+        promoted_packages: list[DoctypeSchemaPackage] = []
+        for pkg in staged_packages:
+            updates: dict[str, Any] = {}
+            if parsed.auto_promote:
+                promoted = active_refinery.promote_proposal(
+                    pkg.onboarding_result.proposal.proposal_id,
+                    revision_id=f"ont-rev-onboard-{pkg.entity_id[:24]}",
+                )
+                updates["promoted_revision_id"] = promoted.revision_id
+            if write_dir is not None:
+                updates["written_files"] = tuple(
+                    _write_doctype_package_files(
+                        write_dir,
+                        pkg.entity_id,
+                        pkg.okf_markdown,
+                        pkg.skill_md,
+                        {
+                            "assets/schema.json": pkg.schema_json,
+                            "assets/validation.yaml": pkg.validation_yaml,
+                        },
+                    )
+                )
+            promoted_packages.append(pkg.model_copy(update=updates) if updates else pkg)
+        staged_packages = promoted_packages
+        candidate_doctypes = [pkg.entity_id for pkg in staged_packages]
+        proc_skill_md, proc_assets = render_process_skill_package(
+            proc_slug,
+            description=parsed.process_description,
+            candidate_doctypes=candidate_doctypes,
+            pattern=parsed.pattern,
+            hitl=parsed.hitl,
+            satisfaction=parsed.satisfaction,
+            tags=parsed.tags,
+            policy=parsed.policy or None,
+        )
+        if parsed.install_skills:
+            from bridge.ports import Port, get_adapter, resolve_mode
 
-        reg = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
-        reg.install_skill(proc_slug, proc_skill_md, proc_assets)
-        installed_skills.append(proc_slug)
+            reg = get_adapter(Port.skill_registry, resolve_mode(Port.skill_registry))
+            for pkg in staged_packages:
+                reg.install_skill(
+                    pkg.entity_id,
+                    pkg.skill_md,
+                    {
+                        "assets/schema.json": pkg.schema_json,
+                        "assets/validation.yaml": pkg.validation_yaml,
+                    },
+                )
+                doctype_packages.append(
+                    pkg.model_copy(update={"installed_in_registry": True})
+                )
+                installed_doctypes.append(pkg.entity_id)
+                installed_skills.append(pkg.entity_id)
+            reg.install_skill(proc_slug, proc_skill_md, proc_assets)
+            installed_skills.append(proc_slug)
+        else:
+            doctype_packages.extend(staged_packages)
+            installed_doctypes.extend(candidate_doctypes)
 
-    if write_dir is not None:
-        p_dir = Path(write_dir).resolve() / "skills" / proc_slug
-        (p_dir / "assets").mkdir(parents=True, exist_ok=True)
-        (p_dir / "SKILL.md").write_text(proc_skill_md, encoding="utf-8")
-        for rel, content in proc_assets.items():
-            dest = p_dir / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(content, encoding="utf-8")
+        if write_dir is not None:
+            p_dir = Path(write_dir).resolve() / "skills" / proc_slug
+            (p_dir / "assets").mkdir(parents=True, exist_ok=True)
+            (p_dir / "SKILL.md").write_text(proc_skill_md, encoding="utf-8")
+            for rel, content in proc_assets.items():
+                dest = p_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content, encoding="utf-8")
+    else:
+        doctype_packages.extend(staged_packages)
 
     from bridge.edge.skills import loaded_skills
 
@@ -687,85 +734,7 @@ def load_manifest_file(manifest_path: Path) -> tuple[UseCaseOnboardingManifest, 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint for `create-schema` and `onboard` commands."""
-    parser = argparse.ArgumentParser(
-        prog="python -m bridge.refinery.use_case_onboard",
-        description="Create OKF/Skill schemas from sample documents or onboard a use-case agent.",
-    )
-    sub = parser.add_subparsers(dest="subcommand", required=True)
-
-    p_schema = sub.add_parser(
-        "create-schema",
-        help="Induce an OKF .okf.md bundle and doctype skill folder from 1-5 sample documents.",
-    )
-    p_schema.add_argument("--doctype", required=True, help="Doctype entity slug")
-    p_schema.add_argument(
-        "--doc",
-        action="append",
-        default=[],
-        required=True,
-        help="Path to a sample document (.pdf, .svg, .docx, .xlsx, .json, .yaml, .txt); repeatable (1-5)",
-    )
-    p_schema.add_argument(
-        "--paired-target",
-        default=None,
-        help="Optional JSON/YAML file of paired target rows",
-    )
-    p_schema.add_argument(
-        "--spine", default=None, help="Optional shared spine entity ID"
-    )
-    p_schema.add_argument(
-        "--context-set",
-        default="enterprise-document-intake",
-        help="Ontology context set",
-    )
-    p_schema.add_argument("--domain", default="general", help="Domain tag")
-    p_schema.add_argument(
-        "--priority", type=int, default=20, help="Source priority tier (default 20)"
-    )
-    p_schema.add_argument(
-        "--write-dir",
-        type=Path,
-        default=None,
-        help="Write catalog/doctypes and skills/<doctype> under this directory",
-    )
-    p_schema.add_argument(
-        "--install",
-        action="store_true",
-        help="Install into the active SkillRegistry and KnowledgeCatalog",
-    )
-    p_schema.add_argument(
-        "--live-llm",
-        action="store_true",
-        help="Use live gemini-4-argon for contrastive synthesis",
-    )
-
-    p_onboard = sub.add_parser(
-        "onboard",
-        help="Onboard a use-case agent manifest (sample documents + process skill) locally or to a remote Bridge URL.",
-    )
-    p_onboard.add_argument(
-        "--manifest",
-        type=Path,
-        required=True,
-        help="Path to use-case onboarding manifest (.yaml or .json)",
-    )
-    p_onboard.add_argument(
-        "--bridge-url",
-        default=None,
-        help="Remote DocuBridge dashboard/API URL (e.g. https://<service>.run.app); omit for local",
-    )
-    p_onboard.add_argument(
-        "--write-dir",
-        type=Path,
-        default=None,
-        help="Optional output directory to write induced OKF & skill files",
-    )
-    p_onboard.add_argument(
-        "--live-llm",
-        action="store_true",
-        help="Use live gemini-4-argon for contrastive synthesis",
-    )
-
+    parser = build_onboarding_cli_parser()
     args = parser.parse_args(argv)
 
     if args.subcommand == "create-schema":
@@ -814,10 +783,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.bridge_url:
         import httpx
 
+        http_payload = UseCaseOnboardingRequest.model_validate(
+            manifest_obj.model_dump(
+                mode="json", exclude={"doctypes": {"__all__": {"sample_files"}}}
+            )
+        )
         url = args.bridge_url.rstrip("/") + "/v1/refinery/onboard-use-case"
         resp = httpx.post(
             url,
-            json=manifest_obj.model_dump(mode="json"),
+            json=http_payload.model_dump(mode="json"),
             timeout=120.0,
         )
         resp.raise_for_status()

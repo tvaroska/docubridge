@@ -114,25 +114,26 @@ FINDINGS: tuple[FindingSpec, ...] = (
         target_journey="J2",
     ),
     FindingSpec(
-        finding_id="P16-1 / P16-2 (6.2/10 Open)",
-        severity="high",
-        title="Open P0: HTTP LFI in onboard-use-case & compile_rules_to_skill bypass",
+        finding_id="P16-1..4,10 (Fixed on main)",
+        severity="closed",
+        title="Closed P0 onboard-use-case LFI, compiler bypass, SQL CAS & 800-LOC splits",
         body=(
-            "POST /v1/refinery/onboard-use-case reads raw server sample_files paths "
-            "& installs failed-assay skills (P16-1); compile_rules_to_skill pulls "
-            "CANDIDATE/REJECTED rules via list(all_rules) fallback (P16-2)."
+            "Split HTTP UseCaseOnboardingRequest + pre-promotion OKF assay & failed-"
+            "assay install block (P16-1); restricted compile_rules_to_skill to "
+            "PROMOTED/VERIFIED doctype rules & DRAFT default (P16-2); added single-tx "
+            "SQL CAS in SqlKnowledgeCatalog & ActionInboxStore (P16-3/4) + cap splits."
         ),
         target_node="dl_agent_gym",
         target_journey="J8",
     ),
     FindingSpec(
-        finding_id="P16-3..8 (6.0-6.2/10 Open)",
+        finding_id="P16-5..9 (Open)",
         severity="high",
-        title="Open P1: Revision wipe, Inbox double-resolve, Path-A as_of, SSRF & Model Armor",
+        title="Open P1/P2: Path-A/email as_of freshness, NAT64 SSRF, PII logs & Model Armor",
         body=(
-            "Unlocked SqlKnowledgeCatalog DELETE/INSERT wipes concurrent revisions "
-            "(P16-3); Inbox resolve_action lacks terminal guard (P16-4); Path-A/"
-            "email omit as_of freshness (P16-5); empty mcp_tool_name fails OPEN (P16-8)."
+            "Path-A, email intake & pathb omit as_of freshness (P16-5); outbound "
+            "NAT64 IPv6 SSRF & dispatch re-validation (P16-6); Path-A trace payload "
+            "PII logs (P16-7); empty mcp_tool_name & fail-open Model Armor (P16-8)."
         ),
         target_node="db_vault_ledger",
         target_journey="J5",
@@ -152,11 +153,11 @@ FINDINGS: tuple[FindingSpec, ...] = (
     FindingSpec(
         finding_id="Backlog (2026-11-24/25)",
         severity="med",
-        title="Open: 59 lines naming external bq-eval views, 800-LOC cap & advisory paths",
+        title="Open: 59 lines naming external bq-eval views, UI split & advisory paths",
         body=(
             "bq-eval view names appear in 16 files (2026-11-24 decision to remove); "
-            "executor.py hits 800/800 LOC (P16-10); duplicate demo/ vs frontend/ "
-            "UIs (R2-A); Day-2 GeminiExtractor in GCP skips _agent_gym hints (R5)."
+            "duplicate demo/ vs frontend/ UIs (R2-A); Day-2 GeminiExtractor in GCP "
+            "skips _agent_gym hints (R5)."
         ),
         target_node="dl_trace_eval",
         target_journey="J9",
@@ -166,26 +167,26 @@ FINDINGS: tuple[FindingSpec, ...] = (
 OPEN_CHECKS: tuple[OpenCheckSpec, ...] = (
     OpenCheckSpec(
         check_id=1,
-        status="Open (P0)",
+        status="Closed (main)",
         check="P16-1: HTTP LFI (sample_files), failed-assay install & post-assay override",
         scope="J8",
-        gap="Split HTTP/CLI onboard-use-case models; require assay_report.passed.",
+        gap="Fixed on main (pending v1.20.0 tag): HTTP 422 + pre-promotion OKF assay.",
         roadmap_ref="P16-1",
     ),
     OpenCheckSpec(
         check_id=2,
-        status="Open (P0)",
+        status="Closed (main)",
         check="P16-2: Agent Gym compile_rules_to_skill pulls CANDIDATE/REJECTED rules",
         scope="J8",
-        gap="Remove fallback to all_rules; default auto_promote=False.",
+        gap="Fixed on main (pending v1.20.0 tag): doctype VERIFIED/PROMOTED + DRAFT.",
         roadmap_ref="P16-2",
     ),
     OpenCheckSpec(
         check_id=3,
-        status="Open (P1)",
+        status="Closed (main)",
         check="P16-3 & P16-4: SqlKnowledgeCatalog wipe + ActionInbox double-resolve",
         scope="J2, J8",
-        gap="Single-txn CAS updates & terminal-state guard needed.",
+        gap="Fixed on main (pending v1.20.0 tag): single-txn SQL CAS + terminal 409.",
         roadmap_ref="P16-3",
     ),
     OpenCheckSpec(
@@ -214,10 +215,10 @@ OPEN_CHECKS: tuple[OpenCheckSpec, ...] = (
     ),
     OpenCheckSpec(
         check_id=7,
-        status="Open (P2)",
-        check="P16-7, P16-9, P16-10: Path-A PII logs, _task_outcomes LRU & 800-LOC cap",
+        status="Open (P1/P2)",
+        check="P16-7 & P16-9: Path-A PII trace payload logs & _task_outcomes LRU",
         scope="J1, J2, J9",
-        gap="executor.py at 800/800 LOC, email_ingress.py at 792, DECISIONS 24.3/25 KB.",
+        gap="P16-10 cap splits landed; Path-A trace log scrub & outcome LRU remain.",
         roadmap_ref="P16-7",
     ),
     OpenCheckSpec(

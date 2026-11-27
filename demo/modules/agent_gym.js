@@ -153,7 +153,7 @@ export async function runCompileSkill() {
         "X-Bridge-Role": "underwriter",
         "X-Bridge-Principal": isLending ? "senior.credit.officer@docubridge.io" : "lead.underwriter@docubridge.io"
       },
-      body: JSON.stringify({ doctype: doctype, issuer_pattern: issuerPattern })
+      body: JSON.stringify({ doctype: doctype, issuer_pattern: issuerPattern, auto_promote: true })
     });
     if (resp.ok) {
       const compiled = await resp.json();

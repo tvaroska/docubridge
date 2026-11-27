@@ -177,24 +177,65 @@ class SqlSchemaRefineryEngine(InMemorySchemaRefineryEngine):
         revision: OntologyRevision,
         *,
         activate: bool = True,
+        expected_active_revision_id: str | None = None,
     ) -> OntologyRevision:
-        saved = super()._save_revision(revision, activate=activate)
+        saved = super()._save_revision(
+            revision,
+            activate=activate,
+            expected_active_revision_id=expected_active_revision_id,
+        )
         self._ensure_ready()
         table = self._revisions_table
         engine = self._engine
-        all_revs = self._catalog.list_ontology_revisions()
 
         async def _op() -> None:
-            from sqlalchemy import delete
+            from sqlalchemy import select
 
             async with engine.begin() as conn:
-                await conn.execute(delete(table))
-                for rev in all_revs:
+                if activate:
+                    active_res = await conn.execute(
+                        select(table.c.revision_id, table.c.payload_json).where(
+                            table.c.state == OntologyRevisionState.ACTIVE.value
+                        )
+                    )
+                    for active_id, active_json in list(active_res):
+                        if str(active_id) == saved.revision_id:
+                            continue
+                        old_rev = OntologyRevision.model_validate_json(active_json)
+                        dep = old_rev.model_copy(
+                            update={
+                                "state": OntologyRevisionState.DEPRECATED,
+                                "effective_to": saved.effective_from,
+                            }
+                        )
+                        await conn.execute(
+                            table.update()
+                            .where(table.c.revision_id == str(active_id))
+                            .values(
+                                state=OntologyRevisionState.DEPRECATED.value,
+                                payload_json=dep.model_dump_json(),
+                            )
+                        )
+                existing = await conn.execute(
+                    select(table.c.revision_id).where(
+                        table.c.revision_id == saved.revision_id
+                    )
+                )
+                if existing.first() is not None:
+                    await conn.execute(
+                        table.update()
+                        .where(table.c.revision_id == saved.revision_id)
+                        .values(
+                            state=saved.state.value,
+                            payload_json=saved.model_dump_json(),
+                        )
+                    )
+                else:
                     await conn.execute(
                         table.insert().values(
-                            revision_id=rev.revision_id,
-                            state=rev.state.value,
-                            payload_json=rev.model_dump_json(),
+                            revision_id=saved.revision_id,
+                            state=saved.state.value,
+                            payload_json=saved.model_dump_json(),
                         )
                     )
 

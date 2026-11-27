@@ -12,7 +12,7 @@ from bridge.a2ui_inbox import ActionInboxStore
 from bridge.knowledge_catalog import CatalogRole, KnowledgeCatalog
 from bridge.refinery import (
     SchemaRefineryEngine,
-    UseCaseOnboardingManifest,
+    UseCaseOnboardingRequest,
     onboard_use_case,
     schema_refinery_from_env,
 )
@@ -71,7 +71,7 @@ def _register_refinery_write_routes(
 
     @router.post("/v1/refinery/onboard-use-case", dependencies=mutating_deps)
     def post_refinery_onboard_use_case(
-        body: UseCaseOnboardingManifest,
+        body: UseCaseOnboardingRequest,
     ) -> dict[str, Any]:
         """Onboard a complete use-case agent (all its doctypes + process skill) onto DocuBridge."""
         try:

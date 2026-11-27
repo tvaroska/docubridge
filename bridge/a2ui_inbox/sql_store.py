@@ -14,7 +14,9 @@ from bridge.a2ui_inbox.catalogs import (
     TaskLifecycleState,
 )
 from bridge.a2ui_inbox.memory_store import (
+    TERMINAL_INBOX_STATES,
     ActionInboxStore,
+    InboxItemAlreadyResolvedError,
     InMemoryActionInboxStore,
 )
 from bridge.a2ui_inbox.models import (
@@ -25,6 +27,7 @@ from bridge.a2ui_inbox.models import (
 )
 from bridge.knowledge_catalog import CatalogRole, DeliveryChannel
 from bridge.operational_store import FactConflict
+from bridge.telemetry.outcome import close_outcome
 
 if TYPE_CHECKING:
     from sqlalchemy import Table
@@ -39,12 +42,7 @@ _INBOX_OP_TIMEOUT_S = 30.0
 
 
 class SqlActionInboxStore(InMemoryActionInboxStore):
-    """AlloyDB / Cloud SQL Postgres / SQLite durable A2UI v0.9 Action Inbox store.
-
-    Synchronizes ``ActionInboxItem`` state and immutable ``InboxAuditRecord`` entries
-    with shared SQL tables so multi-replica Cloud Run services maintain a single
-    source of truth across instances and restarts.
-    """
+    """AlloyDB / Cloud SQL Postgres / SQLite durable A2UI v0.9 Action Inbox store."""
 
     def __init__(self, dsn: str) -> None:
         super().__init__()
@@ -58,6 +56,8 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
             )
         self.dsn = cleaned
         self._init_lock = threading.Lock()
+        self._resolve_lock = threading.Lock()
+        self._tls = threading.local()
         self._runtime: DsnSqlRuntime | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
@@ -65,6 +65,10 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         self._closed = False
         self._items_table: Table | None = None
         self._audits_table: Table | None = None
+
+    def _record_audit(self, audit: InboxAuditRecord) -> None:
+        """Capture audit transiently on thread-local state without retaining RAM history."""
+        self._tls.captured_audit = audit
 
     def _ensure_ready(self) -> None:
         if self._engine is not None:
@@ -154,39 +158,32 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         table, _, engine = self._ready_handles()
 
         async def _op() -> None:
-            from sqlalchemy import delete
+            from sqlalchemy import select
 
             async with engine.begin() as conn:
-                await conn.execute(delete(table).where(table.c.item_id == item.item_id))
-                await conn.execute(
-                    table.insert().values(
-                        item_id=item.item_id,
-                        entity_id=item.entity_id,
-                        task_state=item.task_state,
-                        created_at=item.created_at.isoformat(),
-                        payload_json=item.model_dump_json(),
+                existing = await conn.execute(
+                    select(table.c.item_id).where(table.c.item_id == item.item_id)
+                )
+                if existing.first() is not None:
+                    await conn.execute(
+                        table.update()
+                        .where(table.c.item_id == item.item_id)
+                        .values(
+                            entity_id=item.entity_id,
+                            task_state=item.task_state,
+                            payload_json=item.model_dump_json(),
+                        )
                     )
-                )
-
-        self._run(_op())
-
-    def _save_audit_sql(self, audit: InboxAuditRecord) -> None:
-        _, table, engine = self._ready_handles()
-
-        async def _op() -> None:
-            from sqlalchemy import delete
-
-            async with engine.begin() as conn:
-                await conn.execute(
-                    delete(table).where(table.c.audit_id == audit.audit_id)
-                )
-                await conn.execute(
-                    table.insert().values(
-                        audit_id=audit.audit_id,
-                        item_id=audit.item_id,
-                        payload_json=audit.model_dump_json(),
+                else:
+                    await conn.execute(
+                        table.insert().values(
+                            item_id=item.item_id,
+                            entity_id=item.entity_id,
+                            task_state=item.task_state,
+                            created_at=item.created_at.isoformat(),
+                            payload_json=item.model_dump_json(),
+                        )
                     )
-                )
 
         self._run(_op())
 
@@ -301,17 +298,114 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         hint: str | None = None,
     ) -> tuple[ActionInboxItem, dict[str, Any]]:
         """Advance the workflow step of a SQL-backed action inbox item."""
-        self._load_item_sql(item_id)
-        item, delta = super().advance_step(
-            item_id,
-            step_id=step_id,
-            status=status,
-            detail=detail,
-            external_detail=external_detail,
-            hint=hint,
-        )
-        self._save_item_sql(item)
-        return item, delta
+        items_table, _, engine = self._ready_handles()
+        with self._resolve_lock:
+            db_item = self._load_item_sql(item_id)
+            if db_item is None:
+                raise KeyError(f"Unknown action inbox item '{item_id}'.")
+            if db_item.task_state in TERMINAL_INBOX_STATES:
+                raise InboxItemAlreadyResolvedError(
+                    f"Action inbox item '{item_id}' is already resolved in terminal state '{db_item.task_state}'."
+                )
+            expected_payload = db_item.model_dump_json()
+            snapshot = db_item.model_copy(deep=True)
+            self._items[item_id] = db_item.model_copy(deep=True)
+            item, delta = super().advance_step(
+                item_id,
+                step_id=step_id,
+                status=status,
+                detail=detail,
+                external_detail=external_detail,
+                hint=hint,
+            )
+
+            async def _cas_advance() -> None:
+                async with engine.begin() as conn:
+                    upd = await conn.execute(
+                        items_table.update()
+                        .where(
+                            (items_table.c.item_id == item_id)
+                            & (items_table.c.payload_json == expected_payload)
+                            & items_table.c.task_state.notin_(
+                                tuple(TERMINAL_INBOX_STATES)
+                            )
+                        )
+                        .values(
+                            entity_id=item.entity_id,
+                            task_state=item.task_state,
+                            payload_json=item.model_dump_json(),
+                        )
+                    )
+                    if upd.rowcount != 1:
+                        raise InboxItemAlreadyResolvedError(
+                            f"Action inbox item '{item_id}' was concurrently resolved or modified."
+                        )
+
+            try:
+                self._run(_cas_advance())
+            except Exception:
+                self._items[item_id] = snapshot
+                self._load_item_sql(item_id)
+                raise
+            return item, delta
+
+    def _persist_resolved_item_and_audit(
+        self,
+        *,
+        item_id: str,
+        expected_state: str,
+        expected_payload: str,
+        updated_item: ActionInboxItem,
+        captured_audit: InboxAuditRecord,
+    ) -> None:
+        items_table, audits_table, engine = self._ready_handles()
+
+        async def _cas_and_audit() -> None:
+            async with engine.begin() as conn:
+                upd = await conn.execute(
+                    items_table.update()
+                    .where(
+                        (items_table.c.item_id == item_id)
+                        & (items_table.c.task_state == expected_state)
+                        & (items_table.c.payload_json == expected_payload)
+                        & items_table.c.task_state.notin_(tuple(TERMINAL_INBOX_STATES))
+                    )
+                    .values(
+                        entity_id=updated_item.entity_id,
+                        task_state=updated_item.task_state,
+                        payload_json=updated_item.model_dump_json(),
+                    )
+                )
+                if upd.rowcount != 1:
+                    raise InboxItemAlreadyResolvedError(
+                        f"Action inbox item '{item_id}' was concurrently resolved or modified."
+                    )
+                await conn.execute(
+                    audits_table.insert().values(
+                        audit_id=captured_audit.audit_id,
+                        item_id=captured_audit.item_id,
+                        payload_json=captured_audit.model_dump_json(),
+                    )
+                )
+
+        self._run(_cas_and_audit())
+
+    @staticmethod
+    def _close_resolved_outcome(updated_item: ActionInboxItem, decision: str) -> None:
+        if not updated_item.outcome_id:
+            return
+        if decision in ("accept", "edit"):
+            close_outcome(
+                "succeeded",
+                subject=updated_item.entity_id,
+                outcome_id=updated_item.outcome_id,
+            )
+        elif decision == "reject":
+            close_outcome(
+                "failed",
+                subject=updated_item.entity_id,
+                outcome_id=updated_item.outcome_id,
+            )
 
     def resolve_action(  # noqa: PLR0913 - public ActionInboxStore contract
         self,
@@ -325,25 +419,63 @@ class SqlActionInboxStore(InMemoryActionInboxStore):
         principal_max_approval_amount: Decimal | str | int | None = None,
         close_outcome_on_resolve: bool = True,
     ) -> dict[str, Any]:
-        """Resolve a SQL-backed action inbox item and persist both the item and audit record."""
-        self._load_item_sql(item_id)
-        prev_audit_len = len(self._audits)
-        res = super().resolve_action(
-            item_id,
-            action_request=action_request,
-            actor_principal=actor_principal,
-            actor_role=actor_role,
-            channel=channel,
-            agent_spiffe_id=agent_spiffe_id,
-            principal_max_approval_amount=principal_max_approval_amount,
-            close_outcome_on_resolve=close_outcome_on_resolve,
-        )
-        updated_item = self._items.get(item_id)
-        if updated_item is not None:
-            self._save_item_sql(updated_item)
-        for audit in self._audits[prev_audit_len:]:
-            self._save_audit_sql(audit)
-        return res
+        """Atomically CAS-transition the inbox item and insert its audit record in one SQL transaction."""
+        self._ready_handles()
+        with self._resolve_lock:
+            db_item = self._load_item_sql(item_id)
+            if db_item is None:
+                raise KeyError(f"Unknown action inbox item '{item_id}'.")
+            if db_item.task_state in TERMINAL_INBOX_STATES:
+                raise InboxItemAlreadyResolvedError(
+                    f"Action inbox item '{item_id}' is already resolved in terminal state '{db_item.task_state}'."
+                )
+            expected_state = db_item.task_state
+            expected_payload = db_item.model_dump_json()
+            snapshot = db_item.model_copy(deep=True)
+            self._items[item_id] = db_item.model_copy(deep=True)
+            self._tls.captured_audit = None
+            try:
+                res = super().resolve_action(
+                    item_id,
+                    action_request=action_request,
+                    actor_principal=actor_principal,
+                    actor_role=actor_role,
+                    channel=channel,
+                    agent_spiffe_id=agent_spiffe_id,
+                    principal_max_approval_amount=principal_max_approval_amount,
+                    close_outcome_on_resolve=False,
+                )
+                updated_item = self._items[item_id]
+                captured_audit: InboxAuditRecord | None = getattr(
+                    self._tls, "captured_audit", None
+                )
+            except Exception:
+                self._items[item_id] = snapshot
+                self._tls.captured_audit = None
+                raise
+
+            if captured_audit is None:
+                self._items[item_id] = snapshot
+                raise RuntimeError("Inbox resolution produced no audit record")
+
+            try:
+                self._persist_resolved_item_and_audit(
+                    item_id=item_id,
+                    expected_state=expected_state,
+                    expected_payload=expected_payload,
+                    updated_item=updated_item,
+                    captured_audit=captured_audit,
+                )
+            except Exception:
+                self._items[item_id] = snapshot
+                self._load_item_sql(item_id)
+                raise
+            finally:
+                self._tls.captured_audit = None
+
+            if close_outcome_on_resolve:
+                self._close_resolved_outcome(updated_item, str(res.get("decision", "")))
+            return res
 
     def list_audit_records(self, item_id: str | None = None) -> list[InboxAuditRecord]:
         """Return immutable audit log records from SQL, optionally filtered by action ID."""

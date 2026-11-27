@@ -17,6 +17,7 @@ from bridge.a2ui_inbox import (
     PORTAL_CUSTOMER_CATALOG_SCHEMA,
     A2uiClientActionRequest,
     ActionInboxStore,
+    InboxItemAlreadyResolvedError,
     TaskLifecycleState,
     build_action_progress_surface,
     default_submission_progress_steps,
@@ -319,6 +320,8 @@ def _handle_update_inbox_action_step(
         }
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InboxItemAlreadyResolvedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -347,6 +350,8 @@ def _handle_submit_inbox_governance_action(
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InboxItemAlreadyResolvedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except AuthenticationRequiredError as exc:

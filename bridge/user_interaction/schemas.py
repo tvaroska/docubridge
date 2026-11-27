@@ -127,6 +127,7 @@ class CompileSkillRequest(BaseModel):
 
     doctype: str = "closing-disclosure"
     issuer_pattern: str = "*"
+    auto_promote: bool = False
 
 
 class RollbackSkillRequest(BaseModel):

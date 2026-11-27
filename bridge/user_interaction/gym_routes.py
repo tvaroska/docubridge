@@ -48,6 +48,19 @@ class _GymRouteDeps:
     scenario_engine: ScenarioEngine | None
 
 
+def _compile_gym_skill(
+    deps: _GymRouteDeps, body: CompileSkillRequest
+) -> dict[str, Any]:
+    try:
+        return deps.gym.compile_rules_to_skill(
+            doctype=body.doctype,
+            issuer_pattern=body.issuer_pattern,
+            auto_promote=body.auto_promote,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 def _register_gym_signal_and_skill_routes(
     router: APIRouter, deps: _GymRouteDeps
 ) -> None:
@@ -158,10 +171,7 @@ def _register_gym_signal_and_skill_routes(
     ) -> dict[str, Any]:
         """Compile promoted Tribal Knowledge Rules into an immutable versioned SKILL.md revision via gemini-4-argon."""
         del role
-        return deps.gym.compile_rules_to_skill(
-            doctype=body.doctype,
-            issuer_pattern=body.issuer_pattern,
-        )
+        return _compile_gym_skill(deps, body)
 
     @router.post(
         "/v1/gym/skills/{skill_name}/rollback", dependencies=[deps.gym_internal_auth]

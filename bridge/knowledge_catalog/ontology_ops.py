@@ -80,10 +80,20 @@ class OntologyCatalogMixin:
         revision: OntologyRevision,
         *,
         activate: bool = True,
+        expected_active_revision_id: str | None = None,
     ) -> OntologyRevision:
         """Register a new OntologyRevision snapshot and optionally promote it to ACTIVE."""
         global _ACTIVE_ONTOLOGY_REVISION
-        revs, _ = _ensure_shared_ontology()
+        revs, active = _ensure_shared_ontology()
+        if (
+            activate
+            and expected_active_revision_id is not None
+            and active.revision_id != expected_active_revision_id
+            and expected_active_revision_id != revision.revision_id
+        ):
+            raise ValueError(
+                f"Active ontology revision changed concurrently (expected '{expected_active_revision_id}', found '{active.revision_id}')."
+            )
         updated: list[OntologyRevision] = []
         replaced = False
         for existing in revs:

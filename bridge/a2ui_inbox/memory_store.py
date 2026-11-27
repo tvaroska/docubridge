@@ -63,6 +63,13 @@ _ESCALATION_ROLES: dict[str, CatalogRole] = {
     "underwriter": "underwriter",
     "executive": "executive",
 }
+TERMINAL_INBOX_STATES: frozenset[TaskLifecycleState] = frozenset(
+    {"completed", "failed"}
+)
+
+
+class InboxItemAlreadyResolvedError(ValueError):
+    """Raised when resolving an action inbox item already in a terminal state."""
 
 
 @dataclass(frozen=True)
@@ -517,6 +524,10 @@ class InMemoryActionInboxStore(ActionInboxStore):
         item = self._items.get(item_id)
         if item is None:
             raise KeyError(f"Unknown action inbox item '{item_id}'.")
+        if item.task_state in TERMINAL_INBOX_STATES:
+            raise InboxItemAlreadyResolvedError(
+                f"Action inbox item '{item_id}' is already resolved in terminal state '{item.task_state}'."
+            )
 
         step = next((s for s in item.steps if s.step_id == step_id), None)
         if step is None:
@@ -543,6 +554,9 @@ class InMemoryActionInboxStore(ActionInboxStore):
         item.delta_history.append(delta)
         return item, delta
 
+    def _record_audit(self, audit: InboxAuditRecord) -> None:
+        self._audits.append(audit)
+
     def _record_escalation(
         self,
         item: ActionInboxItem,
@@ -554,6 +568,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
         target_role = str(action_ctx.get("targetRole", "underwriter"))
         if target_role in _ESCALATION_ROLES:
             item.assigned_role = _ESCALATION_ROLES[target_role]
+        item.task_state = "input-required"
         audit = InboxAuditRecord(
             audit_id=f"aud_{uuid.uuid4().hex[:10]}",
             item_id=item.item_id,
@@ -574,7 +589,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
             citation_opened=telemetry.citation_opened,
             pre_committed=telemetry.pre_committed,
         )
-        self._audits.append(audit)
+        self._record_audit(audit)
         return audit, {
             "item_id": item.item_id,
             "task_state": "input-required",
@@ -618,6 +633,10 @@ class InMemoryActionInboxStore(ActionInboxStore):
             item = self._items.get(item_id)
             if item is None:
                 raise KeyError(f"Unknown action inbox item '{item_id}'.")
+            if item.task_state in TERMINAL_INBOX_STATES:
+                raise InboxItemAlreadyResolvedError(
+                    f"Action inbox item '{item_id}' is already resolved in terminal state '{item.task_state}'."
+                )
             span.set_attribute("docubridge.entity_id", item.entity_id)
 
             access = _authorize_inbox_resolution(
@@ -720,7 +739,7 @@ class InMemoryActionInboxStore(ActionInboxStore):
                 citation_opened=telemetry.citation_opened,
                 pre_committed=telemetry.pre_committed,
             )
-            self._audits.append(audit)
+            self._record_audit(audit)
             span.set_attribute("docubridge.audit_id", audit.audit_id)
             span.set_attribute("docubridge.task_state", item.task_state)
             if close_outcome_on_resolve and item.outcome_id:

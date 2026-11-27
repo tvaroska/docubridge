@@ -15,7 +15,9 @@ from bridge.a2ui_inbox.catalogs import (
     TaskLifecycleState,
 )
 from bridge.a2ui_inbox.memory_store import (
+    TERMINAL_INBOX_STATES,
     ActionInboxStore,
+    InboxItemAlreadyResolvedError,
     InMemoryActionInboxStore,
 )
 from bridge.a2ui_inbox.models import (
@@ -63,6 +65,7 @@ __all__ = [
     "INBOX_ITEMS_TABLE_NAME",
     "PORTAL_CATALOG_ID",
     "PORTAL_CUSTOMER_CATALOG_SCHEMA",
+    "TERMINAL_INBOX_STATES",
     "_DEFAULT_INBOX_STORE",
     "_INBOX_OP_TIMEOUT_S",
     "_SQL_INBOX_CACHE",
@@ -77,6 +80,7 @@ __all__ = [
     "GovernanceDecision",
     "InMemoryActionInboxStore",
     "InboxAuditRecord",
+    "InboxItemAlreadyResolvedError",
     "Rfc6902PatchOp",
     "RiskTier",
     "SqlActionInboxStore",

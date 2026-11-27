@@ -229,8 +229,8 @@ CORE_NODES: tuple[SubsystemSpec, ...] = (
             "GCS quarantine + Cloud Scheduler)."
         ),
         gap_note=(
-            "P16-5: EmailProcessor omits within_days as_of freshness check; "
-            "email_ingress.py sits at 792/800 LOC (P16-10)."
+            "P16-5: EmailProcessor omits within_days as_of freshness check "
+            "(email_ingress.py split into processor + webhook in P16-10)."
         ),
         code_files=(
             "bridge/email_ingress/mime.py",
@@ -310,8 +310,8 @@ CORE_NODES: tuple[SubsystemSpec, ...] = (
             "PG16 / Agent Engine); AST bans unguarded InMemory* on cloud paths."
         ),
         gap_note=(
-            "executor.py at 800/800 LOC (P16-10); _task_outcomes leak on failed/HITL "
-            "turns (P16-9); NAT64 IPv6 SSRF & live Model Armor fail-open (P16-6/8)."
+            "_task_outcomes leak on failed/HITL turns (P16-9); NAT64 IPv6 SSRF & "
+            "live Model Armor fail-open (P16-6/8)."
         ),
         code_files=(
             "bridge/edge/server.py",
@@ -443,8 +443,8 @@ CORE_NODES: tuple[SubsystemSpec, ...] = (
             "BigQuery Iceberg & Terraform; 31 get_adapter leaks open in P15-8)."
         ),
         gap_note=(
-            "SqlKnowledgeCatalog unlocked DELETE/INSERT wipe (P16-3); /v1/intake/ingest "
-            "skips gate; Path-A PII log leak (P16-7); 55 GCP tests skip offline."
+            "/v1/intake/ingest skips gate; Path-A PII log leak (P16-7); 55 GCP "
+            "tests skip offline (SqlKnowledgeCatalog CAS fixed in P16-3)."
         ),
         code_files=(
             "bridge/vault.py",

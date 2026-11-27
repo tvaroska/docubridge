@@ -105,11 +105,23 @@ def verify_supersedes_dag_acyclic(edges: Sequence[OntologyEdge]) -> bool:
     return all(not (state[node] == 0 and not _dfs(node)) for node in sorted(nodes))
 
 
+def _entity_field_metrics_valid(entities: dict[str, OntologyEntitySpec]) -> bool:
+    for entity in entities.values():
+        for fspec in entity.fields.values():
+            if fspec.feeds_metric and (
+                fspec.feeds_metric not in VALID_METRIC_TARGETS or not fspec.monetary
+            ):
+                return False
+    return True
+
+
 def verify_decimal_formulas_valid(
     entities: dict[str, OntologyEntitySpec],
     edges: Sequence[OntologyEdge],
 ) -> bool:
-    """Verify every ``FEEDS_METRIC`` edge targets a valid metric and monetary field."""
+    """Verify every ``FEEDS_METRIC`` edge and field ``feeds_metric`` targets a valid monetary metric."""
+    if not _entity_field_metrics_valid(entities):
+        return False
     for edge in edges:
         if edge.relation != "FEEDS_METRIC":
             continue

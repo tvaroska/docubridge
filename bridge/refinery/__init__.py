@@ -63,9 +63,12 @@ from bridge.refinery.sql_store import (
     schema_refinery_from_env,
 )
 from bridge.refinery.use_case_onboard import (
+    DEFAULT_DOCTYPE_VALIDATION,
     DoctypeOnboardingItem,
     DoctypeSchemaPackage,
+    UseCaseDoctypeRequest,
     UseCaseOnboardingManifest,
+    UseCaseOnboardingRequest,
     UseCaseOnboardingResult,
     create_schema_from_documents,
     load_manifest_file,
@@ -101,6 +104,7 @@ from contract.refinery import (
 __all__ = [
     "BASELINE_REVISION_ID",
     "BASELINE_VERSION",
+    "DEFAULT_DOCTYPE_VALIDATION",
     "DEFAULT_OKF_DOCTYPES_DIR",
     "EMPTY_CATALOG_ENV",
     "EMPTY_REVISION_ID",
@@ -146,7 +150,9 @@ __all__ = [
     "SampleDocumentExample",
     "SchemaRefineryEngine",
     "SqlSchemaRefineryEngine",
+    "UseCaseDoctypeRequest",
     "UseCaseOnboardingManifest",
+    "UseCaseOnboardingRequest",
     "UseCaseOnboardingResult",
     "build_baseline_ontology_revision",
     "build_benefits_hdhp_hsa_fsa_proposal",
