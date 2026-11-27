@@ -1,68 +1,21 @@
 """The Bridge edge executor: ``CollectExecutor`` (an ``a2a-sdk`` AgentExecutor).
 
-**Decision 1 — the hybrid edge (S3-edge-1 D1).** Structured traffic — Path-A
-extraction assertions, ``CollectRequest``s and by-reference file submissions — runs on
-the deterministic, model-free path: ``bridge.collect.Collector.collect(...)`` (the
-P1-4 one-turn Sense-A path) or Path-A validate-only, its ``ExchangeTurn`` encoded into
-A2A parts. That front door stays deterministic and testable (a conformant A2A client
-drives every spec op; the app reads only standard task status + the ledger
-projection, never ADK events). Behind ``BRIDGE_EDGE_MODE=hybrid`` a text-only intent
-(off-script, real-erase deletion, "I need a person") is handed to the
-``document_bridge`` LlmAgent leg (``bridge.edge.llm_leg``); its turn is still a
-projected domain ``ExchangeTurn`` data part built from tool function responses — never
-model text, on the artifact or in ``status.message``. The route table is
-``bridge.edge.pathroute.classify_route``; the default (``deterministic``) mode routes
-every message model-free, exactly as before. See ``design/a2a-edge.md``.
-
-**Decision 2 — built on ``a2a-sdk``'s ``AgentExecutor`` ABC, NOT ADK's
-``A2aAgentExecutor``** (which is ``@a2a_experimental`` and unregistered in
-``bridge/adk/experimental.py``). This keeps us on a first-class, non-experimental
-Ring-1 surface. The LLM leg runs a plain ADK ``Runner`` behind this executor; it does
-not change this.
-
-**HITL park/resume (S3-edge-1 G/R3/R6).** On a hybrid edge, a Collector turn with a
-``hitl_review`` entry under a process whose skill opts in (``bridge-hitl: park``) is
-handed to the LLM leg (R3), which parks the task on ``request_human_review``
-(INPUT_REQUIRED, zero compute). The parked task is locked to its resolution: any
-other message is refused (G), and an authorized reviewer's id-matched
-``HumanReviewResolution`` resumes the parked invocation (R6). Every refusal is raised
-by :meth:`CollectExecutor.admit` BEFORE the SDK dispatches the message (the
-``bridge.edge.server`` handler calls it) — an exception raised inside ``execute``
-would mark the existing task FAILED. ``execute`` repeats the checks as defense in
-depth.
-
-**COLL-2 satisfaction proposal (S0-arch-16).** When ``build_a2a_app`` binds a
-satisfaction assessor (opt-in, ``BRIDGE_SATISFACTION=llm``), the deterministic legs
-(Collector turns and Path-A turns) replace the turn's per-entry
-``status.outstanding`` with the assessor's advisory proposal read from the process
-skill's ``bridge-satisfaction`` prose (``bridge.satisfaction``); any failure keeps the
-per-entry list. The proposal never sets ``done``, never touches ``terminal`` or the
-task state, and is never a gate input. With no assessor bound (the default) these
-legs stay model-free and byte-identical.
-
-**RFP opener (S0-arch-19).** When ``build_a2a_app`` binds an RFP board (env-gated by
-``BRIDGE_RFP_PROCESS``, over the durable shared ``exchange_store``; ``bind_rfp``), a
-``CollectRequest`` of a process the board SERVES (``RfpBoard.serves``: its home process, or
-an emergent-Collect process skill installed live in the registry — S4-usecase-4) skips the
-Collector: ``bridge.edge.rfp_open`` opens the RFP (``rfp_id`` = the exchange context:
-``request.context_id``, else the A2A task context), applies the agent's next requirements,
-or reads its status, and the RFP ``ExchangeTurn`` is emitted (``terminal=False`` →
-INPUT_REQUIRED: the exchange waits on carriers). Any other process — a non-RFP process
-such as a plain Collect skill without an ``rfp:`` block — stays on the Collector; with no
-board bound every process does. Model-free in both edge modes (a ``CollectRequest`` data part classifies as
-R2). Refusals (a file part, an invalid context id, an invalid request, an exhausted CAS
-conflict) are raised before any task event, so a new task is a JSON-RPC error and nothing
-is stored.
+Structured traffic (Path-A extraction assertions, ``CollectRequest``s, and file
+submissions) runs on the deterministic, model-free path. Under ``BRIDGE_EDGE_MODE=hybrid``
+text-only intents route to the ``document_bridge`` ADK ``LlmAgent`` leg
+(``bridge.edge.llm_leg``), parking ``hitl_review`` entries on ``request_human_review``
+and admitting authorized ``HumanReviewResolution`` resumes via :meth:`CollectExecutor.admit`.
+When ``build_a2a_app`` binds an ``RfpBoard`` (``BRIDGE_RFP_PROCESS``), matching
+``CollectRequest`` processes route to ``bridge.edge.rfp_open``. See ``design/a2a-edge.md``.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import uuid
+import os
 from collections.abc import Callable, Iterable
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from a2a.helpers import proto_helpers as ph
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -75,20 +28,15 @@ from a2a.utils.errors import (
     UnsupportedOperationError,
 )
 from google.adk.artifacts import BaseArtifactService
-from pydantic import ValidationError
 
-from bridge import patha
-from bridge.collect import Collector, DocumentSubmission, project_collection_status
+from bridge.collect import Collector, DocumentSubmission
 from bridge.edge.artifacts import (
     UNSCOPED_USER,
     Resolver,
     build_artifact_store,
-    filename_for,
-    persist_submission,
     resolve_bytes,
-    scoped_uri,
 )
-from bridge.edge.card import DEFAULT_URL, REQUEST_BASE_URL
+from bridge.edge.card import DEFAULT_URL
 from bridge.edge.executor_hitl import (
     GUARD_REFUSE_TEXT,
     HITL_HANDOFF_TEXT,
@@ -107,18 +55,17 @@ from bridge.edge.executor_hitl import (
     _turn_artifact_id,
     llm_status,
 )
-from bridge.edge.intake import decode_intake, parse_text_request
-from bridge.edge.pathroute import EdgeMode, Route, classify_route, decode_assertion
-from bridge.edge.reviewers import resolve_reviewers
-from bridge.edge.rfp_open import (
-    INVALID_RFP_CONTEXT_TEXT,
-    INVALID_RFP_REQUEST_PREFIX,
-    RFP_CONFLICT_TEXT,
-    RFP_SUBMISSIONS_TEXT,
-    InvalidRfpContext,
-    open_or_update_rfp,
-    rfp_context_id,
+from bridge.edge.executor_paths import (
+    build_path_a_turn,
+    emit_turn_payload_summary,
+    execute_rfp_turn,
+    finalize_completed_turn_outcome,
+    persist_turn_submissions,
+    preresolve_submissions,
 )
+from bridge.edge.intake import decode_intake, parse_text_request
+from bridge.edge.pathroute import EdgeMode, Route, classify_route
+from bridge.edge.reviewers import resolve_reviewers
 from bridge.edge.skills import (
     candidate_doctypes_for,
     hitl_mode_for,
@@ -129,13 +76,10 @@ from bridge.edge.wire import (
     encode_exchange_turn,
     status_message_for,
 )
-from bridge.exchange_store import StaleExchangeWrite
 from bridge.satisfaction import (
     SatisfactionAssessor,
-    evaluate_turn_sufficiency,
     propose_outstanding,
 )
-from bridge.telemetry import trace_step
 from bridge.telemetry.outcome import (
     close_outcome,
     current_outcome_id,
@@ -143,12 +87,11 @@ from bridge.telemetry.outcome import (
     resume_outcome,
     start_outcome,
 )
-from contract.enums import Disposition, Gate
+from contract.enums import Gate
 from contract.extraction import ExtractionResult
 from contract.wire import (
     CollectRequest,
     ExchangeTurn,
-    LedgerEntry,
 )
 
 if TYPE_CHECKING:
@@ -317,8 +260,6 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Execute an inbound A2A document collection request against the bridge state machine."""
-        import os
-
         cid = context.context_id or context.task_id or "a2a-task"
         default_owner = (
             os.environ.get("BRIDGE_APPHUB_APPLICATION_ID", "").strip() or "a2a-edge"
@@ -419,24 +360,7 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
     async def _preresolve_submissions(
         self, submissions: list[DocumentSubmission]
     ) -> tuple[list[DocumentSubmission], dict[str, tuple[bytes, str]]]:
-        from bridge.extraction.resolve import maybe_await, validate_gs_uri
-
-        resolved_payloads: dict[str, tuple[bytes, str]] = {}
-        enriched: list[DocumentSubmission] = []
-        for sub in submissions:
-            ref = sub.artifact
-            if ref is not None and ref.uri:
-                if ref.uri.strip().lower().startswith("gs://"):
-                    try:
-                        validate_gs_uri(ref.uri.strip())
-                    except ValueError as exc:
-                        raise InvalidParamsError(message=str(exc)) from exc
-                resolved = await maybe_await(self._resolver(ref.uri))
-                if resolved is not None:
-                    resolved_payloads[sub.doc_id] = resolved
-                    sub = sub.model_copy(update={"raw_bytes": resolved[0]})
-            enriched.append(sub)
-        return enriched, resolved_payloads
+        return await preresolve_submissions(submissions, self._resolver)
 
     async def _run_collect(
         self,
@@ -445,42 +369,21 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         doctypes: list[str],
         results_out: dict[str, ExtractionResult] | None,
     ) -> ExchangeTurn:
-        if self._freshness_clock is not None:
-            as_of = self._freshness_clock()
-            if results_out is not None:
-                return await self._collector.collect(
-                    request,
-                    documents=submissions,
-                    candidate_doctypes=doctypes,
-                    results_out=results_out,
-                    as_of=as_of,
-                )
-            return await self._collector.collect(
-                request, documents=submissions, candidate_doctypes=doctypes, as_of=as_of
-            )
+        kwargs: dict[str, Any] = {
+            "documents": submissions,
+            "candidate_doctypes": doctypes,
+        }
         if results_out is not None:
-            return await self._collector.collect(
-                request,
-                documents=submissions,
-                candidate_doctypes=doctypes,
-                results_out=results_out,
-            )
-        return await self._collector.collect(
-            request, documents=submissions, candidate_doctypes=doctypes
-        )
+            kwargs["results_out"] = results_out
+        if self._freshness_clock is not None:
+            kwargs["as_of"] = self._freshness_clock()
+        return await self._collector.collect(request, **kwargs)
 
     async def _execute_collect(
         self, context: RequestContext, event_queue: EventQueue, message: Message
     ) -> None:
         """R2: the deterministic, model-free Collector path."""
-        # WIRE-5 dual-mode intake: content-route JSON or text to CollectRequest
         request = decode_intake(message)
-        # S0-arch-19: a process the bound RFP board serves opens/updates/reads its RFP
-        # instead — BEFORE submissions decode and the HITL park logic; no COLL-2
-        # proposal (the RFP turn already proposes the outstanding delta). ``serves`` is
-        # the board's home process (free) or, S4-usecase-4, an emergent-Collect process
-        # live in the registry: a sync registry read on the loop, the same posture as
-        # ``_candidate_doctypes`` / ``hitl_mode_for`` below.
         if self._rfp is not None and self._rfp.serves(request.process):
             await self._execute_rfp(context, event_queue, message, request)
             return
@@ -488,10 +391,6 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             decode_submissions(message)
         )
         doctypes = self._candidate_doctypes(request.process)
-
-        # R3 eligibility (D5): a hybrid edge with a leg, under a process whose skill
-        # opts in to Bridge-owned review. Only then are the genuine extraction
-        # results captured (the handoff seeds the gate pin from them).
         park = (
             self._mode is EdgeMode.hybrid
             and self._llm_leg is not None
@@ -501,11 +400,6 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         turn = await self._run_collect(
             request, submissions, doctypes, results if park else None
         )
-
-        # ART-2: persist inbound bytes into the shared ArtifactService (versioned
-        # per resubmission = ART-1), then rewrite each entry's ArtifactRef.uri to
-        # the scoped fetch endpoint. Read context_id off the RETURNED turn — the
-        # Collector mints it when the request omits one (Decision 5 gotcha).
         party = request.party or UNSCOPED_USER
         ctx_user = context.call_context.user if context.call_context else None
         caller_principal = (
@@ -513,44 +407,17 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
             if ctx_user is not None and ctx_user.is_authenticated and ctx_user.user_name
             else None
         )
-        saved: dict[str, tuple[str, int]] = {}  # doc_id -> (filename, version)
-        for sub in submissions:
-            pre = resolved_payloads.get(sub.doc_id)
-
-            def _pre_resolver(
-                _uri: str, _payload: tuple[bytes, str] | None = pre
-            ) -> tuple[bytes, str] | None:
-                return _payload
-
-            version = await persist_submission(
-                self._store,
-                party=party,
-                context_id=turn.context_id,
-                submission=sub,
-                resolver=_pre_resolver if pre is not None else self._resolver,
-                caller_principal=caller_principal,
-            )
-            if version is not None:
-                saved[sub.doc_id] = (filename_for(sub), version)
-        # Rewrite every ledger entry that has a persisted artifact (Decision 8).
-        for entry in turn.status.entries:
-            if entry.artifact is None:
-                continue
-            mapped = saved.get(entry.doc_id)
-            if mapped is None:
-                continue  # unresolvable byte source: leave the ref unchanged
-            filename, version = mapped
-            entry.artifact.uri = scoped_uri(
-                REQUEST_BASE_URL.get() or self._base_url,
-                context_id=turn.context_id,
-                filename=filename,
-                version=version,
-            )
-
-        # COLL-2: the advisory proposal rides the Collector turn (also on the HITL
-        # degrade path, which emits this turn; a parked task emits the leg's turn).
+        await persist_turn_submissions(
+            store=self._store,
+            base_url=self._base_url,
+            turn=turn,
+            submissions=submissions,
+            resolved_payloads=resolved_payloads,
+            resolver=self._resolver,
+            party=party,
+            caller_principal=caller_principal,
+        )
         await self._propose(turn, request.process, doctypes)
-
         if park and any(e.gate is Gate.hitl_review for e in turn.status.entries):
             await self._execute_hitl_handoff(
                 context,
@@ -571,47 +438,16 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         message: Message,
         request: CollectRequest,
     ) -> None:
-        """S0-arch-19: open / update / read the RFP of this exchange on the durable board.
-
-        Every refusal is raised BEFORE any event is enqueued (on a new task the SDK
-        answers a JSON-RPC error and creates nothing): a file part →
-        ``rfp_submissions_unsupported`` (checked before any store access); an invalid
-        context id → ``invalid_rfp_context``; a ``ValueError`` from the RFP core →
-        ``invalid_rfp_request: <text>`` (all ``InvalidParamsError``); an exhausted CAS
-        conflict → ``InvalidRequestError`` ``rfp_changed_concurrently``. The whole read →
-        apply → put runs on one worker thread (thread-local CAS versions; the loop never
-        blocks on the DB).
-        """
-        if self._rfp is None:
-            raise RuntimeError("RFP board is not bound")
-        if any(p.HasField("raw") or p.HasField("url") for p in message.parts):
-            raise InvalidParamsError(message=RFP_SUBMISSIONS_TEXT)
-        _, context_id = _require_context_ids(context)
-        try:
-            cid = rfp_context_id(request, context_id)
-        except InvalidRfpContext as e:
-            raise InvalidParamsError(message=INVALID_RFP_CONTEXT_TEXT) from e
-        try:
-            turn = await asyncio.to_thread(
-                open_or_update_rfp, self._rfp, request, context_id=cid
-            )
-        except StaleExchangeWrite as e:
-            raise InvalidRequestError(
-                message=RFP_CONFLICT_TEXT.format(rfp_id=cid)
-            ) from e
-        except ValueError as e:
-            raise InvalidParamsError(message=INVALID_RFP_REQUEST_PREFIX + str(e)) from e
+        """Open, update, or read the RFP of this exchange on the durable board."""
+        turn = await execute_rfp_turn(self._rfp, context, message, request)
         await self._emit_turn(context, event_queue, turn, message)
 
     async def _propose(
         self, turn: ExchangeTurn, process: str, doctypes: list[str]
     ) -> None:
-        """COLL-2: replace the turn's per-entry outstanding with the advisory
-        proposal (:func:`bridge.satisfaction.propose_outstanding`; never raises,
-        never sets ``done``). No-op without a bound assessor or a satisfaction rule.
-        """
+        """Replace the turn's per-entry outstanding list with the advisory proposal when bound."""
         if self._assessor is None:
-            return  # checked FIRST: the default edge never reads skills for this
+            return
         rule = satisfaction_for(process)
         if not rule:
             return
@@ -623,80 +459,11 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         )
 
     def _build_path_a_turn(self, message: Message) -> ExchangeTurn:
-        """PATH-A validate-only: schema-validate the structured assertion + dispose it
-        into a one-entry terminal turn — NO extraction port call, NO artifact persistence
-        (a structured response carries no bytes).
-
-        A malformed assertion (missing/extra required key) raises ``ValidationError`` at
-        schema validation → a rejected ``LedgerEntry`` carrying the distinct
-        ``schema_invalid`` reason code, so the "schema-validated" step is visibly distinct
-        from a disposition-driven reject.
-        """
-        request = decode_intake(message)  # process/context_id (no extraction)
-        doctypes = self._candidate_doctypes(request.process)
-        context_id = request.context_id or uuid.uuid4().hex
-        assertion = decode_assertion(message)
-        doc_id = assertion.fields.doctype or "assertion"
-        try:
-            with trace_step(
-                "docubridge.edge.path_a_validate",
-                {
-                    "source_mode": "A2A_PATH_A",
-                    "skill_id": doc_id,
-                    "entity_id": request.party or context_id,
-                    "gen_ai.operation.name": "execute_tool",
-                    "gen_ai.tool.name": "path_a_validate_assertion",
-                    "gen_ai.agent.name": "document_bridge_path_a",
-                    "finops.traffic_type": "production_inference",
-                },
-            ):
-                entry = patha.validate_only_entry(
-                    assertion, doc_id=doc_id, candidate_doctypes=doctypes
-                )
-            if entry.disposition is Disposition.accepted and (
-                self._collector._vault_store is not None
-                or self._collector._operational_store is not None
-                or self._collector._knowledge_catalog is not None
-            ):
-                from bridge.user_interaction import ingest_accepted_submission
-
-                entity_id = request.party or context_id
-                ingested = ingest_accepted_submission(
-                    entry,
-                    entity_id=entity_id,
-                    context_id=context_id,
-                    raw_document_bytes=assertion.model_dump_json().encode("utf-8"),
-                    filename=f"{doc_id}.json",
-                    mime_type="application/json",
-                    source_mode="A2A_PATH_A",
-                    vault_store=self._collector._vault_store,
-                    operational_store=self._collector._operational_store,
-                    knowledge_catalog=self._collector._knowledge_catalog,
-                )
-                entry = ingested.entry
-        except ValidationError as e:
-            entry = LedgerEntry(
-                doc_id=doc_id,
-                doctype=assertion.fields.doctype,
-                disposition=Disposition.rejected,
-                gate=Gate.unsupported,
-                reason_code="schema_invalid",
-                message=(
-                    "The structured extraction assertion failed schema validation "
-                    f"and was rejected before disposition: {e.error_count()} error(s)."
-                ),
-            )
-        status = project_collection_status([entry])
-        sufficiency = evaluate_turn_sufficiency(
-            request.process,
-            [entry],
-            caller_requirements=request.requirements,
-        )
-        return ExchangeTurn(
-            context_id=context_id,
-            status=status,
-            sufficiency=sufficiency,
-            terminal=True,
+        """Schema-validate and dispose a structured Path-A extraction assertion."""
+        return build_path_a_turn(
+            message,
+            candidate_doctypes_fn=self._candidate_doctypes,
+            collector=self._collector,
         )
 
     async def _emit_turn(
@@ -706,20 +473,8 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
         turn: ExchangeTurn,
         message: Message | None,
     ) -> None:
-        """Enqueue the task (if new), add the ExchangeTurn artifact, set task state.
-
-        Lifecycle of the deterministic legs (Path-A, Collector; S3-edge-1 D7): the
-        one-turn collect completes synchronously, so these legs emit SUBMITTED →
-        COMPLETED|INPUT_REQUIRED and never stream an intermediate WORKING state (a
-        synthetic one would manufacture progress that didn't happen). The LLM leg
-        (``_execute_llm_leg``) does emit WORKING — its model call is genuine work. On
-        the completing path a new task opens per round under the same exchange
-        context_id (see the reference consumer interceptor in docubridge-examples;
-        D8: not collapsed).
-        """
+        """Enqueue the task (if new), add the ExchangeTurn artifact, and set task state."""
         task_id, context_id = _require_context_ids(context)
-        # 1.x requires a brand-new task's first enqueued event to be a Task,
-        # else the server raises InvalidAgentResponseError.
         if context.current_task is None:
             await event_queue.enqueue_event(
                 ph.new_task(
@@ -729,60 +484,24 @@ class CollectExecutor(ExecutorHitlMixin, AgentExecutor):
                     history=[message] if message is not None else [],
                 )
             )
-
         updater = TaskUpdater(event_queue, task_id, context_id)
-        # last_chunk=True matters (D4 / consumer gotcha): a *partial* artifact
-        # event is streamed but never persisted, so a downstream gate reading the
-        # session couldn't see it.
         await updater.add_artifact(
             encode_exchange_turn(turn),
             name="exchange_turn",
             last_chunk=True,
         )
-
         state = self._status_for(turn)
         status_message = status_message_for(turn)
-        from bridge.telemetry.payload_log import emit_trace_payload_log
-
-        emit_trace_payload_log(
-            user_prompt=f"A2A edge exchange turn context={turn.context_id}",
-            retrieved_context=turn.model_dump_json(),
-            final_response=f"state={TaskState.Name(state)} entries={len(turn.status.entries)}",
-        )
+        emit_turn_payload_summary(turn, state)
         if state == TaskState.TASK_STATE_COMPLETED:
-            import os
-
-            cid = context.context_id or context.task_id or "a2a-task"
-            caller_owned = cid in self._caller_owned_tasks
-            self._caller_owned_tasks.discard(cid)
-            outcome_id = (
-                self._task_outcomes.pop(cid, None)
-                or current_outcome_id()
-                or f"out_{cid}"
+            finalize_completed_turn_outcome(
+                context,
+                turn,
+                caller_owned_tasks=self._caller_owned_tasks,
+                task_outcomes=self._task_outcomes,
             )
-            if not caller_owned:
-                default_owner = (
-                    os.environ.get("BRIDGE_APPHUB_APPLICATION_ID", "").strip()
-                    or "a2a-edge"
-                )
-                has_accepted = any(
-                    e.disposition is Disposition.accepted for e in turn.status.entries
-                )
-                has_rejected = any(
-                    e.disposition is Disposition.rejected for e in turn.status.entries
-                )
-                outcome_status = (
-                    "failed" if has_rejected and not has_accepted else "succeeded"
-                )
-                close_outcome(
-                    outcome_status,
-                    subject=turn.context_id,
-                    outcome_id=outcome_id,
-                    owner=current_outcome_owner() or default_owner,
-                )
             await updater.complete(message=status_message)
         else:
-            # Non-terminal turn (terminal=False) → INPUT_REQUIRED, the park signal.
             await updater.update_status(state, message=status_message)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
