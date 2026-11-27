@@ -352,7 +352,7 @@ class DocAIPrepass:
 
     def _get_client(self) -> _DocAIClientLike:
         if self._client is None:
-            from google.cloud import documentai
+            import google.cloud.documentai as documentai
 
             self._client = cast(
                 _DocAIClientLike,

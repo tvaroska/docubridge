@@ -308,7 +308,7 @@ class _GcpCloudTasksScheduler:
 
     def _client(self) -> _CloudTasksClientLike:
         if self._client_obj is None:
-            from google.cloud import tasks_v2
+            import google.cloud.tasks_v2 as tasks_v2
 
             self._client_obj = cast(_CloudTasksClientLike, tasks_v2.CloudTasksClient())
         return self._client_obj
